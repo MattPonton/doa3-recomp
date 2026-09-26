@@ -45,7 +45,6 @@ static IDirect3DTexture8 *create_dxt5_texture(IDirect3DDevice8 *dev,
     HRESULT hr = dev->lpVtbl->CreateTexture(dev, width, height, 1,
         0 /*Usage*/, 0x0F /*DXT5*/, 0 /*D3DPOOL_DEFAULT*/, &tex);
     if (hr != 0 || !tex) {
-        fprintf(stderr, "[PGRAPH-D3D11] Failed to create font atlas texture: hr=0x%08X\n", hr);
         return NULL;
     }
 
@@ -55,10 +54,7 @@ static IDirect3DTexture8 *create_dxt5_texture(IDirect3DDevice8 *dev,
     if (hr == 0 && lr.pBits) {
         memcpy(lr.pBits, dxt5_data, data_size);
         tex->lpVtbl->UnlockRect(tex, 0);
-        fprintf(stderr, "[PGRAPH-D3D11] Created font atlas: %ux%u DXT5 (%u bytes)\n",
-                width, height, data_size);
     } else {
-        fprintf(stderr, "[PGRAPH-D3D11] Failed to lock font atlas: hr=0x%08X\n", hr);
     }
     return tex;
 }
@@ -398,14 +394,11 @@ void pgraph_d3d11_init(void)
     g_pg.color_mask = 0x01010101;
     g_pg.initialized = 1;
 
-    fprintf(stderr, "[PGRAPH-D3D11] Translator initialized\n");
 }
 
 void pgraph_d3d11_shutdown(void)
 {
     g_pg.initialized = 0;
-    fprintf(stderr, "[PGRAPH-D3D11] Translator shut down (draws=%u, verts=%u)\n",
-            g_pg.stats.draw_calls, g_pg.stats.vertices_submitted);
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -555,9 +548,7 @@ static void nv_apply_tex_address(IDirect3DDevice8 *dev, int stage)
             s_n[0][mn & 3]++; s_n[1][mg & 3]++; s_n[2][(f == 0) ? 0 : 1]++;
             if (g_doa3_post_movie && GetTickCount() >= s_next) {
                 s_next = GetTickCount() + 2000;
-                fprintf(stderr, "  [TEXFILT] min point=%u linear=%u | mag point=%u linear=%u | filter reg unset=%u set=%u\n",
-                        s_n[0][1], s_n[0][2], s_n[1][1], s_n[1][2], s_n[2][0], s_n[2][1]);
-                fflush(stderr); memset(s_n, 0, sizeof s_n);
+                 memset(s_n, 0, sizeof s_n);
             }
         }
         {   /* DOA3 DIAG: mip levels the source declares, and how many stages
@@ -571,11 +562,6 @@ static void nv_apply_tex_address(IDirect3DDevice8 *dev, int stage)
             s_stg[n & 4]++;
             if (g_doa3_post_movie && GetTickCount() >= s_nx) {
                 s_nx = GetTickCount() + 2000;
-                fprintf(stderr, "  [TEXMIP] levels:");
-                for (k = 0; k < 16; k++) if (s_mip[k]) fprintf(stderr, " %d=%u", k, s_mip[k]);
-                fprintf(stderr, " | stages enabled:");
-                for (k = 0; k < 5; k++) if (s_stg[k]) fprintf(stderr, " %d=%u", k, s_stg[k]);
-                fprintf(stderr, "\n"); fflush(stderr);
                 memset(s_mip, 0, sizeof s_mip); memset(s_stg, 0, sizeof s_stg);
             }
         }
@@ -598,11 +584,6 @@ static void nv_apply_tex_address(IDirect3DDevice8 *dev, int stage)
         s_u[a & 0xF]++; s_v[(a >> 8) & 0xF]++;
         if (g_doa3_post_movie && GetTickCount() >= s_next) {
             int i; s_next = GetTickCount() + 2000;
-            fprintf(stderr, "  [TEXADDR] u:");
-            for (i = 0; i < 16; i++) if (s_u[i]) fprintf(stderr, " %d=%u", i, s_u[i]);
-            fprintf(stderr, "  v:");
-            for (i = 0; i < 16; i++) if (s_v[i]) fprintf(stderr, " %d=%u", i, s_v[i]);
-            fprintf(stderr, "\n"); fflush(stderr);
             memset(s_u, 0, sizeof s_u); memset(s_v, 0, sizeof s_v);
         }
     }
@@ -758,11 +739,7 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
             g_pg.texcache[slot].uploaded = 0;
             {   static unsigned s_made = 0;
                 if (s_made < 64) { s_made++;
-                    fprintf(stderr, "[PGRAPH-D3D11] texture %ux%u nvfmt=0x%02X d3dfmt=%d %s "
-                                    "pitch=%u off=0x%08X\n",
-                            w, h, nvfmt, (int)d3dfmt,
-                            compressed ? "dxt" : (swizzled ? "swizzled" : "linear"),
-                            pitch, off); } }
+                     } }
         }
         g_pg.dyn_tex = g_pg.texcache[slot].tex;
         g_pg.dyn_w = w; g_pg.dyn_h = h; g_pg.dyn_fmt = (uint32_t)d3dfmt;
@@ -1360,9 +1337,7 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, OutputVertex *out,
             if (g_pg.depth_mask) s_m++; else s_nm++;
             if (g_doa3_post_movie && GetTickCount() >= s_nx) {
                 s_nx = GetTickCount() + 2000;
-                fprintf(stderr, "  [DEPTH] test on=%u off=%u | write on=%u off=%u | func=0x%X(d3d %u)\n",
-                        s_t, s_nt, s_m, s_nm, g_pg.depth_func, zf);
-                fflush(stderr); s_t = s_nt = s_m = s_nm = 0;
+                 s_t = s_nt = s_m = s_nm = 0;
             }
         }
     }
@@ -1385,9 +1360,7 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, OutputVertex *out,
             if (cm != 1) s_on++; else s_off++;
             if (g_doa3_post_movie && GetTickCount() >= s_nx) {
                 s_nx = GetTickCount() + 2000;
-                fprintf(stderr, "  [CULL] culling=%u none=%u face=0x%X front=0x%X -> d3dcull %u\n",
-                        s_on, s_off, g_pg.cull_face, g_pg.front_face, cm);
-                fflush(stderr); s_on = s_off = 0;
+                 s_on = s_off = 0;
             }
         }
     }
@@ -1419,10 +1392,7 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, OutputVertex *out,
             if (g_pg.stencil_enable) s_on++; else s_off++;
             if (g_doa3_post_movie && GetTickCount() >= s_nx) {
                 s_nx = GetTickCount() + 2000;
-                fprintf(stderr, "  [STENCIL] on=%u off=%u func=0x%X ref=%u ops=%X/%X/%X\n",
-                        s_on, s_off, g_pg.stencil_func, g_pg.stencil_ref & 0xFF,
-                        g_pg.stencil_fail, g_pg.stencil_zfail, g_pg.stencil_zpass);
-                fflush(stderr); s_on = s_off = 0;
+                 s_on = s_off = 0;
             }
         }
     }
@@ -1460,9 +1430,7 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, OutputVertex *out,
             if (g_pg.alpha_test) s_on++; else s_off++;
             if (g_doa3_post_movie && GetTickCount() >= s_nx) {
                 s_nx = GetTickCount() + 2000;
-                fprintf(stderr, "  [ALPHA] test on=%u off=%u func=0x%X(d3d %u) ref=%u\n",
-                        s_on, s_off, g_pg.alpha_func, func, g_pg.alpha_ref & 0xFF);
-                fflush(stderr); s_on = s_off = 0;
+                 s_on = s_off = 0;
             }
         }
     }
@@ -1477,15 +1445,8 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, OutputVertex *out,
         /* Build lookup table on first use */
         if (!g_pg.texture_lookup_done) {
             g_pg.texture_lookup_done = 1;
-            fprintf(stderr, "[PGRAPH-D3D11] Texture lookup init (global_txd has %d textures)\n",
-                    g_global_txd.count);
             /* Dump all texture names+sizes for reference */
             for (int ti = 0; ti < g_global_txd.count; ti++) {
-                fprintf(stderr, "    [%3d] %-24s %3ux%-3u fmt=0x%X\n",
-                        ti, g_global_txd.entries[ti].name,
-                        g_global_txd.entries[ti].width,
-                        g_global_txd.entries[ti].height,
-                        g_global_txd.entries[ti].format);
             }
         }
 
@@ -1617,7 +1578,11 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, OutputVertex *out,
          * texture here modulated every one of them away. Only rgb-black
          * quads survived, which is why the dark rows showed and the
          * coloured ones did not. The array (3D) path keeps its rule. */
-        if (!g_pg.tex[0].enabled && (diffuse_rgb_black || !g_nv_draw_has_uv || g_nv_draw_inline)) dtex = NULL;
+        /* Stage 0 disabled by the guest: flat vertex colour on every path.
+         * The 3D path used to keep the previously bound texture and
+         * modulate the geometry by it; the console samples nothing there.
+         * (The 2D path had this rule already, see the health bars above.) */
+        if (!g_pg.tex[0].enabled) dtex = NULL;
         if (dtex) {
             /* DOA3 configures the pixel pipeline through the register
              * combiners, which this translator does not implement; it
@@ -2083,6 +2048,139 @@ static uint32_t nv_xbox_texop(uint32_t x)
 }
 
 /* Draw from the bound vertex arrays (the title-screen path). */
+/* One point -> one screen-space sprite quad (two triangles), sized by the
+ * NV2A point rule (xemu vsh-ff.c):
+ *   d = |eye-space position|
+ *   t = 1/sqrt(P0 + P1 d + P2 d^2) + P6
+ *   s = clamp(t P3 + P7, min(P7, 63.875), min(P3 + P7, 63.875))
+ * or SET_POINT_SIZE / 8 when the params are off. Sizes are in guest
+ * render-target pixels; nv_fit_to_backbuffer scales the corners with
+ * everything else. The hardware feeds the sprite's 0..1 coordinates to
+ * texture unit 3 only, which is why DOA3 binds the flake / ember there.
+ * A point behind the eye (w <= 0) or outside the depth range has no XYZRHW
+ * form and is dropped (returns 0). `pos` is the object-space position for
+ * the distance term, or NULL when the draw has none to offer. */
+static int nv_point_quad(const OutputVertex *v, const float *pos, OutputVertex *out)
+{
+    const float *pp = g_pg.point_params, *mv = g_mv;
+    float s, h;
+    if (!(v->rhw > 1e-6f) || !(v->x == v->x) || !(v->y == v->y) || !(v->z >= 0.0f) || v->z > 1.0f) return 0;
+    if (g_pg.point_params_en && pos) {
+        float e, d2 = 0.0f, d, q, t, lo, hi; int r;
+        for (r = 0; r < 3; r++) {
+            e = mv[r * 4 + 0] * pos[0] + mv[r * 4 + 1] * pos[1] + mv[r * 4 + 2] * pos[2] + mv[r * 4 + 3];
+            d2 += e * e;
+        }
+        d = sqrtf(d2);
+        q = pp[0] + pp[1] * d + pp[2] * d2;
+        t = (q > 0.0f) ? 1.0f / sqrtf(q) + pp[6] : 1e9f;
+        lo = (pp[7] < 63.875f) ? pp[7] : 63.875f;
+        hi = (pp[3] + pp[7] < 63.875f) ? pp[3] + pp[7] : 63.875f;
+        s = t * pp[3] + pp[7];
+        if (!(s >= lo)) s = lo;
+        if (s > hi) s = hi;
+    } else {
+        s = (float)(g_pg.point_size & 0x1FF) / 8.0f;
+        if (s < 1.0f) s = 1.0f;
+    }
+    h = s * 0.5f;
+    out[0] = *v; out[0].x = v->x - h; out[0].y = v->y - h; out[0].u = 0.0f; out[0].v = 0.0f;
+    out[1] = *v; out[1].x = v->x + h; out[1].y = v->y - h; out[1].u = 1.0f; out[1].v = 0.0f;
+    out[2] = *v; out[2].x = v->x - h; out[2].y = v->y + h; out[2].u = 0.0f; out[2].v = 1.0f;
+    out[3] = out[2];
+    out[4] = out[1];
+    out[5] = *v; out[5].x = v->x + h; out[5].y = v->y + h; out[5].u = 1.0f; out[5].v = 1.0f;
+    return 1;
+}
+
+/* Render state for a point-sprite batch. Sprite texture: texture unit 3,
+ * combined by the guest's stage-3 ops. Bound on host stage 0 the way cxbx
+ * does it. The unit's control0 enable bit is not consulted: DOA3 never sets
+ * it for any unit but 0 (measured), cxbx's HLE never reads it, and the
+ * sprite is textured on the real console. */
+static void nv_apply_point_state(IDirect3DDevice8 *dev, const OutputVertex *out, uint32_t out_n)
+{
+    unsigned char saved[sizeof g_pg.tex[0]];
+    uint32_t cop, ca1, ca2, aop, aa1, aa2;
+    if (!(g_pg.point_smooth && g_pg.tex[3].offset)) {
+        nv_apply_draw_state(dev, out, out_n);
+        return;
+    }
+    memcpy(saved, &g_pg.tex[0], sizeof saved);
+    memcpy(&g_pg.tex[0], &g_pg.tex[3], sizeof saved);
+    g_pg.tex[0].enabled = 1;
+    nv_apply_draw_state(dev, out, out_n);
+    memcpy(&g_pg.tex[0], saved, sizeof saved);
+    if (g_pg.tss3_valid) {
+        cop = nv_xbox_texop((g_pg.tss3_color >> 12) & 0x1F); ca1 = (g_pg.tss3_color >> 6) & 0x3F; ca2 = g_pg.tss3_color & 0x3F;
+        aop = nv_xbox_texop((g_pg.tss3_alpha >> 12) & 0x1F); aa1 = (g_pg.tss3_alpha >> 6) & 0x3F; aa2 = g_pg.tss3_alpha & 0x3F;
+        if (cop == 1) { cop = 2; ca1 = 0; }   /* DISABLE: diffuse only */
+        if (aop == 1) { aop = 2; aa1 = 0; }
+    } else {
+        cop = 2; ca1 = 2; ca2 = 0; aop = 2; aa1 = 2; aa2 = 0;
+    }
+    dev->lpVtbl->SetTextureStageState(dev, 0, 1 /*COLOROP*/,   cop);
+    dev->lpVtbl->SetTextureStageState(dev, 0, 2 /*COLORARG1*/, ca1);
+    dev->lpVtbl->SetTextureStageState(dev, 0, 3 /*COLORARG2*/, ca2);
+    dev->lpVtbl->SetTextureStageState(dev, 0, 4 /*ALPHAOP*/,   aop);
+    dev->lpVtbl->SetTextureStageState(dev, 0, 5 /*ALPHAARG1*/, aa1);
+    dev->lpVtbl->SetTextureStageState(dev, 0, 6 /*ALPHAARG2*/, aa2);
+}
+
+/* Inline (DrawVerticesUP) POINTS through the fixed-function pipeline.
+ *
+ * The courtyard torch's embers are DrawVerticesUP(POINTLIST, ~45 points,
+ * XYZ|DIFFUSE, 16-byte stride) with the 16x16 spark sprite on texture unit
+ * 3 -- object-space positions the hardware transforms with the composite
+ * matrix. The inline path only knew pre-transformed 2D vertices: it took
+ * x = -10.9, y = -6.4 as pixel coordinates and issued a D3D11 point list
+ * with count / 3 primitives, so nothing ever reached the screen. This
+ * transforms each point exactly like the vertex-array path and expands it
+ * into a sprite quad with the same size rule and stage-3 texture binding.
+ * Returns 0 (caller falls through to the 2D path) when the draw is not a
+ * fixed-function 3D one. */
+static int submit_inline_points(IDirect3DDevice8 *dev, const uint32_t *src, uint32_t num_verts,
+                                uint32_t stride, int lay_pos, int lay_col)
+{
+    OutputVertex *out;
+    uint32_t i, o = 0;
+    if (g_pg.draw_mode != 1 || lay_pos < 3 || (g_pg.xform_mode & 3) == 2 || !nv_composite_usable())
+        return 0;
+    out = nv_scratch_verts(0, num_verts * 6);
+    if (!out) return 0;
+    for (i = 0; i < num_verts; i++) {
+        const uint32_t *p = src + i * stride;
+        OutputVertex v; float pos[4];
+        pos[0] = u2f(p[0]); pos[1] = u2f(p[1]); pos[2] = u2f(p[2]); pos[3] = 1.0f;
+        memset(&v, 0, sizeof v);
+        v.rhw = 1.0f;
+        v.color = (lay_col >= 0) ? p[lay_col] : 0xFFFFFFFFu;
+        nv_transform_position(pos, &v);
+        if (nv_point_quad(&v, pos, out + o)) o += 6;
+    }
+    g_nv_draw_has_uv = 1;
+    g_nv_draw_inline = 0;
+    if (o == 0) { g_pg.gtss_valid = 0; g_pg.tss3_valid = 0; g_pg.tss1_valid = 0; g_pg.tss0_alpha_valid = 0; return 1; }
+    nv_apply_point_state(dev, out, o);
+    g_pg.gtss_valid = 0;
+    g_pg.tss3_valid = 0;
+    g_pg.tss1_valid = 0;
+    g_pg.tss0_alpha_valid = 0;
+    nv_fit_to_backbuffer(out, o, 0);
+    {   DWORD prev_vs = 0;
+        int clipped = nv_apply_window_clip();
+        HRESULT got = dev->lpVtbl->GetVertexShader(dev, &prev_vs);
+        dev->lpVtbl->SetVertexShader(dev, D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
+        dev->lpVtbl->BeginScene(dev);
+        dev->lpVtbl->DrawPrimitiveUP(dev, D3DPT_TRIANGLELIST, o / 3, out, sizeof(OutputVertex));
+        if (clipped) { extern void d3d8_ResetScissorRect(void); d3d8_ResetScissorRect(); }
+        if (got == 0) dev->lpVtbl->SetVertexShader(dev, prev_vs);
+    }
+    g_pg.stats.draw_calls++;
+    g_pg.stats.vertices_submitted += num_verts;
+    return 1;
+}
+
 static void submit_array_draw(void)
 {
     nv_sync_render_target();
@@ -2128,41 +2226,15 @@ static void submit_array_draw(void)
          * clipper (whose scratch space would be several MB for 3,500 quads).
          * The quads live in a heap buffer: six vertices per point is too much
          * for the stack. */
-        const float *pp = g_pg.point_params, *mv = g_mv;
         uint32_t o = 0;
         out = nv_scratch_verts(0, n * 6);
         if (!out) { g_pg.idx_count = 0; g_pg.idx_dropped = 0; g_pg.gtss_valid = 0; g_pg.tss3_valid = 0; return; }
         { extern int g_vpn; g_vpn = 0; }
         for (i = 0; i < n; i++) {
-            OutputVertex v; float pos[4], s, h;
+            OutputVertex v; float pos[4];
             nv_build_array_vertex(g_pg.idx[i], &v);
-            if (!(v.rhw > 1e-6f) || !(v.x == v.x) || !(v.y == v.y) || !(v.z >= 0.0f) || v.z > 1.0f) continue;
-            if (g_pg.point_params_en && nv_fetch_attr(0, g_pg.idx[i], pos, NULL)) {
-                float e, d2 = 0.0f, d, q, t, lo, hi; int r;
-                for (r = 0; r < 3; r++) {
-                    e = mv[r * 4 + 0] * pos[0] + mv[r * 4 + 1] * pos[1] + mv[r * 4 + 2] * pos[2] + mv[r * 4 + 3];
-                    d2 += e * e;
-                }
-                d = sqrtf(d2);
-                q = pp[0] + pp[1] * d + pp[2] * d2;
-                t = (q > 0.0f) ? 1.0f / sqrtf(q) + pp[6] : 1e9f;
-                lo = (pp[7] < 63.875f) ? pp[7] : 63.875f;
-                hi = (pp[3] + pp[7] < 63.875f) ? pp[3] + pp[7] : 63.875f;
-                s = t * pp[3] + pp[7];
-                if (!(s >= lo)) s = lo;
-                if (s > hi) s = hi;
-            } else {
-                s = (float)(g_pg.point_size & 0x1FF) / 8.0f;
-                if (s < 1.0f) s = 1.0f;
-            }
-            h = s * 0.5f;
-            out[o] = v;     out[o].x = v.x - h;     out[o].y = v.y - h;     out[o].u = 0.0f; out[o].v = 0.0f;
-            out[o + 1] = v; out[o + 1].x = v.x + h; out[o + 1].y = v.y - h; out[o + 1].u = 1.0f; out[o + 1].v = 0.0f;
-            out[o + 2] = v; out[o + 2].x = v.x - h; out[o + 2].y = v.y + h; out[o + 2].u = 0.0f; out[o + 2].v = 1.0f;
-            out[o + 3] = out[o + 2];
-            out[o + 4] = out[o + 1];
-            out[o + 5] = v; out[o + 5].x = v.x + h; out[o + 5].y = v.y + h; out[o + 5].u = 1.0f; out[o + 5].v = 1.0f;
-            o += 6;
+            if (nv_point_quad(&v, nv_fetch_attr(0, g_pg.idx[i], pos, NULL) ? pos : NULL, out + o))
+                o += 6;
         }
         if (o == 0) { g_pg.idx_count = 0; g_pg.gtss_valid = 0; g_pg.tss3_valid = 0; return; }
         out_n = o; prim = D3DPT_TRIANGLELIST; prim_count = o / 3;
@@ -2214,42 +2286,11 @@ static void submit_array_draw(void)
                     if (out[k].color > cmax) cmax = out[k].color;
                 }
                 if (s_n < 8) s_n++;
-                fprintf(stderr, "[PG-ARRAY] %u idx -> %u verts prim=%d box=(%.1f,%.1f)-(%.1f,%.1f) "
-                                "rhw=%.4f col=%08X..%08X uv0=(%.2f,%.2f) tex=0x%08X fmt=0x%08X comp=%d pm=%d\n",
-                        n, out_n, prim, x0, y0, x1, y1,
-                        out[0].rhw, cmin, cmax, out[0].u, out[0].v,
-                        g_pg.tex[0].offset, g_pg.tex[0].format,
-                        g_pg.composite_seen, g_doa3_post_movie);
                 { extern int g_vp_used, g_vpn;
                   extern float g_vp_in0[4], g_vp_out0[4], g_vp_d0[4], g_vp_t0[4], g_vpbb[8];
-                  if (g_vpn)
-                      fprintf(stderr, "          VP n=%d o0x=[%.2f %.2f] o0y=[%.2f %.2f] "
-                                      "o0z=[%.3f %.3f] o0w=[%.4f %.4f] d0=(%.3f %.3f %.3f %.3f) "
-                                      "t0=(%.3f %.3f)\n",
-                              g_vpn, g_vpbb[0], g_vpbb[1], g_vpbb[2], g_vpbb[3],
-                              g_vpbb[4], g_vpbb[5], g_vpbb[6], g_vpbb[7],
-                              g_vp_d0[0], g_vp_d0[1], g_vp_d0[2], g_vp_d0[3],
-                              g_vp_t0[0], g_vp_t0[1]);
-                fprintf(stderr, "          xform=0x%X prog=%d instr=%u start=%u vpused=%d "
-                                "in0=(%.3f %.3f %.3f %.3f) out0=(%.3f %.3f %.3f %.3f) "
-                                "vps=(%.1f %.1f %.1f) vpo=(%.1f %.1f %.1f)\n",
-                        g_pg.xform_mode, g_pg.vp.have_program, g_pg.vp.instr_count,
-                        g_pg.vp.start, g_vp_used,
-                        g_vp_in0[0], g_vp_in0[1], g_vp_in0[2], g_vp_in0[3],
-                        g_vp_out0[0], g_vp_out0[1], g_vp_out0[2], g_vp_out0[3],
-                        g_pg.vp_scale[0], g_pg.vp_scale[1], g_pg.vp_scale[2],
-                        g_pg.vp_offset[0], g_pg.vp_offset[1], g_pg.vp_offset[2]);
                 { extern float g_fix_in0[4];
-                  fprintf(stderr, "          fixin0=(%.3f %.3f %.3f %.3f) a0fmt=%08X a0off=%08X "
-                                  "M=[%.3f %.3f %.3f %.3f | %.3f %.3f %.3f %.3f | "
-                                  "%.3f %.3f %.3f %.3f | %.3f %.3f %.3f %.3f]\n",
-                        g_fix_in0[0], g_fix_in0[1], g_fix_in0[2], g_fix_in0[3],
-                        g_pg.attr_fmt[0], g_pg.attr_off[0],
-                        g_pg.composite[0], g_pg.composite[1], g_pg.composite[2], g_pg.composite[3],
-                        g_pg.composite[4], g_pg.composite[5], g_pg.composite[6], g_pg.composite[7],
-                        g_pg.composite[8], g_pg.composite[9], g_pg.composite[10], g_pg.composite[11],
-                        g_pg.composite[12], g_pg.composite[13], g_pg.composite[14], g_pg.composite[15]); } }
-                fflush(stderr); }
+                   } }
+                 }
         }
     }
 
@@ -2265,34 +2306,9 @@ static void submit_array_draw(void)
 
     g_nv_draw_has_uv = 1;            /* array path: unchanged */
     g_nv_draw_inline = 0;
-    if (is_points && g_pg.point_smooth && g_pg.tex[3].offset) {
-        /* Sprite texture: texture unit 3, combined by the guest's stage-3
-         * ops. Bound on host stage 0 the way cxbx does it. The unit's
-         * control0 enable bit is not consulted: DOA3 never sets it for any
-         * unit but 0 (measured), cxbx's HLE never reads it, and the sprite is
-         * textured on the real console. */
-        unsigned char saved[sizeof g_pg.tex[0]];
-        uint32_t cop, ca1, ca2, aop, aa1, aa2;
-        memcpy(saved, &g_pg.tex[0], sizeof saved);
-        memcpy(&g_pg.tex[0], &g_pg.tex[3], sizeof saved);
-        g_pg.tex[0].enabled = 1;
-        nv_apply_draw_state(dev, out, out_n);
-        memcpy(&g_pg.tex[0], saved, sizeof saved);
-        if (g_pg.tss3_valid) {
-            cop = nv_xbox_texop((g_pg.tss3_color >> 12) & 0x1F); ca1 = (g_pg.tss3_color >> 6) & 0x3F; ca2 = g_pg.tss3_color & 0x3F;
-            aop = nv_xbox_texop((g_pg.tss3_alpha >> 12) & 0x1F); aa1 = (g_pg.tss3_alpha >> 6) & 0x3F; aa2 = g_pg.tss3_alpha & 0x3F;
-            if (cop == 1) { cop = 2; ca1 = 0; }   /* DISABLE: diffuse only */
-            if (aop == 1) { aop = 2; aa1 = 0; }
-        } else {
-            cop = 2; ca1 = 2; ca2 = 0; aop = 2; aa1 = 2; aa2 = 0;
-        }
-        dev->lpVtbl->SetTextureStageState(dev, 0, 1 /*COLOROP*/,   cop);
-        dev->lpVtbl->SetTextureStageState(dev, 0, 2 /*COLORARG1*/, ca1);
-        dev->lpVtbl->SetTextureStageState(dev, 0, 3 /*COLORARG2*/, ca2);
-        dev->lpVtbl->SetTextureStageState(dev, 0, 4 /*ALPHAOP*/,   aop);
-        dev->lpVtbl->SetTextureStageState(dev, 0, 5 /*ALPHAARG1*/, aa1);
-        dev->lpVtbl->SetTextureStageState(dev, 0, 6 /*ALPHAARG2*/, aa2);
-    } else
+    if (is_points)
+        nv_apply_point_state(dev, out, out_n);
+    else
         nv_apply_draw_state(dev, out, out_n);
     g_pg.gtss_valid = 0;
     g_pg.tss3_valid = 0;
@@ -2313,11 +2329,6 @@ static void submit_array_draw(void)
             s_b++; s_ti += ntri; s_to += cn / 3; if (cn < 3) s_empty++;
             if (GetTickCount() >= s_next) {
                 s_next = GetTickCount() + 2000;
-                fprintf(stderr, "[CLIP] batches=%u tris_in=%u tris_out=%u empty=%u | this: n=%u prim=%d -> %u verts v0=(%.1f %.1f %.3f %.4f) in0=(%.1f %.1f %.3f %.4f)\n",
-                        s_b, s_ti, s_to, s_empty, out_n, prim, cn,
-                        cn ? cl[0].x : 0.f, cn ? cl[0].y : 0.f, cn ? cl[0].z : 0.f, cn ? cl[0].rhw : 0.f,
-                        out[0].x, out[0].y, out[0].z, out[0].rhw);
-                fflush(stderr);
                 s_b = s_ti = s_to = s_empty = 0;
             }
         }
@@ -2479,29 +2490,7 @@ static void submit_draw(void)
         if (!s_dumped && (g_pg.xform_mode & 3) == 2 && g_pg.vp.have_program &&
             g_pg.stats.draw_calls > 180000) {
             s_dumped = 1;
-            fprintf(stderr, "[VPDUMP] xform_mode=%u attr_fmt_seen=%d stride=%u "
-                            "inline_dw=%u vp_scale=(%.2f %.2f %.2f %.2f) "
-                            "vp_off=(%.2f %.2f %.2f %.2f)\n",
-                    g_pg.xform_mode, g_pg.attr_fmt_seen, stride,
-                    g_pg.inline_count,
-                    g_pg.vp_scale[0], g_pg.vp_scale[1], g_pg.vp_scale[2], g_pg.vp_scale[3],
-                    g_pg.vp_offset[0], g_pg.vp_offset[1], g_pg.vp_offset[2], g_pg.vp_offset[3]);
-            for (int i = 0; i < 16; i++)
-                if (g_pg.attr_fmt[i] & 0xF0)
-                    fprintf(stderr, "  attr[%2d] type=%u size=%u stride=%u\n", i,
-                            g_pg.attr_fmt[i] & 0xF, (g_pg.attr_fmt[i] >> 4) & 0xF,
-                            g_pg.attr_fmt[i] >> 8);
             nv2a_vp_dump(&g_pg.vp);
-            fprintf(stderr, "  inline dwords:");
-            for (uint32_t i = 0; i < g_pg.inline_count && i < 32; i++)
-                fprintf(stderr, " %08X(%.3f)", g_pg.inline_data[i], u2f(g_pg.inline_data[i]));
-            fprintf(stderr, "\n  consts c96..c103:");
-            for (int i = 96; i < 104; i++)
-                fprintf(stderr, "\n    c%d = %.4f %.4f %.4f %.4f", i,
-                        g_pg.vp.consts[i][0], g_pg.vp.consts[i][1],
-                        g_pg.vp.consts[i][2], g_pg.vp.consts[i][3]);
-            fprintf(stderr, "\n");
-            fflush(stderr);
         }
     }
 
@@ -2511,6 +2500,11 @@ static void submit_draw(void)
     }
 
     const uint32_t *src = g_pg.inline_data;
+
+    {   IDirect3DDevice8 *pdev = xbox_GetD3DDevice();
+        if (pdev && submit_inline_points(pdev, src, num_verts, stride, lay_pos, lay_col))
+            return;
+    }
 
 
     {   /* DOA3 DIAG: census of post-FMV draws -- what is actually being
@@ -2684,13 +2678,9 @@ static void submit_draw(void)
 
     /* Log first few draws' vertex positions (once) */
     if (g_pg.stats.draw_calls < 3 && num_verts >= 3) {
-        fprintf(stderr, "[PGRAPH-D3D11] Draw verts (mode=%u, %u in → %u out):\n",
-                g_pg.draw_mode, num_verts, out_vert_count);
         uint32_t show = num_verts < 8 ? num_verts : 8;
         for (uint32_t i = 0; i < show; i++) {
             uint32_t b = i * stride;
-            fprintf(stderr, "  [%u] pos=(%.1f, %.1f) uv=(%.3f, %.3f) color=0x%08X\n",
-                    i, u2f(src[b+0]), u2f(src[b+1]), u2f(src[b+2]), u2f(src[b+3]), src[b+4]);
         }
     }
 
@@ -2766,13 +2756,6 @@ static void submit_draw(void)
                 if (out[i].y < mny) mny = out[i].y;
                 if (out[i].y > mxy) mxy = out[i].y;
             }
-            fprintf(stderr, "[POSTDRAW] #%d nvfmt=0x%02X texoff=0x%08X %ux%u "
-                            "box=(%.0f,%.0f)-(%.0f,%.0f) col=%08X uv0=(%.2f,%.2f) "
-                            "blend=%d prim=%d\n",
-                    s_n, (g_pg.tex[0].format >> 8) & 0xFF, g_pg.tex[0].offset,
-                    g_pg.dyn_w, g_pg.dyn_h, mnx, mny, mxx, mxy, out[0].color,
-                    out[0].u, out[0].v, g_pg.blend_enable, g_pg.d3d_prim_type);
-            fflush(stderr);
             {   /* Is the source surface the fade samples actually non-black? */
                 extern ptrdiff_t g_xbox_mem_offset;
                 const uint32_t *src32 =
@@ -2780,10 +2763,6 @@ static void submit_draw(void)
                 unsigned nz = 0, k;
                 for (k = 0; k < 4096; k++)
                     if (src32[k * 64] & 0x00FFFFFFu) nz++;
-                fprintf(stderr, "[TEXSRC] off=0x%08X px=%08X %08X %08X nonblack=%u/4096\n",
-                        g_pg.tex[0].offset, src32[0], src32[64 * 100],
-                        src32[64 * 2000], nz);
-                fflush(stderr);
             }
         }
     }
@@ -2806,8 +2785,6 @@ static void submit_draw(void)
             char ep[64];
             sprintf(ep, "frame_at%u.bmp", g_pg.stats.draw_calls);
             doa3_capture_backbuffer(ep);
-            fprintf(stderr, "[CAPTURE] wrote %s\n", ep);
-            fflush(stderr);
         }
         if (g_doa3_post_movie) {
             if (!s_base) s_base = g_pg.stats.draw_calls;
@@ -2816,16 +2793,11 @@ static void submit_draw(void)
                 sprintf(path, "frame_post%u.bmp", offs[s_shot]);
                 s_shot++;
                 doa3_capture_backbuffer(path);
-                fprintf(stderr, "[CAPTURE] wrote %s at draw %u\n",
-                        path, g_pg.stats.draw_calls);
-                fflush(stderr);
             }
         }
     }
 
     if (g_pg.stats.draw_calls <= 5 || (g_pg.stats.draw_calls % 1000) == 0) {
-        fprintf(stderr, "[PGRAPH-D3D11] Draw #%u: %u verts, prim=%d, prims=%u\n",
-                g_pg.stats.draw_calls, num_verts, g_pg.d3d_prim_type, prim_count);
     }
 }
 
@@ -2838,9 +2810,8 @@ static void submit_draw(void)
     extern volatile int g_doa3_post_movie; \
     static int s_dn = 0; \
     if (g_doa3_post_movie && s_dn < 40) { s_dn++; \
-        fprintf(stderr, "[VPPTR] %s=%u (instr_count=%u start=%u)\n", \
-                (what), (val), g_pg.vp.instr_count, g_pg.vp.start); \
-        fflush(stderr); } \
+         \
+         } \
 } while (0)
 
 int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
@@ -2883,6 +2854,17 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
     if (method == 0x0100 && (param >> 24) == 0xA7u) { g_pg.tss1_alpha = param; return 1; }
     if (method == 0x0100 && (param >> 24) == 0xABu) { g_pg.tss0_alpha = param; g_pg.tss0_alpha_valid = 1; return 1; }
     if (method == 0x0100 && (param >> 24) == 0xA9u) { g_pg.tfactor_lo = param & 0xFFFFFF; return 1; }
+    /* Inline vertex layout / counts for the next DrawVerticesUP, carried in
+     * the stream by the recompiled wrapper (see recomp_manual.c): the
+     * globals the direct calls set are only right for the last such draw
+     * before a kick. Offsets are 6-bit two's complement (0x3F = none). */
+    if (method == 0x0100 && (param >> 24) == 0xACu) {
+        int uv = (int)((param >> 6) & 0x3Fu), col = (int)(param & 0x3Fu);
+        pgraph_d3d11_set_vertex_layout((param >> 16) & 0x1Fu, (int)((param >> 12) & 0x7u),
+                                       uv == 0x3F ? -1 : uv, col == 0x3F ? -1 : col);
+        return 1;
+    }
+    if (method == 0x0100 && (param >> 24) == 0xADu) { pgraph_d3d11_set_inline_hint((param >> 8) & 0xFFFFu, param & 0xFFu); return 1; }
     if (method == 0x0100 && (param >> 24) == 0xAAu) { g_pg.tfactor_hi = param & 0xFF; return 1; }
     if (method == 0x0318) g_pg.point_params_en = param;
     if (method == 0x031C) g_pg.point_smooth = param;
@@ -2938,13 +2920,7 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
         static int s_n = 0;
         g_mv[(method - 0x0480) / 4] = u2f(param);
         if (g_doa3_post_movie && method == 0x04BC && s_n < 4) { s_n++;
-            fprintf(stderr, "[PG-M] modelview=[%g %g %g %g | %g %g %g %g | "
-                            "%g %g %g %g | %g %g %g %g]\n",
-                    g_mv[0], g_mv[1], g_mv[2], g_mv[3],
-                    g_mv[4], g_mv[5], g_mv[6], g_mv[7],
-                    g_mv[8], g_mv[9], g_mv[10], g_mv[11],
-                    g_mv[12], g_mv[13], g_mv[14], g_mv[15]);
-            fflush(stderr); }
+             }
         return 1;
     }
     /* Fixed-function lighting state (record only; the draw path consumes it
@@ -2983,13 +2959,7 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
             extern volatile int g_doa3_post_movie;
             static int s_n = 0;
             if (g_doa3_post_movie && method == 0x06BC && s_n < 6) { s_n++;
-                fprintf(stderr, "[PG-M] composite raw=%08X row3=(%g %g %g %g) "
-                                "row0=(%g %g %g %g)\n", param,
-                        g_pg.composite[12], g_pg.composite[13],
-                        g_pg.composite[14], g_pg.composite[15],
-                        g_pg.composite[0], g_pg.composite[1],
-                        g_pg.composite[2], g_pg.composite[3]);
-                fflush(stderr); }
+                 }
         }
         return 1;
     }
@@ -3079,10 +3049,7 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
                 s_k++;
                 if (g_doa3_post_movie && s_t < 1500 && (changed || (s_k & 31) == 0)) { s_t++;
                     s_lp = g_pg_surf_pitch; s_lc = g_pg_surf_coff;
-                    fprintf(stderr, "[RTT] p=%ld CLEAR flags=%X color=%08X draws=%u pitch=%08X coff=%08X clip=%08X/%08X fmt=%08X off=%d\n",
-                            (long)g_doa3_heartbeat, flags, g_pg.clear_color, g_pg.stats.draw_calls,
-                            g_pg_surf_pitch, g_pg_surf_coff, g_pg.surface_clip_h, g_pg.surface_clip_v,
-                            g_pg.surface_fmt, d3d8_OffscreenTargetActive()); fflush(stderr); }
+                      }
             }
         }
         g_pg.stats.clears++;
@@ -3189,12 +3156,7 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
         {   extern volatile int g_doa3_post_movie;
             static int s_n = 0;
             if (g_doa3_post_movie && idx == 3 && s_n < 6) { s_n++;
-                fprintf(stderr, "[PG-M] vp_offset=(%g %g %g %g) vp_scale=(%g %g %g %g)\n",
-                        g_pg.vp_offset[0], g_pg.vp_offset[1],
-                        g_pg.vp_offset[2], g_pg.vp_offset[3],
-                        g_pg.vp_scale[0], g_pg.vp_scale[1],
-                        g_pg.vp_scale[2], g_pg.vp_scale[3]);
-                fflush(stderr); } }
+                 } }
         return 1;
     }
 
@@ -3212,12 +3174,7 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
             if (g_doa3_post_movie && idx == 3 && s_n < 60 &&
                 memcmp(s_last, g_pg.vp_scale, sizeof s_last) != 0) { s_n++;
                 memcpy(s_last, g_pg.vp_scale, sizeof s_last);
-                fprintf(stderr, "[PG-M] p=%ld vp_scale=(%g %g %g %g) vp_offset=(%g %g %g %g) xform=%X draws=%u\n",
-                        (long)g_doa3_heartbeat,
-                        g_pg.vp_scale[0], g_pg.vp_scale[1], g_pg.vp_scale[2], g_pg.vp_scale[3],
-                        g_pg.vp_offset[0], g_pg.vp_offset[1], g_pg.vp_offset[2], g_pg.vp_offset[3],
-                        g_pg.xform_mode, g_pg.stats.draw_calls);
-                fflush(stderr); }
+                 }
         }
         return 1;
     }
@@ -3233,10 +3190,7 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
             if (g_doa3_post_movie && method == NV097_SET_CLIP_MAX && s_n < 40 &&
                 (s_last[0] != g_pg.clip_min || s_last[1] != g_pg.clip_max)) { s_n++;
                 s_last[0] = g_pg.clip_min; s_last[1] = g_pg.clip_max;
-                fprintf(stderr, "[PG-M] p=%ld clip_min=%g clip_max=%g surf_fmt=%08X draws=%u\n",
-                        (long)g_doa3_heartbeat, g_pg.clip_min, g_pg.clip_max,
-                        g_pg.surface_fmt, g_pg.stats.draw_calls);
-                fflush(stderr); }
+                 }
         }
         return 1;
     }
@@ -3311,10 +3265,7 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
         static uint32_t s_last[3]; static int s_t = 0;
         int k = (method - 0x0208) / 4;
         if (g_doa3_post_movie && s_last[k] != param && s_t < 300) { s_t++;
-            fprintf(stderr, "[RTT] p=%ld SURF %s=%08X clip=%08X/%08X draws=%u%c", (long)g_doa3_heartbeat,
-                    k == 0 ? "fmt" : k == 1 ? "pitch" : "coff", param,
-                    g_pg.surface_clip_h, g_pg.surface_clip_v, g_pg.stats.draw_calls, 10);
-            fflush(stderr); }
+             }
         s_last[k] = param;
         if (k == 0) g_pg.surface_fmt = param;
         if (k == 1) g_pg_surf_pitch = param;
@@ -3365,10 +3316,7 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
             s_last[stage & 3] = param;
             if (g_doa3_post_movie && GetTickCount() >= s_nx) {
                 s_nx = GetTickCount() + 2000;
-                fprintf(stderr, "  [TEXCTL0] writes/enabled per stage: %u/%u %u/%u %u/%u %u/%u last=%08X %08X\n",
-                        s_w[0], s_en[0], s_w[1], s_en[1], s_w[2], s_en[2], s_w[3], s_en[3],
-                        s_last[0], s_last[1]);
-                fflush(stderr); memset(s_w, 0, sizeof s_w); memset(s_en, 0, sizeof s_en);
+                 memset(s_w, 0, sizeof s_w); memset(s_en, 0, sizeof s_en);
             }
         }
         return 1;
@@ -3460,37 +3408,10 @@ void pgraph_diag_dump_ignored(void)
         extern uint32_t g_census[12];
         {
         extern uint32_t g_texfmt[64], g_texnull[4];
-        fprintf(stderr, "[PG-TEX] null: badoff=%u badfmt=%u badsize=%u oob=%u | fmts:",
-                g_texnull[0], g_texnull[1], g_texnull[2], g_texnull[3]);
-        for (int i = 0; i < 64; i++)
-            if (g_texfmt[i]) fprintf(stderr, " %02X:%u", i, g_texfmt[i]);
-        fprintf(stderr, "%s", " + NL + ");
     }
-    fprintf(stderr, "[PG-CENSUS] draws=%u zerocol=%u anyalpha=%u tex=%u "
-                        "onscreen=%u offscreen=%u blend=%u atest=%u prog=%u big=%u\n",
-                g_census[0], g_census[1], g_census[2], g_census[3], g_census[4],
-                g_census[5], g_census[6], g_census[7], g_census[8], g_census[9]);
     }
     { extern uint32_t g_dbail[8], g_dbail_lastic, g_dbail_lastst;
-      fprintf(stderr, "[PG-BAIL] calls=%u noinline=%u nostride=%u fewverts=%u drawn=%u moviegate=%u lastic=%u lastst=%u\n",
-              g_dbail[0], g_dbail[1], g_dbail[2], g_dbail[3], g_dbail[4],
-              g_dbail[5], g_dbail_lastic, g_dbail_lastst); }
-    fprintf(stderr, "[PG-XM] mode=%u fixed=%u prog=%u | draws by mode:",
-            g_xmode, g_xmode_n[0], g_xmode_n[2]);
-    for (int i = 0; i < 16; i++)
-        if (g_dstat[i][0]) fprintf(stderr, " m%d:n=%u,v=%u,st=%u", i,
-                                   g_dstat[i][0], g_dstat[i][1], g_dstat[i][2]);
-    fprintf(stderr, "\n");
-    fprintf(stderr, "[PG-MH]");
-    for (int m = 0; m < 0x800; m++)
-        if (g_mhist[m]) fprintf(stderr, " %04X:%u", m << 2, g_mhist[m]);
-    fprintf(stderr, "\n");
-    fprintf(stderr, "[PG-IGN]");
-    for (int i = 0; i < 64 && s_ign[i].count; i++)
-        fprintf(stderr, " %u/%04X:%u", s_ign[i].method >> 16,
-                s_ign[i].method & 0xFFFF, s_ign[i].count);
-    fprintf(stderr, "\n");
-    fflush(stderr);
+       }
 }
 
 void pgraph_d3d11_flush(void)

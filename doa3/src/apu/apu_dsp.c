@@ -39,7 +39,6 @@ void mcpx_apu_dsp_init(MCPXAPUState *d)
     d->gp.realtime = false;
     d->ep.realtime = false;
 
-    fprintf(stderr, "[APU] DSP GP/EP initialized (STUBBED - passthrough mode)\n");
 }
 
 void mcpx_apu_update_dsp_preference(MCPXAPUState *d)

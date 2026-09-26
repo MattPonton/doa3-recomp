@@ -44,20 +44,17 @@ int xa2_init(void)
 
     hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
     if (FAILED(hr) && hr != (HRESULT)0x80010106 /* RPC_E_CHANGED_MODE */ && hr != S_FALSE) {
-        fprintf(stderr, "[XA2] CoInitializeEx failed: 0x%08lX\n", hr);
         return 0;
     }
 
     hr = XAudio2Create(&g_xa2, 0, XAUDIO2_DEFAULT_PROCESSOR);
     if (FAILED(hr) || !g_xa2) {
-        fprintf(stderr, "[XA2] XAudio2Create failed: 0x%08lX\n", hr);
         return 0;
     }
 
     hr = IXAudio2_CreateMasteringVoice(g_xa2, &g_xa2_master,
         XA2_CHANNELS, XA2_SAMPLE_RATE, 0, NULL, NULL, 0);
     if (FAILED(hr)) {
-        fprintf(stderr, "[XA2] CreateMasteringVoice failed: 0x%08lX\n", hr);
         IXAudio2_Release(g_xa2);
         g_xa2 = NULL;
         return 0;
@@ -73,7 +70,6 @@ int xa2_init(void)
     hr = IXAudio2_CreateSourceVoice(g_xa2, &g_xa2_source,
         &wfx, 0, XAUDIO2_DEFAULT_FREQ_RATIO, NULL, NULL, NULL);
     if (FAILED(hr)) {
-        fprintf(stderr, "[XA2] CreateSourceVoice failed: 0x%08lX\n", hr);
         g_xa2_master->lpVtbl->DestroyVoice(g_xa2_master);
         IXAudio2_Release(g_xa2);
         g_xa2 = NULL;
@@ -86,8 +82,6 @@ int xa2_init(void)
     g_xa2_initialized = 1;
     g_xa2_frames_written = 0;
 
-    fprintf(stderr, "[XA2] XAudio2 initialized (%d Hz stereo 16-bit, %d x %d-sample buffers)\n",
-            XA2_SAMPLE_RATE, XA2_NUM_BUFS, XA2_BUF_SAMPLES);
     return 1;
 }
 
@@ -111,7 +105,6 @@ void xa2_shutdown(void)
         g_xa2 = NULL;
     }
 
-    fprintf(stderr, "[XA2] Shut down (%d frames written)\n", g_xa2_frames_written);
     g_xa2_initialized = 0;
 }
 
@@ -202,7 +195,6 @@ int xa2_movie_start(void)
     hr = IXAudio2_CreateSourceVoice(g_xa2, &g_xa2_movie_source,
         &wfx, 0, XAUDIO2_DEFAULT_FREQ_RATIO, NULL, NULL, NULL);
     if (FAILED(hr)) {
-        fprintf(stderr, "[XA2] Movie CreateSourceVoice failed: 0x%08lX\n", hr);
         g_xa2_movie_source = NULL;
         return 0;
     }

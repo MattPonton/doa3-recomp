@@ -43,7 +43,6 @@ void sub_0016D330(void)
         MEM32(esp + 0xC)  = buf;                   /* arg3 = buffer */
         MEM32(esp + 0x10) = 0x40000;               /* arg4 = size */
         fprintf(stderr, "[CRI] partition buffer supplied: 0x%08X (256KB)\n", buf);
-        fflush(stderr);
     }
     sub_0016D330_gen();
 }
@@ -66,9 +65,6 @@ void sub_00170330(void)
         uint32_t cb0 = MEM32(0xB254F0), cb1 = MEM32(0xB254F8);
         if (cb0 != s_cb0 || cb1 != s_cb1) {
             s_cb0 = cb0; s_cb1 = cb1;
-            fprintf(stderr, "[ADXM-SRV] cb0=0x%08X(arg 0x%08X) cb1=0x%08X(arg 0x%08X)\n",
-                    cb0, MEM32(0xB254F4), cb1, MEM32(0xB254FC));
-            fflush(stderr);
         }
     }
     if (xbox_fiber_active())
@@ -80,18 +76,14 @@ void sub_00170330(void)
         static char s_last[256];
         if (msg[0] && strncmp(msg, s_last, sizeof(s_last) - 1) != 0) {
             strncpy(s_last, msg, sizeof(s_last) - 1); s_last[sizeof(s_last) - 1] = 0;
-            fprintf(stderr, "[CRI-LOG] %.200s\n", msg); fflush(stderr);
             static int dumped = 0;
             if (!dumped && (strstr(msg, "device") || strstr(msg, "cvFs"))) {
                 dumped = 1;
                 char dd[16]; int i; for (i = 0; i < 15; i++) { dd[i] = (char)MEM8(0xB24FE0 + i); if (!dd[i]) break; } dd[15] = 0;
-                fprintf(stderr, "[CRI-DEV] default-device='%s' count@0xB25464=%u\n", dd, MEM32(0xB25464));
                 for (int s = 0; s < 4; s++) {
                     uint32_t ent = 0xB25260 + s * 0x10;
                     char nm[16]; for (i = 0; i < 15; i++) { nm[i] = (char)MEM8(ent + 4 + i); if (!nm[i]) break; } nm[15] = 0;
-                    fprintf(stderr, "   slot%d struct=0x%08X name='%s'\n", s, MEM32(ent), nm);
                 }
-                fflush(stderr);
             }
         }
     }
@@ -158,9 +150,9 @@ void sub_00164FEF(void)
         extern void name##_gen(void); \
         static int n = 0; \
         int log = (n < 4); n++; \
-        if (log) { fprintf(stderr, "[BOOTMARK] " #name " enter\n"); fflush(stderr); } \
+        if (log) {   } \
         name##_gen(); \
-        if (log) { fprintf(stderr, "[BOOTMARK] " #name " exit\n"); fflush(stderr); } \
+        if (log) {   } \
     }
 BOOT_MARK(sub_0009EA60)
 BOOT_MARK(sub_0009DC00)
@@ -221,7 +213,7 @@ void sub_00163134(void)
     uint32_t thunk = MEM32(0x1ED0F4);
     sub_00163134_gen();
     static int n = 0;
-    if (n < 10) { fprintf(stderr, "[ReadFileEx] h=0x%X buf=0x%08X len=0x%X ov=0x%08X thunk219=0x%08X -> %u\n", hf, buf, len, ov, thunk, g_eax); fflush(stderr); n++; }
+    if (n < 10) {   n++; }
 }
 
 /* sub_0016BB00 — cvFs stream stepper (issues device seek/read for an active stream).
@@ -236,11 +228,6 @@ void sub_0016BB00(void)
     if (log && stm) {
         n++;
         uint32_t fo = MEM32(stm + 4);
-        fprintf(stderr, "[STM-STEP] stm=0x%08X st2=%u file=0x%08X pos0C=0x%X sz14=0x%X f18=0x%X f1C=0x%X f20=0x%X f28=0x%X f2C=0x%X f30=0x%X\n",
-                stm, MEM8(stm + 2), fo, MEM32(stm + 0xC), MEM32(stm + 0x14),
-                MEM32(stm + 0x18), MEM32(stm + 0x1C), MEM32(stm + 0x20),
-                MEM32(stm + 0x28), MEM32(stm + 0x2C), MEM32(stm + 0x30));
-        fflush(stderr);
     }
     sub_0016BB00_gen();
 }
@@ -259,10 +246,6 @@ void sub_001719E0(void)
         extern volatile int g_doa3_post_movie;
         if (sig != s_sig && (n < 24 || g_doa3_post_movie)) {
             s_sig = sig; n++;
-            fprintf(stderr, "[WX-REQ] h=0x%08X active=%u st=%u req148=%u lock=%u async=%u pos18=0x%X len1C=0x%X\n",
-                    h, MEM8(h), MEM8(h + 1), MEM32(h + 0x148),
-                    MEM32(0xB2561C), MEM32(0xB25618), MEM32(h + 0x18), MEM32(h + 0x1C));
-            fflush(stderr);
         }
     }
     sub_001719E0_gen();
@@ -286,20 +269,11 @@ void sub_00169BC0(void)
                     MEM8(ent), MEM8(ent + 1), MEM32(ent + 0x14), MEM32(ent + 8), MEM32(ent + 0xC));
         }
         uint32_t op = MEM32(0xC07620);
-        fprintf(stderr, "  op=0x%08X st=%d fsz=0x%X done=0x%X stm4=0x%08X stm8=0x%08X\n",
-                op, op ? (int)(int8_t)MEM8(op + 1) : -1,
-                op ? MEM32(op + 0xC) : 0, op ? MEM32(op + 0x14) : 0,
-                op ? MEM32(op + 4) : 0, op ? MEM32(op + 8) : 0);
         {   /* the stream's FILE object + its vtbl (stream+4 -> file, file+0 -> vtbl) */
             uint32_t stm = op ? MEM32(op + 4) : 0;
             uint32_t fo = stm ? MEM32(stm + 4) : 0;
             uint32_t vt = fo ? MEM32(fo) : 0;
-            fprintf(stderr, "  file=0x%08X vtbl=0x%08X:", fo, vt);
-            if (vt) for (int k = 0; k <= 0x28; k += 4)
-                fprintf(stderr, " +%02X=0x%08X", k, MEM32(vt + k));
-            fprintf(stderr, "  stm+2=%u\n", stm ? MEM8(stm + 2) : 0);
         }
-        fflush(stderr);
     }
 }
 
@@ -313,7 +287,7 @@ void sub_001715A0(void)
     char nm[64]; int i; for (i = 0; i < 63; i++) { nm[i] = name ? (char)MEM8(name + i) : 0; if (!nm[i]) break; } nm[63] = 0;
     sub_001715A0_gen();
     static int n = 0;
-    if (n < 12) { fprintf(stderr, "[wxCiSize] name=0x%08X '%s' -> 0x%08X\n", name, nm, g_eax); fflush(stderr); n++; }
+    if (n < 12) {   n++; }
 }
 
 /* sub_001633B7 — XAPI GetFileAttributesExA-like stat. DIAG: log name + result. */
@@ -325,7 +299,7 @@ void sub_001633B7(void)
     char nm[64]; int i; for (i = 0; i < 63; i++) { nm[i] = name ? (char)MEM8(name + i) : 0; if (!nm[i]) break; } nm[63] = 0;
     sub_001633B7_gen();
     static int n = 0;
-    if (n < 12) { fprintf(stderr, "[GetAttrEx] '%s' -> 0x%08X\n", nm, g_eax); fflush(stderr); n++; }
+    if (n < 12) {   n++; }
 }
 
 /* sub_0016916F — ADXF op processor (state machine). DIAG: log op-state transitions +
@@ -352,11 +326,6 @@ void sub_0016916F(void)
     if (st_out != last && n < 40) {
         last = st_out; n++;
         uint32_t buf = MEM32(0xB22C1C);
-        fprintf(stderr, "[ADXF-OP] state %d -> %d ret=0x%08X hdr@0x%08X: %02X %02X %02X %02X %02X %02X %02X %02X\n",
-                st_in, st_out, g_eax, buf,
-                MEM8(buf), MEM8(buf+1), MEM8(buf+2), MEM8(buf+3),
-                MEM8(buf+4), MEM8(buf+5), MEM8(buf+6), MEM8(buf+7));
-        fflush(stderr);
     }
 }
 
@@ -373,7 +342,7 @@ void sub_001631C0(void)
     char nm[64]; int i; for (i = 0; i < 63; i++) { nm[i] = fname ? (char)MEM8(fname + i) : 0; if (!nm[i]) break; } nm[63] = 0;
     sub_001631C0_gen();
     static int n = 0;
-    if (n < 20) { fprintf(stderr, "[CreateFileA] '%s' access=0x%08X disp=%u flags=0x%08X -> 0x%08X\n", nm, access, disp, flags, g_eax); fflush(stderr); n++; }
+    if (n < 20) {   n++; }
 }
 
 /* sub_0016D0F0 — cvFs partition-table lookup (searches 0xC057C0.. stride 0x30 for an
@@ -389,24 +358,19 @@ void sub_0016D0F0(void)
     static int n = 0;
     if (n < 6) {
         n++;
-        fprintf(stderr, "[PT-LOOKUP] want='%s' -> eax=0x%08X\n", wn, g_eax);
         for (int e = 0; e < 10; e++) {
             uint32_t ent = 0xC057C0 + e * 0x30;
             uint32_t active = MEM32(ent), prefix = MEM32(ent + 0x18);
             uint32_t count = MEM32(ent + 0x24), head = MEM32(ent + 0x28);
             if (!active && !prefix && !head) continue;
             char pf[32]; for (i = 0; i < 31; i++) { pf[i] = prefix ? (char)MEM8(prefix + i) : 0; if (!pf[i]) break; } pf[31] = 0;
-            fprintf(stderr, "   ent%d active=%u prefix=0x%08X'%s' count=%d head=0x%08X\n",
-                    e, active, prefix, pf, (int)count, head);
             uint32_t nd = head;
             for (int k = 0; k < 4 && nd; k++) {
                 uint32_t nm = MEM32(nd + 0xC);
                 char nn[40]; for (i = 0; i < 39; i++) { nn[i] = nm ? (char)MEM8(nm + i) : 0; if (!nn[i]) break; } nn[39] = 0;
-                fprintf(stderr, "      node 0x%08X name=0x%08X'%s' next=0x%08X\n", nd, nm, nn, MEM32(nd + 8));
                 nd = MEM32(nd + 8);
             }
         }
-        fflush(stderr);
     }
 }
 
@@ -425,13 +389,13 @@ void sub_0016C970(void)
     uint8_t c1 = devbuf ? (uint8_t)MEM8(devbuf + 1) : 0;
     char dn[16]; int di; for (di = 0; di < 15; di++) { dn[di] = devbuf ? (char)MEM8(devbuf + di) : 0; if (!dn[di]) break; } dn[15] = 0;
     sub_0016C970_gen();
-    { static int dn_n = 0; if (dn_n < 12) { fprintf(stderr, "[cvFs-dev] resolve dev='%s' -> eax=0x%08X\n", dn, g_eax); fflush(stderr); dn_n++; } }
+    { static int dn_n = 0; if (dn_n < 12) {   dn_n++; } }
     if (g_eax == 0 && c0 && !c1) {        /* single-char drive-letter device not found */
         MEM8(devbuf) = 0;                  /* clear prefix → resolver uses the default device */
         g_ebx = devbuf;
         sub_0016C970_gen();
         static int n = 0;
-        if (n < 8) { fprintf(stderr, "[cvFs-dev] '%c:' -> default device, eax=0x%08X\n", c0, g_eax); fflush(stderr); n++; }
+        if (n < 8) {   n++; }
     }
 }
 
@@ -445,7 +409,7 @@ void sub_0016CA10(void)
     char nm[48]; int i; for (i = 0; i < 47; i++) { nm[i] = fname ? (char)MEM8(fname + i) : 0; if (!nm[i]) break; } nm[47] = 0;
     static int n = 0;
     extern volatile int g_doa3_post_movie;
-    if (n < 16 || g_doa3_post_movie) { fprintf(stderr, "[cvFsOpen] fname=0x%08X '%s'\n", fname, nm); fflush(stderr); n++; }
+    if (n < 16 || g_doa3_post_movie) {   n++; }
     sub_0016CA10_gen();
 }
 
@@ -481,7 +445,7 @@ void sub_0016C160(void)
     char nm[20]; int i; for (i = 0; i < 19; i++) { nm[i] = (char)MEM8(name + i); if (!nm[i]) break; } nm[19] = 0;
     sub_0016C160_gen();
     static int n = 0;
-    if (n < 10) { fprintf(stderr, "[C160] find name=0x%08X '%s' -> ret=0x%08X\n", name, nm, g_eax); fflush(stderr); n++; }
+    if (n < 10) {   n++; }
 }
 
 /* sub_0016A530 — CRI watchdog worker thread (cooperative-fiber override).
@@ -551,8 +515,6 @@ void doa3_esp_load_log(int site, uint32_t esp_now, uint32_t esp_new)
     static int s_n = 0;
     if (s_n < 20) {
         s_n++;
-        fprintf(stderr, "[ESP-LOAD site%d] esp 0x%08X -> 0x%08X\n", site, esp_now, esp_new);
-        fflush(stderr);
     }
 }
 
@@ -569,10 +531,6 @@ void sub_0009E562(void)
     s_n++;
     if (xbox_fiber_current() == 5 && (g_task_yields[5] % 600) == 0) {
         void *bt[6]; int n = CaptureStackBackTrace(1, 6, bt, NULL);
-        fprintf(stderr, "[YIELD5] #%u a1=%u callers:", g_task_yields[5], MEM32(esp + 4));
-        for (int i = 0; i < n; i++) fprintf(stderr, " %p", bt[i]);
-        fprintf(stderr, "\n");
-        fflush(stderr);
     }
     sub_0009E562_gen();
 }
@@ -590,10 +548,6 @@ void sub_00055760(void)
     s_n++;
     if ((s_n % 600) == 0) {
         void *bt[6]; int n = CaptureStackBackTrace(1, 6, bt, NULL);
-        fprintf(stderr, "[TXTLOOP] #%d callers:", s_n);
-        for (int i = 0; i < n; i++) fprintf(stderr, " %p", bt[i]);
-        fprintf(stderr, "\n");
-        fflush(stderr);
     }
     sub_00055760_gen();
     edi = s_edi; esi = s_esi; ebx = s_ebx;
@@ -614,7 +568,7 @@ static uint32_t s_xpp_prev_mask;   /* XGetDeviceChanges baseline (real XAPI Prev
 void sub_001E6958(void)   /* XGetDevices(type) -> connected mask, stdcall ret 4 */
 {
     static int s_n = 0;
-    if (s_n < 4) { s_n++; fprintf(stderr, "[XPP] XGetDevices(type=0x%08X)\n", MEM32(esp + 4)); fflush(stderr); }
+    if (s_n < 4) { s_n++;   }
     /* Report the controllers the host actually has.
      *
      * This used to hardcode a single connected pad, because the boot flow
@@ -635,7 +589,7 @@ void sub_001E6958(void)   /* XGetDevices(type) -> connected mask, stdcall ret 4 
          * connected set also resets the change baseline, so the next
          * XGetDeviceChanges does NOT re-report these pads as insertions. */
         s_xpp_prev_mask = mask;
-        if (s_n <= 4) { fprintf(stderr, "[XPP]   -> mask=%08X\n", mask); fflush(stderr); }
+        if (s_n <= 4) {   }
         eax = mask;
     }
     esp += 8;
@@ -670,8 +624,6 @@ void sub_001E697A(void)   /* XGetDeviceChanges(type, &ins, &rem), stdcall ret 12
     if (p_ins) MEM32(p_ins) = ins;
     if (p_rem) MEM32(p_rem) = rem;
     if (ins | rem) {
-        fprintf(stderr, "[XPP] XGetDeviceChanges ins=%08X rem=%08X (now %08X)\n", ins, rem, cur);
-        fflush(stderr);
     }
     eax = (ins | rem) ? 1u : 0u;
     esp += 16;
@@ -681,7 +633,7 @@ void sub_001E6EAF(void)   /* XInputClose(handle), stdcall ret 4 */
 {
     /* Reached on a removal (sub_0009EAF0 closes the handle it opened). The
      * handles are fake and there is no USB device behind them. */
-    fprintf(stderr, "[XPP] XInputClose(0x%08X)\n", MEM32(esp + 4)); fflush(stderr);
+    fprintf(stderr, "[XPP] XInputClose(0x%08X)\n", MEM32(esp + 4));
     eax = 0;
     esp += 8;
 }
@@ -806,11 +758,6 @@ void sub_001E711E(void)   /* XInputGetState(handle, state) -> 0, ret 8 */
             for (ai = 0; ai < 8; ai++) if (an[ai] >= 30) now = 1;
             if (now && !s_was && s_log < 24) {
                 s_log++;
-                fprintf(stderr, "[PRESS] #%u port=%u buttons=%04X A=%02X B=%02X X=%02X Y=%02X Bk=%02X Wh=%02X LT=%02X RT=%02X mode=%u scr=%u req=%u e795=%u latch=%u mvstage=%u\n",
-                        s_packet, port, buttons, an[0], an[1], an[2], an[3], an[4], an[5], an[6], an[7],
-                        MEM8(0x480B70), MEM8(0x48A2FA),
-                        MEM8(0x48A528), MEM8(0x47E795), MEM8(0x47ADB8), MEM8(0x4B83B0));
-                fflush(stderr);
             }
             s_was = now;
         }
@@ -852,11 +799,7 @@ void sub_001E711E(void)   /* XInputGetState(handle, state) -> 0, ret 8 */
         static unsigned n = 0;
         if (g_doa3_post_movie && (g_in_getstate % 256u) == 0 && n < 20) {
             n++;
-            fprintf(stderr, "[INCHAIN] getstate=%u build=%u pad0+19.btn=%04X pad0+2F.btn=%04X agg5E5EE0=%08X req48A528=%u\n",
-                    g_in_getstate, g_in_build,
-                    MEM16(0x5E5CE9 + 4), MEM16(0x5E5CFF + 4),
-                    MEM32(0x5E5EE0), MEM8(0x48A528));
-            fflush(stderr); }
+             }
     }
     eax = 0;    /* ERROR_SUCCESS */
     esp += 12;
@@ -885,9 +828,6 @@ void sub_0016C8C0(void)
         char post[24] = {0};
         for (int i = 0; i < 23; i++) { post[i] = (char)MEM8(0xB24FE0 + i); if (!post[i]) break; }
         void *bt[5]; int n = CaptureStackBackTrace(1, 5, bt, NULL);
-        fprintf(stderr, "[SETDEF] #%d name='%s' pre='%s' post='%s' eax=0x%08X callers:", s_n, name, pre, post, eax);
-        for (int i = 0; i < n; i++) fprintf(stderr, " %p", bt[i]);
-        fprintf(stderr, "\n"); fflush(stderr);
     }
 }
 
@@ -898,10 +838,6 @@ void sub_0016C750(void)
     s_n++;
     if (s_n <= 8) {
         void *bt[6]; int n = CaptureStackBackTrace(1, 6, bt, NULL);
-        fprintf(stderr, "[DEVRNG] sub_0016C750 #%d a1=0x%08X a2=0x%08X pre60=0x%08X pre64=0x%08X callers:",
-                s_n, MEM32(esp + 4), MEM32(esp + 8), MEM32(0xB25460), MEM32(0xB25464));
-        for (int i = 0; i < n; i++) fprintf(stderr, " %p", bt[i]);
-        fprintf(stderr, "\n"); fflush(stderr);
     }
     sub_0016C750_gen();
 }
@@ -913,10 +849,6 @@ void sub_0016C767(void)
     s_n++;
     if (s_n <= 8) {
         void *bt[6]; int n = CaptureStackBackTrace(1, 6, bt, NULL);
-        fprintf(stderr, "[DEVRNG] sub_0016C767 #%d a1=0x%08X a2=0x%08X pre60=0x%08X pre64=0x%08X callers:",
-                s_n, MEM32(esp + 4), MEM32(esp + 8), MEM32(0xB25460), MEM32(0xB25464));
-        for (int i = 0; i < n; i++) fprintf(stderr, " %p", bt[i]);
-        fprintf(stderr, "\n"); fflush(stderr);
     }
     sub_0016C767_gen();
 }
@@ -928,10 +860,6 @@ void sub_0016C0F0(void)
     s_n++;
     if (s_n <= 8) {
         void *bt[6]; int n = CaptureStackBackTrace(1, 6, bt, NULL);
-        fprintf(stderr, "[DEVRNG] sub_0016C0F0 #%d a1=0x%08X a2=0x%08X pre60=0x%08X pre64=0x%08X callers:",
-                s_n, MEM32(esp + 4), MEM32(esp + 8), MEM32(0xB25460), MEM32(0xB25464));
-        for (int i = 0; i < n; i++) fprintf(stderr, " %p", bt[i]);
-        fprintf(stderr, "\n"); fflush(stderr);
     }
     sub_0016C0F0_gen();
 }
@@ -949,12 +877,8 @@ void sub_0007E720(void)
     sub_0007E720_gen();
     s_n++;
     if (s_n <= 40) {
-        fprintf(stderr, "[LDW-OP] #%d a1=0x%08X a2=0x%08X -> eax=0x%08X (op tbl0=0x%08X)\n",
-                s_n, a1, a2, eax, MEM32(0x4A10A8));
         {   void *bt[10]; int nb = CaptureStackBackTrace(1, 10, bt, NULL), k;
-            fprintf(stderr, "  [LDW-BT]");
-            for (k = 0; k < nb; k++) fprintf(stderr, " %llX", (unsigned long long)(uintptr_t)bt[k]);
-            fprintf(stderr, "%c", 10); }
+             }
         if (a1 & 0x8000u) {
             /* named load: the "T:\%s" path is sprintf'd into the frame at
              * entry_esp-0x3C (sub_0007E720: sub esp,40h; push ebx; push esi;
@@ -962,7 +886,6 @@ void sub_0007E720(void)
             char nm[48]; int k;
             for (k = 0; k < 47; k++) { nm[k] = (char)MEM8(esp0 - 0x3C + k); if (!nm[k]) break; }
             nm[k] = 0;
-            fprintf(stderr, "[LDW-NAME] #%d '%s'\n", s_n, nm);
         }
         {   /* ADXF partition info (sub_00168E95): block = [0xC07640+4*ptid],
              * base sector u16 at +0x114, u16 sector sizes at +0x116+2*id,
@@ -976,11 +899,6 @@ void sub_0007E720(void)
                 for (i = 0; i < 0x21D; i++) sum += MEM16(blk + 0x116 + 2u * i);
                 for (i = 0; i < 23; i++) { fn[i] = (char)MEM8(blk + 0x10 + i); if (!fn[i]) break; }
                 fn[i] = 0;
-                fprintf(stderr, "[PTINFO] pt%d blk=%08X next=%08X cnt=%u fn='%s' base=%04X sz[0]=%04X sz[1]=%04X sz[15]=%04X sz[16]=%04X sz[40]=%04X sz[21D]=%04X sect(21D)=%X\n",
-                        pt, blk, MEM32(blk), MEM16(blk + 0xC), fn, MEM16(blk + 0x114),
-                        MEM16(blk + 0x116), MEM16(blk + 0x118), MEM16(blk + 0x116 + 2 * 0x15),
-                        MEM16(blk + 0x116 + 2 * 0x16), MEM16(blk + 0x116 + 2 * 0x40),
-                        MEM16(blk + 0x116 + 2 * 0x21D), MEM16(blk + 0x114) + sum);
             }
         }
         {   /* DOA3 DIAG: DOA3_WATCHVA_EARLY=1 arms the exact-address write
@@ -996,11 +914,8 @@ void sub_0007E720(void)
             if (s_n == 2 && g_watch_exact_va && !s_early && getenv("DOA3_WATCHVA_EARLY")) {
                 s_early = 1;
                 doa3_watch_arm(g_watch_exact_va & ~0xFFFu);
-                fprintf(stderr, "[WATCHVA] armed EARLY on guest 0x%08X (now = 0x%08X)\n",
-                        g_watch_exact_va, MEM32(g_watch_exact_va));
             }
         }
-        fflush(stderr);
     }
 }
 void sub_0007FFB0_gen(void);
@@ -1013,9 +928,6 @@ void sub_0007FFB0(void)
     edi = s_edi; esi = s_esi; ebx = s_ebx;   /* callee-saved: caller sub_0009F730 keeps 0 in esi across this call */
     s_n++;
     if (s_n <= 10) {
-        fprintf(stderr, "[LDW-KICK] #%d a1=0x%08X a2=0x%08X -> phase=0x%08X\n",
-                s_n, a1, a2, MEM32(0x4A1004));
-        fflush(stderr);
     }
 }
 
@@ -1039,8 +951,8 @@ static int doa3_pumptrace(void)
         static int s_n = 0; \
         s_n++; \
         if (doa3_pumptrace() && (s_n <= 3 || (s_n % 5000) == 0)) { \
-            fprintf(stderr, "[CNT] " #fn " #%d a1=0x%08X ecx=0x%08X\n", s_n, MEM32(esp + 4), ecx); \
-            fflush(stderr); } \
+             \
+             } \
         fn##_gen(); \
     }
 /* Does the per-frame pad-vibration service run after the movie?
@@ -1055,10 +967,6 @@ void sub_000679A0_gen(void);
 void sub_000679A0(void) {
     static unsigned s_n = 0;
     if ((++s_n % 600u) == 1) {
-        fprintf(stderr, "[VIB] sub_000679A0 #%u dur=%d elapsed=%d 49231C=%08X\n",
-                s_n, (int)MEM32(0x4920E0 + 0x28), (int)MEM32(0x4920E0 + 0x24),
-                MEM32(0x49231C));
-        fflush(stderr);
     }
     sub_000679A0_gen();
 }
@@ -1066,7 +974,6 @@ void sub_00068D90_gen(void);
 void sub_00068D90(void) {
     static unsigned s_n = 0;
     if ((++s_n % 600u) == 1) {
-        fprintf(stderr, "[VIB] sub_00068D90 #%u\n", s_n); fflush(stderr);
     }
     sub_00068D90_gen();
 }
@@ -1076,17 +983,17 @@ CALL_COUNT_PROBE(sub_000804EB)
 void sub_0006B7E0_gen(void);
 void sub_0006B7E0(void) {
     static int n = 0; int log = (n < 4); n++;
-    if (log) { fprintf(stderr, "[BOOTMARK] sub_0006B7E0 enter\n"); fflush(stderr); }
+    if (log) {   }
     sub_0006B7E0_gen();
-    if (log) { fprintf(stderr, "[BOOTMARK] sub_0006B7E0 exit (eax=0x%X)\n", eax); fflush(stderr); }
+    if (log) {   }
 }
 CALL_COUNT_PROBE(sub_0006AAA0)
 void sub_0006AD20_gen(void);
 void sub_0006AD20(void) {
     static int n = 0; int log = (n < 4); n++;
-    if (log) { fprintf(stderr, "[BOOTMARK] sub_0006AD20 enter\n"); fflush(stderr); }
+    if (log) {   }
     sub_0006AD20_gen();
-    if (log) { fprintf(stderr, "[BOOTMARK] sub_0006AD20 exit (eax=0x%X)\n", eax); fflush(stderr); }
+    if (log) {   }
 }
 CALL_COUNT_PROBE(sub_0006ACD0)
 CALL_COUNT_PROBE(sub_0006AADC)
@@ -1110,9 +1017,6 @@ void sub_0009DE90(void)
     if (!obj || MEM32(obj + 8) != 2) {
         if (s_skip < 6) {
             s_skip++;
-            fprintf(stderr, "[MVBLIT] skipped: obj=0x%X st=%d\n",
-                    obj, obj ? (int)MEM32(obj + 8) : -1);
-            fflush(stderr);
         }
         esp += 4;   /* cdecl: consume fake return, caller cleans args */
         return;
@@ -1120,8 +1024,6 @@ void sub_0009DE90(void)
     {
         static int s_run = 0;
         if (s_run < 6 || (s_run % 512) == 0) {
-            fprintf(stderr, "[MVBLIT] RUN #%d obj=0x%X%c", s_run, obj, 10);
-            fflush(stderr);
         }
         s_run++;
     }
@@ -1129,8 +1031,6 @@ void sub_0009DE90(void)
     {
         static int s_done = 0;
         if (s_done < 6 || (s_done % 512) == 0) {
-            fprintf(stderr, "[MVBLIT] DONE #%d%c", s_done, 10);
-            fflush(stderr);
         }
         s_done++;
     }
@@ -1144,11 +1044,6 @@ void sub_00177810(void)
     uint32_t a1 = MEM32(esp + 4);
     sub_00177810_gen();
     if (s_n < 8 || (s_n % 2048) == 0) {
-        fprintf(stderr, "[FPEEK] #%d a1=0x%X -> eax=0x%X d:", s_n, a1, eax);
-        if (eax >= 0x1000 && eax < 0x8000000)
-            for (int k = 0; k < 10; k++) fprintf(stderr, " %X", MEM32(eax + 4u * k));
-        fprintf(stderr, "%c", 10);
-        fflush(stderr);
     }
     s_n++;
 }
@@ -1178,12 +1073,6 @@ void sub_001773E0(void)
     uint32_t cfg = MEM32(esp + 4);
     uint32_t wptr = cfg ? MEM32(cfg + 0x14) : 0, wsz = cfg ? MEM32(cfg + 0x18) : 0;
     sub_001773E0_gen();
-    fprintf(stderr, "[MWPLY] create cfg=0x%X work=0x%X size=0x%X -> obj=0x%X (err 0xC0F74C=0x%X) vtbl=0x%X vt18=0x%X vt2C=0x%X\n",
-            cfg, wptr, wsz, eax, MEM32(0xC0F74C),
-            eax ? MEM32(eax) : 0,
-            eax && MEM32(eax) ? MEM32(MEM32(eax) + 0x18) : 0,
-            eax && MEM32(eax) ? MEM32(MEM32(eax) + 0x2C) : 0);
-    fflush(stderr);
 }
 CALL_COUNT_PROBE(sub_00176840)   /* mwPly destroy (DF60 bail path) */
 /* sub_0009E1F0 is wrapped below with return-value counters instead. */
@@ -1205,8 +1094,8 @@ CALL_COUNT_PROBE(sub_0017C8D0)   /* sfdec main server */
         static int s_n = 0; \
         fn##_gen(); \
         if (s_n < 8) { s_n++; \
-            fprintf(stderr, "[RET] " #fn " -> 0x%X\n", eax); \
-            fflush(stderr); } \
+             \
+             } \
     }
 void sub_0016EEF0_gen(void);
 void sub_0016EEF0(void)
@@ -1217,8 +1106,7 @@ void sub_0016EEF0(void)
         if (MEM8(0xC04380 + 0xA4u * k)) u4++;
     sub_0016EEF0_gen();
     if (s_n < 8) { s_n++;
-        fprintf(stderr, "[RNA] #%d pre-occupancy=%d/16 -> 0x%X\n", s_n, u4, eax);
-        fflush(stderr); }
+         }
 }
 /* DIAG: PES queue append (fastcall eax=substream idx): find which substream
  * overflows (FF00040B). */
@@ -1235,9 +1123,6 @@ void sub_0017F330(void)
     sub_0017F330_gen();
     uint32_t c1 = (sj >= 0x1000 && sj < 0x8000000) ? MEM32(sj + 0xC) : 0;
     if (s_n < 20 || (s_n % 2048) == 0 || (q == 1 && (s_n % 256) == 0) || q == 3 || q >= 4) {
-        fprintf(stderr, "[PESQ] #%d q=%u cls=%u h=0x%X n=0x%X sj=0x%X c 0x%X->0x%X ret=0x%X%c",
-                s_n, q, cls, h, n, sj, c0, c1, eax, 10);
-        fflush(stderr);
     }
     s_n++;
 }
@@ -1249,11 +1134,6 @@ void sub_0017BCC0(void)
     static int s_n = 0;
     uint32_t p = eax, len = ebx;
     if (s_n < 12 || (s_n % 1024) == 0) {
-        fprintf(stderr, "[SCAN] #%d ptr=0x%X len=%d bytes:", s_n, p, (int)len);
-        if (p >= 0x10000 && p < 0x8000000)
-            for (int k = 0; k < 8; k++) fprintf(stderr, " %02X", MEM8(p + k));
-        fprintf(stderr, "%c", 10);
-        fflush(stderr);
     }
     s_n++;
     /* GUARD: with fewer than 4 bytes buffered there cannot be a start code;
@@ -1282,8 +1162,6 @@ void sub_0017AA20(void)
     sub_0017AA20_gen();
     s_n++;
     if (s_n <= 10 || (s_n & 255) == 0 || eax != 0) {
-        fprintf(stderr, "[UNLOCK] #%u h=0x%X a2=0x%X -> 0x%X%c", s_n, a1, a2, eax, 10);
-        fflush(stderr);
     }
 }
 
@@ -1302,21 +1180,12 @@ void sub_0017C6A0(void)
     int s_n = (ci >= 0) ? s_counts[ci] : 999;
     if (ci >= 0) s_counts[ci]++;
     if (s_n < 6) {
-        fprintf(stderr, "[SFERR] #%d h=0x%X err=0x%X raw:", s_n, h, err);
-        for (int k = 0; k < 16; k++)
-            fprintf(stderr, " %X", MEM32(esp + 4u * k));
-        fprintf(stderr, "%c", 10);
         /* NATIVE backtrace: the recompiled guest functions are host functions,
          * so the host stack IS the guest call chain. Resolve via doa3.map. */
         {
             void *bt[24];
             USHORT nfr = CaptureStackBackTrace(1, 24, bt, NULL);
-            fprintf(stderr, "[SFERR-BT]");
-            for (USHORT k = 0; k < nfr; k++)
-                fprintf(stderr, " %llX", (unsigned long long)(uintptr_t)bt[k]);
-            fprintf(stderr, "%c", 10);
         }
-        fflush(stderr);
     }
     /* BACKPRESSURE: FF00040B = "substream ring full, cannot append". On
      * hardware the ingest simply retries next tick as the decoder drains;
@@ -1325,8 +1194,6 @@ void sub_0017C6A0(void)
         static int s_bp = 0;
         if (s_bp < 4) {
             s_bp++;
-            fprintf(stderr, "[SFERR] 40B swallowed (ring-full backpressure)%c", 10);
-            fflush(stderr);
         }
         eax = 0; esp += 4; return;
     }
@@ -1347,11 +1214,6 @@ void sub_0016ABF0(void)
         int log = (s_n < 24) || (s_n % 64 == 0);
         s_n++;
         if (log) {
-            fprintf(stderr, "[SJPUT] #%d sj=0x%X mode=%u len=0x%X c=0x%X w=0x%X%c",
-                    s_n, sj, mode, len,
-                    (sj >= 0x1000 && sj < 0x8000000) ? MEM32(sj + 0xC) : 0,
-                    (sj >= 0x1000 && sj < 0x8000000) ? MEM32(sj + 0x10) : 0, 10);
-            fflush(stderr);
         }
     } else s_n++;
 }
@@ -1366,11 +1228,6 @@ void sub_0016ACE0(void)
         int log = (s_n < 24) || (s_n % 64 == 0);
         s_n++;
         if (log) {
-            fprintf(stderr, "[SJREL] #%d sj=0x%X mode=%u len=0x%X c=0x%X w=0x%X%c",
-                    s_n, sj, mode, len,
-                    (sj >= 0x1000 && sj < 0x8000000) ? MEM32(sj + 0xC) : 0,
-                    (sj >= 0x1000 && sj < 0x8000000) ? MEM32(sj + 0x10) : 0, 10);
-            fflush(stderr);
         }
     } else s_n++;
 }
@@ -1383,35 +1240,17 @@ void sub_00175B90_gen(void);
 void sub_00175B90(void)
 {
     uint32_t p = MEM32(esp + 4);
-    fprintf(stderr, "[VDEC] sub_00175B90 enter p=0x%X f0=0x%X +4=0x%X +8=0x%X +C=0x%X%c",
-            p, MEM32(p), MEM32(p + 4), MEM32(p + 8), MEM32(p + 0xC), 10);
-    fflush(stderr);
     sub_00175B90_gen();
-    fprintf(stderr, "[VDEC] sub_00175B90 exit eax=0x%X rate0xC0E4D0=0x%X%c",
-            eax, MEM32(0xC0E4D0), 10);
-    fflush(stderr);
 }
 void sub_001768F0_gen(void);
 void sub_001768F0(void)
 {
-    fprintf(stderr, "[VDEC] sub_001768F0 enter a1=0x%X a2=0x%X%c",
-            MEM32(esp + 4), MEM32(esp + 8), 10);
-    fflush(stderr);
     sub_001768F0_gen();
-    fprintf(stderr, "[VDEC] sub_001768F0 exit eax=0x%X%c", eax, 10);
-    fflush(stderr);
 }
 void sub_0017C7B0_gen(void);
 void sub_0017C7B0(void)
 {
-    fprintf(stderr, "[VDEC] sub_0017C7B0 enter ebx=0x%X rateParam=0x%X%c",
-            ebx, (ebx >= 0x10000 && ebx < 0x8000000) ? MEM32(ebx + 0xC) : 0xDEAD, 10);
-    fflush(stderr);
     sub_0017C7B0_gen();
-    fprintf(stderr, "[VDEC] sub_0017C7B0 exit rate0xC0E4D0=0x%X poolBase=0x%X poolCnt=%d obj0st40=0x%X%c",
-            MEM32(0xC0E4D0), MEM32(0xC0E518), MEM32(0xC0E514),
-            MEM32(0xC0E518) ? MEM32(MEM32(0xC0E518) + 0x40) : 0xDEAD, 10);
-    fflush(stderr);
 }
 /* DIAG: SJ sub-region carve helper (register-arg: eax=end, ecx=cur,
  * edx=base, ebx=mode, esi=out struct). size = eax-ecx; the negative-size
@@ -1422,9 +1261,6 @@ void sub_0017EC10(void)
     static int s_n = 0;
     if (s_n < 40) {
         s_n++;
-        fprintf(stderr, "[CARVE] #%d eax=0x%X ecx=0x%X edx=0x%X ebx=0x%X esi=0x%X diff=%d%c",
-                s_n, eax, ecx, edx, ebx, esi, (int)(eax - ecx), 10);
-        fflush(stderr);
     }
     sub_0017EC10_gen();
 }
@@ -1434,10 +1270,6 @@ void sub_0017D4B0(void)
 {
     static int s_n = 0;
     if (s_n < 6 || (s_n % 512) == 0) {
-        if (doa3_pumptrace())
-        fprintf(stderr, "[VPUMP] #%d cnt=%d base=0x%X%c", s_n,
-                MEM32(0xC0E514), MEM32(0xC0E518), 10);
-        fflush(stderr);
     }
     s_n++;
     sub_0017D4B0_gen();
@@ -1452,15 +1284,6 @@ void sub_0017D417(void)
     static int s_n = 0;
     if (s_n < 8) {
         s_n++;
-        fprintf(stderr, "[FRAG417] #%d eax=0x%X esi=0x%X icalls:", s_n, eax, esi);
-        for (int k = 1; k <= 8; k++)
-            fprintf(stderr, " %X",
-                    g_icall_trace[(g_icall_trace_idx - k) & (ICALL_TRACE_SIZE - 1)]);
-        fprintf(stderr, " stk:");
-        for (int k = 0; k < 6; k++)
-            fprintf(stderr, " %X", MEM32(esp + 4u * k));
-        fprintf(stderr, "%c", 10);
-        fflush(stderr);
     }
     sub_0017D417_gen();
 }
@@ -1498,10 +1321,6 @@ static void doa3_relocate_picture_index(void)
             if (!nb) continue;
             memcpy(XBOX_PTR(nb), XBOX_PTR(t), bytes);
             MEM32(ix) = nb;
-            fprintf(stderr, "[IXMOVE] q=%d index ring 0x%X -> 0x%X (%u entries) "
-                            "off ES ring 0x%X+0x%X\n",
-                    q, t, nb, cap, rs, rb);
-            fflush(stderr);
             s_done = 1;
         }
     }
@@ -1541,9 +1360,6 @@ void sub_0017F710(void)
         static int s_n = 0;
         if (s_n < 8) {
             s_n++;
-            fprintf(stderr, "[F710] h=0x%X i=%u k=%u tbl=0x%X ent=0x%X -> eax=0x%X\n",
-                    h, i, k, tbl, ent, eax);
-            fflush(stderr);
         }
     }
 }
@@ -1554,8 +1370,6 @@ void sub_0017D1D0(void)
     if (!sfdec_pool_obj_ok(eax)) {
         if (s_junk < 4) {
             s_junk++;
-            fprintf(stderr, "[VST4] REJECT junk obj=0x%X%c", eax, 10);
-            fflush(stderr);
         }
         eax = 0; esp += 4; return;
     }
@@ -1569,10 +1383,6 @@ void sub_0017D710(void)
     uint32_t h = MEM32(esp + 4), outp = MEM32(esp + 8);
     sub_0017D710_gen();
     if (s_n < 8 || (s_n % 2048) == 0) {
-        fprintf(stderr, "[FGET] #%d h=0x%X -> eax=0x%X out=0x%X%c",
-                s_n, h, eax,
-                (outp >= 0x1000 && outp < 0x8000000) ? MEM32(outp) : 0xDEAD, 10);
-        fflush(stderr);
     }
     s_n++;
 }
@@ -1582,8 +1392,6 @@ void sub_001779D0(void)
     static int s_n = 0;
     sub_001779D0_gen();
     if (s_n < 6 || (s_n % 2048) == 0) {
-        fprintf(stderr, "[CSC] #%d ran%c", s_n, 10);
-        fflush(stderr);
     }
     s_n++;
 }
@@ -1597,12 +1405,6 @@ void sub_0017BDB0(void)
     sub_0017BDB0_gen();
     if (s_n < 8 || (s_n % 4096) == 0) {
         uint32_t ok = (h >= 0x1000 && h < 0x8000000u);
-        fprintf(stderr, "[MUXST] #%d h=0x%X qs={%u,%u,%u,%u} min(%d,%d)%c",
-                s_n, h,
-                ok ? MEM32(h + 0x3560) : 0, ok ? MEM32(h + 0x3564) : 0,
-                ok ? MEM32(h + 0x3568) : 0, ok ? MEM32(h + 0x356C) : 0,
-                ok ? (int)MEM32(h + 8) : -1, ok ? (int)MEM32(h + 0x9EC) : -1, 10);
-        fflush(stderr);
     }
     s_n++;
 }
@@ -1621,11 +1423,7 @@ void sub_0017AAF0(void)
                 uint32_t st = MEM32(h + 0x366C + 0x50u * k);
                 if (st == 2 || st == 4) c24++;
             }
-            fprintf(stderr, "[GATE1] #%d h=0x%X -> %d (cnt24=%d fc=%u t=%d/%d)%c",
-                    s_n, h, (int)eax, c24, fc,
-                    (int)MEM32(h + 0x2C), (int)MEM32(h + 0x9F0), 10);
         }
-        fflush(stderr);
     }
     s_n++;
 }
@@ -1636,8 +1434,6 @@ void sub_00179E60(void)
     uint32_t h = edi;
     sub_00179E60_gen();
     if (s_n < 8 || (s_n % 4096) == 0) {
-        fprintf(stderr, "[GATE2] #%d h=0x%X -> %d%c", s_n, h, (int)eax, 10);
-        fflush(stderr);
     }
     s_n++;
 }
@@ -1649,12 +1445,10 @@ void recomp_itail_fail_log(uint32_t va)
     for (int i = 0; i < n; i++) if (seen[i] == va) return;
     if (n < 16) {
         seen[n++] = va;
-        fprintf(stderr, "[ITAILF] unresolved tail-jump target 0x%08X%c", va, 10);
-        fflush(stderr);
     }
 }
 /* DIAG: esp-delta bisect for the skip-path -4 drift. */
-#define DPROBE(fn) void fn##_gen(void); void fn(void) {     static int s_n = 0;     uint32_t e0 = esp;     fn##_gen();     if ((int)(esp - e0) != 4 && s_n < 6) {         s_n++;         fprintf(stderr, "[DELTA] " #fn " espDelta=%d%c", (int)(esp - e0), 10);         fflush(stderr);     } }
+#define DPROBE(fn) void fn##_gen(void); void fn(void) {     static int s_n = 0;     uint32_t e0 = esp;     fn##_gen();     if ((int)(esp - e0) != 4 && s_n < 6) {         s_n++;                       } }
 DPROBE(sub_00179C30)
 DPROBE(sub_00180EE0)
 DPROBE(sub_00181060)
@@ -1782,14 +1576,9 @@ static void doa3_compare_completed_plane(uint32_t plane)
         for (int row = 0; row < 30; row++)
             if (g_doa3_plane_hash[slot][row] != doa3_hash_plane_row(plane, row))
                 changed |= 1u << row;
-        fprintf(stderr, "[PLANECHECK] serial=%u slot=%d plane=%X changed=%08X%c",
-                g_doa3_plane_serial[slot], slot, plane, changed, 10);
-        fflush(stderr);
         g_doa3_plane_serial[slot] = 0;
         return;
     }
-    fprintf(stderr, "[PLANECHECK] plane=%X no-completion-snapshot%c", plane, 10);
-    fflush(stderr);
 }
 
 void sub_00179A50(void)
@@ -1820,13 +1609,6 @@ void sub_00179A50(void)
     if (reftrace && eax != 0) {
         static uint32_t failures = 0;
         if (failures++ < 32) {
-            fprintf(stderr, "[PALLOCFAIL] #%u tr=%u type=%u refs=%X/%X display=%X states=",
-                    failures, MEM32(h + 0x35F4), MEM32(h + 0x35F8),
-                    MEM32(h + 0x3660), MEM32(h + 0x3664), MEM32(h + 0x35C4));
-            for (int i = 0; i < 7; i++)
-                fprintf(stderr, "%s%u", i ? "," : "", MEM32(0xC12E2Cu + (uint32_t)i * 0x50u));
-            fputc(10, stderr);
-            fflush(stderr);
         }
     }
     if (eax == 0 && outp >= 0x1000 && outp < 0x8000000u &&
@@ -1848,35 +1630,10 @@ void sub_00179A50(void)
         }
         if (eax == 0 || duplicate || record == old_ref0 || record == old_ref1) {
             uint32_t new_ref0 = MEM32(h + 0x3660), new_ref1 = MEM32(h + 0x3664);
-            fprintf(stderr,
-                "[REFTRACE] #%u result=%d slot=%d oldst=%u rec=%X plane=%X "
-                "pic=%u/%u oldref=%X(%u/%u)/%X(%u/%u) "
-                "newref=%X(%u/%u)/%X(%u/%u) display=%X dup=%02X hazard=%c%c%c%c",
-                event++, (int)eax, slot, slot >= 0 ? old_states[slot] : 0,
-                record, plane, MEM32(h + 0x35F4), MEM32(h + 0x35F8),
-                old_ref0, doa3_slot_index_from_record(old_ref0) >= 0 ? MEM32(old_ref0 + 0x30) : 0,
-                doa3_slot_index_from_record(old_ref0) >= 0 ? MEM32(old_ref0 + 0x34) : 0,
-                old_ref1, doa3_slot_index_from_record(old_ref1) >= 0 ? MEM32(old_ref1 + 0x30) : 0,
-                doa3_slot_index_from_record(old_ref1) >= 0 ? MEM32(old_ref1 + 0x34) : 0,
-                new_ref0, doa3_slot_index_from_record(new_ref0) >= 0 ? MEM32(new_ref0 + 0x30) : 0,
-                doa3_slot_index_from_record(new_ref0) >= 0 ? MEM32(new_ref0 + 0x34) : 0,
-                new_ref1, doa3_slot_index_from_record(new_ref1) >= 0 ? MEM32(new_ref1 + 0x30) : 0,
-                doa3_slot_index_from_record(new_ref1) >= 0 ? MEM32(new_ref1 + 0x34) : 0,
-                old_display, duplicate,
-                record && record == old_ref0 ? 'R' : '-',
-                record && record == old_ref1 ? 'R' : '-',
-                record && record == old_display ? 'D' : '-',
-                duplicate ? 'P' : '-');
-            fputc(10, stderr);
-            fflush(stderr);
         }
     }
     if (s_n < 10) {
         s_n++;
-        fprintf(stderr, "[PALLOC] #%d h=0x%X -> eax=0x%X out=0x%X%c",
-                s_n, h, eax,
-                (outp >= 0x1000 && outp < 0x8000000) ? MEM32(outp) : 0xDEAD, 10);
-        fflush(stderr);
     }
 }
 /* DIAG: picture SKIP path — on hardware, prep-time pictures are skipped
@@ -1897,9 +1654,6 @@ void sub_0017A6D0(void)
     g_doa3_a6d0_frame = prev_frame;
     if (s_n < 10) {
         s_n++;
-        fprintf(stderr, "[PSKIP] #%d -> eax=0x%X espDelta=%d (expect 4)%c",
-                s_n, eax, (int)(esp - esp_in), 10);
-        fflush(stderr);
     }
     /* item 91b attempt REVERTED: reclaiming the dead suspension frames
      * (esp = esp_in + 4) broke playback in the harness env too (frames=4)
@@ -1991,15 +1745,11 @@ void sub_0017DB10(void)
 {
     uint32_t rec = MEM32(esp + 4);
     if (doa3_reftrace_enabled() && doa3_slot_rec_ok(rec) && MEM32(rec) == 1) {
-        fprintf(stderr, "[RELTRACE] DB10 releasing DECODING slot=%X plane=%X%c",
-                rec, MEM32(rec + 4), 10);
-        fflush(stderr);
     }
     if (doa3_release_must_defer(rec)) {
         static int s_g = 0;
         if (s_g < 16) { s_g++;
-            fprintf(stderr, "[STGUARD] DB10 slot 0x%X st=%u -> deferred%c", rec, MEM32(rec), 10);
-            fflush(stderr); }
+             }
         doa3_defer_release(rec, 1);
         esp += 4;
         return;
@@ -2011,15 +1761,11 @@ void sub_0017DB30(void)
 {
     uint32_t rec = MEM32(esp + 4);
     if (doa3_reftrace_enabled() && doa3_slot_rec_ok(rec) && MEM32(rec) == 1) {
-        fprintf(stderr, "[RELTRACE] DB30 releasing DECODING slot=%X plane=%X%c",
-                rec, MEM32(rec + 4), 10);
-        fflush(stderr);
     }
     if (doa3_release_must_defer(rec)) {
         static int s_g = 0;
         if (s_g < 16) { s_g++;
-            fprintf(stderr, "[STGUARD] DB30 slot 0x%X st=%u -> deferred%c", rec, MEM32(rec), 10);
-            fflush(stderr); }
+             }
         doa3_defer_release(rec, 0);
         esp += 4;
         return;
@@ -2033,8 +1779,7 @@ void sub_0017DB00(void)
     if (slot && doa3_slot_rec_ok(slot) && MEM32(slot) == 0) {
         static int s_g = 0;
         if (s_g < 12) { s_g++;
-            fprintf(stderr, "[STGUARD] DB00 serve-mark on FREE slot 0x%X -> dropped%c", slot, 10);
-            fflush(stderr); }
+             }
         esp += 4;
         return;
     }
@@ -2047,8 +1792,7 @@ void sub_0017DB00(void)
     doa3_snapshot_completed_plane(slot);
     {   static int s_n = 0;
         if (s_n < 10) { s_n++;
-            fprintf(stderr, "[SLOT4] #%d slot=0x%X%c", s_n, slot, 10);
-            fflush(stderr); } }
+             } }
 }
 void sub_0017DAF0_gen(void);
 void sub_0017DAF0(void)
@@ -2058,8 +1802,7 @@ void sub_0017DAF0(void)
     if (slot && doa3_slot_rec_ok(slot) && MEM32(slot) == 0) {
         static int s_g = 0;
         if (s_g < 12) { s_g++;
-            fprintf(stderr, "[STGUARD] DAF0 complete-mark on FREE slot 0x%X -> dropped%c", slot, 10);
-            fflush(stderr); }
+             }
         esp += 4;
         return;
     }
@@ -2077,8 +1820,6 @@ void sub_0017DAF0(void)
     doa3_snapshot_completed_plane(slot);
     if (s_n < 10) {
         s_n++;
-        fprintf(stderr, "[SLOT2] #%d slot=0x%X%c", s_n, slot, 10);
-        fflush(stderr);
     }
 }
 /* GUARD+POLICY: AV-sync picture decide sub_0017A540(ecx=pictype, edi=h).
@@ -2102,12 +1843,6 @@ void sub_0017A540(void)
      * gate inputs so one run names the dropping gate (clock h+0xCCC/0xCD0,
      * prebuffer have h+0x35D8 vs target h+0xA2C, served-pts h+0xCC4). */
     if (s_all <= 64 || (eax == 1 && s_drop <= 64)) {
-        fprintf(stderr, "[PDECIDE] #%u pictype=%u st=%d -> %d (drops=%u clk=%d/%d have=%d tgt=%d spts=%d)%c",
-                s_all, pt, (int)MEM32(h + 0x40), (int)eax, s_drop,
-                (int)MEM32(h + 0xCCC), (int)MEM32(h + 0xCD0),
-                (int)MEM32(h + 0x35D8), (int)MEM32(h + 0xA2C),
-                (int)MEM32(h + 0xCC4), 10);
-        fflush(stderr);
     }
     (void)s_n;
 }
@@ -2124,8 +1859,6 @@ void sub_0017E720(void)
     uint32_t h = MEM32(esp + 4);
     sub_0017E720_gen();
     if (++s_n <= 40) {
-        fprintf(stderr, "[PREGATE] E720 #%u h=0x%X -> %d%c", s_n, h, (int)eax, 10);
-        fflush(stderr);
     }
 }
 void sub_00180B70_gen(void);
@@ -2135,9 +1868,6 @@ void sub_00180B70(void)
     uint32_t a1 = MEM32(esp + 4), a2 = MEM32(esp + 8), a3 = MEM32(esp + 0xC), a4 = MEM32(esp + 0x10);
     sub_00180B70_gen();
     if (++s_n <= 40) {
-        fprintf(stderr, "[PREGATE] 180B70 #%u a=(0x%X,0x%X,0x%X,0x%X) -> %d%c",
-                s_n, a1, a2, a3, a4, (int)eax, 10);
-        fflush(stderr);
     }
 }
 
@@ -2154,11 +1884,6 @@ void sub_0017FB10(void)
             s_n++;
             void *bt[12];
             USHORT nf = CaptureStackBackTrace(1, 12, bt, NULL);
-            fprintf(stderr, "[FILLP] dst=0x%X val=0x%X n=%u bt:", dst, val, n);
-            for (USHORT k = 0; k < nf; k++)
-                fprintf(stderr, " %llX", (unsigned long long)(uintptr_t)bt[k]);
-            fprintf(stderr, "%c", 10);
-            fflush(stderr);
         }
     }
     sub_0017FB10_gen();
@@ -2171,9 +1896,6 @@ void sub_0017B7F0(void)
     uint32_t a1 = MEM32(esp + 4), a2 = MEM32(esp + 8);
     sub_0017B7F0_gen();
     if (s_n < 8 || (s_n % 2048) == 0) {
-        fprintf(stderr, "[VDELIV] #%d a1=0x%X a2=0x%X -> 0x%X idxcnt=%u%c",
-                s_n, a1, a2, eax, MEM32(0xC108C4), 10);
-        fflush(stderr);
     }
     s_n++;
 }
@@ -2184,11 +1906,6 @@ void sub_00182700(void)
     uint32_t h = MEM32(esp + 4), q = MEM32(esp + 8), e = MEM32(esp + 0xC);
     sub_00182700_gen();
     if (s_n < 8 || (s_n % 2048) == 0) {
-        fprintf(stderr, "[IDXAPP] #%d h=0x%X q=%u e0=%d -> 0x%X idxcnt=%u%c",
-                s_n, h, q,
-                (e >= 0x1000 && e < 0x8000000) ? (int)MEM32(e) : -999,
-                eax, MEM32(0xC108C4), 10);
-        fflush(stderr);
     }
     s_n++;
 }
@@ -2200,9 +1917,6 @@ void sub_00182000(void)
     uint32_t ctx = eax;
     sub_00182000_gen();
     if (s_n < 8 || (s_n % 4096) == 0) {
-        fprintf(stderr, "[PICREG] #%d ctx=0x%X -> eax=0x%X q1rec40=0x%X%c",
-                s_n, ctx, eax, MEM32(0xC108BC), 10);
-        fflush(stderr);
     }
     s_n++;
 }
@@ -2214,9 +1928,6 @@ void sub_001808C0(void)
     uint32_t p = MEM32(esp + 4), len = MEM32(esp + 8), mask = MEM32(esp + 0xC);
     sub_001808C0_gen();
     if (mask == 4 && (s_n < 8 || (s_n % 4096) == 0)) {
-        fprintf(stderr, "[CSCAN] #%d p=0x%X len=0x%X mask=%u -> 0x%X%c",
-                s_n, p, len, mask, eax, 10);
-        fflush(stderr);
     }
     if (mask == 4) s_n++;
 }
@@ -2231,26 +1942,17 @@ void sub_001827B0(void)
         uint32_t ix = aux + 0x30u;
         uint32_t tab = MEM32(ix), cap = MEM32(ix + 4), cnt = MEM32(ix + 8);
         uint32_t wr = MEM32(ix + 0xC), rd = MEM32(ix + 0x10);
-        fprintf(stderr, "[PSETUP] #%d h=0x%X q=%u pic=0x%X -> eax=0x%X out=%d "
-                "ix={t=%X cap=%d cnt=%d wr=%d rd=%d} rb=%X rs=%X",
-                s_n, h, q, pic, eax,
-                (outp >= 0x1000 && outp < 0x8000000) ? (int)MEM32(outp) : -999,
-                tab, cap, cnt, wr, rd, MEM32(aux + 0xC), MEM32(aux + 8));
         if (tab >= 0x1000 && tab < 0x8000000u && cap > 0 && cap < 200000) {
             for (uint32_t k = 0; k < 4; k++) {
                 uint32_t e = tab + ((rd + k) % cap) * 12u;
-                fprintf(stderr, " e%u={%X,%X,%X}", k,
-                        MEM32(e), MEM32(e + 4), MEM32(e + 8));
             }
         }
-        fprintf(stderr, "%c", 10);
-        fflush(stderr);
     }
     s_n++;
 }
 /* DIAG: picture decode initiators inside sub_0017B2D0's tail. If the
  * sub_0017AB40 out-flag stays 0 these never run and no picture decodes. */
-#define CNTPROBE(fn) void fn##_gen(void); void fn(void) {     static int s_n = 0;     fn##_gen();     if (s_n < 6 || (s_n % 4096) == 0) {         fprintf(stderr, "[PICGO] " #fn " #%d -> eax=0x%X%c", s_n, eax, 10);         fflush(stderr);     }     s_n++; }
+#define CNTPROBE(fn) void fn##_gen(void); void fn(void) {     static int s_n = 0;     fn##_gen();     if (s_n < 6 || (s_n % 4096) == 0) {                       }     s_n++; }
 CNTPROBE(sub_0017A370)
 CNTPROBE(sub_0017A400)
 CNTPROBE(sub_0017AB40)
@@ -2263,15 +1965,9 @@ void sub_0017A640(void)
     if (s_n < 10 || (s_n % 1024) == 0) {
         uint32_t sh = 0xC0F7C0;
         uint32_t fc = MEM32(sh + 0x3668); if (fc > 16) fc = 16;
-        fprintf(stderr, "[PICDEC] #%d -> eax=0x%X cur35F8=%X disp35C4=%X slots:", s_n, eax,
-                MEM32(sh + 0x35F8), MEM32(sh + 0x35C4));
         for (uint32_t k = 0; k < fc; k++) {
             uint32_t sl = sh + 0x366C + 0x50u * k;
-            fprintf(stderr, " %u{st=%X f4=%X f8=%X f1C=%X}", k,
-                    MEM32(sl), MEM32(sl + 4), MEM32(sl + 8), MEM32(sl + 0x1C));
         }
-        fprintf(stderr, "%c", 10);
-        fflush(stderr);
     }
     s_n++;
 }
@@ -2279,7 +1975,7 @@ void sub_0017A640(void)
 /* DIAG: picture-header parse chain (bit readers on ctx h+0x35E0). One of
  * these rejects every picture -> all pictures skipped -> zero decoded
  * frames -> black movie surface. */
-#define PICPROBE(fn) void fn##_gen(void); void fn(void) {     static int s_n = 0;     uint32_t inh = eax, inc = ecx, ind = edx;     fn##_gen();     if (s_n < 40) {         s_n++;         fprintf(stderr, "[PICHDR] " #fn " #%d eax=0x%X ecx=0x%X edx=0x%X -> 0x%X tr=%u type=%u%c",                 s_n, inh, inc, ind, eax, MEM32(0xC0F7C0 + 0x35F4),                 MEM32(0xC0F7C0 + 0x35F8), 10);         fflush(stderr);     } }
+#define PICPROBE(fn) void fn##_gen(void); void fn(void) {     static int s_n = 0;     uint32_t inh = eax, inc = ecx, ind = edx;     fn##_gen();     if (s_n < 40) {         s_n++;                       } }
 PICPROBE(sub_00179990)
 PICPROBE(sub_001799D0)
 PICPROBE(sub_00179A10)
@@ -2295,9 +1991,6 @@ void sub_0017A890(void)
     uint32_t a1 = MEM32(esp + 4), a2 = MEM32(esp + 8), sctx = esi;
     sub_0017A890_gen();
     if (s_n < 12 || (s_n % 4096) == 0) {
-        fprintf(stderr, "[SLICE] #%d a1=0x%X a2=0x%X esi=0x%X -> eax=0x%X%c",
-                s_n, a1, a2, sctx, eax, 10);
-        fflush(stderr);
     }
     s_n++;
 }
@@ -2317,15 +2010,6 @@ void sub_0017F130(void)
     if ((q == 1 && (s_n < 12 || (s_n % 1024) == 0)) || s_n < 6) {
         uint32_t ok = (win >= 0x1000 && win < 0x8000000);
         uint32_t wp = ok ? MEM32(win) : 0;
-        fprintf(stderr, "[QWIN] #%d q=%u sj=0x%X sjc=0x%X win={%X,%X,%X,%X} data:",
-                s_n, q, sj,
-                (sj >= 0x1000 && sj < 0x8000000) ? MEM32(sj + 0xC) : 0,
-                wp, ok ? MEM32(win + 4) : 0,
-                ok ? MEM32(win + 8) : 0, ok ? MEM32(win + 0xC) : 0);
-        if (wp >= 0x1000 && wp < 0x8000000)
-            for (int k = 0; k < 16; k++) fprintf(stderr, " %02X", MEM8(wp + k));
-        fprintf(stderr, "%c", 10);
-        fflush(stderr);
     }
     s_n++;
 }
@@ -2339,10 +2023,6 @@ void sub_0017B2D0(void)
     sub_0017B2D0_gen();
     if (s_n < 8) {
         s_n++;
-        fprintf(stderr, "[VSEQ] sub_0017B2D0 #%d h=0x%X -> eax=0x%X cfg910=0x%X%c",
-                s_n, h, eax,
-                (h >= 0x1000 && h < 0x8000000) ? MEM32(h + 0x910) : 0xDEAD, 10);
-        fflush(stderr);
     }
 }
 void sub_0017B100_gen(void);
@@ -2353,11 +2033,6 @@ void sub_0017B100(void)
     sub_0017B100_gen();
     if (s_n < 8) {
         s_n++;
-        fprintf(stderr, "[VSEQ] sub_0017B100 #%d h=0x%X -> eax=0x%X frames3668=%d w35A8=%d%c",
-                s_n, h, eax,
-                (h >= 0x1000 && h < 0x8000000) ? (int)MEM32(h + 0x3668) : -1,
-                (h >= 0x1000 && h < 0x8000000) ? (int)MEM32(h + 0x35A8) : -1, 10);
-        fflush(stderr);
     }
 }
 /* DIAG: video picture decode (sub_0017B3F0, reg-arg ecx=h + 2 stack args).
@@ -2369,10 +2044,6 @@ void sub_0017B3F0(void)
     uint32_t h = ecx, a1 = MEM32(esp + 4), a2 = MEM32(esp + 8);
     sub_0017B3F0_gen();
     if (s_n < 12 || (s_n % 4096) == 0) {
-        fprintf(stderr, "[VDECODE] #%d h=0x%X a1=0x%X a2=0x%X -> eax=0x%X frames3668=%d%c",
-                s_n, h, a1, a2, eax,
-                (h >= 0x1000 && h < 0x8000000) ? (int)MEM32(h + 0x3668) : -1, 10);
-        fflush(stderr);
     }
     s_n++;
 }
@@ -2386,11 +2057,6 @@ void sub_00179F00(void)
     uint32_t h = ecx, outp = MEM32(esp + 4);
     sub_00179F00_gen();
     if (s_n < 10 || (s_n % 4096) == 0) {
-        fprintf(stderr, "[VFETCH] #%d h=0x%X -> eax=0x%X out=0x%X q5cnt=0x%X%c",
-                s_n, h, eax,
-                (outp >= 0x1000 && outp < 0x8000000) ? MEM32(outp) : 0xDEAD,
-                (h >= 0x1000 && h < 0x8000000) ? MEM32(h + 0x388u * 5 + 0xD44) : 0, 10);
-        fflush(stderr);
     }
     s_n++;
 }
@@ -2414,16 +2080,14 @@ void sub_0017F6D0(void)
             if (!vt) continue;
             if (vt < 0x10000 || vt >= 0x8000000u) {
                 if (s_logs < 8) { s_logs++;
-                    fprintf(stderr, "[VTBC] junk vtbl slot %d vt=0x%X (idx %u) - skipped%c",
-                            i, vt, idx, 10); fflush(stderr); }
+                      }
                 continue;
             }
             uint32_t fn = MEM32(vt + idx * 4);
             if (!fn) continue;
             if (fn < 0x00011000 || fn >= 0x002CC800) {
                 if (s_logs < 8) { s_logs++;
-                    fprintf(stderr, "[VTBC] junk handler slot %d fn=0x%X (idx %u) - skipped%c",
-                            i, fn, idx, 10); fflush(stderr); }
+                      }
                 continue;
             }
             uint32_t saved_esp = esp;
@@ -2436,10 +2100,7 @@ void sub_0017F6D0(void)
             result = eax;
             if (esp != saved_esp || esi != s_esi || edi != s_edi || ebx != s_ebx) {
                 if (s_logs < 8) { s_logs++;
-                    fprintf(stderr, "[VTBC] CLOBBER by fn=0x%X slot %d idx %u: espΔ=%d esi 0x%X->0x%X edi 0x%X->0x%X ebx 0x%X->0x%X%c",
-                            fn, i, idx, (int)(esp - saved_esp),
-                            s_esi, esi, s_edi, edi, s_ebx, ebx, 10);
-                    fflush(stderr); }
+                     }
             }
             esp = saved_esp;
             esi = s_esi; edi = s_edi; ebx = s_ebx;
@@ -2479,9 +2140,6 @@ void sub_0017E9B0(void)
     if (st15 > 15) {
         if (s_logs < 8) {
             s_logs++;
-            fprintf(stderr, "[SRV] SKIP obj=0x%X st40=0x%X state15=0x%X (junk state)%c",
-                    obj, st, st15, 10);
-            fflush(stderr);
         }
         return;
     }
@@ -2489,20 +2147,12 @@ void sub_0017E9B0(void)
     if (h && (h < 0x00011000 || h >= 0x002CC800)) {
         if (s_logs < 8) {
             s_logs++;
-            fprintf(stderr, "[SRV] BAD HANDLER obj=0x%X state15=%u h=0x%X -> cleared%c",
-                    obj, st15, h, 10);
-            fflush(stderr);
         }
         MEM32(obj + st15 * 4 + 0xA94) = 0;   /* falls back to 0x17E2A0 default */
     }
     {
         static int s_dn = 0;
         if (s_dn < 8 || (s_dn % 2048) == 0) {
-            if (doa3_pumptrace())
-            fprintf(stderr, "[SRVDSP] #%d obj=0x%X st40=%d state15=%u handler=0x%X%c",
-                    s_dn, obj, (int)MEM32(obj + 0x40), st15,
-                    h ? h : 0x17E2A0, 10);
-            fflush(stderr);
         }
         s_dn++;
     }
@@ -2625,8 +2275,6 @@ void sub_0017D380(void)
     if (!sfdec_pool_obj_ok(eax)) {
         if (s_junk < 4) {
             s_junk++;
-            fprintf(stderr, "[VSM] REJECT junk obj=0x%X%c", eax, 10);
-            fflush(stderr);
         }
         esp += 4; return;
     }
@@ -2640,8 +2288,6 @@ void sub_0017D470(void)
     if (!sfdec_pool_obj_ok(h)) {
         if (s_junk < 4) {
             s_junk++;
-            fprintf(stderr, "[VKICK] REJECT junk h=0x%X%c", h, 10);
-            fflush(stderr);
         }
         eax = 0; esp += 4; return;
     }
@@ -2654,13 +2300,8 @@ void sub_0017ECC0(void)
     uint32_t slot = esi, vt = (esi >= 0x10000 && esi < 0x8000000) ? MEM32(esi) : 0;
     sub_0017ECC0_gen();
     if (s_n < 8) { s_n++;
-        fprintf(stderr, "[GROW] #%d slot=0x%X cap=0x%X base=0x%X -> 0x%X%c",
-                s_n, slot,
-                (slot >= 0x10000 && slot < 0x8000000) ? MEM32(slot + 0x20) : 0,
-                (slot >= 0x10000 && slot < 0x8000000) ? MEM32(slot + 0x1C) : 0,
-                eax, 10);
         (void)vt;
-        fflush(stderr); }
+         }
 }
 RET_PROBE(sub_001840F0)
 RET_PROBE(sub_00184000)
@@ -2685,17 +2326,12 @@ void sub_0016AE80(void)
          * sfdec handles / ASCII stream bytes showing up as pointers).
          * Dump the caller frame to identify the layout bug, then clamp. */
         fprintf(stderr, "[SJNEG] a1=0x%X a2=0x%X frame:", a1, a2);
-        for (int k = 0; k < 20; k++)
-            fprintf(stderr, " %X", MEM32(esp + 4u * k));
-        fprintf(stderr, "%c", 10);
-        fflush(stderr);
         MEM32(esp + 8) = 0x800;  /* clamp: minimal sane ring */
     }
     sub_0016AE80_gen();
     {   extern volatile int g_doa3_post_movie;
         if (s_n < 40 || g_doa3_post_movie) { s_n++;
-            fprintf(stderr, "[SJ] #%d a1=0x%X a2=0x%X -> 0x%X\n", s_n, a1, a2, eax);
-            fflush(stderr); } }
+             } }
 }
 void sub_0016E060_gen(void);
 void sub_0016E060(void)
@@ -2704,8 +2340,7 @@ void sub_0016E060(void)
     uint32_t a1 = MEM32(esp + 4);
     sub_0016E060_gen();
     if (s_n < 12) { s_n++;
-        fprintf(stderr, "[WXSES] #%d src=0x%X -> 0x%X\n", s_n, a1, eax);
-        fflush(stderr); }
+         }
 }
 
 /* DIAG: ADXSTM creator (sub_0016A130(buf, bufsize, nstm)): the audio
@@ -2730,11 +2365,8 @@ void sub_0016A130(void)
                     if (MEM32(0xBF7460 + 0x34u * k)) u3++;
                     if (MEM8(0xC04380 + 0xA4u * k)) u4++;
                 }
-                fprintf(stderr, "[ADXSTM] #%d buf=0x%X size=0x%X n=%u -> 0x%X pools: stm=%s(%d/16) wxrd=%d/16 voice=%d/16 rna=%d/16\n",
-                        s_n, a1, a2, a3, eax, bits, used, u2, u3, u4);
             }
         }
-        fflush(stderr);
     }
 }
 
@@ -2747,21 +2379,10 @@ void sub_0017D240(void)
     uint32_t p = MEM32(esp + 4);
     if (s_n < 3) {
         s_n++;
-        fprintf(stderr, "[SFCRT] params@0x%X:", p);
-        for (int k = 0; k < 15; k++) fprintf(stderr, " %X", MEM32(p + 4u * k));
-        fprintf(stderr, " | pool n=%d base=0x%X st0=%d st1=%d\n",
-                (int)MEM32(0xC0E514), MEM32(0xC0E518),
-                MEM32(0xC0E518) ? (int)MEM32(MEM32(0xC0E518) + 0x40) : -1,
-                MEM32(0xC0E518) ? (int)MEM32(MEM32(0xC0E518) + 0x60D8 + 0x40) : -1);
-        fflush(stderr);
     }
     sub_0017D240_gen();
     if (s_n <= 3) {
         uint32_t slot0 = MEM32(0xC0E518);
-        fprintf(stderr, "[SFCRT] -> eax=0x%X slot0err=0x%X slot0st=%d\n",
-                eax, slot0 ? MEM32(slot0 + 0x988) : 0,
-                slot0 ? (int)MEM32(slot0 + 0x40) : -1);
-        fflush(stderr);
     }
     /* MISSING-ATTACH FIX: SJ-backed queues (type 5) carve an extra region
      * after their ring for the PICTURE INDEX (12-byte entries; size stored
@@ -2785,7 +2406,6 @@ void sub_0017D240(void)
             MEM32(rec + 0x50) = 0;                       /* read cursor */
             fprintf(stderr, "[IDXFIX] q%u table=0x%X cap=%u\n",
                     qq, base + ringsz, idxsz / 12u);
-            fflush(stderr);
         }
         /* PASS-THROUGH BYPASS: substreams 4/5 (the q3->q5 and q4->q6 movers)
          * have no vtable in this config (table 0x2199AC slots 4/5 = 0), so no
@@ -2801,7 +2421,6 @@ void sub_0017D240(void)
             MEM32(hh + 0x59C0) = 4;                      /* audio out: q6 -> q4 */
             fprintf(stderr, "[QBYP] slot7 reads q4\n");
         }
-        fflush(stderr);
     }
 }
 
@@ -2815,11 +2434,6 @@ void sub_00176330(void)
     sub_00176330_gen();
     if (s_n < 3) {
         s_n++;
-        fprintf(stderr, "[SFSZ] D8=%X DC=%X E0=%X E4=%X E8=%X EC=%X F0=%X F4=%X F8=%X FC=%X\n",
-                MEM32(0xB289D8), MEM32(0xB289DC), MEM32(0xB289E0), MEM32(0xB289E4),
-                MEM32(0xB289E8), MEM32(0xB289EC), MEM32(0xB289F0), MEM32(0xB289F4),
-                MEM32(0xB289F8), MEM32(0xB289FC));
-        fflush(stderr);
     }
 }
 
@@ -2833,9 +2447,6 @@ void sub_0017D0E0(void)
     uint32_t cmd = MEM32(h + 0x44), st = MEM32(h + 0x40);
     sub_0017D0E0_gen();
     if (++s_n <= 6 || (s_n % 2000) == 0) {
-        fprintf(stderr, "[SFEV] #%u h=0x%X st=%u cmd=%u -> %u (9CC=0x%X)\n",
-                s_n, h, st, cmd, eax, MEM32(h + 0x9CC));
-        fflush(stderr);
     }
 }
 
@@ -2847,19 +2458,9 @@ void sub_0017C980(void)
     uint32_t h = esi;
     sub_0017C980_gen();
     if (++s_n <= 6 || (s_n % 2000) == 0) {
-        fprintf(stderr, "[SFGATE] #%u h=0x%X -> %u strm[4..8]=%X %X %X %X %X\n",
-                s_n, h, eax,
-                MEM32(h + 0x994 + 16), MEM32(h + 0x994 + 20), MEM32(h + 0x994 + 24),
-                MEM32(h + 0x994 + 28), MEM32(h + 0x994 + 32));
-        fprintf(stderr, "[SFSUB]");
         for (int si = 0; si < 9; si++) {
             uint32_t vt = MEM32(h + 0x2F4C + 0x610u * si);
-            fprintf(stderr, " %d:%X", si, vt);
-            if (vt >= 0x10000 && vt < 0x400000)
-                fprintf(stderr, "(p2=%X)", MEM32(vt + 8));
         }
-        fprintf(stderr, "\n");
-        fflush(stderr);
     }
 }
 /* Boot-task body enter/exit markers (BOOT_MARK was #undef'd above). */
@@ -2868,9 +2469,9 @@ void sub_0017C980(void)
         extern void name##_gen(void); \
         static int n = 0; \
         int log = (n < 60); n++; \
-        if (log) { fprintf(stderr, "[BOOTMARK] " #name " enter\n"); fflush(stderr); } \
+        if (log) {   } \
         name##_gen(); \
-        if (log) { fprintf(stderr, "[BOOTMARK] " #name " exit (eax=0x%X)\n", eax); fflush(stderr); } \
+        if (log) {   } \
     }
 /* DirectSoundCreate chain (cxbx symbol cache names): sub_001C800C = create
  * path, sub_001C7ECD = CDirectSound::Initialize, sub_001C6AA0 = DSOUND pool
@@ -2882,9 +2483,9 @@ void sub_0017C980(void)
         static int n = 0; \
         uint32_t s_edi = edi, s_esi = esi, s_ebx = ebx; \
         int log = (n < 60); n++; \
-        if (log) { fprintf(stderr, "[BOOTMARK] " #name " enter\n"); fflush(stderr); } \
+        if (log) {   } \
         name##_gen(); \
-        if (log) { fprintf(stderr, "[BOOTMARK] " #name " exit (eax=0x%X) edi %08X->%08X\n", eax, edi, s_edi); fflush(stderr); } \
+        if (log) {   } \
         edi = s_edi; esi = s_esi; ebx = s_ebx; \
     }
 /* silence-loop buffer built at the end of CDirectSound::Initialize:
@@ -3004,9 +2605,6 @@ void doa3_apu_wait_retire(uint32_t obj)
         Sleep(1);
         if (!warned && GetTickCount() - t0 > 500) {
             warned = 1;
-            fprintf(stderr, "[DSOUND] retire wait on buffer %08X still pending after 500 ms (flags %08X)\n",
-                    obj, MEM32(obj + 8));
-            fflush(stderr);
         }
     }
 }
@@ -3023,7 +2621,7 @@ void sub_001CCBA7(void)   /* CMcpxVoiceClient: fill / start after SetBufferData 
     if (n <= 8) {  }
     edi = s_edi; esi = s_esi; ebx = s_ebx;
 }
-#define BOOT_MARK2_ABI_ESI(name)     void name(void) {         extern void name##_gen(void);         static int n = 0;         uint32_t s_edi = edi, s_esi = esi, s_ebx = ebx, s_esp = esp;         int log = (n < 12); n++;         name##_gen();         if (log) { fprintf(stderr, "[ABI] " #name " eax=%08X esi %08X->%08X edi %08X->%08X ebx %08X->%08X esp %+d\n", eax, s_esi, esi, s_edi, edi, s_ebx, ebx, (int)(esp - s_esp)); fflush(stderr); }         edi = s_edi; esi = s_esi; ebx = s_ebx;     }
+#define BOOT_MARK2_ABI_ESI(name)     void name(void) {         extern void name##_gen(void);         static int n = 0;         uint32_t s_edi = edi, s_esi = esi, s_ebx = ebx, s_esp = esp;         int log = (n < 12); n++;         name##_gen();         if (log) {   }         edi = s_edi; esi = s_esi; ebx = s_ebx;     }
 BOOT_MARK2_ABI_ESI(sub_001CD60C)
 void sub_001789B0_gen(void);
 void sub_001789B0(void)   /* Sofdec audio server step: this in eax; gates on flag[6] and the audio stream state */
@@ -3146,9 +2744,6 @@ BOOT_MARK2_ABI_ESI(sub_001CD8E8)
 static void apu_dump_block(const char *tag, uint32_t apu)
 {
     int i;
-    fprintf(stderr, "%s apu=%08X +0C=%08X +70..B0:", tag, apu, MEM32(apu + 0xC));
-    for (i = 0x70; i < 0xB0; i += 4) fprintf(stderr, " %08X", MEM32(apu + i));
-    fprintf(stderr, "\n"); fflush(stderr);
 }
 void sub_001CCEE5_gen(void);
 void sub_001CCEE5(void)   /* CMcpxAPU: GP/EP program + page-list setup */
@@ -3304,10 +2899,10 @@ BOOT_MARK2_ABI(sub_001C90C0)
     void name(void) { \
         uint32_t _di = edi, _si = esi, _bx = ebx; \
         static int n = 0; int log = (n < 60); n++; \
-        if (log) { fprintf(stderr, "[BOOTMARK] " #name " enter esi=%08X\n", esi); fflush(stderr); } \
+        if (log) {   } \
         name##_gen(); \
         edi = _di; esi = _si; ebx = _bx; \
-        if (log) { fprintf(stderr, "[BOOTMARK] " #name " exit (eax=0x%X)\n", eax); fflush(stderr); } \
+        if (log) {   } \
     }
 #define ABI_MARK(name) \
     void name##_gen(void); \
@@ -3324,10 +2919,10 @@ void sub_00084340(void) {
     extern void doa3_ebxwp_arm(void);
     static int n = 0;
     int log = (n < 60); n++;
-    if (log) { fprintf(stderr, "[BOOTMARK] sub_00084340 enter\n"); fflush(stderr); }
+    if (log) {   }
     doa3_ebxwp_arm();
     sub_00084340_gen();
-    if (log) { fprintf(stderr, "[BOOTMARK] sub_00084340 exit (eax=0x%X)\n", eax); fflush(stderr); }
+    if (log) {   }
 }
 /* sub_00084340's one-time init chain, between the intro sequencer and the
  * screen loop at 0x00084430. The loop calls sub_000821B0 unconditionally on
@@ -3359,10 +2954,6 @@ void sub_0006E050(void) {
             uint32_t ph = MEM32(0x4A1004);
             uint32_t op = (ph < 8) ? MEM32(ph * 4 + 0x4A10A8) : 0;
             s_next = now + 1000; s_n++;
-            fprintf(stderr, "[LOADW] poll=0x%X phase=%u op=%08X st=%d q=%08X flag4A2128=%u\n",
-                    eax, ph, op, op ? (int)(int8_t)MEM8(op + 1) : -1,
-                    MEM32(0xC07620), MEM8(0x4A2128));
-            fflush(stderr);
         }
     }
 }
@@ -3381,15 +2972,11 @@ void sub_0007E860_gen(void);
 void sub_0007E860(void) {
     uint32_t _di = edi, _si = esi, _bx = ebx;
     static int n = 0; int log = (n < 60); n++;
-    if (log) { fprintf(stderr, "[BOOTMARK] sub_0007E860 enter esi=%08X\n", esi); fflush(stderr); }
+    if (log) {   }
     sub_0007E860_gen();
     edi = _di; esi = _si; ebx = _bx;
     if (log) {
         uint32_t dst = MEM32(0x4A212C); int k;
-        fprintf(stderr, "[BOOTMARK] sub_0007E860 exit (eax=0x%X) id=%04X dst=%08X bytes:", eax, MEM16(0x4A2124), dst);
-        if (dst >= 0x1000 && dst < 0x08000000u)
-            for (k = 0; k < 16; k++) fprintf(stderr, " %02X", MEM8(dst + k));
-        fprintf(stderr, "\n"); fflush(stderr);
     }
 }
 ABI_MARK2(sub_0007E9C0)
@@ -3410,14 +2997,7 @@ void sub_0007ED10(void) {
     sub_0007ED10_gen();
     {   static DWORD nx = 0; static int n = 0; DWORD now = GetTickCount();
         if (n < 40 && now >= nx) { nx = now + 1000; n++;
-            fprintf(stderr, "[RESLK] want a1=%u a2=%u a3=%u -> %u | slots", 
-                    a1 & 0xFF, a2 & 0xFF, a3 & 0xFF, eax & 0xFF);
-            for (int i = 0; i < 4; i++)
-                fprintf(stderr, " [%d]%u,%u,%u,%u,%u,%u", i,
-                        MEM8(0x4A104A + i*6 + 0), MEM8(0x4A104A + i*6 + 1),
-                        MEM8(0x4A104A + i*6 + 2), MEM8(0x4A104A + i*6 + 3),
-                        MEM8(0x4A104A + i*6 + 4), MEM8(0x4A104A + i*6 + 5));
-            fprintf(stderr, "\n"); fflush(stderr); } }
+              } }
 }
 ABI_MARK2(sub_00080C30)
 ABI_MARK2(sub_0007E9FA)
@@ -3462,9 +3042,7 @@ static void doa3_wait_resource_load(void)
         if (n < 8) { n++;
             uint32_t ph = MEM32(0x4A1004);
             uint32_t op = (ph < 8u) ? MEM32(ph * 4 + 0x4A10A8) : 0;
-            fprintf(stderr, "[RESWAIT] spins=%d op=%08X st=%d\n", spins, op,
-                    op ? (int)(int8_t)MEM8(op + 1) : -1);
-            fflush(stderr); } }
+             } }
 }
 void sub_00080020_gen(void);
 void sub_00080020(void) {
@@ -3492,9 +3070,7 @@ void sub_0016CFB0(void) {
     sub_0016CFB0_gen();
     {   static int n = 0;
         if (n < 20) { n++;
-            fprintf(stderr, "[CVCB] sub_0016CFB0 a1=%08X path='%s' a3=%08X -> eax=%d\n",
-                    a1, nm, a3, (int)eax);
-            fflush(stderr); } }
+             } }
 }
 void sub_0016CFF0_gen(void);
 void sub_0016CFF0(void) {
@@ -3505,9 +3081,7 @@ void sub_0016CFF0(void) {
     sub_0016CFF0_gen();
     {   static int n = 0;
         if (n < 20) { n++;
-            fprintf(stderr, "[CVCB] sub_0016CFF0 a1=%08X path='%s' a3=%08X -> eax=%d\n",
-                    a1, nm, a3, (int)eax);
-            fflush(stderr); } }
+             } }
 }
 BOOT_MARK2(sub_000833C0)
 BOOT_MARK2(sub_0009EFC0)
@@ -3525,11 +3099,9 @@ void sub_00175AB0(void) {
     static int n = 0;
     int log = (n < 6); n++;
     if (log) {
-        fprintf(stderr, "[CRICB] slot5 fn=0x%08X arg=0x%08X (enter #%d)\n",
-                MEM32(0xB25598 + 5 * 8), MEM32(0xB2559C + 5 * 8), n);
-        fflush(stderr); }
+         }
     sub_00175AB0_gen();
-    if (log) { fprintf(stderr, "[CRICB] slot5 returned #%d\n", n); fflush(stderr); }
+    if (log) {   }
 }
 BOOT_MARK2(sub_00173E20)   /* movie teardown chain (enter/exit) */
 BOOT_MARK2(sub_001778E0)   /* movie teardown chain (enter/exit) */
@@ -3555,13 +3127,6 @@ void sub_000821B0(void) {
         DWORD now = GetTickCount();
         if (s_n < 40 && now >= s_next) {
             s_next = now + 1000; s_n++;
-            fprintf(stderr, "[JOIN] mode=%u scr=%u ins=%08X agg=%08X req=%u "
-                            "latch=%u e653=%02X 49231C=%08X arm47E74C=%u e795=%u act4B8228=%u wd48E638=%u\n",
-                    MEM8(0x480B70), MEM8(0x48A2FA), MEM32(0x5E5CC8),
-                    MEM32(0x5E5ED8), MEM8(0x48A528), MEM8(0x47ADB8),
-                    MEM8(0x48E653), MEM32(0x49231C), MEM8(0x47E74C),
-                    MEM8(0x47E795), MEM32(0x4B8228), MEM32(0x48E638));
-            fflush(stderr);
         }
     }
     sub_000821B0_gen();
@@ -3587,13 +3152,6 @@ void sub_00050250(void) {
         if (now < s_next || shown >= 300) return;
         s_next = now + 2000;
         shown++;
-        fprintf(stderr, "[SCRSTATE] mode=%u latch=%u scr=%u req=%u chg=%u/%u e653=%02X 49231C=%08X pads=%08X/%08X agg=%08X 4B838A=%u e648=%u e638=%d e650=%u ret=%u\n",
-                MEM8(0x480B70), MEM8(0x47ADB8), MEM8(0x48A2FA),
-                MEM8(0x48A528), MEM8(0x484C32), MEM8(0x47E722),
-                MEM8(0x48E653), MEM32(0x49231C), MEM32(0x5E5CC8),
-                MEM32(0x5E5ED0), MEM32(0x5E5EE0),
-                MEM8(0x4B838A), MEM8(0x48E648), (int)MEM32(0x48E638),
-                MEM8(0x48E650), eax & 0xFFu);
         /* 0x0049231C bit 3 = "pad rumble running" (set 0x00067342, cleared
          * 0x000672B0/0x00067350). It is the last thing holding the screen
          * latch shut, so show the rumble record it is derived from:
@@ -3605,23 +3163,20 @@ void sub_00050250(void) {
                 (int)MEM32(0x4920E0 + 0x28), (int)MEM32(0x4920E0 + 0x2C + 0x28),
                 (int)MEM32(0x4920E0 + 0x24), (int)MEM32(0x4920E0 + 0x2C + 0x24),
                 MEM8(0x4920E0 + 0x20), MEM8(0x4920E0 + 0x2C + 0x20));
-        fflush(stderr);
     }
 }
 void sub_00050160_gen(void);
 void sub_00050160(void) {
     static int n = 0;
     if (n < 6) { n++;
-        fprintf(stderr, "[STAND] sub_00050160 sets 47ADB8=1 (mode=%u)\n",
-                MEM8(0x480B70)); fflush(stderr); }
+          }
     sub_00050160_gen();
 }
 void sub_00083A90_gen(void);
 void sub_00083A90(void) {
     static int n = 0;
     if (n < 4) { n++;
-        fprintf(stderr, "[STAND] sub_00083A90 TITLE-SCREEN handler entered\n");
-        fflush(stderr); }
+         }
     sub_00083A90_gen();
 }
 void sub_00067220_gen(void);
@@ -3629,8 +3184,7 @@ void sub_00067220(void) {
     static int n = 0;
     sub_00067220_gen();
     if (n < 8) { n++;
-        fprintf(stderr, "[STAND] sub_00067220 -> 0x%X\n", eax);
-        fflush(stderr); }
+         }
 }
 /* Set once the movie teardown has returned -- i.e. the game has genuinely
  * left the intro movie. The frame-capture diagnostic keys off this. */
@@ -3689,10 +3243,6 @@ void sub_000C6E30_gen(void);
 void sub_000C6E30(void) { g_fc[7]++; sub_000C6E30_gen(); }
 void doa3_flowcount_dump(void)
 {
-    fprintf(stderr, "[FLOWCNT] 00083BC0=%u 00082950=%u 000C5D70=%u 000C4D00=%u 00082F10=%u 000CE7D0=%u 000CF500=%u 000C6E30=%u D02A0=%u CEAC0=%u CDCD0=%u\n",
-            g_fc[0], g_fc[1], g_fc[2], g_fc[3], g_fc[4], g_fc[5], g_fc[6], g_fc[7],
-            g_fc[8], g_fc[9], g_fc[10]);
-    fflush(stderr);
 }
 
 
@@ -3710,13 +3260,10 @@ void doa3_flowcount_dump(void)
 void doa3_dump_mat4(const char *tag, uint32_t p)
 {
     int i;
-    fprintf(stderr, "%s=[", tag);
     for (i = 0; i < 16; i++) {
         float f; uint32_t u = MEM32(p + i * 4);
         memcpy(&f, &u, 4);
-        fprintf(stderr, "%s%g", i ? " " : "", f);
     }
-    fprintf(stderr, "]");
 }
 /* sub_001BA7D8 -- called by D3DDevice_CreateDevice (sub_001B9537) right before
  * it hands the implicit back buffer to SetRenderTarget:
@@ -3744,9 +3291,7 @@ void sub_001BA7D8(void)
     edi = s_edi; esi = s_esi; ebx = s_ebx;
     {   static int s_n = 0;
         if (s_n < 4) { s_n++;
-            fprintf(stderr, "[ESP] sub_001BA7D8 in=0x%08X out=0x%08X d=%+d (want +32)\n",
-                    ei, esp, (int)(esp - ei));
-            fflush(stderr); } }
+             } }
     esp = ei + 4 + 0x1C;          /* dummy return slot + ret 0x1C */
 }
 
@@ -3809,7 +3354,7 @@ void sub_001B1350(void)
         extern volatile int g_doa3_post_movie; extern volatile LONG g_doa3_heartbeat;
         static int s_t = 0;
         if (g_doa3_post_movie && s_t < 200) { s_t++;
-            fprintf(stderr, "[RTT] p=%ld SETRT arg=%08X\n", (long)g_doa3_heartbeat, arg); fflush(stderr); }
+              }
     }
     {   static int s_n = 0;
         if (s_n < 20) { s_n++;
@@ -3825,7 +3370,7 @@ void sub_001B1350(void)
                     arg, MEM32(d + 0x40C), d + 0x2150,
                     MEM32(d + 0x2150), MEM32(d + 0x2150 + 0xC),
                     MEM32(d + 0x2150 + 0x10));
-            fflush(stderr); } }
+             } }
 }
 
 
@@ -3845,20 +3390,7 @@ void sub_001B18A0(void)
         if (s_n < 40 || (g_doa3_post_movie && s_pm < 12)) {
             if (s_n < 40) s_n++; else s_pm++;
             uint32_t d = MEM32(0x001C3390);
-            fprintf(stderr, "[SETVP] dev=%08X ", d);
-            fprintf(stderr, "in x=%u y=%u w=%u h=%u zn=%g zf=%g -> "
-                            "dev b00=%d b04=%d b08=%d b0c=%d rt40C=%08X\n",
-                    x, y, w, h, zn, zf,
-                    (int)MEM32(d + 0xB00), (int)MEM32(d + 0xB04),
-                    (int)MEM32(d + 0xB08), (int)MEM32(d + 0xB0C),
-                    MEM32(d + 0x40C));
-            fprintf(stderr, "        implicit surf %08X: +0C=%08X +10=%08X +14=%08X | "
-                            "alt %08X: +0C=%08X +10=%08X +14=%08X\n",
-                    d + 0x2150, MEM32(d + 0x2150 + 0x0C), MEM32(d + 0x2150 + 0x10),
-                    MEM32(d + 0x2150 + 0x14),
-                    d + 0x2168, MEM32(d + 0x2168 + 0x0C), MEM32(d + 0x2168 + 0x10),
-                    MEM32(d + 0x2168 + 0x14));
-            fflush(stderr); } }
+             } }
 }
 void sub_001B5FD0_gen(void);
 void sub_001B5FD0(void)
@@ -3878,16 +3410,9 @@ void sub_001B5FD0(void)
             u = MEM32(d + 0x4F8); memcpy(&f4f8, &u, 4);
             u = MEM32(d + 0x500); memcpy(&f500, &u, 4);
             u = MEM32(d + 0x504); memcpy(&f504, &u, 4);
-            fprintf(stderr, "[UPVP] vpint b08=%d b0c=%d b10=%d b14=%d "
-                            "scale 500=%g 504=%g 4f8=%g | zn=%g zf=%g rz=%g mode=%d ",
-                    (int)MEM32(d + 0xB08), (int)MEM32(d + 0xB0C),
-                    (int)MEM32(d + 0xB10), (int)MEM32(d + 0xB14),
-                    f500, f504, f4f8, f4ec, f4f0, f4f4,
-                    (int)MEM32(0x001C056C));
             doa3_dump_mat4("proj+0x8C0", d + 0x8C0);
-            fprintf(stderr, " ");
             doa3_dump_mat4("pv+0x5A0", d + 0x5A0);
-            fprintf(stderr, "\n"); fflush(stderr); } }
+              } }
 }
 
 
@@ -3920,24 +3445,18 @@ void sub_001B7E50(void)
             static int s_nan = 0;
             if (s_nan < 12) { s_nan++;
                 uint32_t d = MEM32(0x001C3390);
-                fprintf(stderr, "[MATNAN] dst=%08X(dev%+d) A=%08X(dev%+d) B=%08X(dev%+d)",
-                        dst, (int)(dst - d), a, (int)(a - d), b, (int)(b - d));
                 doa3_dump_mat4(" A", a); doa3_dump_mat4(" B", b);
-                fprintf(stderr, "%c", 10); fflush(stderr); }
+                  }
         }
         if (g_doa3_post_movie && s_n < 24) { s_n++;
             int i;
-            fprintf(stderr, "[MATMUL] dst=%08X A=%08X B=%08X A=[", dst, a, b);
             for (i = 0; i < 16; i++) { float f; uint32_t u = MEM32(a + i * 4);
-                memcpy(&f, &u, 4); fprintf(stderr, "%s%g", i ? " " : "", f); }
-            fprintf(stderr, "] B=[");
+                memcpy(&f, &u, 4);  }
             for (i = 0; i < 16; i++) { float f; uint32_t u = MEM32(b + i * 4);
-                memcpy(&f, &u, 4); fprintf(stderr, "%s%g", i ? " " : "", f); }
-            fprintf(stderr, "] R=[");
+                memcpy(&f, &u, 4);  }
             for (i = 0; i < 16; i++) { float f; uint32_t u = MEM32(dst + i * 4);
-                memcpy(&f, &u, 4); fprintf(stderr, "%s%g", i ? " " : "", f); }
-            fprintf(stderr, "]\n");
-            fflush(stderr); }
+                memcpy(&f, &u, 4);  }
+             }
     }
 }
 
@@ -4062,10 +3581,7 @@ void doa3_vbw_dump(void)
     for (i = 0; i < 8; i++) {
         struct doa3_vbw_ent *e = &g_vbw_ring[i];
         if (!e->seq) continue;
-        fprintf(stderr, "  [VBW] #%u this=%08X +4=%08X +8=%08X list+50=%08X %08X %08X %08X %08X blk=%08X [blk+68]=%08X\n",
-                e->seq, e->self, e->f4, e->f8, e->l50, e->l54, e->l58, e->l5c, e->l60, e->blk, e->blk68);
     }
-    fflush(stderr);
 }
 void sub_00157700_gen(void);
 void sub_00157700(void) {
@@ -4096,8 +3612,8 @@ void sub_00157700(void) {
                 
                 
                 { void *bt[12]; USHORT nb = CaptureStackBackTrace(0, 12, bt, NULL); int k; 
-                  for (k = 0; k < nb; k++) fprintf(stderr, " %llX", (unsigned long long)(uintptr_t)bt[k]); fputc(10, stderr); }
-                fflush(stderr); } }
+                  for (k = 0; k < nb; k++) ;  }
+                 } }
             if (GetTickCount() >= s_next) { s_next = GetTickCount() + 2000;
                  s_tot = s_max = 0; s_calls = 0; } }
         if ((ebx != sb || esi != ss || edi != sd || esp != sp) && n < 30) { n++;
@@ -4136,10 +3652,6 @@ void sub_001B3940(void) {
     doa3_pb_tss_marker();
     static unsigned draw_probe_count = 0;
     if (draw_probe_count < 8 || (MEM32(esp + 8) > 0x100000 && draw_probe_count < 16)) {
-        fprintf(stderr, "[INDEX-ENTRY] esp=%08X mode=%X count=%X src=%08X ebx=%08X record=%X,%X,%X,%X,%X\n",
-                esp, MEM32(esp + 4), MEM32(esp + 8), MEM32(esp + 12), ebx,
-                MEM32(ebx), MEM32(ebx + 4), MEM32(ebx + 8), MEM32(ebx + 12), MEM32(ebx + 16));
-        fflush(stderr);
         draw_probe_count++;
     }
     {   /* DOA3 DIAG: the list is valid when the walk starts (rt168) but the
@@ -4161,11 +3673,6 @@ void sub_001B3940(void) {
             if (why) {
                 void *bt[14]; USHORT nf = CaptureStackBackTrace(1, 14, bt, NULL); USHORT k;
                 s_n++;
-                fprintf(stderr, "[WALKRACE] p=%ld %s | ebx=+%u of %u wp=%08X (end=%08X) canary %08X->%08X next=%08X bt:",
-                        (long)g_doa3_heartbeat, why, ebx - g_walk_start,
-                        g_walk_end - g_walk_start, wp, g_walk_end, g_walk_canary, can, nxt);
-                for (k = 0; k < nf; k++) fprintf(stderr, " %llX", (unsigned long long)(uintptr_t)bt[k]);
-                fprintf(stderr, "\n"); fflush(stderr);
             }
         }
     }
@@ -4181,11 +3688,7 @@ void sub_001B3940(void) {
         sub_001B3940_gen();
         if (g_doa3_post_movie && told < 10 && g_doa3_pb_base &&
             (cur < g_doa3_pb_base || cur >= g_doa3_pb_end)) { told++;
-            fprintf(stderr, "[PBDEST] p=%ld sub_001B3940 dst=%08X lim=%08X (buffer %08X..%08X) mode=%X count=%X src=%08X ebx=%08X after=%08X\n",
-                    (long)g_doa3_heartbeat, cur, lim, g_doa3_pb_base, g_doa3_pb_end,
-                    MEM32(esp + 4), MEM32(esp + 8), MEM32(esp + 12), s_ebx,
-                    MEM32(0x001C0800u));
-            fflush(stderr); }
+             }
     }
     edi = s_edi; esi = s_esi; ebx = s_ebx;
 }
@@ -4234,20 +3737,13 @@ void sub_001B0EC0(void) {
             if (bad && s_bad < 12) { s_bad++;
                 void *bt[10]; USHORT nb = CaptureStackBackTrace(1, 10, bt, NULL); int k;
                 extern void doa3_dump_mat4(const char *tag, uint32_t p);
-                fprintf(stderr, "[XFBAD] state=%u mat=%08X ", MEM32(esp + 4), m);
                 doa3_dump_mat4("M", m);
-                fprintf(stderr, " bt:");
-                for (k = 0; k < nb; k++) fprintf(stderr, " %llX", (unsigned long long)(uintptr_t)bt[k]);
-                fprintf(stderr, "%c", 10); fflush(stderr);
             }
         }
         if (want) { if (s_n < 8) s_n++; else s_pm++;
             extern void doa3_dump_mat4(const char *tag, uint32_t p);
-            fprintf(stderr, "[SETXF] state=%u mat=%08X ",
-                    MEM32(esp + 4), MEM32(esp + 8));
             doa3_dump_mat4("M", MEM32(esp + 8));
-            fprintf(stderr, " -> dev+%03X", (MEM32(esp + 4) + 0x22) << 6);
-            fprintf(stderr, "\n"); fflush(stderr); } }
+              } }
     sub_001B0EC0_gen();
     edi = s_edi; esi = s_esi; ebx = s_ebx;
 }
@@ -4326,17 +3822,9 @@ void sub_001B4960(void) {
     s_depth++;
     if (s_depth > s_max) {
         s_max = s_depth;
-        if (s_max == 8 || s_max == 64 || s_max == 512 || s_max == 4096)
-            fprintf(stderr, "[REFW] depth reached %d (obj=%08X type=%08X child=%08X)\n",
-                    s_max, obj,
-                    (obj >= 0x1000 && obj < 0x08000000u) ? MEM32(obj) : 0,
-                    (obj >= 0x1000 && obj < 0x08000000u) ? MEM32(obj + 0x14) : 0);
     }
     if ((obj < 0x1000u || obj >= 0x08000000u) && s_logged < 10) {
         s_logged++;
-        fprintf(stderr, "[REFW] BAD obj=%08X depth=%d esp=%08X slot0=%08X slot8=%08X host_ret=%p\n",
-                obj, s_depth, esp, MEM32(esp), MEM32(esp + 8), _ReturnAddress());
-        fflush(stderr);
     }
     /* Containment: a D3D resource pointer is always a guest heap address.
      * We are reaching here with floats and small integers (0x3F800000,
@@ -4355,9 +3843,7 @@ void sub_001B4960(void) {
     if (s_depth > 32) {
         static int s_warned = 0;
         if (!s_warned) { s_warned = 1;
-            fprintf(stderr, "[REFW] cycle: obj=%08X child=%08X - walk capped\n",
-                    obj, (obj >= 0x1000u && obj < 0x08000000u) ? MEM32(obj + 0x14) : 0);
-            fflush(stderr); }
+             }
         s_depth--;
         esp += 8;   /* ret 4 */
         return;
@@ -4389,18 +3875,14 @@ void sub_0009EB90(void) {
          * tests (sub_00081E90 reads bits 4-15 of 0x5E5EE0)? */
         static int n = 0;
         if ((MEM32(0x5E5EE0) || MEM32(0x5E5ED8)) && n < 12) { n++;
-            fprintf(stderr, "[AGG] w0(5E5ED8)=%08X w8(5E5EE0)=%08X raw=%04X A=%02X scr=%u mode=%u latch=%u\n",
-                    MEM32(0x5E5ED8), MEM32(0x5E5EE0), MEM16(0x5E5CED),
-                    MEM8(0x5E5CEF), MEM8(0x48A2FA),
-                    MEM8(0x480B70), MEM8(0x47ADB8));
-            fflush(stderr); }
+             }
     }
 }
 void sub_0009E340_gen(void);
 void sub_0009E340(void) {
     static int n = 0;
     int log = (n < 4); n++;
-    if (log) { fprintf(stderr, "[BOOTMARK] sub_0009E340 enter\n"); fflush(stderr); }
+    if (log) {   }
     {   /* The game leaves the movie here on both paths: end of stream, and
          * START pressed in the poll loop at 0x00083480. The host presenter
          * (movie_present.c) runs the picture and ADX audio on its own clock
@@ -4412,8 +3894,6 @@ void sub_0009E340(void) {
         extern void xa2_movie_stop(void);
         extern int  g_doa3_host_movie_ended;
         if (doa3_movie_presenter_active()) {
-            fprintf(stderr, "[HOSTFMV] game left the movie early (skip) -> stopping presenter\n");
-            fflush(stderr);
             xa2_movie_stop();
             g_doa3_host_movie_ended = 1;
             doa3_movie_present_finish();
@@ -4422,8 +3902,8 @@ void sub_0009E340(void) {
     sub_0009E340_gen();
     g_doa3_post_movie = 1;
     { extern int g_kernel_trace_reads; g_kernel_trace_reads = 1; }
-    if (log) { fprintf(stderr, "[BOOTMARK] sub_0009E340 exit (eax=0x%X)\n", eax);
-               fflush(stderr); }
+    if (log) {
+                }
 }
 CALL_COUNT_PROBE(sub_0016B400)   /* ADX stream handle create (movie work buf) */
 BOOT_MARK2_ABI_ESI(sub_0009C840)   /* sound/cache init: registers wxCi groups; restores ebx/esi/edi (leaked esi=1 into sub_0009F730's voice-table clear) */
@@ -4451,18 +3931,10 @@ void sub_00169150(void)
             static unsigned s_mn = 0;
             if (++s_mn == 600000) {
                 extern void xbox_fiber_dump_states(void);
-                fprintf(stderr, "[MOUNTSTALL] 600k polls; state:%c", 10);
                 xbox_fiber_dump_states();
-                fprintf(stderr, "[MOUNTSTALL] B24D38=%X C0E384=%X C065C0=%X C07620=%X "
-                        "C0C500=%X B24D58=%X B24D24=%X%c",
-                        MEM32(0xB24D38), MEM32(0xC0E384),
-                        MEM32(0xC065C0), MEM32(0xC07620),
-                        MEM32(0xC0C500), MEM32(0xB24D58), MEM32(0xB24D24), 10);
                 /* op pool snapshot: what op sits unprocessed? */
                 for (int op = 0; op < 4; op++) {
                     uint32_t o = 0xC07A40 + op * 0x40u;
-                    fprintf(stderr, "[MOUNTSTALL] op%d: %X %X %X %X%c", op,
-                            MEM32(o), MEM32(o + 4), MEM32(o + 8), MEM32(o + 0xC), 10);
                 }
             }
         }
@@ -4488,9 +3960,6 @@ void sub_00169150(void)
                 int woke = xbox_fiber_wake_count(0xBEEF0001u);
                 if (s_nlog < 4) {
                     s_nlog++;
-                    fprintf(stderr, "[MOUNTNUDGE] #%u op unclaimed, locks free -> spurious worker resume (woke %d)%c",
-                            s_nudge, woke, 10);
-                    fflush(stderr);
                 }
             }
         }
@@ -4498,9 +3967,6 @@ void sub_00169150(void)
             xbox_fiber_yield();
     }
     if (++s_n <= 4 || (s_n % 20000) == 0) {
-        fprintf(stderr, "[MOUNT] sub_00169150 #%u id=%u -> %d\n",
-                s_n, MEM32(esp + 4), (int)eax);
-        fflush(stderr);
     }
 }
 
@@ -4542,9 +4008,6 @@ void sub_0009DDB0(void)
         xbox_fiber_yield();
         spins++;
     }
-    fprintf(stderr, "[MVBANK] waited %d yields; bank0=0x%X bank1=0x%X\n",
-            spins, MEM32(0x4889B8), MEM32(0x4889B8 + 0x1C));
-    fflush(stderr);
     sub_0009DDB0_gen();
 }
 
@@ -4561,10 +4024,6 @@ void sub_00157FB0(void)
     sub_00157FB0_gen();
     if (s_n < 8) {
         s_n++;
-        fprintf(stderr, "[MVSURF] w=%u h=%u a3=0x%X fmt=0x%X out=0x%X -> eax=0x%X *out=0x%X\n",
-                w, h, a3, fmt, out, eax,
-                (out >= 0x10000 && out < 0x8000000) ? MEM32(out) : 0);
-        fflush(stderr);
     }
 }
 
@@ -4577,8 +4036,6 @@ void sub_00169530(void)
     char nm[40] = {0};
     if (fn >= 0x10000 && fn < 0x8000000)
         for (int i = 0; i < 39; i++) { nm[i] = (char)MEM8(fn + i); if (!nm[i]) break; }
-    fprintf(stderr, "[PTLOAD] id=%u fn='%s' buf=0x%X\n", id, nm, MEM32(esp + 0x10));
-    fflush(stderr);
     sub_00169530_gen();
 }
 
@@ -4593,9 +4050,6 @@ void sub_001644E8(void)
     uint32_t alo = MEM32(a), ahi = MEM32(a + 4), blo = MEM32(b), bhi = MEM32(b + 4);
     sub_001644E8_gen();
     if (++s_n <= 12) {
-        fprintf(stderr, "[FTCMP] #%d a=%08X:%08X b=%08X:%08X -> %d\n",
-                s_n, ahi, alo, bhi, blo, (int)eax);
-        fflush(stderr);
     }
 }
 
@@ -4607,12 +4061,6 @@ void sub_00173D10(void)
     uint32_t obj = MEM32(esp + 4);
     s_n++;
     if (s_n <= 4 || (s_n % 3000) == 0) {
-        if (doa3_pumptrace())
-        fprintf(stderr, "[WXPUMP] #%u obj=0x%08X st=%u slot20=%u slotSt=%u\n",
-                s_n, obj, obj ? MEM8(obj + 1) : 0,
-                obj ? MEM32(obj + 0x20) : 0,
-                obj ? MEM32((MEM32(obj + 0x20) << 6) + obj + 0x70) : 0);
-        fflush(stderr);
     }
     sub_00173D10_gen();
 }
@@ -4634,12 +4082,6 @@ void sub_0006E0B0(void)
          * Packed Resource); dump the first bytes so an empty buffer (never
          * loaded) is distinguishable from wrong/misaligned data. */
         fprintf(stderr, "[TEXHDR] #%d a1=0x%08X magic=%08X bytes:", s_n, a1, MEM32(a1));
-        for (int k = 0; k < 16; k++) fprintf(stderr, " %02X", MEM8(a1 + k));
-        fprintf(stderr, "%c", 10);
-        fprintf(stderr, "[TEXSLOT] #%d this=0x%08X a1=0x%08X slot=0x%08X a3=0x%08X -> eax=0x%08X slotval=0x%08X\n",
-                s_n, this_, a1, a2, a3, eax,
-                (a2 >= 0x1000 && a2 < 0x4000000) ? MEM32(a2) : 0);
-        fflush(stderr);
     }
 }
 
@@ -4658,7 +4100,6 @@ void sub_00069BF3(void)
         uint32_t tp  = MEM32(0x49A95C);          /* texture slot ptr */
         fprintf(stderr, "[DXDRAW] obj=0x%08X vtbl=0x%08X slot14=0x%08X texptr=0x%08X tex=0x%08X esp=0x%08X\n",
                 obj, vt, tgt, tp, tp ? MEM32(tp) : 0, esp);
-        fflush(stderr);
     }
     sub_00069BF3_gen();
 }
@@ -4674,10 +4115,6 @@ void sub_00055AD0(void)
     s_n++;
     sub_00055AD0_gen();
     if ((esp != ei + 4 && s_n < 2000) || s_n <= 3) {
-        fprintf(stderr, "[GLYPH] #%d a1=0x%08X espin=0x%08X espout=0x%08X (d=%+d) s00=0x%08X s14=0x%04X s16=0x%04X\n",
-                s_n, a1, ei, esp, (int)(esp - ei),
-                a1 ? MEM32(a1) : 0, a1 ? MEM16(a1 + 0x14) : 0, a1 ? MEM16(a1 + 0x16) : 0);
-        fflush(stderr);
     }
 }
 
@@ -4702,7 +4139,6 @@ void sub_0006C480(void)
                 MEM32(0x49A98C), MEM32(0x49A990), MEM32(0x49A994),
                 (int)((MEM32(0x49A990) - MEM32(0x49A98C)) / 4),
                 MEM32(0x49A950), MEM32(0x49A954));
-        fflush(stderr);
     }
     /* This walk used to be skipped whenever [0x49A954] was zero, on the
      * theory that it was the D3DX sprite every command here draws through.
@@ -4732,15 +4168,10 @@ void sub_00021F70(void)
     uint32_t a1 = MEM32(esp + 4), a2 = MEM32(esp + 8), a3 = MEM32(esp + 0xC);
     s_n++;
     if (s_n <= 5 || (s_n % 2000) == 0) {
-        fprintf(stderr, "[T21F70] #%d a1=0x%08X a2=0x%08X a3=0x%08X eax=0x%08X\n",
-                s_n, a1, a2, a3, eax);
-        fflush(stderr);
     }
     { extern void doa3_ebxwp_pause(void); doa3_ebxwp_pause(); }   /* DOA3 diag: no ebx watch through the movie */
     sub_00021F70_gen();
     { extern void doa3_ebxwp_resume(void); doa3_ebxwp_resume(); }
-    fprintf(stderr, "[T21F70] #%d RETURNED eax=0x%08X\n", s_n, eax);
-    fflush(stderr);
 }
 void sub_000572C0_gen(void);
 void sub_000572C0(void)
@@ -4752,8 +4183,6 @@ void sub_000572C0(void)
         every frame -> the sequencer never left the warning screen. */
     s_n++;
     if (s_n <= 5 || (s_n % 2000) == 0) {
-        fprintf(stderr, "[T572C0] #%d a1=0x%08X a2=0x%08X ecx=0x%08X\n", s_n, a1, a2, ecx);
-        fflush(stderr);
     }
     sub_000572C0_gen();
     edi = s_edi; esi = s_esi; ebx = s_ebx;
@@ -4774,9 +4203,6 @@ void sub_001C3C65(void)
     static int s_log = 0;
     if (s_log < 8) {
         s_log++;
-        fprintf(stderr, "[D3DX-INIT] this=0x%08X dev=0x%08X -> hr=0x%08X espin=0x%08X espout=0x%08X d=%+d\n",
-                this_, dev, eax, esp_in, esp, (int)(esp - esp_in));
-        fflush(stderr);
     }
     esp = esp_in + 8;  /* enforce: thiscall, 1 stack arg (ret 4) — a residual
                         * -28 leak remains somewhere in its fragment chain */
@@ -4797,9 +4223,6 @@ void sub_001BEEFE(void)
     static int s_log = 0;
     if (s_log < 8) {
         s_log++;
-        fprintf(stderr, "[END-SB] espin=0x%08X espout=0x%08X out=0x%08X -> hr=0x%08X handle=0x%08X edi=0x%08X ctr=0x%08X\n",
-                esp_in, esp, outp, eax, outp ? MEM32(outp) : 0, edi, MEM32(esp + 0x10));
-        fflush(stderr);
     }
 }
 
@@ -4814,8 +4237,8 @@ void sub_001BEEFE(void)
         edi = s_edi; esi = s_esi; ebx = s_ebx; \
         static int s_n = 0; \
         if (s_n < 4) { s_n++; \
-            fprintf(stderr, "[ESP] " #fn " in=0x%08X out=0x%08X d=%+d\n", ei, esp, (int)(esp - ei)); \
-            fflush(stderr); } \
+             \
+             } \
     }
 /* CreateDevice tail: two callees leak the guest stack, and that is what left
  * the device without a render target.
@@ -4865,15 +4288,9 @@ void sub_001B45F0(void)
     if (s_n < 6) {
         s_n++;
         uint32_t o = 0x1C0688, dev = MEM32(0x1C3390);
-        fprintf(stderr, "[SETVS] fvf=0x%X obj+4=0x%X dev470=0x%X dev8=0x%X slots:",
-                fvf, MEM32(o + 4),
-                dev ? MEM32(dev + 0x470) : 0, dev ? MEM32(dev + 8) : 0);
         for (int k = 0; k < 20; k++) {
             uint32_t fm = MEM32(o + 0x30 + 0x10u * k);
-            if (fm != 2) fprintf(stderr, " [%d]=0x%X@%X", k, fm, MEM32(o + 0x2C + 0x10u * k));
         }
-        fprintf(stderr, "\n");
-        fflush(stderr);
     }
 }
 /* Push-buffer append (0x1B2390) -- __fastcall(ecx, edx), plain ret.
@@ -4940,12 +4357,7 @@ void sub_001B1CC0(void) {
       n++;
       if (a1 && (a1 < 0x1000u || a1 >= 0x08000000u)) {
         bad++;
-        if (bad <= 10)
-          fprintf(stderr, "[SETTEX] BAD stage=%08X res=%08X esp=%08X host_ret=%p n=%u bad=%u\n",
-                  a0, a1, esp, _ReturnAddress(), n, bad);
       } else if (n <= 4) {
-        fprintf(stderr, "[SETTEX] ok  stage=%08X res=%08X host_ret=%p\n",
-                a0, a1, _ReturnAddress());
       } }
     /* Same containment one level up. A non-pointer resource here also
      * gets stored into the device stage table at [edi + stage*4 + 0xba0];
@@ -4981,9 +4393,6 @@ void sub_001B7690(void)
     sub_001B7690_gen();
     if (s_n < 16 && (esp != ei + 4 || esi != entry_esi || ebx != entry_ebx)) {
         s_n++;
-        fprintf(stderr, "[FLUSH7690] d=%+d esi=%08X->%08X ebx=%08X->%08X\n",
-                (int)(esp - ei), entry_esi, esi, entry_ebx, ebx);
-        fflush(stderr);
     }
 }
 
@@ -4996,8 +4405,8 @@ void sub_001B7690(void)
         fn##_gen(); \
         if (s_n < 8 && (int)(esp - ei) != 8) { \
             s_n++; \
-            fprintf(stderr, "[DRIFT] " #fn " d=%+d\n", (int)(esp - ei)); \
-            fflush(stderr); } \
+             \
+             } \
     }
 /* sub_001B6610 (combiner-state applier, ret 4): leaks -44 through its
  * sub_001B6650 fragment chain (bug class #7). ABI-enforced: */
@@ -5080,6 +4489,8 @@ void sub_001B6410(void)   /* ABI-enforced (ESP_FIX pattern; macro defined later)
  * device+0x7F4 (pairs {dwords, skip}) with count device+0x874, both populated
  * by SetVertexShader. Print them at call time: garbage descriptors = the
  * movie-quad crash (host memcpy read past base+4GB). */
+static int doa3_pb_recording(uint32_t dev);
+extern uint32_t g_doa3_pb_base, g_doa3_pb_end;
 void sub_001B3760_gen(void);
 void sub_001B3760(void)
 {
@@ -5088,21 +4499,10 @@ void sub_001B3760(void)
     if (s_n < 6) {
         s_n++;
         {   uint32_t vb = MEM32(esp + 0xC);
-            fprintf(stderr, "[VDATA]");
             for (int k = 0; k < 24; k++) {
                 union { uint32_t u; float f; } cv; cv.u = MEM32(vb + 4u * k);
-                fprintf(stderr, " %.5g", cv.f);
             }
-            fprintf(stderr, "\n");
         }
-        fprintf(stderr, "[VPUSH] prim=%u n=%u verts=0x%X stride=0x%X dev=0x%X attrCnt=0x%X d0={%X,%X} d1={%X,%X} 7E8=0x%X 7EC=0x%X 7F0=0x%X\n",
-                MEM32(esp + 4), MEM32(esp + 8), MEM32(esp + 0xC), MEM32(esp + 0x10),
-                dev, dev ? MEM32(dev + 0x874) : 0,
-                dev ? MEM32(dev + 0x7F4) : 0, dev ? MEM32(dev + 0x7F8) : 0,
-                dev ? MEM32(dev + 0x7FC) : 0, dev ? MEM32(dev + 0x800) : 0,
-                dev ? MEM32(dev + 0x7E8) : 0, dev ? MEM32(dev + 0x7EC) : 0,
-                dev ? MEM32(dev + 0x7F0) : 0);
-        fflush(stderr);
     }
     uint32_t s_edi = edi, s_esi = esi, s_ebx = ebx;
     uint32_t ei = esp;
@@ -5123,13 +4523,6 @@ void sub_001B3760(void)
         static int s_g = 0;
         if (s_g < 8) {
             s_g++;
-            fprintf(stderr, "[VPUSH] SKIPPED draw (attrCnt still 0 after apply, dev8=0x%X dev470=0x%X obj+4=0x%X obj+C=0x%X s0=0x%X s1=0x%X s9=0x%X post7F4={%X,%X} 874=0x%X)\n",
-                    dev ? MEM32(dev + 8) : 0, dev ? MEM32(dev + 0x470) : 0,
-                    MEM32(0x1C0688 + 4), MEM32(0x1C0688 + 0xC),
-                    MEM32(0x1C0688 + 0x30), MEM32(0x1C0688 + 0x40), MEM32(0x1C0688 + 0xC0),
-                    dev ? MEM32(dev + 0x7F4) : 0, dev ? MEM32(dev + 0x7F8) : 0,
-                    dev ? MEM32(dev + 0x874) : 0);
-            fflush(stderr);
         }
         esp = ei + 4 + 16;   /* ret 16 */
         return;
@@ -5167,6 +4560,27 @@ void sub_001B3760(void)
                 extern void pgraph_d3d11_set_inline_hint(uint32_t, uint32_t);
                 pgraph_d3d11_set_inline_hint(MEM32(esp + 8), (uint32_t)off);
             }
+            /* The same layout IN the stream, ahead of this draw's BEGIN, as
+             * two NV2A NOPs (0xAC = layout, 0xAD = counts). The calls above
+             * set globals the translator reads when the push buffer is
+             * parsed at the next kick -- by then they hold whatever the LAST
+             * DrawVerticesUP of the kick declared. The courtyard torch's
+             * ember sprites (45 points, 4 dwords each) were sliced with the
+             * 7-dword layout of the health bars drawn after them: 27 garbage
+             * vertices with an rhw read from the diffuse word. Same
+             * mechanism as doa3_pb_tss_marker; skipped while recording. */
+            doa3_pb_tss_marker();            /* stage ops: the sprite's stage 3 */
+            if (!doa3_pb_recording(dev) && g_doa3_pb_base) {
+                uint32_t cursor = MEM32(dev), sdw = MEM32(esp + 0x10) / 4;
+                if (cursor >= g_doa3_pb_base && cursor + 0x1000 < g_doa3_pb_end && sdw >= 2 && sdw <= 16) {
+                    MEM32(cursor)      = 0x00040100u;
+                    MEM32(cursor + 4)  = 0xAC000000u | ((sdw & 0x1Fu) << 16) | (((uint32_t)pos_dw & 0x7u) << 12) |
+                                         (((uint32_t)uv_off & 0x3Fu) << 6) | ((uint32_t)color_off & 0x3Fu);
+                    MEM32(cursor + 8)  = 0x00040100u;
+                    MEM32(cursor + 12) = 0xAD000000u | ((MEM32(esp + 8) & 0xFFFFu) << 8) | ((uint32_t)off & 0xFFu);
+                    MEM32(dev) = cursor + 16;
+                }
+            }
         }
     }
     sub_001B3760_gen();
@@ -5181,8 +4595,7 @@ void sub_0009E422(void) {
     uint32_t pri = MEM32(esp + 4), ent = MEM32(esp + 8);
     static int n = 0;
     if (n < 40) { n++;
-        fprintf(stderr, "[TASKNEW] pri=%u entry=0x%08X\n", pri, ent);
-        fflush(stderr); }
+         }
     sub_0009E422_gen();
 }
 /* [FLOW] temporary: is the post-movie screen task ever created?
@@ -5193,9 +4606,7 @@ void sub_00083920_gen(void);
 void sub_00083920(void) {
     static int n = 0;
     if (n < 6) { n++;
-        fprintf(stderr, "[FLOW] sub_00083920 enter mode480B70=%u f47ADB8=%u\n",
-                MEM8(0x480B70), MEM8(0x47ADB8));
-        fflush(stderr); }
+         }
     sub_00083920_gen();
 }
 void sub_00083320_gen(void);
@@ -5203,7 +4614,7 @@ void sub_00083320(void) {
     static int n = 0;
     sub_00083320_gen();
     if (n < 6) { n++;
-        fprintf(stderr, "[FLOW] sub_00083320 -> %u\n", eax); fflush(stderr); }
+          }
 }
 /* [MWEND] temporary: the mwPly PLAYEND transition. sub_00176CE0 steps the
  * player; when obj[8]==2 it calls sub_00176C80, which sets obj[8]=3 once
@@ -5215,10 +4626,7 @@ void sub_00176CE0(void) {
     static int n = 0; static unsigned calls = 0;
     calls++;
     if (obj && n < 12 && (calls % 512) == 0) { n++;
-        fprintf(stderr, "[MWEND] step obj=%08X st8=%d h30=%08X h30st40=%d\n",
-                obj, (int)MEM32(obj + 8), MEM32(obj + 0x30),
-                MEM32(obj + 0x30) ? (int)MEM32(MEM32(obj + 0x30) + 0x40) : -1);
-        fflush(stderr); }
+         }
     sub_00176CE0_gen();
 }
 unsigned g_mw_calls, g_mw_st6, g_mw_set3, g_mw_laststate;
@@ -5241,11 +4649,7 @@ void sub_00177170(void) {
       int st8 = obj ? (int)MEM32(obj + 8) : -1;
       if ((st8 != last_st8 || (int)eax != last_ret) && n < 30) { n++;
         last_st8 = st8; last_ret = (int)eax;
-        fprintf(stderr, "[MVST2] call=%u obj=%08X st8_in=%d st8_out=%d ret=%d h30=%08X h30st40=%d\n",
-                g_st_calls, obj, g_st_lastst8, st8, (int)eax,
-                obj ? MEM32(obj + 0x30) : 0,
-                (obj && MEM32(obj + 0x30)) ? (int)MEM32(MEM32(obj + 0x30) + 0x40) : -1);
-        fflush(stderr); } }
+         } }
 }
 void sub_0009E1F0_gen(void);
 void sub_0009E1F0(void) {
@@ -5262,10 +4666,7 @@ void sub_0009E1F0(void) {
              (int)MEM8(0x4B83B0) != lastIntro) && n < 30) { n++;
             last8 = cur8; lastret = (int)eax; lastIntro = (int)MEM8(0x4B83B0);
             uint32_t o = MEM32(0x5E5900);
-            fprintf(stderr, "[MVPOLL] calls=%u ret=%d cached5E5970=%d obj=%08X objSt8=%d introSt=%u\n",
-                    g_e1f0_calls, (int)eax, (int)MEM32(0x5E5970), o,
-                    o ? (int)MEM32(o + 8) : -1, MEM8(0x4B83B0));
-            fflush(stderr); }
+             }
     }
 }
 void sub_00176C80_gen(void);
@@ -5277,6 +4678,32 @@ void sub_00176C80(void) {
              if (g_mw_laststate == 6) g_mw_st6++; }
     sub_00176C80_gen();
     if (obj && MEM32(obj + 8) == 3) g_mw_set3++;
+}
+/* sub_001B37DC / sub_001B37EC -- the >16-vertex path of DrawVerticesUP
+ * (sub_001B3760). 0x1B37DC computes the largest vertex count one
+ * INLINE_ARRAY header can carry (0x7FF dwords / vertex dwords), stores it
+ * at [ebp+0x10], and FALLS THROUGH 0x1B37EC (reload it into eax) into the
+ * chunked push at 0x1B37F0; 0x1B37EC is also the re-entry the multi-chunk
+ * loop tail-jumps to. Both generated bodies end at the trailing nop and
+ * return, so every inline draw of more than 16 vertices wrote its BEGIN
+ * and nothing else: no vertex data, no END. The courtyard torch's ember
+ * sprites (DrawVerticesUP POINTLIST, 39-50 points) were 271 headless
+ * BEGINs in a 4.5 s window; the translator never ran a point draw. */
+void sub_001B37F0(void);
+void sub_001B37DC(void)
+{
+    uint32_t ebp = g_seh_ebp;               /* fpo_leaf: caller's frame */
+    uint32_t vd = MEM32(edi + 0x7E8);
+    eax = vd ? 0x7FFu / vd : 0x7FFu;
+    edx = vd ? 0x7FFu % vd : 0;
+    MEM32(ebp + 0x10) = eax;
+    g_seh_ebp = ebp; sub_001B37F0();        /* fall through 0x1B37EC/0x1B37F0 */
+}
+void sub_001B37EC(void)
+{
+    uint32_t ebp = g_seh_ebp;
+    eax = MEM32(ebp + 0x10);
+    g_seh_ebp = ebp; sub_001B37F0();        /* fall through 0x1B37F0 */
 }
 ESP_PROBE(sub_001B37F0)
 ESP_PROBE(sub_001C4069)   /* D3DX context Release (vtbl slot 2) */
@@ -5315,9 +4742,7 @@ void sub_000566D0(void) {
         MEM8(0x305B1C) = 0;
         MEM8(0x305B1B) = 0;
         if (s_n < 2) { s_n++;
-            fprintf(stderr, "[S66D0] warning screen skipped (ctr parked at %u)\n",
-                    MEM32(0x491AFC));
-            fflush(stderr); }
+             }
     }
     eax = 0;
     esp += 4;   /* ret */
@@ -5371,10 +4796,6 @@ void sub_001B4B30(void)
         MEM32(plr + 4) = data & 0x07FFFFFFu;             /* .pBits (raw RAM addr) */
     }
     if (s_n < 8) {
-        fprintf(stderr, "[LOCKR] #%d tex=%X hdr={%X %X %X %X %X} -> pitch=%u pBits=%X%c",
-                s_n, tex, MEM32(tex), data, MEM32(tex + 8), fmt, size,
-                pitch, data & 0x07FFFFFFu, 10);
-        fflush(stderr);
     }
     s_n++;
     eax = 0;
@@ -5489,8 +4910,8 @@ ESP_PROBE(sub_001C760D)
         fn##_gen(); \
         s_n++; \
         if ((s_n % 600) == 1) { \
-            fprintf(stderr, "[LOOP] " #fn " #%u in=0x%08X d=%+d\n", s_n, ei, (int)(esp - ei)); \
-            fflush(stderr); } \
+             \
+             } \
     }
 LOOP_PROBE(sub_000A0370)
 void sub_0017EC00_gen(void);
@@ -5502,9 +4923,6 @@ void sub_0017EC00(void)
     s_n++;
     if ((s_n % 5000) == 1 && ei > 0xF00000) {   /* task-stack callers only (heap base) */
         void *bt[7]; int n = CaptureStackBackTrace(1, 7, bt, NULL);
-        fprintf(stderr, "[WAITBT] #%u in=0x%08X callers:", s_n, ei);
-        for (int i = 0; i < n; i++) fprintf(stderr, " %p", bt[i]);
-        fprintf(stderr, "\n"); fflush(stderr);
     }
 }
 LOOP_PROBE(sub_0009DC40)
@@ -5564,11 +4982,6 @@ void sub_001C408A(void)
          * (the guest reaches it through an icall, so there is no static
          * call site to grep for). */
         void *bt[12]; USHORT nb = CaptureStackBackTrace(1, 12, bt, NULL); int k;
-        fprintf(stderr, "[QUAD] #%d espin=0x%08X espout=0x%08X d=%+d hr=0x%08X bt:",
-                s_n, ei, esp, (int)(esp - ei), eax);
-        for (k = 0; k < nb; k++) fprintf(stderr, " %llX", (unsigned long long)(uintptr_t)bt[k]);
-        fprintf(stderr, "\n");
-        fflush(stderr);
     }
 }
 
@@ -5599,8 +5012,6 @@ void sub_001BE5FC(void)
     static int s_log = 0;
     if (s_log < 8) {
         s_log++;
-        fprintf(stderr, "[BEG-SB] espin=0x%08X espout=0x%08X hr=0x%08X\n", esp_in, esp, eax);
-        fflush(stderr);
     }
 }
 
@@ -5615,12 +5026,6 @@ void sub_000403F0(void)
     static int s_log = 0;
     if (s_log < 10) {
         s_log++;
-        fprintf(stderr, "[BLIT] struct=0x%08X cnt=%d dest278=0x%08X b2=%02X b4=%02X b6=%02X b8=%02X f10=%08X\n",
-                a1, (int)a2, a1 ? MEM32(a1 + 0x278) : 0,
-                a1 ? MEM8(a1 + 2) : 0, a1 ? MEM8(a1 + 4) : 0,
-                a1 ? MEM8(a1 + 6) : 0, a1 ? MEM8(a1 + 8) : 0,
-                a1 ? MEM32(a1 + 0x10) : 0);
-        fflush(stderr);
     }
     sub_000403F0_gen();
 }
@@ -5636,12 +5041,6 @@ void sub_00080F10(void)
     static int s_log = 0;
     if (s_log < 8) {
         s_log++;
-        fprintf(stderr, "[SCRSTREAM] blob=0x%08X idx=%d mode=%d", blob, (int)a2, (int)a3);
-        if (blob)
-            for (int i = 0; i < 12; i++)
-                fprintf(stderr, " %08X", MEM32(blob + i * 4));
-        fprintf(stderr, "\n");
-        fflush(stderr);
     }
     sub_00080F10_gen();
 }
@@ -5658,12 +5057,6 @@ void sub_00080D00(void)
     static int s_log = 0;
     if (s_log < 12) {
         s_log++;
-        fprintf(stderr, "[SCRDEF] a1=0x%08X blob=0x%08X idx=%d mode=%d hdr={%08X %08X %08X %08X %08X}\n",
-                a1, blob, (int)a3, (int)a4,
-                blob ? MEM32(blob) : 0, blob ? MEM32(blob + 4) : 0,
-                blob ? MEM32(blob + 8) : 0, blob ? MEM32(blob + 0xC) : 0,
-                blob ? MEM32(blob + 0x10) : 0);
-        fflush(stderr);
     }
     sub_00080D00_gen();
 }
@@ -5773,9 +5166,7 @@ static void doa3_translate_pb(uint32_t from, uint32_t to)
             if (count == 0 || pos + count * 4 > to) {
                 s_over++;
                 if (g_doa3_post_movie && s_log < 40) { s_log++;
-                    fprintf(stderr, "[PBPARSE] overrun hdr=%08X (m=%04X n=%u) at +%u of %u, prev hdr=%08X at +%u\n",
-                            word, method, count, pos - 4 - from, to - from, last_hdr, last_pos);
-                    fflush(stderr); }
+                     }
                 continue;
             }
             last_hdr = word; last_pos = pos - 4 - from;
@@ -5790,21 +5181,15 @@ static void doa3_translate_pb(uint32_t from, uint32_t to)
             {   static uint32_t s_ctx = 0; static uint32_t s_ctx_from = 0;
                 if (g_doa3_post_movie && s_ctx < 8 && s_ctx_from != from) { s_ctx++; s_ctx_from = from;
                     uint32_t k, b = (pos - 4 - from >= 48) ? pos - 4 - 48 : from;
-                    fprintf(stderr, "[PBPARSE] context before skip at +%u:", pos - 4 - from);
-                    for (k = b; k < pos; k += 4) fprintf(stderr, " %08X", MEM32(k));
-                    fprintf(stderr, "\n"); fflush(stderr); }
+                      }
             }
             if (g_doa3_post_movie && s_log < 40) { s_log++;
-                fprintf(stderr, "[PBPARSE] skip word=%08X at +%u of %u, prev hdr=%08X at +%u\n",
-                        word, pos - 4 - from, to - from, last_hdr, last_pos);
-                fflush(stderr); }
+                 }
         }
         /* jump/call/return (low bits 1/2) carry no params we translate — skip */
     }
     if (g_doa3_post_movie && GetTickCount() >= s_next) {
         s_next = GetTickCount() + 2000;
-        fprintf(stderr, "  [PBPARSE] hdrs=%u skipped=%u overrun=%u\n", s_hdrs, s_skip, s_over);
-        fflush(stderr);
     }
 }
 
@@ -5890,9 +5275,7 @@ static uint32_t doa3_pb_makespace_recording(uint32_t dev)
     MEM32(dev + 0x3F8) = MEM32(dev + 0x3F8) + (cursor - chunk);
     MEM32(dev) = chunk;
     if (g_doa3_post_movie && s_n < 12) { s_n++;
-        fprintf(stderr, "[PBREC] MakeSpace(recording) dev=%08X cursor=%08X chunk=%08X total=%u real=%08X\n",
-                dev, cursor, chunk, MEM32(dev + 0x3F8), MEM32(dev + 0x400));
-        fflush(stderr); }
+         }
     return chunk;
 }
 
@@ -5904,9 +5287,7 @@ static void doa3_pb_wrap(uint32_t dev, const char *who)
     if (cursor > g_pb_parsed && g_pb_parsed >= g_doa3_pb_base && cursor <= g_doa3_pb_end)
         doa3_translate_pb(g_pb_parsed, cursor);
     if (g_doa3_post_movie && s_n < 40) { s_n++;
-        fprintf(stderr, "[PBWRAP] %s cursor=+%u parsed=+%u -> base\n", who,
-                cursor - g_doa3_pb_base, g_pb_parsed - g_doa3_pb_base);
-        fflush(stderr); }
+         }
     {   /* DOA3 DIAG: a cursor outside our buffer altogether was not put
          * there by any of our overrides; name the guest routine that did. */
         static int s_odd = 0;
@@ -5914,12 +5295,6 @@ static void doa3_pb_wrap(uint32_t dev, const char *who)
             (cursor < g_doa3_pb_base || cursor > g_doa3_pb_end)) {
             void *bt[14]; USHORT nf = CaptureStackBackTrace(1, 14, bt, NULL); USHORT k;
             s_odd++;
-            fprintf(stderr, "[PBWRAP] odd cursor %08X dev=%08X g_dev=%08X hdr=[%08X %08X %08X %08X %08X %08X %08X] +18=%08X +400=%08X +3F4=%08X +3F8=%08X bt:",
-                    cursor, dev, MEM32(0x1C3390u), MEM32(dev), MEM32(dev + 4), MEM32(dev + 8), MEM32(dev + 0xC),
-                    MEM32(dev + 0x10), MEM32(dev + 0x14), MEM32(dev + 0x18),
-                    MEM32(dev + 0x18), MEM32(dev + 0x400), MEM32(dev + 0x3F4), MEM32(dev + 0x3F8));
-            for (k = 0; k < nf; k++) fprintf(stderr, " %llX", (unsigned long long)(uintptr_t)bt[k]);
-            fprintf(stderr, "\n"); fflush(stderr);
         }
     }
     MEM32(dev + 0x00) = g_doa3_pb_base;              /* write cursor = base */
@@ -5940,8 +5315,6 @@ void sub_001B88C0(void)
         uint32_t cursor = doa3_pb_recording(ctx) ? MEM32(ctx + 0x400) : MEM32(ctx);
         uint32_t notifier = MEM32(ctx + 0x2304);
         if ((++g_kick_count % 10000) == 0) {
-            fprintf(stderr, "[KICK] count=%u (frame loop alive)\n", g_kick_count);
-            fflush(stderr);
         }
         {   /* DOA3 DIAG: a cursor outside our buffer means the guest wrote
              * commands somewhere we never translate (and, past the end,
@@ -5950,10 +5323,7 @@ void sub_001B88C0(void)
             static int s_n = 0;
             if (g_doa3_post_movie && s_n < 12 && g_doa3_pb_base &&
                 (cursor < g_doa3_pb_base || cursor > g_doa3_pb_end)) { s_n++;
-                fprintf(stderr, "[KICK] cursor %08X outside buffer (limit=%08X g_dev=%08X parsed=+%u rec=%d)\n",
-                        cursor, MEM32(ctx + 4), MEM32(0x1C3390u), g_pb_parsed - g_doa3_pb_base,
-                        doa3_pb_recording(ctx));
-                fflush(stderr); }
+                 }
         }
         /* Translate the push-buffer commands written since the last kick to D3D11
          * (only for the main device's RAM push buffer). */
@@ -5995,9 +5365,6 @@ void sub_001B88C0(void)
                 cursor - g_doa3_pb_base >
                     (g_doa3_pb_end - g_doa3_pb_base) / 4 * 3) {
                 s_warned = 1;
-                fprintf(stderr, "[PBFULL] one kick reached %u of %u bytes\n",
-                        cursor - g_doa3_pb_base, g_doa3_pb_end - g_doa3_pb_base);
-                fflush(stderr);
             }
         }
         MEM32(ctx + 0x18)   = cursor;
@@ -6035,10 +5402,6 @@ void doa3_walk_canary(const char *callee)
     if (!g_doa3_post_movie || told >= 6) return;
     if (MEM32(0x00B1F388u) == 0x0017EC00u) return;   /* B1F38C carries a real game callback, not the init value */
     told++;
-    fprintf(stderr, "[WALKCANARY] p=%ld broken after %s: B1F388=%08X B1F38C=%08X A1F378=%08X B1F390=%08X 99A1FC=%08X ebx=%08X\n",
-            (long)g_doa3_heartbeat, callee, MEM32(0x00B1F388u), MEM32(0x00B1F38Cu),
-            MEM32(0x00A1F378u), MEM32(0x00B1F390u), MEM32(0x0099A1FCu), g_ebx);
-    fflush(stderr);
 }
 
 /* Per-record trace of the walk itself (called at loc_00158E20, once per
@@ -6070,10 +5433,7 @@ void doa3_walk_step(uint32_t rec)
             uint32_t f = MEM32(0x00A1F384u), rp = MEM32(0x0099A1FCu);
             int fib = xbox_fiber_current();
             if (f != f0 || rp != rp0 || fib != fib0) { told++; armed = 0;
-                fprintf(stderr, "[WALKOWN] p=%ld at record %08X (+%u): recflag %u->%u recptr %08X->%08X fiber %d->%d\n",
-                        (long)g_doa3_heartbeat, rec, rec - g_walk_start,
-                        f0, f, rp0, rp, fib0, fib);
-                fflush(stderr); }
+                 }
         }
     }
     if (t <= 2 || !g_doa3_post_movie || reported >= 4) return;
@@ -6081,12 +5441,8 @@ void doa3_walk_step(uint32_t rec)
     {
         unsigned i, first = (n > 12) ? n - 12 : 0;
         uint32_t p, good = 0; unsigned gi = 0;
-        fprintf(stderr, "[WALKSTEP] p=%ld BROKE at %08X (+%u of %u, type=%08X) after %u records; walk visited:",
-                (long)g_doa3_heartbeat, rec, rec - g_walk_start,
-                g_walk_end - g_walk_start, t, n - 1);
         for (i = first; i < n; i++) {
             uint32_t r = ring[i % 12];
-            fprintf(stderr, " %08X(t=%u)", r, MEM32(r));
         }
         for (p = g_walk_start; p < g_walk_end; ) {
             uint32_t ct = MEM32(p);
@@ -6094,9 +5450,6 @@ void doa3_walk_step(uint32_t rec)
             if (p <= rec) { good = p; gi++; } else break;
             p += (ct == 0) ? 0x290u : (ct == 1) ? 0xCu : 0x14u;
         }
-        fprintf(stderr, " | true chain record %u at %08X (+%u), next true start %08X\n",
-                gi, good, good - g_walk_start, p);
-        fflush(stderr);
     }
 }
 int      g_walk_active;
@@ -6116,16 +5469,6 @@ void sub_00158DE0(void)
             if (t > 2) {
                 int k;
                 s_bad++;
-                fprintf(stderr, "[WALKCHK] p=%ld BAD type=%08X at +%u of %u (start=%08X end=%08X) "
-                                "after %u records; last starts:",
-                        (long)g_doa3_heartbeat, t, p - start, end - start, start, end, n);
-                for (k = 0; k < 4; k++)
-                    if (prev[k]) fprintf(stderr, " +%u(t=%u)", prev[k] - start, MEM32(prev[k]));
-                fprintf(stderr, " | words at bad:");
-                for (k = -4; k < 8; k++)
-                    fprintf(stderr, " %08X", MEM32(p + (uint32_t)(k * 4)));
-                fprintf(stderr, "\n");
-                fflush(stderr);
                 break;
             }
             prev[0] = prev[1]; prev[1] = prev[2]; prev[2] = prev[3]; prev[3] = p;
@@ -6133,13 +5476,9 @@ void sub_00158DE0(void)
             n++;
         }
         if (p == end && s_ok < 3) { s_ok++;
-            fprintf(stderr, "[WALKCHK] p=%ld chain OK: %u records, %u bytes\n",
-                    (long)g_doa3_heartbeat, n, end - start);
-            fflush(stderr); }
+             }
         else if (p > end && s_bad < 8) { s_bad++;
-            fprintf(stderr, "[WALKCHK] p=%ld OVERSHOT end by %u after %u records (start=%08X end=%08X)\n",
-                    (long)g_doa3_heartbeat, p - end, n, start, end);
-            fflush(stderr); }
+             }
     }
 
     g_walk_start  = start;
@@ -6178,7 +5517,7 @@ void sub_001B8B00(void)
 void sub_001B8A10(void)
 {
     static int s_n = 0;
-    if (s_n < 6) { fprintf(stderr, "[BLKF] #%d fence=0x%08X%c", s_n, MEM32(esp + 4), 10); fflush(stderr); }
+    if (s_n < 6) {   }
     s_n++;
     esp += 12;  /* fake-ret slot + ret 8 */
 }
@@ -6202,9 +5541,6 @@ void sub_00186D00(void)
     if (a1 < 0x100000u || a1 >= 0x8000000u || (int32_t)cnt < 0 || cnt > 2048u) {
         if (s_guard < 12) {
             s_guard++;
-            fprintf(stderr, "[BLKGUARD] #%d a1=%X a2=%X cnt=%X -> skipped%c",
-                    s_guard, a1, a2, cnt, 10);
-            fflush(stderr);
         }
         eax = 0;
         esp += 4;   /* cdecl ret: pop dummy return */
@@ -6212,8 +5548,6 @@ void sub_00186D00(void)
     }
     sub_00186D00_gen();
     if (s_n < 10 || (s_n % 8192) == 0) {
-        fprintf(stderr, "[BLKST] #%d a1=%X a2=%X eax=%X%c", s_n, a1, a2, eax, 10);
-        fflush(stderr);
     }
     s_n++;
 }
@@ -6249,10 +5583,6 @@ void sub_00175EC0(void)
     inv[6]= (a[3]*a[7]-a[4]*a[6])*s; inv[7]=-(a[0]*a[7]-a[1]*a[6])*s; inv[8]= (a[0]*a[4]-a[1]*a[3])*s;
     for (int k = 0; k < 9; k++) doa3_stored(dst + 8u * k, inv[k]);
     if (s_n < 2) {
-        fprintf(stderr, "[COEF] C-inv out:");
-        for (int k = 0; k < 9; k++) fprintf(stderr, " %.4f", inv[k]);
-        fprintf(stderr, "%c", 10);
-        fflush(stderr);
     }
     s_n++;
     esp += 4;   /* cdecl */
@@ -6266,15 +5596,6 @@ void sub_001777C0(void)
     uint32_t a4 = MEM32(esp + 0x10);
     sub_001777C0_gen();
     if (s_n < 6) {
-        fprintf(stderr, "[PLINF] #%d out=%X:", s_n, a4);
-        for (int k = 0; k < 8; k++) fprintf(stderr, " %X", MEM32(a4 + 4u * k));
-        fprintf(stderr, " | coef %X %X %X %X %X %X | u40 %X %X uC0 %X %X v40 %X %X%c",
-                MEM32(0xB26F78), MEM32(0xB26F7C), MEM32(0xB26F90), MEM32(0xB26F94),
-                MEM32(0xB26FA8), MEM32(0xB26FAC),
-                MEM32(0xB279D0 + 0x40 * 8), MEM32(0xB279D0 + 0x40 * 8 + 4),
-                MEM32(0xB279D0 + 0xC0 * 8), MEM32(0xB279D0 + 0xC0 * 8 + 4),
-                MEM32(0xB281D0 + 0x40 * 8), MEM32(0xB281D0 + 0x40 * 8 + 4), 10);
-        fflush(stderr);
     }
     s_n++;
 }
@@ -6287,7 +5608,7 @@ void sub_001777C0(void)
  * registers) — resolving them unconditionally wedged boot. Guard: only run
  * the real code while a movie is PLAYING; otherwise keep the old harmless
  * no-op behavior. */
-#define RESUME_GUARD(fn)     void fn##_gen(void);     void fn(void) {         if (MEM32(0xC0F7C0 + 0x40) == 4) {             static int s_rg = 0;             if (s_rg < 4) { s_rg++;                 fprintf(stderr, "[RGRUN] " #fn " #%d%c", s_rg, 10); fflush(stderr); }             fn##_gen(); return; }         eax = 0; esp += 4; }
+#define RESUME_GUARD(fn)     void fn##_gen(void);     void fn(void) {         if (MEM32(0xC0F7C0 + 0x40) == 4) {             static int s_rg = 0;             if (s_rg < 4) { s_rg++;                   }             fn##_gen(); return; }         eax = 0; esp += 4; }
 RESUME_GUARD(sub_001E5B0C)
 RESUME_GUARD(sub_001E5C23)
 RESUME_GUARD(sub_001E63D2)
@@ -6295,7 +5616,7 @@ RESUME_GUARD(sub_001E6E02)
 #undef RESUME_GUARD
 
 /* DIAG: MB-worker esp anomaly probes (the -36 hunt). Print only imbalances. */
-#define ESPANOM_PROBE(fn)     void fn##_gen(void);     void fn(void) {         static int s_bad = 0;         uint32_t e0 = esp;         fn##_gen();         int _d = (int)(esp - e0);         if (_d != 4 && _d != 28 && s_bad < 12) {             s_bad++;             fprintf(stderr, "[EANOM] " #fn " espDelta=%d eax=%X%c", _d, eax, 10);             fflush(stderr); } }
+#define ESPANOM_PROBE(fn)     void fn##_gen(void);     void fn(void) {         static int s_bad = 0;         uint32_t e0 = esp;         fn##_gen();         int _d = (int)(esp - e0);         if (_d != 4 && _d != 28 && s_bad < 12) {             s_bad++;                           } }
 ESPANOM_PROBE(sub_001E5040)
 ESPANOM_PROBE(sub_001E5500)
 ESPANOM_PROBE(sub_0018137A)
@@ -6308,7 +5629,7 @@ ESPANOM_PROBE(sub_001E3520)
 
 /* DIAG: skip-variant picture "decoders" (type-table entries 4/5) — esp
  * balance probes for the -36 leak in the skip chain. */
-#define SKIPSTUB_PROBE(fn)     void fn##_gen(void);     void fn(void) {         static int s_n = 0;         uint32_t e0 = esp;         fn##_gen();         if (s_n < 10) {             fprintf(stderr, "[SKST] " #fn " #%d espDelta=%d eax=%X%c",                     s_n, (int)(esp - e0), eax, 10);             fflush(stderr); }         s_n++; }
+#define SKIPSTUB_PROBE(fn)     void fn##_gen(void);     void fn(void) {         static int s_n = 0;         uint32_t e0 = esp;         fn##_gen();         if (s_n < 10) {                           }         s_n++; }
 SKIPSTUB_PROBE(sub_001E32D0)
 SKIPSTUB_PROBE(sub_001E3010)
 #undef SKIPSTUB_PROBE
@@ -6321,17 +5642,9 @@ void sub_001E4C40(void)
     uint32_t c = MEM32(esp + 4);
     if (s_n < 6) {
         uint32_t ok = (c >= 0x1000 && c < 0x8000000u);
-        fprintf(stderr, "[IDEC] #%d ctx=%X w230=%X w234=%X w238=%X w23C=%X w248=%X f29C=%X%c",
-                s_n, c,
-                ok ? MEM32(c + 0x230) : 0, ok ? MEM32(c + 0x234) : 0,
-                ok ? MEM32(c + 0x238) : 0, ok ? MEM32(c + 0x23C) : 0,
-                ok ? MEM32(c + 0x248) : 0, ok ? MEM32(c + 0x29C) : 0, 10);
-        fflush(stderr);
     }
     sub_001E4C40_gen();
     if (s_n < 6) {
-        fprintf(stderr, "[IDEC] #%d done eax=%X%c", s_n, eax, 10);
-        fflush(stderr);
     }
     s_n++;
 }
@@ -6344,9 +5657,6 @@ void sub_0017CD60(void)
     uint32_t h = MEM32(esp + 4), cls = MEM32(esp + 8), fr = MEM32(esp + 0xC);
     sub_0017CD60_gen();
     if (s_n < 14 || (s_n % 2048) == 0) {
-        fprintf(stderr, "[DPUSH] #%d h=%X cls=%d fr=%X -> eax=%X%c",
-                s_n, h, cls, fr, eax, 10);
-        fflush(stderr);
     }
     s_n++;
 }
@@ -6395,19 +5705,10 @@ void sub_0017EE50(void)
         uint32_t up = MEM32(rec + 0x360);
         uint32_t vt2 = MEM32(h + 2u * 0x610u + 0x2F4Cu);
         uint32_t fr2 = (outp >= 0x1000 && outp < 0x8000000u) ? MEM32(outp) : 0;
-        fprintf(stderr, "[DPOP] #%d q=%d -> out=%X slotpts=%d clk=%d servedpts=%d%c",
-                s_n, q, fr2,
-                (fr2 >= 0x1000 && fr2 < 0x8000000u) ? (int)MEM32(fr2 + 8) : -1,
-                (int)MEM32(h + 0xCCC), (int)MEM32(h + 0xCC4), 10);
         /* item 104: dump the FULL popped frame record — the serve reads pts 0
          * and always plane 0x1AE0A20; these dwords name the record fields */
         if (s_n < 12 && fr2 >= 0x1000 && fr2 < 0x8000000u) {
-            fprintf(stderr, "[DPOPREC] fr=%X:", fr2);
-            for (int k = 0; k < 16; k++)
-                fprintf(stderr, " %X", MEM32(fr2 + 4u * k));
-            fprintf(stderr, "%c", 10);
         }
-        fflush(stderr);
     }
     s_n++;
 }
@@ -6418,9 +5719,6 @@ void sub_0017EAD0(void)
     uint32_t h = MEM32(esp + 4), fr = MEM32(esp + 8);
     sub_0017EAD0_gen();
     if (s_n < 12 || (s_n % 2048) == 0) {
-        fprintf(stderr, "[DGATE] #%d fr=%X -> eax=%X clk=%d%c",
-                s_n, fr, eax, (int)MEM32(h + 0xCCC), 10);
-        fflush(stderr);
     }
     s_n++;
 }
@@ -6435,12 +5733,6 @@ void sub_00182630(void)
     uint32_t a1 = MEM32(esp + 4), a2 = MEM32(esp + 8), a3 = MEM32(esp + 0xC);
     sub_00182630_gen();
     if (s_n < 10 || (s_n % 1024) == 0) {
-        fprintf(stderr, "[IXMATCH] #%d st=%X pic=%X rs=%X rb=%X cnt=%d rd=%d -> eax=%X%c",
-                s_n, st, a1, a2, a3,
-                (st >= 0x1000 && st < 0x8000000u) ? (int)MEM32(st + 8) : -9,
-                (st >= 0x1000 && st < 0x8000000u) ? (int)MEM32(st + 0x10) : -9,
-                eax, 10);
-        fflush(stderr);
     }
     s_n++;
 }
@@ -6455,12 +5747,6 @@ void sub_0017AEB0(void)
     sub_0017AEB0_gen();
     if (s_n < 16) {
         uint32_t ok = (h >= 0x1000 && h < 0x8000000u);
-        fprintf(stderr, "[DECQ] #%d h=%X p2F=%d p27=%d bAC=%d -> eax=%d%c",
-                s_n, h,
-                ok ? (int)MEM32(h + 0x994 + 0x2F * 4) : -9,
-                ok ? (int)MEM32(h + 0x994 + 0x27 * 4) : -9,
-                ok ? (int)MEM32(h + 0xBAC) : -9, (int)eax, 10);
-        fflush(stderr);
     }
     s_n++;
 }
@@ -6486,7 +5772,7 @@ void sub_001762B0(void)
         MEM32(esp + 4 + 12) = h; a[3] = h;
         static int s_dz = 0;
         if (s_dz < 6) { s_dz++;
-            fprintf(stderr, "[DIMFIX] w=%X h=%X%c", w, h, 10); fflush(stderr); }
+              }
     }
     if (s_n < 8) {
         uint32_t src = a[0] & 0x07FFFFFFu, ysum = 0, usum = 0, vsum = 0;
@@ -6496,9 +5782,6 @@ void sub_001762B0(void)
                 usum += MEM32(src + 0x54600 + 0x8000 + 4u * k);  /* U plane */
                 vsum += MEM32(src + 0x69780 + 0x8000 + 4u * k);  /* V plane */
             }
-        fprintf(stderr, "[FCOPY] enter #%d args= %X %X %X %X %X %X ysum=%X usum=%X vsum=%X%c",
-                s_n, a[0], a[1], a[2], a[3], a[4], a[5], ysum, usum, vsum, 10);
-        fflush(stderr);
     }
     if (doa3_display_trace_enabled() && display_n < 40) {
         uint32_t src = a[0] & 0x07FFFFFFu;
@@ -6561,10 +5844,6 @@ void sub_001762B0(void)
         {
             uint32_t Y = a[0] & 0x07FFFFFFu;
             uint32_t U = Y + 0x56400, V = Y + 0x6CC00;
-            fprintf(stderr, "[FCOPY] exit #%d dst=%X px= %08X %08X %08X | yuv@mid %02X %02X %02X yuv@q %02X %02X %02X%c",
-                    s_n, dst, d0, d1, d2,
-                    MEM8(Y + 240 * 0x2E0 + 360), MEM8(U + 120 * 0x180 + 180), MEM8(V + 120 * 0x180 + 180),
-                    MEM8(Y + 120 * 0x2E0 + 180), MEM8(U + 60 * 0x180 + 90),  MEM8(V + 60 * 0x180 + 90), 10);
             {   /* recompute one pixel from the live tables, both families */
                 uint32_t yv = MEM8(Y + 240 * 0x2E0 + 360), uv = MEM8(U + 120 * 0x180 + 180),
                          vv = MEM8(V + 120 * 0x180 + 180);
@@ -6578,16 +5857,9 @@ void sub_001762B0(void)
                         sum >>= 6; if (sum < 0) sum = 0; if (sum > 255) sum = 255;
                         out[l] = sum;
                     }
-                    fprintf(stderr, "[CSCX] tbl%d BGR=%02X %02X %02X (ytb %04X %04X %04X utb %04X %04X %04X vtb %04X %04X %04X)%c",
-                            t, out[0], out[1], out[2],
-                            MEM16(tb + yv * 8), MEM16(tb + yv * 8 + 2), MEM16(tb + yv * 8 + 4),
-                            MEM16(tb + 0x800 + uv * 8), MEM16(tb + 0x800 + uv * 8 + 2), MEM16(tb + 0x800 + uv * 8 + 4),
-                            MEM16(tb + 0x1000 + vv * 8), MEM16(tb + 0x1000 + vv * 8 + 2), MEM16(tb + 0x1000 + vv * 8 + 4), 10);
                 }
-                fflush(stderr);
             }
         }
-        fflush(stderr);
     }
     s_n++;
 }
@@ -6624,7 +5896,6 @@ void doa3_ptinfo_check(const char *where)
             MEM16(blk + 0x116 + 2 * 0x15) != 0x328) return;
         for (i = 0; i < 1102; i++) s_pt_ref[i] = MEM16(blk + 0x116 + 2u * i);
         s_pt_have = 1;
-        fprintf(stderr, "[PTCHK] reference taken at %s\n", where); fflush(stderr);
         return;
     }
     {   int first = -1, last = -1, n = 0;
@@ -6633,13 +5904,6 @@ void doa3_ptinfo_check(const char *where)
         if (first >= 0) {
             void *bt[16]; USHORT nb = CaptureStackBackTrace(0, 16, bt, NULL); int k;
             s_pt_reported = 1;
-            fprintf(stderr, "[PTCHK] TABLE CHANGED at %s (last ok at %s, check #%u): %d entries differ, first=%d (0x%X->0x%X) last=%d; bytes @%08X:",
-                    where, s_pt_last_ok, s_pt_checks, n, first, s_pt_ref[first], MEM16(blk + 0x116 + 2u * first), last,
-                    blk + 0x116 + 2u * first);
-            for (k = 0; k < 32; k++) fprintf(stderr, " %02X", MEM8(blk + 0x116 + 2u * first + k));
-            fprintf(stderr, "\n[PTCHK] bt:");
-            for (k = 0; k < nb; k++) fprintf(stderr, " %llX", (unsigned long long)(uintptr_t)bt[k]);
-            fprintf(stderr, "\n"); fflush(stderr);
         } else { s_pt_last_ok = where; s_pt_checks++; }
     }
 }
@@ -6677,17 +5941,12 @@ void doa3_pump_cri_servers(void)
              * PLAYEND; take it from the decoder that actually reached it and
              * complete through the game's own path. */
             if ((herr & 0xFF000000u) == 0xFF000000u && g_doa3_movie_frames > 60) {
-                fprintf(stderr, "[EOSFIX] parser hit stream end (hErr=%X after %u frames) -> PLAYEND%c",
-                        herr, g_doa3_movie_frames, 10);
                 MEM32(0xC0F7C0 + 0x988) = 0;
                 MEM32(mvobj + 8) = 3;
             } else if (g_doa3_host_movie_ended && MEM32(0xC0F7C0 + 0x40) == 4) {
                 static int s_eos2 = 0;
                 if (s_eos2 < 2) { s_eos2++;
-                    fprintf(stderr, "[EOSFIX] host presenter reached end of file "
-                                    "(handle still PLAYING, %u blits) -> PLAYEND%c",
-                            g_doa3_movie_frames, 10);
-                    fflush(stderr); }
+                     }
                 MEM32(0xC0F7C0 + 0x988) = 0;
                 MEM32(0xC0F7C0 + 0x40) = 6;    /* handle: PLAYEND */
                 MEM32(mvobj + 8) = 3;          /* movie object: finished */
@@ -6713,9 +5972,6 @@ void doa3_pump_cri_servers(void)
             extern void doa3_watch_arm(uint32_t xb_page);
             s_armed = 1;
             doa3_watch_arm(g_watch_exact_va & ~0xFFFu);
-            fprintf(stderr, "[WATCHVA] armed on guest 0x%08X (now = 0x%08X)%c",
-                    g_watch_exact_va, MEM32(g_watch_exact_va), 10);
-            fflush(stderr);
         }
     }
     {   /* item 109 (defect #1): OPT-IN write-watch on the HANDLER page
@@ -6728,8 +5984,6 @@ void doa3_pump_cri_servers(void)
             extern void doa3_watch_arm(uint32_t xb_page);
             doa3_watch_arm(0x00C12000);   /* item 110: catch pictype writer @0xC12DB8 */
             s_armed = 1;
-            fprintf(stderr, "[WATCH] armed on slot page 0xC12000 (pictype 0xC12DB8)%c", 10);
-            fflush(stderr);
         }
     }
     {   /* [LDT] the post-movie load: sub_0007FFDD polls op+1 for status 3.
@@ -6741,11 +5995,8 @@ void doa3_pump_cri_servers(void)
     int st = op ? (int)(int8_t)MEM8(op + 1) : -1;
     if ((ph != s_ph || op != s_op || st != s_st) && s_n < 60) {
         s_n++; s_ph = ph; s_op = op; s_st = st;
-        fprintf(stderr, "[LDT] phase=%u op=0x%08X st=%d", ph, op, st);
         if (op >= 0x1000u && op < 0x08000000u) {
             int _k; char nm[40] = {0};
-            for (_k = 0; _k < 10; _k++)
-                fprintf(stderr, " %08X", MEM32(op + _k * 4));
             /* any dword that looks like a guest pointer may be the name */
             for (_k = 0; _k < 10; _k++) {
                 uint32_t v = MEM32(op + _k * 4);
@@ -6758,13 +6009,10 @@ void doa3_pump_cri_servers(void)
                     }
                     if (ok && c >= 3) {
                         for (c = 0; c < 39; c++) { nm[c] = (char)MEM8(v + c); if (!nm[c]) break; }
-                        fprintf(stderr, "  [%d]->'%s'", _k, nm);
                     }
                 }
             }
         }
-        fprintf(stderr, "\n");
-        fflush(stderr);
     }
 }
     {   /* item 103b: apply releases that were deferred because their slot
@@ -6783,10 +6031,6 @@ void doa3_pump_cri_servers(void)
             static int s_t = 0;
             if (s_t < 200) {
                 s_t++;
-                fprintf(stderr, "[SFDST] h40 %d->%d h44 %d->%d objst8 %d->%d intro=%u\n",
-                        (int)s_p40, (int)h40, (int)s_p44, (int)h44,
-                        (int)s_pst8, (int)st8, MEM8(0x4B83B0));
-                fflush(stderr);
             }
             s_p40 = h40; s_p44 = h44; s_pst8 = st8;
         }
@@ -6804,16 +6048,6 @@ void doa3_pump_cri_servers(void)
         {   /* video ES joint + picture index + frame slots: says whether
              * the decoder is starved of ES or blocked holding slots */
             uint32_t vsj = 0xC09770u, ix = 0xC108BCu, h = 0xC0F7C0u;
-            fprintf(stderr, "[VSTALL] es{c=%X w=%X} ix{t=%X cnt=%d wr=%d rd=%d} "
-                "slots=%d[%d%d%d%d%d%d%d] st40=%d clk=%d\n",
-                MEM32(vsj + 0xC), MEM32(vsj + 0x10),
-                MEM32(ix), (int)MEM32(ix + 8), (int)MEM32(ix + 0xC), (int)MEM32(ix + 0x10),
-                (int)MEM32(h + 0x3668),
-                (int)MEM32(h + 0x366C), (int)MEM32(h + 0x366C + 0x50),
-                (int)MEM32(h + 0x366C + 0xA0), (int)MEM32(h + 0x366C + 0xF0),
-                (int)MEM32(h + 0x366C + 0x140), (int)MEM32(h + 0x366C + 0x190),
-                (int)MEM32(h + 0x366C + 0x1E0),
-                (int)MEM32(h + 0x40), (int)MEM32(h + 0xCCC));
             /* end-of-stream inputs: sub_00179070 marks the video stream
              * ended when inEnd==1 and (p0F==0 || sub_0017E880 != 0), and
              * sub_0017E880 compares servedPTS/scale against clock/scale. */
@@ -6839,18 +6073,10 @@ void doa3_pump_cri_servers(void)
         static unsigned s_ig = 0;
         if ((++s_ig % 600) == 0) {
             uint32_t sj = 0xC09890;
-            fprintf(stderr, "[INGEST] sj08=%X c=%X w=%X sj14=%X sj18=%X sj1C=%X sj20=%X%c",
-                    MEM32(sj + 8), MEM32(sj + 0xC), MEM32(sj + 0x10), MEM32(sj + 0x14),
-                    MEM32(sj + 0x18), MEM32(sj + 0x1C), MEM32(sj + 0x20), 10);
             for (int i = 0; i < 16; i++) {
                 uint32_t ent = 0xC05AC0 + i * 0x40u;
                 if (!MEM8(ent) && !MEM32(ent + 0x14)) continue;
-                fprintf(stderr, "[INGEST] stm%d st=%u,%u f14=%X e08=%X e0C=%X e18=%X e1C=%X e20=%X e28=%X%c",
-                        i, MEM8(ent), MEM8(ent + 1), MEM32(ent + 0x14),
-                        MEM32(ent + 8), MEM32(ent + 0xC), MEM32(ent + 0x18),
-                        MEM32(ent + 0x1C), MEM32(ent + 0x20), MEM32(ent + 0x28), 10);
             }
-            fflush(stderr);
         }
     }
     {
@@ -6861,16 +6087,6 @@ void doa3_pump_cri_servers(void)
         if (now - s_t0 >= 10000) {
             uint32_t h = 0xC0F7C0;
             extern uint32_t g_doa3_movie_frames;
-            fprintf(stderr,
-                "[PUMPR] %u pumps/%ums blits=%u clk=%d/%d vbl=%u fr=[%d%d%d%d%d%d%d] frn=%d%c",
-                s_pumps, now - s_t0, g_doa3_movie_frames,
-                (int)MEM32(h + 0xCCC), (int)MEM32(h + 0xCD0),
-                MEM32(0x001C2B08u + 0x820u),
-                (int)MEM32(h + 0x366C), (int)MEM32(h + 0x366C + 0x50),
-                (int)MEM32(h + 0x366C + 0xA0), (int)MEM32(h + 0x366C + 0xF0),
-                (int)MEM32(h + 0x366C + 0x140), (int)MEM32(h + 0x366C + 0x190),
-                (int)MEM32(h + 0x366C + 0x1E0), (int)MEM32(h + 0x3668), 10);
-            fflush(stderr);
             s_t0 = now; s_pumps = 0;
         }
     }
@@ -6939,8 +6155,7 @@ void doa3_pump_cri_servers(void)
                     if (!has) continue;
                     {   static int s_log[5] = {0,0,0,0,0};
                         if (!s_log[g]) { s_log[g] = 1;
-                            fprintf(stderr, "[CRIGRP] dispatching ADXM group %d (tbl=%08X)\\n", g, tbl);
-                            fflush(stderr); } }
+                             } }
                     PUSH32(esp, (uint32_t)g);
                     PUSH32(esp, 0);
                     sub_001705E0();
@@ -7004,21 +6219,6 @@ void doa3_pump_cri_servers(void)
         if (MEM32(0xC0F7C0u + 0x40) == 6) s_post = 1;
         if (s_post && ((s_tick++ & 0xFFFu) == 0) && s_tn < 24) {
             s_tn++;
-            fprintf(stderr, "[TITLE] slots=%u/%u/%u/%u state8612AD=%u arm47E74C=%u btn=%08X obj8610E0=%08X scr47E74C=%u mode480B70=%u f47ADB8=%u agg5E5ED8=%08X introSt=%u mvStatus=%d mvObj=%08X vtbl=%08X statusFn=%08X mwcalls=%u mwst6=%u mwset3=%u mwlast=%u objSt8=%d e1f0=%u/%u st(calls=%u obj=%08X st8=%d ret=%d)\n",
-                    MEM8(0x8610E0 + 0x23 + 0 * 0x38),
-                    MEM8(0x8610E0 + 0x23 + 1 * 0x38),
-                    MEM8(0x8610E0 + 0x23 + 2 * 0x38),
-                    MEM8(0x8610E0 + 0x23 + 3 * 0x38),
-                    MEM8(0x8612AD), MEM32(0x47E74C),
-                    MEM32(0x86132A), MEM32(0x8610E0), MEM8(0x47E74C),
-                    MEM8(0x480B70), MEM8(0x47ADB8), MEM32(0x5E5ED8),
-                    MEM8(0x4B83B0), (int)MEM32(0x5E5970), MEM32(0x5E5900),
-                    MEM32(MEM32(0x5E5900)),
-                    MEM32(MEM32(MEM32(0x5E5900)) + 0x20),
-                    g_mw_calls, g_mw_st6, g_mw_set3, g_mw_laststate,
-                    (int)MEM32(MEM32(0x5E5900) + 8), g_e1f0_calls, g_e1f0_nz,
-                    g_st_calls, g_st_lastobj, g_st_lastst8, g_st_lastret);
-            fflush(stderr);
         }
     }
     if (MEM32(0xC0F7C0u + 0x40) == 4) {
@@ -7076,8 +6276,6 @@ void sub_001B8970(void)
             static uint32_t s_cb_last = 0xFFFFFFFF;
             if (cb != s_cb_last) {
                 s_cb_last = cb;
-                fprintf(stderr, "[VBL] vblank callback = 0x%08X (counter=%u)\n", cb, cnt);
-                fflush(stderr);
             }
             if (cb) {
                 extern recomp_func_t recomp_lookup(uint32_t xbox_va);
@@ -7116,14 +6314,12 @@ void sub_001B8970(void)
                          * base+8 (state), base+0x30 (sfdec handle) per 0x90 slot */
                         uint32_t rel = (a - 0xC0E544) % 0x90;
                         if ((rel == 4 || rel == 8 || rel == 0x30) && shown < 8) {
-                            fprintf(stderr, "[SLOTW] frame=%u slot=%u +0x%X 0x%X -> 0x%X%c",
-                                    cnt, (a - 0xC0E544) / 0x90, rel, s_snap[i], v, 10);
                             shown++;
                         }
                         s_snap[i] = v;
                     }
                 }
-                if (shown) { s_prints++; fflush(stderr); }
+                if (shown) { s_prints++;  }
             }
             /* arm the page write-watch across the corruption window */
             extern void doa3_watch_arm(uint32_t xb_page);
@@ -7149,9 +6345,6 @@ void sub_001B8970(void)
                     if (MEM32(sfd + 0xA58) || MEM32(sfd + 0xA74) || MEM32(sfd + 0x9AC)) {
                         if (s_bp < 3) {
                             s_bp++;
-                            fprintf(stderr, "[ABYP] clearing audio-wait params (were 0x%X 0x%X 0x%X)%c",
-                                    MEM32(sfd + 0xA58), MEM32(sfd + 0xA74), MEM32(sfd + 0x9AC), 10);
-                            fflush(stderr);
                         }
                         MEM32(sfd + 0xA58) = 0;
                         MEM32(sfd + 0xA74) = 0;
@@ -7180,8 +6373,7 @@ void sub_001B8970(void)
                     if (MEM32(0x5E5900) != 0 && MEM32(0x5E5978) == 0) {
                         static int s_ab = 0;
                         if (s_ab < 3) { s_ab++;
-                            fprintf(stderr, "[NOBAIL] 5E5978 0 -> -1%c", 10);
-                            fflush(stderr); }
+                             }
                         MEM32(0x5E5978) = 0xFFFFFFFFu;
                     }
                     /* (older clock write + QFWD flag mirroring removed: the
@@ -7204,8 +6396,6 @@ void sub_001B8970(void)
             extern void pgraph_d3d11_get_stats(void *out);
             struct { uint32_t frames, draws, verts, handled, ignored, clears; } s = {0};
             pgraph_d3d11_get_stats(&s);
-            fprintf(stderr, "[FRAME] %u: pgraph draws=%u verts=%u handled=%u ignored=%u\n",
-                    fr, s.draws, s.verts, s.handled, s.ignored);
             {   /* movie surface content check (both double-buffer surfaces) */
                 fprintf(stderr, "[SURF] A: %08X %08X mid %08X | B: %08X %08X mid %08X\n",
                         MEM32(0x0258C000), MEM32(0x0258C004), MEM32(0x0258C000 + 0xA8C00),
@@ -7219,9 +6409,6 @@ void sub_001B8970(void)
             fprintf(stderr, "[INTRO] st=%u mv=%u dur=%u/%u ctr=%u  gstate=0x%X 5E5A04=0x%X 5E5978=0x%X\n",
                     MEM8(0x4B83B0), MEM8(0x4B83B1), MEM16(0x4B83B2), MEM16(0x4B83B4),
                     MEM16(0x4B83B6), MEM32(0x5E597C), MEM32(0x5E5A04), MEM32(0x5E5978));
-            fprintf(stderr, "[MODE] top47E723=%u mv4A0DCC=%u 48A39C=%u 47E780=%u 48A490=%u 4A0DD4=%u 2FD554=0x%X\n",
-                    MEM8(0x47E723), MEM8(0x4A0DCC), MEM8(0x48A39C), MEM8(0x47E780),
-                    MEM8(0x48A490), MEM8(0x4A0DD4), MEM32(0x2FD554));
             /* DIAG: Sofdec movie player state (sub_0009DF60 init path).
              * 0x5E5900=movie obj (vtbl calls +0x18 open / +0x2C serve),
              * 0x5E59C8=sub_00176580 result, 0x5E5974=sub_0016B400 handle,
@@ -7232,18 +6419,6 @@ void sub_001B8970(void)
                 if (fn0 >= 0x10000 && fn0 < 0x2000000) {
                     for (int i = 0; i < 31; i++) { nm[i] = (char)MEM8(fn0 + i); if (!nm[i]) break; }
                 }
-                fprintf(stderr, "[MOVIE] obj=0x%X st8=%d sfdSt40=%d sfdErr=0x%X hErr=0x%X mode=%d thr=0x%X sfd30=0x%X p76580=0x%X st59CC=0x%X fn0='%s' vtbl=0x%X cacheOk5E56A0=%d sndSt4BE3EC=%d\n",
-                        mobj,
-                        (mobj >= 0x10000 && mobj < 0x8000000) ? (int)MEM32(mobj + 8) : -1,
-                        (mobj >= 0x10000 && mobj < 0x8000000) && MEM32(mobj + 0x30) ? (int)MEM32(MEM32(mobj + 0x30) + 0x40) : -1,
-                        MEM32(0xC0E4BC),
-                        (mobj >= 0x10000 && mobj < 0x8000000) && MEM32(mobj + 0x30) ? MEM32(MEM32(mobj + 0x30) + 0x988) : 0,
-                        (mobj >= 0x10000 && mobj < 0x8000000) && MEM32(mobj + 0x30) ? (int)MEM32(MEM32(mobj + 0x30) + 0x994 + 0x3C) : -1,
-                        (mobj >= 0x10000 && mobj < 0x8000000) && MEM32(mobj + 0x30) ? MEM32(MEM32(mobj + 0x30) + 0x53B0) : 0,
-                        (mobj >= 0x10000 && mobj < 0x8000000) ? MEM32(mobj + 0x30) : 0,
-                        MEM32(0x5E59C8), MEM32(0x5E59CC), nm,
-                        (mobj >= 0x10000 && mobj < 0x8000000) ? MEM32(mobj) : 0,
-                        (int)MEM32(0x5E56A0), (int)MEM32(0x4BE3EC));
             }
             /* DIAG: XAPI game-task table @0x5E5A08 stride 0x20 (18 slots,
              * cur idx @0x5E5C4C): +0 flags, +4 sleep arg (sub_0009E562).
@@ -7254,71 +6429,32 @@ void sub_001B8970(void)
                     if (MEM32(tb) || MEM32(tb + 4))
                         tn += snprintf(tl + tn, sizeof tl - tn, " %d:%X/%X", ti, MEM32(tb), MEM32(tb + 4));
                 }
-                fprintf(stderr, "[TASKS] cur=%d%s\n", (int)MEM32(0x5E5C4C), tl);
             }
             /* DIAG: VRAM bank table @0x4889B8 stride 0x1C (movie surface prep
              * sub_0009DDE0 reads bank[i]+0 as the frame buffer; entries beyond
              * 0 are empty -> 7 of 8 movie surfaces fail). */
             fprintf(stderr, "[BANKS]");
-            for (int bi = 0; bi < 8; bi++)
-                fprintf(stderr, " %X/%X", MEM32(0x4889B8 + 0x1Cu * bi), MEM32(0x4889B8 + 0x1Cu * bi + 4));
-            fprintf(stderr, "\n");
             /* DIAG: sfdec PES queues (h+0xD34 stride 0x388): +0xC = complete-
              * unit flag/count per queue, for queues 0..7. */
             {   uint32_t sh = 0xC0F7C0;
-                fprintf(stderr, "[QCNT]");
-                for (int qi = 0; qi < 8; qi++)
-                    fprintf(stderr, " %d:%X", qi, MEM32(sh + 0x388u * qi + 0xD40));
-                fprintf(stderr, "%c", 10);
                 /* deeper: PES queue record heads (first 6 dwords) for q0/q5
                  * (q5 = video), substream present flags h+0x994[0..8], and
                  * substream readiness h+0x2974+i*0x610 */
                 fprintf(stderr, "[QDET] q0:");
-                for (int k = 0; k < 6; k++) fprintf(stderr, " %X", MEM32(sh + 0xD34 + 4u * k));
-                fprintf(stderr, " vq=%X/%X", MEM32(sh + 0x3B70), MEM32(sh + 0x3B74));
                 for (int q = 1; q < 8; q++) {
-                    fprintf(stderr, " q%d:", q);
-                    for (int k = 0; k < 6; k++)
-                        fprintf(stderr, "%X,", MEM32(sh + 0xD34 + 0x388u * q + 4u * k));
                 }
-                fprintf(stderr, " present:");
-                for (int i = 0; i < 9; i++) fprintf(stderr, "%X", MEM32(sh + 0x994 + 4u * i) ? 1 : 0);
-                fprintf(stderr, " ready:");
-                for (int i = 0; i < 9; i++) fprintf(stderr, "%X", MEM32(sh + 0x2974 + 0x610u * i) ? 1 : 0);
-                fprintf(stderr, " p27=%X p2F=%X cbAA8=%X b74=%X ce8=%X ccc=%d cb25=%X n944=%d t2C=%d t9F0=%d", MEM32(sh + 0xA30), MEM32(sh + 0xA50),
-                        MEM32(sh + 0xAA8), MEM32(sh + 0xB74), MEM32(sh + 0xCE8), (int)MEM32(sh + 0xCCC),
-                        MEM32(sh + 0xA28), (int)MEM32(sh + 0x944),
-                        (int)MEM32(sh + 0x2C), (int)MEM32(sh + 0x9F0));
-                fprintf(stderr, " frun35D0=%X bac=%d f940=%X", MEM32(sh + 0x35D0),
-                        (int)MEM32(sh + 0xBAC), MEM32(sh + 0x940));
                 {   uint32_t vt6 = MEM32(sh + 0x2F4C + 0x610u * 6);
-                    fprintf(stderr, " vt6@%X:", vt6);
-                    if (vt6 >= 0x1000 && vt6 < 0x8000000)
-                        for (int k = 0; k < 14; k++) fprintf(stderr, "%X,", MEM32(vt6 + 4u * k));
                 }
-                fprintf(stderr, " ctxq:");
-                for (int i = 0; i < 9; i++)
-                    fprintf(stderr, "%d:%X/%X,", i,
-                            MEM32(sh + 0x2F4C + 0x610u * i + 4),
-                            MEM32(sh + 0x2F4C + 0x610u * i + 8));
-                fprintf(stderr, " q53B0=%X fr=%d[", MEM32(sh + 0x53B0),
-                        (int)MEM32(sh + 0x3668));
                 {   uint32_t fc = MEM32(sh + 0x3668);
                     if (fc > 16) fc = 16;
-                    for (uint32_t k = 0; k < fc; k++)
-                        fprintf(stderr, "%X", MEM32(sh + 0x366C + 0x50u * k) & 0xF);
                 }
-                fprintf(stderr, "]%c", 10);
                 /* SJ pool dump: 0xC09500 stride 0x30, 16 slots. Fields:
                  * +0 vtbl, +4 used, +0xC/+0x10 counters, +0x1C base, +0x20 cap */
                 fprintf(stderr, "[SJSTAT]");
                 for (int i = 0; i < 16; i++) {
                     uint32_t sj = 0xC09500 + 0x30u * i;
                     if (!MEM32(sj + 4)) continue;
-                    fprintf(stderr, " %X{b=%X c=%X w=%X}", sj & 0xFFF,
-                            MEM32(sj + 0x1C), MEM32(sj + 0xC), MEM32(sj + 0x10));
                 }
-                fprintf(stderr, "%c", 10);
             }
             /* DIAG: wxCi cache registry @0xC057C0 stride 0x30 (12 slots):
              * +0=active, +0x18=prefix, +0x24=file count, +0x28=list head.
@@ -7339,7 +6475,6 @@ void sub_001B8970(void)
                         n += snprintf(line + n, sizeof line - n, " [%d]a=%X n=%d p='%s' f0='%s'", i, MEM32(b), (int)MEM32(b + 0x24), pfx, fn);
                     }
                 }
-                fprintf(stderr, "[WXREG]%s%s\n", n ? "" : " empty", line);
                 /* Walk the z: slot list in full: the count at +0x24 says 1
                  * but three files are scanned, so either only one node is
                  * linked or the count is not being incremented. Dump the head
@@ -7347,26 +6482,19 @@ void sub_001B8970(void)
                 {   uint32_t b = 0xC057C0 + 0x30u * 2;   /* z:\ slot */
                     uint32_t node = MEM32(b + 0x28);
                     int hop;
-                    fprintf(stderr, "[WXZ] cnt=%d head=%08X",
-                            (int)MEM32(b + 0x24), node);
                     if (node >= 0x10000 && node < 0x8000000u) {
                         int k;
-                        fprintf(stderr, "  node[0..7]=");
-                        for (k = 0; k < 8; k++)
-                            fprintf(stderr, " %08X", MEM32(node + k * 4));
                     }
                     for (hop = 0; hop < 8 && node >= 0x10000 && node < 0x8000000u; hop++) {
                         char fn[24] = {0};
                         uint32_t np = MEM32(node + 0xC);
                         if (np >= 0x10000 && np < 0x8000000u)
                             for (int k = 0; k < 23; k++) { fn[k] = (char)MEM8(np + k); if (!fn[k]) break; }
-                        fprintf(stderr, "  [%d] node=%08X name='%s'", hop, node, fn);
                         /* node: +0x04 file size, +0x08 next, +0x0C -> inline
                          * name at +0x10. (+0x04 held 0x0D835000 = 226709504,
                          * bgm.afs to the byte, which identified the layout.) */
                         node = MEM32(node + 8);
                     }
-                    fprintf(stderr, "\n");
                 }
             }
             /* DIAG: ADXM user-callback group 4 (the mwPly/Sofdec server tick;
@@ -7392,64 +6520,21 @@ void sub_001B8970(void)
              * 0x4A2120 != 0 and 0x4A2122 == 0. */
                 uint32_t ph = MEM32(0x4A1004);
                 uint32_t op = (ph < 8) ? MEM32(ph * 4 + 0x4A10A8) : 0;
-                fprintf(stderr, "[LOADST] busy4A2128=%u 4A1048=%u 4A1010=%u 4A2120=%u 4A2121=%u 4A2122=%u 4A212C=%08X op=%08X st=%d slots=%u/%u/%u/%u 4A1049=%u\n",
-                        MEM8(0x4A2128), MEM8(0x4A1048), MEM8(0x4A1010),
-                        MEM8(0x4A2120), MEM8(0x4A2121), MEM8(0x4A2122),
-                        MEM32(0x4A212C), op, op ? (int)(int8_t)MEM8(op + 1) : -1,
-                        MEM8(0x4A104A + 0 * 6), MEM8(0x4A104A + 1 * 6),
-                        MEM8(0x4A104A + 2 * 6), MEM8(0x4A104A + 3 * 6),
-                        MEM8(0x4A1049));
             }
-            fprintf(stderr, "[WSCR] ctr491AFC=%d lim3x2FD55C=%u active305B70=%u fade491AE4=0x%X 491AF8=%d 491AF4=%u\n",
-                    (int)MEM32(0x491AFC), 3u * MEM8(0x2FD55C), MEM8(0x305B70),
-                    MEM32(0x491AE4), (int)MEM32(0x491AF8), MEM8(0x491AF4));
             if ((fr % 600) == 1) {
                 extern void xbox_fiber_dump(void);
                 extern uint32_t g_task_yields[16];
                 xbox_fiber_dump();
-                fprintf(stderr, "[YIELDS/fib]");
-                for (int yi = 0; yi < 12; yi++) fprintf(stderr, " %u", g_task_yields[yi]);
-                fprintf(stderr, "\n");
-                fprintf(stderr, "[PADS] mask=%08X st=%02X hnd=%08X cfg=%02X\n",
-                        MEM32(0x5E5ED0), MEM8(0x5E5CD0), MEM32(0x5E5CD0 + 0x78), MEM8(0x484DC6));
-                fprintf(stderr, "[DXCTX] flag49A950=%u obj49A954=%08X\n",
-                        MEM32(0x49A950), MEM32(0x49A954));
-                fprintf(stderr, "[SLOTS]");
-                for (int si = 0; si < 8; si++)
-                    fprintf(stderr, " %08X", MEM32(0x48F288 + si * 8));
-                fprintf(stderr, " | mdlTbl:");
-                for (int si = 0; si < 4; si++)
-                    fprintf(stderr, " %08X", MEM32(0x4AB1A0 + si * 4));
-                fprintf(stderr, " | texTbl:");
-                for (int si = 0; si < 8; si++)
-                    fprintf(stderr, " %08X", MEM32(0x4B25A8 + si * 4));
-                fprintf(stderr, "\n");
-                fprintf(stderr, "[PADRAW]");
-                for (int pi = 0; pi < 24; pi++) fprintf(stderr, " %02X", MEM8(0x5E5CFF + pi));
-                fprintf(stderr, "\n[PADOUT]");
-                for (int pi = 0; pi < 0x2C; pi++) fprintf(stderr, " %02X", MEM8(0x5E5ED8 + pi));
-                fprintf(stderr, "\n");
             }
             {   /* scene-manager stream poll (sub_0009CDA0): handle @0x4BE420 must reach
                  * state 5; partition handles 0x4BE3F8/0x4BE40C for reference. */
                 uint32_t h420 = MEM32(0x4BE420), h3F8 = MEM32(0x4BE3F8), h40C = MEM32(0x4BE40C);
-                fprintf(stderr, "[SCN] h420=0x%08X st=%d  h3F8=0x%08X st=%d  h40C=0x%08X st=%d flag8=0x%X\n",
-                        h420, h420 ? (int)(int8_t)MEM8(h420 + 1) : -1,
-                        h3F8, h3F8 ? (int)(int8_t)MEM8(h3F8 + 1) : -1,
-                        h40C, h40C ? (int)(int8_t)MEM8(h40C + 1) : -1,
-                        MEM32(0x4BE428));
-                fprintf(stderr, "[BOOT] stage4A0474=%u scr484C49=%u/%u scr484CB1=%u/%u req48A528=%u pend480814=%u\n",
-                        MEM32(0x4A0474), MEM8(0x484C49), MEM8(0x484C4A),
-                        MEM8(0x484CB1), MEM8(0x484CB2), MEM8(0x48A528), MEM8(0x480814));
                 {   /* boot loader (sub_0009F730 loc_0009F7A8): 5 phases at 0x4A1004;
                      * sub_0007FFDD polls op = MEM32(phase*4 + 0x4A10A8) for status 3. */
                     uint32_t ph = MEM32(0x4A1004);
                     uint32_t op = (ph < 8) ? MEM32(ph * 4 + 0x4A10A8) : 0;
-                    fprintf(stderr, "[LDW] phase=%u op=0x%08X st=%d\n",
-                            ph, op, op ? (int)(int8_t)MEM8(op + 1) : -1);
                 }
             }
-            fflush(stderr);
         }
         /* ---- frame pacing: 60 Hz -----------------------------------------
          * D3DDevice_Swap (0x001B5850) is the game's frame gate.  It blocks in
@@ -7629,16 +6714,9 @@ static uint32_t sbh_bump_raw(uint32_t csz)
         uint32_t chunk = 8u * 1024u * 1024u;
         if (csz > chunk) chunk = (csz + 0xFFFFFu) & ~0xFFFFFu;
         uint32_t base = xbox_HeapAllocHigh(chunk, 16);
-        fprintf(stderr, "[SBH] refill %u KB (csz=%u) allocs=%u frees=%u foreign=%u live=%lluKB -> %s\n",
-                chunk >> 10, csz, g_sbh_nalloc, g_sbh_nfree, g_sbh_nforeign,
-                (unsigned long long)(g_sbh_live >> 10), base ? "ok" : "OOM");
         {   /* native backtrace: who is allocating? (symbolize vs bin/doa3.map) */
             void *bt[12]; int n = CaptureStackBackTrace(1, 12, bt, NULL);
-            fprintf(stderr, "[SBH-BT]");
-            for (int i = 0; i < n; i++) fprintf(stderr, " %p", bt[i]);
-            fprintf(stderr, "\n");
         }
-        fflush(stderr);
         if (!base) return 0;
         g_sbh_next = base; g_sbh_end = base + chunk;
     }
@@ -7776,12 +6854,6 @@ static int g_icall_census_overflow;
 void recomp_icall_census_dump(void)
 {
     int i;
-    fprintf(stderr, "[ICALL-CENSUS] %d distinct unresolved targets%s:\n",
-            g_icall_census_n, g_icall_census_overflow ? " (TABLE FULL)" : "");
-    for (i = 0; i < g_icall_census_n; i++)
-        fprintf(stderr, "    0x%08X  x%u\n",
-                g_icall_census[i].va, g_icall_census[i].hits);
-    fflush(stderr);
 }
 
 void recomp_icall_fail_log(uint32_t va)
@@ -7802,17 +6874,9 @@ void recomp_icall_fail_log(uint32_t va)
         }
     }
     if (g_icall_fail_logged < 200 || new_target) {
-        fprintf(stderr, "[ICALL] unresolved target 0x%08X trace:", va);
-        for (int k = 1; k <= 8; k++)
-            fprintf(stderr, " %X",
-                    g_icall_trace[(g_icall_trace_idx - 1 - k) & (ICALL_TRACE_SIZE - 1)]);
         if (va == 0) {
             void *bt[10]; int n = CaptureStackBackTrace(1, 10, bt, NULL);
-            fprintf(stderr, " bt:");
-            for (int k = 0; k < n; k++) fprintf(stderr, " %p", bt[k]);
         }
-        fprintf(stderr, "\n");
-        fflush(stderr);
         g_icall_fail_logged++;
     }
 }
@@ -7919,10 +6983,7 @@ void sub_0017A2A0(void)
     uint32_t esp0 = esp;
     if (n < 6) { n++;
         void *bt[8]; USHORT nb = CaptureStackBackTrace(1, 8, bt, NULL); int k;
-        fprintf(stderr, "[TC-A2A0] esp=%08X eax=%08X esi=%08X ebx=%08X arg0=%08X fiber=%d bt:",
-                esp0, eax, esi, ebx, MEM32(esp0 + 4), xbox_fiber_current());
-        for (k = 0; k < nb; k++) fprintf(stderr, " %llX", (unsigned long long)(uintptr_t)bt[k]);
-        fprintf(stderr, "\n"); fflush(stderr); }
+          }
     sub_0017A2A0_gen();
 }
 void sub_001797FF_gen(void);
@@ -7933,10 +6994,7 @@ void sub_001797FF(void)
     int onstack = (dst >= 0x00C40000u && dst < 0x00E40000u) ||   /* main Xbox stack */
                   (dst >= 0x00E40000u && dst < 0x08000000u);      /* heap + high heap (fiber stacks) */
     if (n < 6 || (!onstack && bad < 12)) { n++; if (!onstack) bad++;
-        fprintf(stderr, "[TC-97FF] esp=%08X dst=%08X (%s) frame:", esp, dst, onstack ? "stack/heap" : "NOT STACK");
-        for (int k = 0; k < 12; k++) fprintf(stderr, " %08X", MEM32(esp + 4u * k));
-        fprintf(stderr, " | h=%u m=%u s=%u f=%u fiber=%d\n", edi, esi, edx, ecx, xbox_fiber_current());
-        fflush(stderr); }
+         }
     sub_001797FF_gen();
 }
 
@@ -7948,10 +7006,10 @@ void sub_001797FF(void)
         uint32_t ei = esp; static int s_bad = 0, s_n = 0; \
         fn##_gen(); \
         if ((int)(esp - ei) != 4 && s_bad < 12) { s_bad++; \
-            fprintf(stderr, "[ESPBAL] " #fn " in=%08X out=%08X d=%+d fiber=%d\n", ei, esp, (int)(esp - ei), xbox_fiber_current()); \
-            fflush(stderr); } \
+             \
+             } \
         else if (s_n < 3) { s_n++; \
-            fprintf(stderr, "[ESPBAL] " #fn " ok d=%+d\n", (int)(esp - ei)); fflush(stderr); } \
+              } \
     }
 ESP_BAL_PROBE(sub_001809E0)
 ESP_BAL_PROBE(sub_001809FE)
@@ -7974,10 +7032,7 @@ void sub_00154420(void)
     if ((nan && s_bad < 8) || s_n < 3) { if (nan) s_bad++; else s_n++;
         void *bt[10]; USHORT nb = CaptureStackBackTrace(1, 10, bt, NULL); int k;
         float fa, fb, fc; memcpy(&fa, &a, 4); memcpy(&fb, &b, 4); memcpy(&fc, &c, 4);
-        fprintf(stderr, "[XLATE] %s x=%g y=%g z=%g (%08X %08X %08X) top row0=%08X row3=%08X bt:", nan ? "NAN-IN" : "ok",
-                fa, fb, fc, a, b, c, MEM32(0x90FAA0), MEM32(0x90FAD0));
-        for (k = 0; k < nb; k++) fprintf(stderr, " %llX", (unsigned long long)(uintptr_t)bt[k]);
-        fprintf(stderr, "\n"); fflush(stderr); }
+          }
     sub_00154420_gen();
 }
 
@@ -7995,10 +7050,7 @@ void sub_000910B9(void)
     {   int isnan_any = (f0 != f0) || (f1 != f1) || (f2 != f2) || (b0 != b0) || (b1 != b1) || (b2 != b2);
         if (n < 3 || (isnan_any && bad < 8)) { if (isnan_any) bad++; else n++;
             void *bt[8]; USHORT nb = CaptureStackBackTrace(1, 8, bt, NULL); int k;
-            fprintf(stderr, "[POSW] %s edi=%u ebx=%d ebp=%08X st0=%g st1=%g st2=%g base=(%g %g %g) fptop=%d bt:",
-                    isnan_any ? "NAN" : "ok", edi, (int)ebx, g_seh_ebp, f0, f1, f2, b0, b1, b2, g_fp_top);
-            for (k = 0; k < nb; k++) fprintf(stderr, " %llX", (unsigned long long)(uintptr_t)bt[k]);
-            fprintf(stderr, "\n"); fflush(stderr); } }
+              } }
     sub_000910B9_gen();
 }
 
@@ -8022,10 +7074,8 @@ void sub_000910B9(void)
         if (esi != _si || edi != _di || ebx != _bx) {                        \
             static int s_n = 0;                                              \
             if (s_n < 6) { s_n++;                                            \
-                fprintf(stderr, "[D3DABI] " #name " clobbered:"              \
-                        " esi %08X->%08X edi %08X->%08X ebx %08X->%08X\n",   \
-                        _si, esi, _di, edi, _bx, ebx);                       \
-                fflush(stderr); }                                            \
+                                       \
+                 }                                            \
             esi = _si; edi = _di; ebx = _bx;                                 \
         }                                                                    \
     }
@@ -8100,8 +7150,8 @@ void sub_001B4B80(void)
     uint32_t s_edi = edi, s_esi = esi, s_ebx = ebx;
     if (n < 40) { n++;
         
-        { void *bt[10]; USHORT nb = CaptureStackBackTrace(0, 10, bt, NULL); int k; fprintf(stderr, " bt:"); for (k = 0; k < nb; k++) fprintf(stderr, " %llX", (unsigned long long)(uintptr_t)bt[k]); }
-        fputc(10, stderr); fflush(stderr); }
+        { void *bt[10]; USHORT nb = CaptureStackBackTrace(0, 10, bt, NULL); int k;  for (k = 0; k < nb; k++) ; }
+          }
     sub_001B4B80_gen();
     edi = s_edi; esi = s_esi; ebx = s_ebx;
 }

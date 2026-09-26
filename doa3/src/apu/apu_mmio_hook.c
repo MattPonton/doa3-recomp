@@ -181,10 +181,6 @@ static bool apu_decode_and_handle(PCONTEXT ctx, uint32_t mmio_offset, int is_wri
         }
         g_apu_mmio_sse_count++;
         if (g_apu_mmio_sse_count <= 4 || (g_apu_mmio_sse_count % 100000) == 0) {
-            fprintf(stderr, "[APU] SSE %s %d bytes at offset 0x%X (xmm%d), total %d\n",
-                    is_store ? "store" : "load",
-                    nbytes, mmio_offset, reg, g_apu_mmio_sse_count);
-            fflush(stderr);
         }
         ctx->Rip += prefix_len + 2 + modrm_len;
         return true;
@@ -330,9 +326,6 @@ apu_decode_unhandled:
     /* Unrecognized */
     g_apu_mmio_decode_fail++;
     if (g_apu_mmio_decode_fail <= 20) {
-        fprintf(stderr, "[APU] MMIO decode fail at RIP=%p offset=0x%X: %02X %02X %02X %02X %02X %02X\n",
-                (void*)ctx->Rip, mmio_offset, ip[0], ip[1], ip[2], ip[3], ip[4], ip[5]);
-        fflush(stderr);
     }
     return false;
 }

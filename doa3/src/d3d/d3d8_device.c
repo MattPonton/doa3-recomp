@@ -111,15 +111,10 @@ void d3d8_DebugDumpTargetState(void)
     D3D11_VIEWPORT vp[8];
     UINT nvp = 8;
     if (!g_device_state.d3d11_context) {
-        fprintf(stderr, "[RTSTATE] no context\n"); fflush(stderr); return;
+          return;
     }
     ID3D11DeviceContext_OMGetRenderTargets(g_device_state.d3d11_context, 1, &rtv, &dsv);
     ID3D11DeviceContext_RSGetViewports(g_device_state.d3d11_context, &nvp, vp);
-    fprintf(stderr, "[RTSTATE] bound_rtv=%p layer_rtv=%p dsv=%p nvp=%u vp0=(%.0f,%.0f %.0fx%.0f)\n",
-            (void *)rtv, (void *)own, (void *)dsv, nvp,
-            nvp ? vp[0].TopLeftX : -1.0f, nvp ? vp[0].TopLeftY : -1.0f,
-            nvp ? vp[0].Width : -1.0f, nvp ? vp[0].Height : -1.0f);
-    fflush(stderr);
     if (rtv) ID3D11RenderTargetView_Release(rtv);
     if (dsv) ID3D11DepthStencilView_Release(dsv);
 }
@@ -212,8 +207,6 @@ void d3d8_DumpBackbufferBMP(const char *path)
                 }
             }
             fclose(f);
-            fprintf(stderr, "[SNAP] wrote %s (%ux%u)\n", path, w, h);
-            fflush(stderr);
         }
         ID3D11DeviceContext_Unmap(g_device_state.d3d11_context, (ID3D11Resource *)st, 0);
     }
@@ -337,7 +330,6 @@ static HRESULT d3d11_create_device_and_swap_chain(
     );
 
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D8: Failed to create D3D11 device: 0x%08lX\n", hr);
         return hr;
     }
 
@@ -623,9 +615,6 @@ static int blit_init(void)
                           "vsmain", "vs_4_0", 0, 0, &vsb, &err)) ||
         FAILED(D3DCompile(g_blit_hlsl, sizeof(g_blit_hlsl) - 1, "present_ps", NULL, NULL,
                           "psmain", "ps_4_0", 0, 0, &psb, &err))) {
-        fprintf(stderr, "[PRESENT] blit shader compile failed: %s\n",
-                err ? (const char *)ID3D10Blob_GetBufferPointer(err) : "?");
-        fflush(stderr);
         return 0;
     }
     if (FAILED(ID3D11Device_CreateVertexShader(dev, ID3D10Blob_GetBufferPointer(vsb),
@@ -668,8 +657,6 @@ static void swap_resize_if_needed(void)
     if (s->swap_rtv) { ID3D11RenderTargetView_Release(s->swap_rtv); s->swap_rtv = NULL; }
     hr = IDXGISwapChain_ResizeBuffers(s->swap_chain, 0, w, h, DXGI_FORMAT_UNKNOWN, 0);
     if (FAILED(hr)) {
-        fprintf(stderr, "[PRESENT] ResizeBuffers(%ux%u) failed 0x%08lX\n", w, h, (unsigned long)hr);
-        fflush(stderr);
     } else {
         s->swap_w = w;
         s->swap_h = h;
@@ -693,8 +680,6 @@ static void d3d8_apply_target_size_change(void)
     s->width = w;
     s->height = h;
     if (FAILED(d3d11_create_guest_target(s))) {
-        fprintf(stderr, "[PRESENT] guest target %ux%u creation failed\n", w, h);
-        fflush(stderr);
         return;
     }
     g_off_active = 0;
@@ -818,21 +803,8 @@ static HRESULT __stdcall dev_Present(IDirect3DDevice8 *self, const RECT *src, co
     DWORD now = GetTickCount();
     if (last_tick == 0) last_tick = now;
     if (now - last_tick >= 2000) {
-        fprintf(stderr, "  [D3D] %.1fs: %u present (%.1f fps), %u begin, %u end, "
-                "%u clear, %u draw, %u xform, %u rs, %u tex\n",
-                (now - last_tick) / 1000.0, frame_count,
-                frame_count * 1000.0 / (now - last_tick),
-                g_d3d_begin_count, g_d3d_end_count,
-                g_d3d_clear_count, g_d3d_draw_count,
-                g_d3d_settransform_count, g_d3d_setrs_count,
-                g_d3d_settexture_count);
-        fprintf(stderr, "  [TGT] draws_off=%lu clears_def=%lu clears_off=%lu off_active=%d\n",
-                (unsigned long)g_d3d_draw_off, (unsigned long)g_d3d_clear_def, (unsigned long)g_d3d_clear_off, g_off_active);
         g_d3d_draw_off = g_d3d_clear_def = g_d3d_clear_off = 0;
-        fprintf(stderr, "  [FLIP] guest=%u host=%u blocked=%u\n",
-                g_flip_guest, g_flip_host, g_flip_blocked);
         g_flip_guest = g_flip_host = g_flip_blocked = 0;
-        fflush(stderr);
         frame_count = 0;
         g_d3d_begin_count = g_d3d_end_count = 0;
         g_d3d_clear_count = g_d3d_draw_count = 0;
@@ -867,9 +839,6 @@ static HRESULT __stdcall dev_Present(IDirect3DDevice8 *self, const RECT *src, co
                     pgraph_diag_dump_ignored();
                 }
                 d3d8_DumpBackbufferBMP(p);
-                fprintf(stderr, "[PMSHOT] wrote %s (draws since last shot: %u)\n",
-                        p, g_d3d_draw_count);
-                fflush(stderr);
             }
         }
     }
@@ -1950,25 +1919,21 @@ static HRESULT __stdcall d3d8_CreateDevice(IDirect3D8 *self, UINT Adapter, DWORD
     /* Initialize shader and state subsystems */
     hr = d3d8_shaders_init();
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D8: Shader init failed: 0x%08lX\n", hr);
         return hr;
     }
 
     hr = d3d8_states_init();
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D8: State init failed: 0x%08lX\n", hr);
         return hr;
     }
 
     hr = d3d8_combiners_init();
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D8: Combiner init failed: 0x%08lX\n", hr);
         /* Non-fatal: fall back to fixed-function pixel shaders */
     }
 
     hr = d3d8_vsh_init();
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D8: VSH init failed: 0x%08lX\n", hr);
         /* Non-fatal: fall back to FVF vertex shaders */
     }
 
@@ -1976,7 +1941,6 @@ static HRESULT __stdcall d3d8_CreateDevice(IDirect3D8 *self, UINT Adapter, DWORD
     g_device_initialized = TRUE;
 
     *ppDevice = &g_device;
-    fprintf(stderr, "D3D8: Device created (%ux%u)\n", g_device_state.width, g_device_state.height);
     return S_OK;
 }
 

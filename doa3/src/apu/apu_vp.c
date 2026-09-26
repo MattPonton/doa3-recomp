@@ -111,13 +111,28 @@ static uint32_t voice_get_mask(MCPXAPUState *d, uint16_t voice_handle,
            ctz32(mask);
 }
 
+/* Atomic read-modify-write. Two threads update the same voice words: the
+ * game thread runs the driver's front-end methods from the MMIO trap
+ * (VOICE_OFF clears PAR_STATE.ACTIVE_VOICE), and the frame thread rewrites
+ * PAR_STATE for every voice it mixes (NEW_VOICE, the envelope phase). With
+ * a plain load/store the frame thread's write could land between the game
+ * thread's load and store and put ACTIVE_VOICE back: the voice kept looping,
+ * the idle trap the driver was waiting for never came, and DirectSound's
+ * retire wait (sub_001C9C92) spun forever with the buffer's retire-pending
+ * bit set -- the intermittent freeze at the start of the attract loop. */
 static void voice_set_mask(MCPXAPUState *d, uint16_t voice_handle,
                            hwaddr offset, uint32_t mask, uint32_t val)
 {
     hwaddr voice = d->regs[NV_PAPU_VPVADDR] + voice_handle * NV_PAVS_SIZE;
-    uint32_t v = ldl_le_phys(address_space_memory, voice + offset) & ~mask;
-    stl_le_phys(address_space_memory, voice + offset,
-                v | ((val << ctz32(mask)) & mask));
+    volatile LONG *p = (volatile LONG *)(g_apu_ram_ptr + ((voice + offset) & 0x07FFFFFF));
+    uint32_t bits = (val << ctz32(mask)) & mask;
+    LONG old = *p, want;
+    for (;;) {
+        want = (LONG)(((uint32_t)old & ~mask) | bits);
+        LONG seen = InterlockedCompareExchange(p, want, old);
+        if (seen == old) break;
+        old = seen;
+    }
 }
 
 /* ============================================================
@@ -765,7 +780,6 @@ static float voice_step_envelope(MCPXAPUState *d, uint16_t v, uint32_t reg_0,
         return 0.0f;
 
     default:
-        fprintf(stderr, "[APU] Unknown envelope state 0x%x\n", cur);
         return 0.0f;
     }
 }

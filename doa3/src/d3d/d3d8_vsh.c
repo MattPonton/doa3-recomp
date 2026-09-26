@@ -1102,7 +1102,6 @@ static ID3D11InputLayout *create_vsh_input_layout(
         &layout);
 
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D8 VSH: CreateInputLayout failed: 0x%08lX\n", hr);
         return NULL;
     }
 
@@ -1184,7 +1183,6 @@ static VshCacheEntry *compile_shader(const DWORD *microcode, int num_insns,
     /* Generate HLSL */
     hlsl_len = d3d8_vsh_generate_hlsl(&program, hlsl_buf, sizeof(hlsl_buf));
     if (hlsl_len <= 0) {
-        fprintf(stderr, "D3D8 VSH: HLSL generation failed\n");
         return NULL;
     }
 
@@ -1194,9 +1192,6 @@ static VshCacheEntry *compile_shader(const DWORD *microcode, int num_insns,
                     D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
                     &code, &errors);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D8 VSH: Compile failed: %s\n",
-                errors ? (char *)ID3D10Blob_GetBufferPointer(errors) : "unknown");
-        fprintf(stderr, "--- Generated HLSL ---\n%s\n--- End ---\n", hlsl_buf);
         if (errors) ID3D10Blob_Release(errors);
         return NULL;
     }
@@ -1217,7 +1212,6 @@ static VshCacheEntry *compile_shader(const DWORD *microcode, int num_insns,
         NULL, &entry->vs);
 
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D8 VSH: CreateVertexShader failed: 0x%08lX\n", hr);
         ID3D10Blob_Release(code);
         entry->in_use = 0;
         return NULL;
@@ -1227,8 +1221,6 @@ static VshCacheEntry *compile_shader(const DWORD *microcode, int num_insns,
     entry->inputs_read = program.inputs_read;
     entry->layout_count = 0;
 
-    fprintf(stderr, "D3D8 VSH: Compiled shader (hash 0x%08X, %d insns, inputs 0x%04X)\n",
-            hash, program.length, program.inputs_read);
 
     return entry;
 }
@@ -1284,11 +1276,9 @@ HRESULT d3d8_vsh_init(void)
 
     hr = ID3D11Device_CreateBuffer(d3d8_GetD3D11Device(), &cbd, NULL, &g_vsh_cb);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D8 VSH: Failed to create constant buffer: 0x%08lX\n", hr);
         return hr;
     }
 
-    fprintf(stderr, "D3D8 VSH: Vertex shader translator initialized\n");
     return S_OK;
 }
 
@@ -1339,7 +1329,6 @@ HRESULT d3d8_vsh_create_shader(const DWORD *microcode, int num_insns,
     }
 
     if (slot < 0) {
-        fprintf(stderr, "D3D8 VSH: No free shader slots\n");
         return E_OUTOFMEMORY;
     }
 
@@ -1354,8 +1343,6 @@ HRESULT d3d8_vsh_create_shader(const DWORD *microcode, int num_insns,
      * Xbox D3D8 uses handles with the high bit set (> 0xFFFF). */
     *out_handle = (DWORD)(slot + 0x10000);
 
-    fprintf(stderr, "D3D8 VSH: Created shader handle 0x%lX (%d instructions)\n",
-            *out_handle, num_insns);
 
     return S_OK;
 }

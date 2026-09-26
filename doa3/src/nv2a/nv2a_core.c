@@ -84,8 +84,6 @@ void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len)
     dma.address &= 0x07FFFFFF;
 
     if (dma.address >= memory_region_size(d->vram)) {
-        fprintf(stderr, "[NV2A] DMA map address 0x%llx out of VRAM range\n",
-                (unsigned long long)dma.address);
         *len = 0;
         return NULL;
     }
@@ -558,8 +556,6 @@ void pgraph_method(NV2AState *d, uint32_t subchannel,
 
     /* Log unhandled methods (first 20 + periodic) */
     if (g_pgraph_method_count <= 20 || (g_pgraph_method_count % 5000) == 0) {
-        fprintf(stderr, "[PGRAPH] #%u UNHANDLED sub=%u 0x%04X = 0x%08X\n",
-                g_pgraph_method_count, subchannel, method, param);
     }
 
     /* Store method parameters in PGRAPH register space */
@@ -591,10 +587,6 @@ void pgraph_method(NV2AState *d, uint32_t subchannel,
     case M_FLIP_INCREMENT_WRITE:
         g_pgraph_flip_count++;
         if (g_pgraph_flip_count <= 5 || (g_pgraph_flip_count % 300) == 0) {
-            fprintf(stderr, "[PGRAPH] Frame %u: %u methods, %u draws, %u clears, %u inline verts\n",
-                    g_pgraph_flip_count, g_pgraph_method_count,
-                    g_pgraph_draw_count, g_pgraph_clear_count,
-                    g_pgraph_inline_verts);
         }
         break;
 
@@ -872,8 +864,6 @@ NV2AState *nv2a_init_standalone(uint8_t *vram_ptr, uint32_t vram_size,
 
     g_nv2a = d;
 
-    fprintf(stderr, "[NV2A] Standalone GPU initialized: VRAM=%uMB RAMIN=%uKB\n",
-            vram_size / (1024*1024), ramin_size / 1024);
 
     return d;
 }

@@ -167,8 +167,6 @@ static void update_blend_state(const DWORD *rs)
     bd.RenderTarget[0].RenderTargetWriteMask = (UINT8)(rs[D3DRS_COLORWRITEENABLE] & 0x0F);
 
     hr = ID3D11Device_CreateBlendState(d3d8_GetD3D11Device(), &bd, &g_blend_state);
-    if (FAILED(hr))
-        fprintf(stderr, "D3D8: CreateBlendState failed: 0x%08lX\n", hr);
 }
 
 static void update_depth_stencil_state(const DWORD *rs)
@@ -201,8 +199,6 @@ static void update_depth_stencil_state(const DWORD *rs)
     dsd.BackFace = dsd.FrontFace;
 
     hr = ID3D11Device_CreateDepthStencilState(d3d8_GetD3D11Device(), &dsd, &g_ds_state);
-    if (FAILED(hr))
-        fprintf(stderr, "D3D8: CreateDepthStencilState failed: 0x%08lX\n", hr);
 }
 
 static void update_rasterizer_state(const DWORD *rs)
@@ -245,8 +241,6 @@ static void update_rasterizer_state(const DWORD *rs)
     rd.AntialiasedLineEnable = FALSE;
 
     hr = ID3D11Device_CreateRasterizerState(d3d8_GetD3D11Device(), &rd, &g_raster_state);
-    if (FAILED(hr))
-        fprintf(stderr, "D3D8: CreateRasterizerState failed: 0x%08lX\n", hr);
 }
 
 /* ================================================================

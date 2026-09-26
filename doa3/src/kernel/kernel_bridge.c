@@ -157,8 +157,6 @@ static void kernel_data_init(void)
     /* XePublicKeyData (ordinal 357) - 284 bytes of zeros */
     memset((void*)((uintptr_t)(XBOX_KERNEL_DATA_BASE + KDATA_XE_PUBLIC_KEY) + g_xbox_mem_offset), 0, 284);
 
-    fprintf(stderr, "  Kernel data exports: initialized at Xbox VA 0x%08X\n",
-            XBOX_KERNEL_DATA_BASE);
 }
 
 /* ── Per-slot ordinal and bridge function ────────────────── */
@@ -233,10 +231,6 @@ static void bridge_PsCreateSystemThreadEx(void)
      * right fibers; the decoder's wait chain is the issue). */
     xhandle = 0xBEEF0001u;
 
-    fprintf(stderr, "  [KERNEL] PsCreateSystemThreadEx #%d: routine=0x%08X ctx1=0x%08X ctx2=0x%08X susp=%u handle=0x%08X\n",
-            g_thread_call_count, start_routine, start_context1, start_context2,
-            create_suspended, xhandle);
-    fflush(stderr);
 
     if (xbox_handle_ptr) {
         BRIDGE_MEM32(xbox_handle_ptr) = xhandle;
@@ -267,8 +261,6 @@ static void bridge_PsCreateSystemThreadEx(void)
                 g_esp -= 4; BRIDGE_MEM32(g_esp) = 0;
                 fn();
                 g_esp += 12;
-                fprintf(stderr, "  [KERNEL] PsCreateSystemThreadEx: main thread returned (g_eax=0x%08X)\n", g_eax);
-                fflush(stderr);
             } else {
                 /* Worker thread: spawn a cooperative fiber. DOA3's CRI relies on
                  * its I/O worker threads actually running (they pump the file-load
@@ -280,14 +272,9 @@ static void bridge_PsCreateSystemThreadEx(void)
                                      xhandle, (int)create_suspended)) {
                     /* spawned; runs when next scheduled */
                 } else {
-                    fprintf(stderr, "  [KERNEL] PsCreateSystemThreadEx: could not spawn worker 0x%08X (deferred)\n",
-                            start_routine);
-                    fflush(stderr);
                 }
             }
         } else {
-            fprintf(stderr, "  [KERNEL] PsCreateSystemThreadEx: start routine 0x%08X not found in dispatch!\n",
-                    start_routine);
         }
     }
 
@@ -354,9 +341,6 @@ static void bridge_KeInitializeInterrupt(void)
 {
     uint32_t obj = STACK_ARG(0), routine = STACK_ARG(1), ctx = STACK_ARG(2);
     if (s_isr_n < 4) { s_isr[s_isr_n].obj = obj; s_isr[s_isr_n].routine = routine; s_isr[s_isr_n].ctx = ctx; s_isr_n++; }
-    fprintf(stderr, "  [KERNEL] KeInitializeInterrupt(obj=0x%08X routine=0x%08X ctx=0x%08X vector=%u)\n",
-            obj, routine, ctx, STACK_ARG(3));
-    fflush(stderr);
     g_eax = 0;
 }
 
@@ -396,8 +380,6 @@ static void bridge_NtClose(void)
     HANDLE h = (HANDLE)(uintptr_t)raw_handle;
 
     if (g_kernel_call_count <= 200) {
-        fprintf(stderr, "  [KERNEL] NtClose: handle=0x%08X\n", raw_handle);
-        fflush(stderr);
     }
 
     /* A published file handle retires its table slot; the id is never
@@ -425,9 +407,6 @@ static void bridge_MmAllocateContiguousMemory(void)
     uint32_t xbox_va = xbox_HeapAlloc(size, 4096);
 
     if (g_kernel_call_count <= 100) {
-        fprintf(stderr, "  [KERNEL] MmAllocateContiguousMemory: size=%u → Xbox VA 0x%08X\n",
-                size, xbox_va);
-        fflush(stderr);
     }
 
     g_eax = xbox_va;
@@ -450,9 +429,6 @@ static void bridge_MmAllocateContiguousMemoryEx(void)
     uint32_t xbox_va = xbox_HeapAlloc(size, align);
 
     if (g_kernel_call_count <= 100) {
-        fprintf(stderr, "  [KERNEL] MmAllocateContiguousMemoryEx: size=%u align=%u → Xbox VA 0x%08X\n",
-                size, align, xbox_va);
-        fflush(stderr);
     }
 
     g_eax = xbox_va;
@@ -486,9 +462,6 @@ static void bridge_NtAllocateVirtualMemory(void)
     uint32_t base_hint = base_ptr ? BRIDGE_MEM32(base_ptr) : 0;
 
     if (g_kernel_call_count <= 200) {
-        fprintf(stderr, "  [KERNEL] NtAllocateVirtualMemory: base=0x%08X size=%u type=0x%X prot=0x%X\n",
-                base_hint, size, alloc_type, protect);
-        fflush(stderr);
     }
 
     if (size == 0) {
@@ -511,8 +484,6 @@ static void bridge_NtAllocateVirtualMemory(void)
          * The memory is already committed by our bump allocator.
          * Don't change the base address - just return success. */
         if (g_kernel_call_count <= 200) {
-            fprintf(stderr, "  [KERNEL] → MEM_COMMIT on existing region 0x%08X, no-op\n", base_hint);
-            fflush(stderr);
         }
         g_eax = 0; /* STATUS_SUCCESS */
         return;
@@ -572,9 +543,6 @@ static void bridge_ExAllocatePool(void)
     uint32_t xbox_va = xbox_HeapAlloc(size, 16);
 
     if (g_kernel_call_count <= 200) {
-        fprintf(stderr, "  [KERNEL] ExAllocatePool: size=%u → Xbox VA 0x%08X\n",
-                size, xbox_va);
-        fflush(stderr);
     }
 
     g_eax = xbox_va;
@@ -587,12 +555,6 @@ static void bridge_ExAllocatePoolWithTag(void)
     uint32_t xbox_va = xbox_HeapAlloc(size, 16);
 
     if (g_kernel_call_count <= 200) {
-        fprintf(stderr, "  [KERNEL] ExAllocatePoolWithTag: size=%u tag='%c%c%c%c' → Xbox VA 0x%08X\n",
-                size,
-                (char)(tag & 0xFF), (char)((tag >> 8) & 0xFF),
-                (char)((tag >> 16) & 0xFF), (char)((tag >> 24) & 0xFF),
-                xbox_va);
-        fflush(stderr);
     }
 
     g_eax = xbox_va;
@@ -757,9 +719,6 @@ static void bridge_NtCreateEvent(void)
         BRIDGE_MEM32(handle_ptr) = (uint32_t)(uintptr_t)local_handle;
     }
 
-    fprintf(stderr, "  [BRIDGE] NtCreateEvent: handle_ptr=0x%08X type=%u init=%u → status=0x%08X handle=0x%08X\n",
-            handle_ptr, event_type, initial_state, (uint32_t)status,
-            (uint32_t)(uintptr_t)local_handle);
 
     g_eax = (uint32_t)status;
 }
@@ -778,8 +737,6 @@ static void bridge_KeSynchronizeExecution(void)
     recomp_func_t fn = recomp_lookup_manual(routine);
     if (!fn) fn = recomp_lookup(routine);
     if (!fn) {
-        fprintf(stderr, "  [KERNEL] KeSynchronizeExecution: routine 0x%08X not in dispatch\n", routine);
-        fflush(stderr);
         g_eax = 0;
         return;
     }
@@ -821,10 +778,6 @@ static void bridge_KeWaitForSingleObject(void)
     if (g_kwait_log < 30) {
         uint32_t tlo = timeout_ptr ? BRIDGE_MEM32(timeout_ptr) : 0;
         uint32_t thi = timeout_ptr ? BRIDGE_MEM32(timeout_ptr + 4) : 0;
-        fprintf(stderr, "  [KEWAIT] obj=0x%08X sig=%d timeout=%s(0x%08X%08X)\n",
-                obj, obj ? (int)BRIDGE_MEM32(obj + 4) : -1,
-                infinite ? "INFINITE" : "timed", thi, tlo);
-        fflush(stderr);
         g_kwait_log++;
     }
     if (xbox_fiber_active() && obj == 0x001C2CF0u) {
@@ -851,13 +804,6 @@ static void bridge_KeWaitForSingleObject(void)
             if ((++s_vbw % 100000ull) == 0) {
                 void *bt[14];
                 USHORT nf = CaptureStackBackTrace(1, 14, bt, NULL);
-                fprintf(stderr, "  [VBWAIT-BT] #%llu prim=%d coro=%d lock=%d bt:",
-                        (unsigned long long)s_vbw, xbox_fiber_is_primary(),
-                        xbox_fiber_is_coroutine(), (int)BRIDGE_MEM32(0xB24D38));
-                for (USHORT k = 0; k < nf; k++)
-                    fprintf(stderr, " %llX", (unsigned long long)(uintptr_t)bt[k]);
-                fprintf(stderr, "%c", 10);
-                fflush(stderr);
             }
         }
         /* Also advance the D3D vblank COUNTER (device+0x820): the game's
@@ -951,8 +897,6 @@ static void bridge_PsTerminateSystemThread(void)
 {
     uint32_t exit_status = STACK_ARG(0);
 
-    fprintf(stderr, "  [KERNEL] PsTerminateSystemThread: status=0x%08X\n", exit_status);
-    fflush(stderr);
 
     g_eax = exit_status;
     /* On real Xbox this never returns (the thread is destroyed). In the fiber
@@ -996,8 +940,6 @@ static void bridge_NtResumeThread(void)
     static unsigned s_rn = 0;
     if (prev_va) BRIDGE_MEM32(prev_va) = 0;
     if (++s_rn <= 8 || (s_rn % 200000) == 0) {
-        fprintf(stderr, "  [RESUME] #%u handle=0x%08X\n", s_rn, handle);
-        fflush(stderr);
     }
     if (xbox_fiber_active()) {
         extern int xbox_fiber_is_coroutine(void);
@@ -1134,8 +1076,6 @@ static void bridge_ExQueryPoolBlockSize(void)
 static void bridge_RtlNtStatusToDosError(void)
 {
     uint32_t status = STACK_ARG(0);
-    fprintf(stderr, "  [FILE] RtlNtStatusToDosError(status=0x%08X)\n", status);
-    fflush(stderr);
 
     /* Simple mapping of common status codes */
     switch (status) {
@@ -1188,16 +1128,10 @@ static const char* bridge_get_xbox_path(uint32_t obj_attrs_va)
     if (!obj_attrs_va) return NULL;
     ansi_str_va = BRIDGE_MEM32(obj_attrs_va + 4);
     if (!ansi_str_va) {
-        fprintf(stderr, "  [FILE] get_xbox_path: ObjectName NULL (oa=0x%08X root=0x%08X attr=0x%08X)\n",
-                obj_attrs_va, BRIDGE_MEM32(obj_attrs_va), BRIDGE_MEM32(obj_attrs_va + 8));
-        fflush(stderr);
         return NULL;
     }
     buf_va = BRIDGE_MEM32(ansi_str_va + 4);
     if (!buf_va) {
-        fprintf(stderr, "  [FILE] get_xbox_path: name Buffer NULL (oa=0x%08X root=0x%08X len=%u)\n",
-                obj_attrs_va, BRIDGE_MEM32(obj_attrs_va), (unsigned)BRIDGE_MEM16(ansi_str_va));
-        fflush(stderr);
         return NULL;
     }
     len = BRIDGE_MEM16(ansi_str_va);
@@ -1257,8 +1191,7 @@ static uint32_t xbox_fh_publish(HANDLE h, const WCHAR *win_path)
     if (s_fh_next >= XFH_MAX) {
         static int told = 0;
         if (!told) { told = 1;
-            fprintf(stderr, "  [FILE] handle table full (%u); using raw handles\n", XFH_MAX);
-            fflush(stderr); }
+             }
         return (uint32_t)(uintptr_t)h;
     }
     s_fh[s_fh_next] = h;
@@ -1291,9 +1224,7 @@ static HANDLE xbox_fh_resolve(uint32_t gh)
                 static int told = 0;
                 s_fh[i] = r;
                 if (told < 8) { told++;
-                    fprintf(stderr, "  [FILE] reopened retired handle 0x%08X (%S)\n",
-                            gh, s_fh_path[i]);
-                    fflush(stderr); }
+                     }
                 return r;
             }
         }
@@ -1318,8 +1249,7 @@ static int xbox_fh_release(uint32_t gh)
         if (i < XFH_MAX && s_fh[i]) {
             { static int nrel = 0;
               if (nrel < 64) { nrel++;
-                  fprintf(stderr, "  [FILE] release handle=0x%08X\n", gh);
-                  fflush(stderr); } }
+                   } }
             CloseHandle(s_fh[i]);
             s_fh[i] = NULL;   /* id never reissued; path kept for reopen */
         }
@@ -1508,8 +1438,6 @@ static NTSTATUS bridge_create_file_impl(
 
     if (h == INVALID_HANDLE_VALUE) {
         err = GetLastError();
-        fprintf(stderr, "  [FILE] NtCreateFile FAILED: %s -> %S (err=%u)\n", xbox_path, win_path, err);
-        fflush(stderr);
         bridge_write_iostatus(iostatus_va, STATUS_OBJECT_NAME_NOT_FOUND, 0);
         switch (err) {
         case ERROR_FILE_NOT_FOUND: return STATUS_OBJECT_NAME_NOT_FOUND;
@@ -1528,9 +1456,7 @@ static NTSTATUS bridge_create_file_impl(
         if (handle_va) BRIDGE_MEM32(handle_va) = gh;
         bridge_write_iostatus(iostatus_va, STATUS_SUCCESS,
                               (disposition == 2) ? 2 /* FILE_CREATED */ : 1 /* FILE_OPENED */);
-        fprintf(stderr, "  [FILE] open: %s -> handle=0x%08X\n", xbox_path, gh);
     }
-    fflush(stderr);
     return STATUS_SUCCESS;
 }
 
@@ -1605,8 +1531,6 @@ static int bridge_apc_deliver(void)
             fn();
             g_esp = saved_esp;  /* stdcall callee-clean; force-restore */
         } else {
-            fprintf(stderr, "  [APC] completion 0x%08X not in dispatch!\n", s_apc_queue[i].ctx);
-            fflush(stderr);
         }
     }
     return n;
@@ -1672,14 +1596,6 @@ static void bridge_NtReadFile(void)
         static int s_read_log = 0;
         if (s_read_log < 16 || g_kernel_trace_reads) {
             s_read_log++;
-            fprintf(stderr, "  [NTREAD] h=0x%X buf=0x%08X len=0x%X off=%s%u res=%d bytes=0x%lX err=%lu b0..3=%02X %02X %02X %02X\n",
-                    (uint32_t)(uintptr_t)handle, buffer_va, length,
-                    offset_va ? "" : "cur", offset_va ? BRIDGE_MEM32(offset_va) : 0,
-                    result, (unsigned long)bytes_read,
-                    result ? 0 : GetLastError(),
-                    BRIDGE_MEM8(buffer_va), BRIDGE_MEM8(buffer_va + 1),
-                    BRIDGE_MEM8(buffer_va + 2), BRIDGE_MEM8(buffer_va + 3));
-            fflush(stderr);
         }
     }
 
@@ -1718,11 +1634,6 @@ static void bridge_NtReadFile(void)
         for (i = 0; i < nseen; i++) if (seen[i] == err) { known = 1; break; }
         if (!known && nseen < 8) {
             seen[nseen++] = err;
-            fprintf(stderr, "  [FILE] NtReadFile FAILED err=%lu gh=0x%08X handle=%p "
-                            "buf=0x%08X len=%u off=%s\n",
-                    (unsigned long)err, STACK_ARG(0), handle, buffer_va, length,
-                    offset_va ? "explicit" : "current");
-            fflush(stderr);
         }
         if (err == ERROR_HANDLE_EOF) {
             bridge_write_iostatus(iostatus, 0xC0000011u, 0); /* END_OF_FILE */
@@ -1872,7 +1783,6 @@ static void bridge_NtQueryInformationFile(void)
         break;
     }
     default:
-        fprintf(stderr, "  [FILE] NtQueryInformationFile: unhandled class %u\n", infoclass);
         g_eax = 0xC00000BBu; /* STATUS_NOT_SUPPORTED */
         break;
     }
@@ -1949,7 +1859,6 @@ static void bridge_NtSetInformationFile(void)
         break;
     }
     default:
-        fprintf(stderr, "  [FILE] NtSetInformationFile: unhandled class %u\n", infoclass);
         bridge_write_iostatus(ios_va, STATUS_SUCCESS, 0);
         g_eax = STATUS_SUCCESS;
         break;
@@ -1999,7 +1908,6 @@ static void bridge_NtQueryVolumeInformationFile(void)
         break;
     }
     default:
-        fprintf(stderr, "  [FILE] NtQueryVolumeInformationFile: unhandled class %u\n", infoclass);
         g_eax = 0xC00000BBu;
         break;
     }
@@ -2128,9 +2036,7 @@ static void bridge_NtQueryDirectoryFile(void)
 
     {   static int s_call_log = 0;
         if (s_call_log < 24) { s_call_log++;
-            fprintf(stderr, "  [QDIR-CALL] handle=%p mask_va=%08X restart=%u slot=%d\n",
-                    handle, filename_va, restart, slot);
-            fflush(stderr); } }
+             } }
 
     if (filename_va || restart || slot < 0) {
         /* (Re)start the enumeration. */
@@ -2167,18 +2073,11 @@ static void bridge_NtQueryDirectoryFile(void)
             static int s_qdir_log = 0;
             if (s_qdir_log < 24) {
                 s_qdir_log++;
-                fprintf(stderr, "  [QDIR] start search='%S' -> %s\n", search_path,
-                        (fh == INVALID_HANDLE_VALUE) ? "NO_SUCH_FILE" : "found-first");
                 {   /* Name the guest scanner: it takes one entry per directory
                      * and stops, which is why the wxCi cache registry holds
                      * only '\bgm.afs'. */
                     void *bt[10]; USHORT nb = CaptureStackBackTrace(1, 10, bt, NULL); int bi;
-                    fprintf(stderr, "  [QDIR-BT]");
-                    for (bi = 0; bi < nb; bi++)
-                        fprintf(stderr, " %llX", (unsigned long long)(uintptr_t)bt[bi]);
-                    fprintf(stderr, "\n");
                 }
-                fflush(stderr);
             }
             if (fh == INVALID_HANDLE_VALUE) {
                 bridge_write_iostatus(ios_va, 0xC000000Fu, 0); /* STATUS_NO_SUCH_FILE */
@@ -2212,9 +2111,7 @@ static void bridge_NtQueryDirectoryFile(void)
             have_entry = more ? 1 : 0;
             {   static int s_cont_log = 0;
                 if (s_cont_log < 24) { s_cont_log++;
-                    fprintf(stderr, "  [QDIR-NEXT] slot=%d more=%d name='%S'\n",
-                            slot, more ? 1 : 0, more ? fd.cFileName : L"(none)");
-                    fflush(stderr); } }
+                     } }
         }
         if (have_entry) {
             /* fall through with the entry */
@@ -2320,7 +2217,6 @@ static void bridge_NtDeviceIoControlFile(void)
 {
     uint32_t ioctl = STACK_ARG(5);
     uint32_t ios_va = STACK_ARG(4);
-    fprintf(stderr, "  [FILE] NtDeviceIoControlFile(0x%X) - stub\n", ioctl);
     bridge_write_iostatus(ios_va, 0xC00000BBu, 0);
     g_eax = 0xC00000BBu; /* STATUS_NOT_IMPLEMENTED */
 }
@@ -2330,7 +2226,6 @@ static void bridge_NtFsControlFile(void)
 {
     uint32_t fsctl = STACK_ARG(5);
     uint32_t ios_va = STACK_ARG(4);
-    fprintf(stderr, "  [FILE] NtFsControlFile(0x%X) - stub\n", fsctl);
     bridge_write_iostatus(ios_va, 0xC00000BBu, 0);
     g_eax = 0xC00000BBu;
 }
@@ -2370,10 +2265,6 @@ static void bridge_ObReferenceObjectByHandle(void)
                 {
                     void *bt[16];
                     USHORT nf = CaptureStackBackTrace(1, 16, bt, NULL);
-                    fprintf(stderr, "  [OBREF-SPIN] handle=0x%08X x5000 bt:", h);
-                    for (USHORT k = 0; k < nf; k++)
-                        fprintf(stderr, " %llX", (unsigned long long)(uintptr_t)bt[k]);
-                    fprintf(stderr, "%c", 10);
                 }
                 {   /* spin forensics: full fiber table + CRI lock globals */
                     extern void xbox_fiber_dump_states(void);
@@ -2381,12 +2272,8 @@ static void bridge_ObReferenceObjectByHandle(void)
                     if (s_dumps < 12) {
                         s_dumps++;
                         xbox_fiber_dump_states();
-                        fprintf(stderr, "[LOCKST] B24D38=%X C0E384=%X C0C500=%X B24D58=%X%c",
-                                BRIDGE_MEM32(0xB24D38), BRIDGE_MEM32(0xC0E384),
-                                BRIDGE_MEM32(0xC0C500), BRIDGE_MEM32(0xB24D58), 10);
                     }
                 }
-                fflush(stderr);
                 s_rep = 0;
             }
         } else { s_last_h = h; s_rep = 0; }
@@ -2421,9 +2308,6 @@ static void bridge_RtlRaiseException(void)
     static int raise_count = 0;
     raise_count++;
     if (raise_count <= 10) {
-        fprintf(stderr, "  [KERNEL] RtlRaiseException: record=0x%08X code=0x%08X (#%d)\n",
-                record_ptr, code, raise_count);
-        fflush(stderr);
     }
 
     /* Handle float exceptions by clearing the FPU status.
@@ -2456,9 +2340,6 @@ static void bridge_MmMapIoSpace(void)
     uint32_t protect = STACK_ARG(2);
     uint32_t xbox_va = xbox_HeapAlloc(num_bytes, 4096);
 
-    fprintf(stderr, "  [KERNEL] MmMapIoSpace: phys=0x%08X size=%u → Xbox VA 0x%08X\n",
-            phys_addr, num_bytes, xbox_va);
-    fflush(stderr);
 
     g_eax = xbox_va;
 }
@@ -2730,8 +2611,6 @@ static void bridge_DbgPrint(void)
         if (o > 1000) o = 1000;
     }
     out[o] = 0;
-    fprintf(stderr, "  [DbgPrint] %s%s", out, (o && out[o-1]=='\n') ? "" : "\n");
-    fflush(stderr);
     g_eax = 0;
 }
 
@@ -2744,8 +2623,6 @@ static void bridge_DbgPrint(void)
  * success so the D3D miniport's GPU-interrupt connect doesn't fail-and-panic. */
 static void bridge_KeConnectInterrupt_98(void)
 {
-    if (g_kernel_call_count <= 200)
-        fprintf(stderr, "  [KERNEL] KeConnectInterrupt(obj=0x%08X) -> TRUE\n", STACK_ARG(0));
     g_eax = 1; /* TRUE */
 }
 
@@ -2887,7 +2764,6 @@ static void kernel_thunk_dispatch(void)
     ULONG ordinal;
 
     if (slot < 0 || slot >= XBOX_KERNEL_THUNK_TABLE_SIZE) {
-        fprintf(stderr, "  [KERNEL] bad slot %d\n", slot);
         g_eax = 0;
         g_esp += 4;  /* pop dummy return address */
         return;
@@ -2904,9 +2780,6 @@ static void kernel_thunk_dispatch(void)
     }
 
     if (g_kernel_call_count <= 200) {
-        fprintf(stderr, "  [KERNEL] #%llu: ordinal %u (slot %d) esp=0x%08X\n",
-                g_kernel_call_count, ordinal, slot, g_esp);
-        fflush(stderr);
     }
 
     {
@@ -2914,9 +2787,6 @@ static void kernel_thunk_dispatch(void)
         DWORD now = GetTickCount();
         if (last_summary_tick == 0) last_summary_tick = now;
         if (now - last_summary_tick >= 2000 && g_kernel_call_count > 200) {
-            fprintf(stderr, "  [KERNEL] summary: %llu total calls, latest ordinal %u (slot %d) esp=0x%08X\n",
-                    g_kernel_call_count, ordinal, slot, g_esp);
-            fflush(stderr);
             last_summary_tick = now;
         }
     }
@@ -2932,8 +2802,6 @@ static void kernel_thunk_dispatch(void)
     } else {
         /* No specific bridge - log warning and return 0 */
         if (g_kernel_call_count <= 200) {
-            fprintf(stderr, "  [KERNEL] WARNING: no bridge for ordinal %u, returning 0\n", ordinal);
-            fflush(stderr);
         }
         g_eax = 0;
     }
@@ -2945,8 +2813,6 @@ static void kernel_thunk_dispatch(void)
     g_esp += g_slot_arg_bytes[slot];
 
     if (g_kernel_call_count <= 200) {
-        fprintf(stderr, "  [KERNEL] → returned 0x%08X\n", g_eax);
-        fflush(stderr);
     }
 }
 
@@ -2987,8 +2853,6 @@ void xbox_kernel_bridge_init(void)
     int unbridged = 0;
     DWORD old_protect;
 
-    fprintf(stderr, "  Kernel thunk bridge: resolving %d entries at 0x%08X\n",
-            XBOX_KERNEL_THUNK_TABLE_SIZE, XBOX_KERNEL_THUNK_TABLE_BASE);
 
     /* The thunk table lives in .rdata which is marked PAGE_READONLY.
      * Temporarily make it writable so we can patch the ordinals. */
@@ -3046,9 +2910,5 @@ void xbox_kernel_bridge_init(void)
         &old_protect
     );
 
-    fprintf(stderr, "  Kernel thunk bridge: %d/%d resolved (%d bridged, %d stub)\n",
-            resolved, XBOX_KERNEL_THUNK_TABLE_SIZE, bridged, unbridged);
-    fprintf(stderr, "  Synthetic VA range: 0x%08X-0x%08X\n",
-            KERNEL_VA_BASE, KERNEL_VA_BASE + (resolved - 1) * 4);
 
 }

@@ -41,7 +41,6 @@ DXGI_FORMAT d3d8_to_dxgi_format(D3DFORMAT fmt)
     case D3DFMT_INDEX16:        return DXGI_FORMAT_R16_UINT;
     case D3DFMT_INDEX32:        return DXGI_FORMAT_R32_UINT;
     default:
-        fprintf(stderr, "D3D8: Unknown format 0x%X, using R8G8B8A8\n", fmt);
         return DXGI_FORMAT_R8G8B8A8_UNORM;
     }
 }
@@ -582,7 +581,6 @@ HRESULT d3d8_CreateTextureImpl(UINT Width, UINT Height, UINT Levels, DWORD Usage
 
     hr = ID3D11Device_CreateTexture2D(d3d8_GetD3D11Device(), &td, NULL, &tex->d3d11_texture);
     if (FAILED(hr)) {
-        fprintf(stderr, "D3D8: CreateTexture2D failed: 0x%08lX (fmt=%d %ux%u)\n", hr, Format, Width, Height);
         d3d8_tex_free_levels(tex);
         free(tex);
         return hr;
