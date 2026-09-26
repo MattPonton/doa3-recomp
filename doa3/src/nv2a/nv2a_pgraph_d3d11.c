@@ -295,7 +295,8 @@ static struct {
         IDirect3DTexture8 *tex;
         uint32_t off, w, h, fmt, levels;
         uint32_t pal;       /* palette register this upload was expanded with */
-        int uploaded;       /* immutable source already uploaded */
+        int uploaded;       /* static source already uploaded */
+        uint32_t sig;       /* sampled fingerprint of level 0 at that upload */
     } texcache[TEXCACHE_N];
     uint32_t texcache_next;
 
@@ -591,6 +592,21 @@ static void nv_apply_tex_address(IDirect3DDevice8 *dev, int stage)
     dev->lpVtbl->SetTextureStageState(dev, stage, 14 /*ADDRESSV*/, nv_d3d_address(a >> 8));
 }
 
+/* Sampled fingerprint of a texture's level-0 bytes: 64 dwords spread across
+ * the image plus its size. Cheap enough to take on every cache hit. */
+static uint32_t nv_tex_signature(const uint8_t *p, size_t n)
+{
+    uint32_t h = 2166136261u ^ (uint32_t)n;
+    size_t i, step = (n / 64) & ~(size_t)3;
+    if (step < 4) step = 4;
+    for (i = 0; i + 4 <= n; i += step) {
+        uint32_t v;
+        memcpy(&v, p + i, 4);
+        h = (h ^ v) * 16777619u;
+    }
+    return h;
+}
+
 static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
 {
     uint32_t fmtreg = g_pg.tex[0].format;
@@ -599,6 +615,7 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
     uint32_t w, h, bpp, pitch, nlevels = 1;
     int swizzled, compressed, palettised;
     uint32_t palreg = g_pg.tex[0].palette;
+    uint32_t sig;
     D3DFORMAT d3dfmt;
 
     if (!off || off >= 0x08000000u) return NULL; /* DOA3: guest RAM to 128 MB */
@@ -686,6 +703,8 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
             return NULL;
         }
     }
+    {   size_t l0 = compressed ? (size_t)pitch * ((h + 3) / 4) : (size_t)pitch * h;
+        sig = nv_tex_signature((const uint8_t *)((uintptr_t)off + g_xbox_mem_offset), l0); }
 
     /* One texture per distinct binding, kept alive.
      *
@@ -737,6 +756,7 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
             g_pg.texcache[slot].levels = nlevels;
             g_pg.texcache[slot].pal = palettised ? palreg : 0u;
             g_pg.texcache[slot].uploaded = 0;
+            g_pg.texcache[slot].sig = 0;
             {   static unsigned s_made = 0;
                 if (s_made < 64) { s_made++;
                      } }
@@ -745,14 +765,24 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
         g_pg.dyn_w = w; g_pg.dyn_h = h; g_pg.dyn_fmt = (uint32_t)d3dfmt;
         g_pg.dyn_levels = g_pg.texcache[slot].levels;
 
-        /* Swizzled and DXT textures come from the immutable XPR0 bundles, so
-         * once uploaded they never need redoing -- re-unswizzling them every
-         * draw costs far more than the whole rest of the frame. Linear
-         * surfaces (the movie frame, render targets) do change in place, so
-         * those are always re-uploaded. */
-        if ((swizzled || compressed) && g_pg.texcache[slot].uploaded)
+        /* Swizzled and DXT textures come from the XPR0 bundles and never
+         * change in place, so once uploaded they are not redone --
+         * re-unswizzling them every draw costs far more than the whole rest
+         * of the frame. Linear surfaces (the movie frame, render targets) do
+         * change in place, so those are always re-uploaded.
+         *
+         * The guest address is NOT a permanent identity, though: the heap is
+         * recycled between loads. On character select, Hitomi's 256x256 DXT1
+         * face texture lands exactly where Kasumi's 256x256 DXT1 costume
+         * texture had been, same size and format, so the key matched and the
+         * cache kept serving Kasumi's blue costume as Hitomi's face. Compare
+         * a sampled fingerprint of the source on every hit and re-upload when
+         * the bytes behind the address have changed. */
+        if ((swizzled || compressed) && g_pg.texcache[slot].uploaded &&
+            g_pg.texcache[slot].sig == sig)
             return g_pg.dyn_tex;
         g_pg.texcache[slot].uploaded = (swizzled || compressed);
+        g_pg.texcache[slot].sig = sig;
     }
     {
         const uint8_t *srcp = (const uint8_t *)((uintptr_t)off + g_xbox_mem_offset);
