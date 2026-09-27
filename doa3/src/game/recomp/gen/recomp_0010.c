@@ -93476,21 +93476,25 @@ loc_001C677D: ;
 
 loc_001C6786: ;
     eax = ZX8(MEM8(eax + 0x1C67B7));
-    g_seh_ebp = ebp; RECOMP_ITAIL(MEM32(eax * 4 + 0x1C67A7)); return; /* indirect tail jmp */
-
-    PUSH32(esp, 4);
-    goto loc_001C679A;
-
-    PUSH32(esp, 2);
-
-loc_001C679A: ;
-    POP32(esp, eax);
-    g_seh_ebp = ebp; sub_001C67A4(); return; /* tail jmp 0x001C67A4 */
-
-    eax = 0; /* xor self */
-    eax++;
-    g_seh_ebp = ebp; sub_001C67A4(); return; /* tail jmp 0x001C67A4 */
-
+    /* DOA3: XGBytesPerPixelFromFormat. The guest dispatches through the
+     * four-entry jump table at 0x1C67A7 to three stubs INSIDE this function
+     * (0x1C6794 "push 4", 0x1C6798 "push 2", 0x1C679D "xor/inc" = 1) and
+     * to 0x1C67A2 (= 0). The lift emitted an indirect tail-jump whose
+     * targets were never lifted, so at runtime the jump resolved to
+     * nothing: eax kept the index byte and the `ret 4` never happened,
+     * leaving the caller's stack 4 bytes off. sub_00159D60 then read every
+     * argument for XGSwizzleBox from the wrong slot and swizzled X Octagon's
+     * 256x256x2 spotlight texture to destination 0 -- 128 KB over the XBE
+     * header and the first part of .text (the walk interpreter's jump table
+     * at 0x1E9B0 and the float constants around 0x1ED554), which froze the
+     * fighters and produced the black wedge geometry. Decode the table here. */
+    switch (eax) {
+    case 0:  eax = 1; break;   /* 0x1C679D */
+    case 1:  eax = 2; break;   /* 0x1C6798 */
+    case 2:  eax = 4; break;   /* 0x1C6794 */
+    default: eax = 0; break;   /* 0x1C67A2 */
+    }
+    g_seh_ebp = ebp; sub_001C67A4(); return; /* ret 4 */
 }
 
 /**

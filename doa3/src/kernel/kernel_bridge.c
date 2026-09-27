@@ -101,6 +101,21 @@ static uint32_t kernel_data_va_for_ordinal(ULONG ordinal)
  * Initialize kernel data export values at the kernel data area.
  * Called during bridge init, after Xbox memory is mapped.
  */
+/* KeTickCount source: the guest reads the export page directly, so it has
+ * to be advanced asynchronously. 1 ms period like the console's clock
+ * interrupt; the value is milliseconds since boot. */
+static DWORD WINAPI xbox_tick_count_thread(LPVOID arg)
+{
+    ULONGLONG t0 = GetTickCount64();
+    (void)arg;
+    for (;;) {
+        BRIDGE_MEM32(XBOX_KERNEL_DATA_BASE + KDATA_TICK_COUNT) =
+            (uint32_t)(GetTickCount64() - t0);
+        Sleep(1);
+    }
+    return 0;
+}
+
 static void kernel_data_init(void)
 {
     /* XboxHardwareInfo (ordinal 322) - XBOX_HARDWARE_INFO
@@ -123,9 +138,17 @@ static void kernel_data_init(void)
     BRIDGE_MEM16(XBOX_KERNEL_DATA_BASE + KDATA_KRNL_VERSION + 4) = 5849;
     BRIDGE_MEM16(XBOX_KERNEL_DATA_BASE + KDATA_KRNL_VERSION + 6) = 0;
 
-    /* KeTickCount (ordinal 156) - initialized to current tick count.
-     * A background thread in main.c updates this every ~1ms. */
-    BRIDGE_MEM32(XBOX_KERNEL_DATA_BASE + KDATA_TICK_COUNT) = GetTickCount();
+    /* KeTickCount (ordinal 156). The console's clock interrupt increments
+     * this every millisecond from 0 at boot, and the game copies it into
+     * its own frame clock every frame (sub_00164400 -> [0x85B9C8]) for the
+     * sound and stage-event timing helpers. It used to be written once here
+     * and never again, so the guest's millisecond clock stood still for the
+     * whole run. Keep it ticking, boot-relative, from a 1 ms thread. */
+    BRIDGE_MEM32(XBOX_KERNEL_DATA_BASE + KDATA_TICK_COUNT) = 0;
+    {
+        HANDLE th = CreateThread(NULL, 0, xbox_tick_count_thread, NULL, 0, NULL);
+        if (th) CloseHandle(th);
+    }
 
     /* LaunchDataPage (ordinal 164) - NULL (no launch data) */
     BRIDGE_MEM32(XBOX_KERNEL_DATA_BASE + KDATA_LAUNCH_DATA_PAGE) = 0;
