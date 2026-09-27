@@ -10043,8 +10043,15 @@ loc_0006F9E2: ;
 
 loc_0006F9E7: ;
     ecx = ZX8(LO8(ebx));
-    /* cmp MEM8(ecx * 8 + 0x4A03B2), 0 - flags set for next jcc */
-    goto loc_0006F9FB;
+    /* DOA3: the jne at 0x6F9FB has two flag producers -- this cmp (reached
+     * via the jmp at 0x6F9F2) and `test cl, cl` at 0x6F9F9. The lift kept
+     * only the second, so on this path it tested cl = the story fight index
+     * instead of the per-fight byte [idx*8 + 0x4A03B2]. On fight 0 that
+     * returned phase 3 instead of 4, and sub_0006FA60 then faded to black
+     * right after the winner pose, over the WINNER/quote screen (black
+     * background, flat white WINNER). Evaluate the real compare here. */
+    if (MEM8(ecx * 8 + 0x4A03B2) != 0) goto loc_0006FA59; /* jne */
+    goto loc_0006F9FD;
 
 loc_0006F9F4: ;
     if (CMP_NE(LO8(edx), 5)) goto loc_0006FA59; /* jne: not equal / not zero */
