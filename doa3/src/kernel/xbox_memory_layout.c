@@ -609,6 +609,22 @@ static int g_heap_alloc_count = 0;
 static struct { uint32_t va, size; int free; } g_heap_track[HEAP_TRACK_MAX];
 static int g_heap_track_n = 0;
 
+/* Add a free-list entry, recycling a slot retired by heap_coalesce (size 0)
+ * before growing the table so repeated quit/reload cycles cannot exhaust
+ * HEAP_TRACK_MAX. Returns 0 when there is no room. */
+static int heap_track_add_free(uint32_t va, uint32_t size)
+{
+    int k = -1;
+    for (int i = 0; i < g_heap_track_n; i++)
+        if (!g_heap_track[i].size) { k = i; break; }
+    if (k < 0) {
+        if (g_heap_track_n >= HEAP_TRACK_MAX) return 0;
+        k = g_heap_track_n++;
+    }
+    g_heap_track[k].va = va; g_heap_track[k].size = size; g_heap_track[k].free = 1;
+    return 1;
+}
+
 uint32_t xbox_HeapAlloc(uint32_t size, uint32_t alignment)
 {
     uint32_t result;
@@ -663,21 +679,14 @@ uint32_t xbox_HeapAlloc(uint32_t size, uint32_t alignment)
         if (best >= 0) {
             uint32_t take;
             /* Split off any head skipped for alignment so it stays usable. */
-            if (best_va != g_heap_track[best].va && g_heap_track_n < HEAP_TRACK_MAX) {
-                g_heap_track[g_heap_track_n].va   = g_heap_track[best].va;
-                g_heap_track[g_heap_track_n].size = best_va - g_heap_track[best].va;
-                g_heap_track[g_heap_track_n].free = 1;
-                g_heap_track_n++;
+            if (best_va != g_heap_track[best].va &&
+                heap_track_add_free(g_heap_track[best].va, best_va - g_heap_track[best].va)) {
                 g_heap_track[best].size -= (best_va - g_heap_track[best].va);
                 g_heap_track[best].va    = best_va;
             }
             take = (size + 4095u) & ~4095u;
             if (g_heap_track[best].size >= take + 0x10000u &&
-                g_heap_track_n < HEAP_TRACK_MAX) {
-                g_heap_track[g_heap_track_n].va   = g_heap_track[best].va + take;
-                g_heap_track[g_heap_track_n].size = g_heap_track[best].size - take;
-                g_heap_track[g_heap_track_n].free = 1;
-                g_heap_track_n++;
+                heap_track_add_free(g_heap_track[best].va + take, g_heap_track[best].size - take)) {
                 g_heap_track[best].size = take;
             }
             g_heap_track[best].free = 0;
@@ -732,11 +741,7 @@ uint32_t xbox_HeapAlloc(uint32_t size, uint32_t alignment)
              * block and the second still failed. */
             uint32_t take = (size + 4095u) & ~4095u;
             if (g_heap_track[best].size >= take + 0x10000u &&
-                g_heap_track_n < HEAP_TRACK_MAX) {
-                g_heap_track[g_heap_track_n].va   = g_heap_track[best].va + take;
-                g_heap_track[g_heap_track_n].size = g_heap_track[best].size - take;
-                g_heap_track[g_heap_track_n].free = 1;
-                g_heap_track_n++;
+                heap_track_add_free(g_heap_track[best].va + take, g_heap_track[best].size - take)) {
                 g_heap_track[best].size = take;
             }
             g_heap_track[best].free = 0;
@@ -816,11 +821,20 @@ void xbox_HeapFree(uint32_t xbox_va)
 {
     if (!xbox_va) return;
     for (int i = 0; i < g_heap_track_n; i++) {
+        /* Skip entries retired by heap_coalesce (size 0). They keep their
+         * old VA, and once the merged region has been split and handed out
+         * again a LIVE block sits at that same VA further down the list.
+         * Matching the retired entry first logged "freed 0 bytes" and left
+         * the real block allocated: quitting a fight from the pause menu
+         * leaked its 14.7 MB + 1.4 MB buffers this way, and the next mode's
+         * load then failed with out-of-memory on NOW LOADING. */
+        if (!g_heap_track[i].size) continue;
         if (g_heap_track[i].va == xbox_va && !g_heap_track[i].free) {
+            uint32_t size = g_heap_track[i].size;   /* before coalescing retires it */
             g_heap_track[i].free = 1;
             heap_coalesce();
             fprintf(stderr, "  [HEAP] freed 0x%08X (%u bytes)\n",
-                    xbox_va, g_heap_track[i].size);
+                    xbox_va, size);
             fflush(stderr);
             return;
         }
