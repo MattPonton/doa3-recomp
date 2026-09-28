@@ -27,9 +27,8 @@ add_subdirectory(src/d3d)      # D3D8 -> D3D11 graphics abstraction
 add_subdirectory(src/audio)    # DirectSound -> XAudio2
 add_subdirectory(src/input)    # Xbox input -> XInput
 add_subdirectory(src/apu)      # MCPX APU emulation (from xemu)
-add_subdirectory(src/ui)       # Dear ImGui overlay (Esc menu) + pad remapping panel
-# NV2A GPU emulation is compiled as part of src/game (no separate CMakeLists),
-# exactly as in burnout3.
+add_subdirectory(src/online)   # Online VS play
+add_subdirectory(src/ui)       # Overlay Menu (Esc Key)
 
 # ── Recompiled game executable ─────────────────────────────────
 add_subdirectory(src/game)

@@ -28,6 +28,7 @@
 #include "kernel.h"
 #include "xbox_memory_layout.h"
 #include "xbox_fiber.h"
+#include "xbox_det.h"
 #include <stdio.h>
 #include <string.h>
 #include <float.h>
@@ -109,8 +110,8 @@ static DWORD WINAPI xbox_tick_count_thread(LPVOID arg)
     ULONGLONG t0 = GetTickCount64();
     (void)arg;
     for (;;) {
-        BRIDGE_MEM32(XBOX_KERNEL_DATA_BASE + KDATA_TICK_COUNT) =
-            (uint32_t)(GetTickCount64() - t0);
+        /* Skipped while a netplay session drives the clock (xbox_det.c). */
+        xbox_det_publish_host_tick((uint32_t)(GetTickCount64() - t0));
         Sleep(1);
     }
     return 0;
@@ -666,7 +667,17 @@ static void bridge_KeQueryPerformanceCounter(void)
     static uint32_t s_consec = 0;
     static long long s_last_call = -2;   /* 64-bit: see g_kernel_call_count */
     static uint32_t s_run = 0;      /* every-Nth-poll fallback, never reset */
+    static uint32_t s_epoch = 0;
     int hot = 0;
+    uint64_t boost0 = s_boost;
+    if (s_epoch != xbox_det_epoch()) {
+        /* A netplay session started or ended: both machines must begin the
+         * session with the same poll history, so it cannot carry over. */
+        s_epoch = xbox_det_epoch();
+        s_consec = 0;
+        s_run = 0;
+        s_last_call = -2;
+    }
     if ((long long)g_kernel_call_count <= s_last_call + 2) {   /* tolerate 1 interleaved call
                                                      * (e.g. QPC+QueryFrequency loops) */
         if (++s_consec > 150) hot = 1;   /* >150 near-back-to-back QPC calls = hot loop */
@@ -694,8 +705,15 @@ static void bridge_KeQueryPerformanceCounter(void)
         }
         s_run = 0;
     }
-    LARGE_INTEGER li = xbox_KeQueryPerformanceCounter();
-    uint64_t v = (uint64_t)li.QuadPart + s_boost;
+    uint64_t v;
+    if (g_xbox_det_active) {
+        /* Netplay session: frame-derived time plus this session's boosts. */
+        xbox_det_add_qpc_boost(s_boost - boost0);
+        v = xbox_det_qpc();
+    } else {
+        LARGE_INTEGER li = xbox_KeQueryPerformanceCounter();
+        v = (uint64_t)li.QuadPart + s_boost + xbox_det_qpc_offset();
+    }
     g_eax = (uint32_t)(v & 0xFFFFFFFFu);
     g_edx = (uint32_t)(v >> 32);
 }
@@ -711,7 +729,13 @@ static void bridge_KeQueryPerformanceFrequency(void)
 static void bridge_KeQuerySystemTime(void)
 {
     uint32_t time_ptr = STACK_ARG(0);
-    xbox_KeQuerySystemTime(XBOX_TO_NATIVE(time_ptr));
+    if (g_xbox_det_active && time_ptr) {
+        uint64_t ft = xbox_det_filetime();   /* netplay session clock */
+        BRIDGE_MEM32(time_ptr) = (uint32_t)ft;
+        BRIDGE_MEM32(time_ptr + 4) = (uint32_t)(ft >> 32);
+    } else {
+        xbox_KeQuerySystemTime(XBOX_TO_NATIVE(time_ptr));
+    }
     g_eax = 0;
 }
 
@@ -2796,6 +2820,7 @@ static void kernel_thunk_dispatch(void)
     bridge = g_slot_bridges[slot];
 
     g_kernel_call_count++;
+    xbox_det_on_kernel_call();
     {   /* worker-thread scheduling point (see xbox_fiber_timeslice). Only
          * once the movie is over (its verified timing is left alone), and
          * never from inside the CRI server pump or with the CRI lock held. */

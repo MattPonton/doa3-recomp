@@ -1,5 +1,6 @@
 /* Cooperative fiber scheduler — see xbox_fiber.h. */
 #include "xbox_fiber.h"
+#include "xbox_det.h"
 #include "xbox_memory_layout.h"          /* xbox_HeapAlloc */
 
 #include <windows.h>
@@ -277,7 +278,8 @@ volatile int g_fib_slice_due = 0;
 static DWORD WINAPI fib_slice_timer(LPVOID p)
 {
     (void)p;
-    for (;;) { Sleep(4); g_fib_slice_due = 1; }
+    /* No effect while a netplay session schedules the slices (xbox_det.c). */
+    for (;;) { Sleep(4); xbox_det_host_slice_timer(); }
 }
 void xbox_fiber_timeslice(void)
 {
@@ -302,6 +304,9 @@ void xbox_fiber_timeslice(void)
             if (ticks > laps) laps = (int)(ticks > 64 ? 64 : ticks);
         }
         s_last = now;
+        /* Netplay session: a fixed lap budget per lockstep frame, never the
+         * wall clock, so both machines run their workers identically. */
+        if (g_xbox_det_active) laps = xbox_det_slice_laps();
         while (laps-- > 0) xbox_fiber_yield();
     }
 }

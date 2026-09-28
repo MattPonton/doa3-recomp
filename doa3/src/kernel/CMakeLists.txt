@@ -32,6 +32,8 @@ add_library(xbox_kernel STATIC ${KERNEL_SOURCES})
 
 # Include directory (kernel.h)
 target_include_directories(xbox_kernel PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+# The session clock (xbox_det.h) lives with the rest of the online code.
+target_include_directories(xbox_kernel PRIVATE ${CMAKE_SOURCE_DIR}/src/online)
 
 # Windows system libraries
 target_link_libraries(xbox_kernel PUBLIC

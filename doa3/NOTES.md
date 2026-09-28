@@ -1,19 +1,14 @@
 # Dead or Alive 3 Static Recompilation Notes
 
-This document is the maintained technical guide for the DOA3 static recompilation.
-It describes the behavior implemented by the current tree, the fixes that must
-survive regeneration, and the remaining limitations. Historical experiments,
-reverted patches, and unverified hypotheses do not belong here.
+This document records the current status and random technical notes for the static recomp.
 
 ## Current Status
 
-The project boots the retail Xbox executable through a native Windows static
-recompilation. The opening movie is user-verified to play through the Team Ninja
-logo at the expected frame rate with no visible artifacts.
+Core gameplay including all game modes are working except story mode. No known visual or audio bugs remaining.
 
-This is not yet a claim that the full game is playable. In particular:
+Story mode needs more work. Handoff to FMV between matches hangs and crashes the game. I suspect this is heap free or worker thread issue.
 
-- Audio behavior has not been accepted as complete.
+Aspiration features like online mode are in progress. See the commit for session arming. This turns the local Versus mode into a online session if the user has an active lobby setup in the overlay menu. See the commit for online session arming.
 
 ## Source and Runtime Inputs
 
@@ -53,10 +48,6 @@ Output:
 build/release/doa3.exe
 ```
 
-No external movie decoder or FFmpeg installation is required.
-
-## Runtime Architecture
-
 ### Static recompilation
 
 Generated functions use global Xbox register state and fixed guest-memory
@@ -92,14 +83,28 @@ The opening movie is handled by `src/game/movie_present.c`:
 - `QueryPerformanceCounter` paces presentation at 30 fps.
 - D3D11 presents all 571 frames through the Team Ninja logo.
 
-This is the default path and is user-verified to play correctly without visible
-artifacts.
+### Netplay sessions (in development)
 
-## Applied Recompilation Fixes
+Delay-based lockstep for Versus mode. A session is armed from the Online tab
+and runs from the VS character select screen (`[0x47E723] == 4`,
+`[0x8612AD] == 3`) until the players back out to the Single/Tag submenu,
+reach the title, or leave Versus. Nothing below is active outside a session.
 
-These are behavior-changing fixes present in the current tree. Do not remove
-them because an internal metric looks cleaner; validate changes against actual
-game behavior.
+- `src/online/netplay_session.c`: the lockstep frame is the aggregate builder
+  (`sub_0009EB90` wrapper), which writes both players' pads into the raw
+  slots of ports 0 and 1 before the builder reads them. At the start it
+  applies the session parameters: RNG seed (`[[0x1C] + 0x14]`, where this
+  port's `_getptd` resolves), the save image `0x484D78` (keeping local
+  volumes, with port 1 carrying the joiner's button layout, then
+  `sub_000BB270` rebuilds the button maps), the fight-state regions, and the
+  pad topology (`doa3_netplay_force_pads`). A per-frame digest is written to
+  `netplay_digest_*.txt` when the session ends.
+- `src/online/xbox_det.c`: KeTickCount, QPC and KeQuerySystemTime follow the
+  frame counter, and worker timeslices come from the frame and the kernel
+  call count instead of the 4 ms host timer.
+- `kernel_path.c`: for a joiner, `T:\` points at `TitleData_netplay`, a copy
+  taken at session start, so nothing saved during the session reaches the
+  real save.
 
 ### PSGSFD fall-through restoration
 
@@ -601,57 +606,3 @@ must be recreated or preserved during regeneration:
    from the non-main XBE code sections.
 - `recomp_seedattract.c` carries the eight attract-flow entry points that only
    a function-pointer table references.
-
-Do not treat these files as disposable build products. A regeneration is not
-complete until their symbols and behavior are represented in the new output.
-
-## Diagnostics
-
-Normal runs write `doa3_log.txt`; generated logs and frame captures are ignored
-by Git.
-
-Useful opt-in switches:
-
-- `DOA3_DISPLAYTRACE=1`: capture exact display-time YUV/BGRA and descriptor data.
-- `DOA3_REFTRACE=1`: trace reference-pair and plane-integrity behavior.
-- `DOA3_IFRAME=1`: dump selected completion-time planes and an index CSV.
-
-Frame dumps are evidence, not perceptual acceptance. For visible or audible
-issues, the running game is the final validation.
-
-## Next Work
-
-### The two render-list walkers spin on a bad record
-
-`sub_00158DE0` (flat list at `0x00A1F388`) and `sub_00159180` (block-chained
-list from `[0x0099A1F8]`) both dispatch on a record type word of 0, 1 or 2 and
-send anything else to a bound check that does not advance the cursor -- the
-guest spins at 100% CPU with the process alive. That is the hang about a minute
-into the title phase; real hardware would spin too, so the list is genuinely
-bad.
-
-`[WALKCHK]` validates the whole chain at every walk entry and it has **never**
-reported a bad chain, so the corruption happens *during* the walk. Captured
-live at the stall, the record the walk stopped on held `0x001C0800` -- the
-address of the D3D device object, i.e. a push-buffer method/parameter pair
-written through the wrong cursor -- with runs of small integers around it.
-`src/game/main.c` carries an opt-in write watch (`DOA3_WATCHVA=<hex guest VA>`,
-`DOA3_WATCHLEN=<hex>`) that reports the writing RIP; it is armed post-movie and
-has not yet been pointed at the list pages.
-
-### The pixel pipeline is fixed-function only
-
-DOA3 drives colour through the NV2A register combiners
-(`SET_COMBINER_*`, ~330k writes every two seconds) and the translator
-substitutes a single fixed-function stage. Only texture stage 0 is ever bound,
-which matches the guest -- `[TEXCTL0]` shows stages 1 to 3 enabled zero times --
-so multi-texturing is not the gap; the combiner program is.
-
-`SET_SURFACE_ZETA_OFFSET` (0x0214) and `SET_WINDOW_CLIP_*` (0x02B4/0x02C0/
-0x02E0) are still ignored, so the render-to-texture pass shares the main depth
-buffer and no scissor is applied.
-
-Hardware vertex blending is **not** a gap: `SET_SKIN_MODE` is written with
-non-zero modes, but model-view matrices 1 to 3 (`0x04C0`, `0x0500`, `0x0540`)
-are never uploaded, so there is nothing to blend.
-
