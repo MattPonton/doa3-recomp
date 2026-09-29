@@ -18,41 +18,6 @@
 static WCHAR s_game_dir[MAX_PATH];    /* Path to game disc content */
 static WCHAR s_save_dir[MAX_PATH];    /* Base for save/cache directories */
 static BOOL  s_initialized = FALSE;
-static volatile LONG s_title_redirect = 0;   /* see xbox_path_set_title_redirect */
-
-static void copy_dir_files(const WCHAR *from, const WCHAR *to)
-{
-    WCHAR pat[MAX_PATH], src[MAX_PATH], dst[MAX_PATH];
-    WIN32_FIND_DATAW fd;
-    HANDLE h;
-    CreateDirectoryW(to, NULL);
-    swprintf_s(pat, MAX_PATH, L"%s\\*", from);
-    h = FindFirstFileW(pat, &fd);
-    if (h == INVALID_HANDLE_VALUE) return;
-    do {
-        if (!wcscmp(fd.cFileName, L".") || !wcscmp(fd.cFileName, L"..")) continue;
-        swprintf_s(src, MAX_PATH, L"%s\\%s", from, fd.cFileName);
-        swprintf_s(dst, MAX_PATH, L"%s\\%s", to, fd.cFileName);
-        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) copy_dir_files(src, dst);
-        else CopyFileW(src, dst, FALSE);
-    } while (FindNextFileW(h, &fd));
-    FindClose(h);
-}
-
-void xbox_path_set_title_redirect(int on)
-{
-    if (!s_initialized)
-        xbox_path_init(NULL, NULL);
-    if (on) {
-        WCHAR real_dir[MAX_PATH], copy_dir[MAX_PATH];
-        swprintf_s(real_dir, MAX_PATH, L"%s\\TitleData", s_save_dir);
-        swprintf_s(copy_dir, MAX_PATH, L"%s\\TitleData_netplay", s_save_dir);
-        CreateDirectoryW(s_save_dir, NULL);
-        copy_dir_files(real_dir, copy_dir);
-    }
-    InterlockedExchange(&s_title_redirect, on ? 1 : 0);
-    xbox_log(XBOX_LOG_INFO, XBOX_LOG_PATH, "TitleData redirect %s", on ? "ON" : "OFF");
-}
 
 void xbox_path_init(const char* game_dir, const char* save_dir)
 {
@@ -160,7 +125,7 @@ BOOL xbox_translate_path(const char* xbox_path, WCHAR* win_path_buf, DWORD buf_s
     if (skip) {
         remainder = xbox_path + skip;
         base_dir = s_save_dir;
-        sub_dir = s_title_redirect ? L"\\TitleData_netplay" : L"\\TitleData";
+        sub_dir = L"\\TitleData";
         goto translate;
     }
 
@@ -195,7 +160,7 @@ BOOL xbox_translate_path(const char* xbox_path, WCHAR* win_path_buf, DWORD buf_s
     if (skip) {
         remainder = xbox_path + skip;
         base_dir = s_save_dir;
-        sub_dir = s_title_redirect ? L"\\TitleData_netplay" : L"\\TitleData";
+        sub_dir = L"\\TitleData";
         goto translate;
     }
 

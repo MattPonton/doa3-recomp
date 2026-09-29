@@ -19,7 +19,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <windows.h>
-#include "online/netplay_session.h"
 
    /* CaptureStackBackTrace (SBH alloc-loop diagnostics) */
 
@@ -585,7 +584,7 @@ void sub_001E6958(void)   /* XGetDevices(type) -> connected mask, stdcall ret 4 
      * inside cxbx reproduces this port's teardown exactly. */
     {
         extern DWORD xbox_InputHostMask(void);
-        uint32_t mask = netplay_filter_pad_mask(xbox_InputHostMask());
+        uint32_t mask = xbox_InputHostMask();
         /* Real XAPI semantics (cxbx Xapi.cpp, XGetDevices): reporting the
          * connected set also resets the change baseline, so the next
          * XGetDeviceChanges does NOT re-report these pads as insertions. */
@@ -618,9 +617,7 @@ void sub_001E697A(void)   /* XGetDeviceChanges(type, &ins, &rem), stdcall ret 12
      * skip, and the corner logo never armed. */
     extern DWORD xbox_InputHostMask(void);
     uint32_t p_ins = MEM32(esp + 8), p_rem = MEM32(esp + 12);
-    /* A netplay session fixes the topology at ports 0 and 1 on both
-     * machines, whatever pads they have (netplay_session.c). */
-    uint32_t cur = netplay_filter_pad_mask(xbox_InputHostMask());
+    uint32_t cur = xbox_InputHostMask();
     uint32_t ins = cur & ~s_xpp_prev_mask;
     uint32_t rem = s_xpp_prev_mask & ~cur;
     s_xpp_prev_mask = cur;
@@ -630,34 +627,6 @@ void sub_001E697A(void)   /* XGetDeviceChanges(type, &ins, &rem), stdcall ret 12
     }
     eax = (ins | rem) ? 1u : 0u;
     esp += 16;
-}
-/* Netplay session start: put the four pad structs into the same state on
- * both machines -- the ports in `mask` open with the fake handle XInputOpen
- * hands out, the others closed, no carried-over pad or rumble state, and the
- * per-frame aggregates (which hold last frame's buttons and the auto-repeat
- * counters) cleared. The change baseline is set so XGetDeviceChanges reports
- * nothing for these ports on the next frame. */
-void doa3_netplay_force_pads(uint32_t mask)
-{
-    uint32_t p, i;
-    for (p = 0; p < 4; p++) {
-        uint32_t pad = 0x5E5CD0u + 0x80u * p;
-        for (i = 0x00; i < 0x19; i++) MEM8(pad + i) = 0;       /* caps blob */
-        for (i = 0x19; i < 0x45; i++) MEM8(pad + i) = 0;       /* both state slots */
-        for (i = 0x71; i < 0x78; i++) MEM8(pad + i) = 0;       /* rumble motors */
-        MEM32(pad + 0x7C) = 0;                                  /* rumble timer */
-        if (mask & (1u << p)) {
-            MEM8(pad) = 1;                                      /* XINPUT_DEVSUBTYPE_GC_GAMEPAD */
-            MEM32(pad + 0x78) = 0x0AD00001u + p;                /* XInputOpen's handle */
-        } else {
-            MEM32(pad + 0x78) = 0;
-        }
-    }
-    for (i = 0x5E5ED8u; i < 0x5E5FA4u; i++) MEM8(i) = 0;
-    MEM32(0x5E5ED0) = mask;
-    MEM32(0x5E5CC8) = 0;
-    MEM32(0x5E5CCC) = 0;
-    s_xpp_prev_mask = mask;
 }
 void sub_001E6EAF_xppgen(void);
 void sub_001E6EAF(void)   /* XInputClose(handle), stdcall ret 4 */
@@ -3901,9 +3870,6 @@ unsigned g_in_getstate, g_in_build;
 void sub_0009EB90_gen(void);
 void sub_0009EB90(void) {
     g_in_build++;
-    /* Netplay: the lockstep frame. Supplies both players' pads to the raw
-     * slots this builder reads (no-op outside a session). */
-    netplay_input_tick();
     sub_0009EB90_gen();
     {   /* Did a press actually reach the aggregate the post-movie screen
          * tests (sub_00081E90 reads bits 4-15 of 0x5E5EE0)? */

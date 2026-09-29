@@ -12,7 +12,6 @@
 extern "C" {
 #include "pad_mapping.h"
 #include "../game/video_settings.h"
-#include "../online/netplay_session.h"
 ID3D11RenderTargetView *d3d8_GetPresentRTV(void);
 UINT                    d3d8_GetPresentWidth(void);
 UINT                    d3d8_GetPresentHeight(void);
@@ -247,50 +246,6 @@ void DrawVideoSection()
         video_set_scale(sc + 1);
 }
 
-/* ── Online section ───────────────────────────────────────────────────────*/
-
-void DrawOnlineSection()
-{
-    static const char *kState[] = { "Off", "Armed - waiting for VS character select", "Session running" };
-    np_status st;
-    netplay_get_status(&st);
-
-    ImGui::TextWrapped("-");
-    ImGui::Separator();
-
-    if (ImGui::CollapsingHeader("Developer Settings")) {
-        static int role = NP_ROLE_HOST;
-        bool armed = netplay_armed() != 0;
-        bool running = st.state == NP_STATE_ACTIVE;
-
-        ImGui::TextWrapped("Runs a VS session with both players on this machine "
-                           "under the lockstep rules: frame-driven clocks and "
-                           "workers, synced seed/settings/fight state, ports 0-1 "
-                           "only. A per-frame digest log is written next to the "
-                           "game when you leave Versus.");
-        if (running) ImGui::BeginDisabled();
-        ImGui::RadioButton("Host path", &role, NP_ROLE_HOST);
-        ImGui::SameLine();
-        ImGui::RadioButton("Joiner path (save redirect, settings blob, restore)", &role, NP_ROLE_JOINER);
-        if (running) ImGui::EndDisabled();
-        bool mirror = netplay_mirror() != 0;
-        if (ImGui::Checkbox("Player 2 mirrors Player 1 (one controller)", &mirror))
-            netplay_set_mirror(mirror ? 1 : 0);
-        if (ImGui::Checkbox("Arm session", &armed))
-            netplay_set_armed(armed ? 1 : 0, role);
-
-        ImGui::Text("State: %s", kState[st.state < 3 ? st.state : 0]);
-        if (running) {
-            ImGui::Text("%s Battle, %s path, frame %u",
-                        st.tag ? "Tag" : "Single",
-                        st.role == NP_ROLE_JOINER ? "joiner" : "host", st.frame);
-            ImGui::Text("Digest %016llX", (unsigned long long)st.digest);
-        }
-        ImGui::Text("Sessions completed: %u", st.sessions);
-        if (st.last_log[0]) ImGui::TextDisabled("Last log: %s", st.last_log);
-    }
-}
-
 void DrawMenu()
 {
     const ImGuiViewport *vp = ImGui::GetMainViewport();
@@ -302,10 +257,6 @@ void DrawMenu()
     bool open = true;
     if (ImGui::Begin("Dead or Alive 3", &open, ImGuiWindowFlags_NoCollapse)) {
         if (ImGui::BeginTabBar("##tabs")) {
-            if (ImGui::BeginTabItem("Online")) {
-                DrawOnlineSection();
-                ImGui::EndTabItem();
-            }
             if (ImGui::BeginTabItem("Controls")) {
                 DrawControlsSection();
                 ImGui::EndTabItem();

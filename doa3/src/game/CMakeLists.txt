@@ -44,7 +44,6 @@ target_link_libraries(doa3 PRIVATE
     input_compat
     apu_emu
     doa3_ui
-    doa3_online
 )
 
 # System libraries (mirrors burnout3)
