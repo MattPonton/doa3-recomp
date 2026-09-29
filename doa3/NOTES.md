@@ -100,11 +100,30 @@ reach the title, or leave Versus. Nothing below is active outside a session.
   pad topology (`doa3_netplay_force_pads`). A per-frame digest is written to
   `netplay_digest_*.txt` when the session ends.
 - `src/online/xbox_det.c`: KeTickCount, QPC and KeQuerySystemTime follow the
-  frame counter, and worker timeslices come from the frame and the kernel
-  call count instead of the 4 ms host timer.
+  frame counter. Workers get a fixed lap budget at each lockstep frame and
+  then run until idle (`xbox_fiber_run_workers_idle`), and so do vblank
+  waits, sleeps and the game thread's hot QPC polls; the QPC hot-poll boost
+  is kept per fiber.
+- `src/apu/apu_core.c`: in a session the APU thread parks and the game
+  thread steps the chip, 25 chip frames (800 samples) per lockstep frame,
+  plus single frames from DirectSound's retire wait; `XGSCNT` follows the
+  stepped sample clock.
 - `kernel_path.c`: for a joiner, `T:\` points at `TitleData_netplay`, a copy
   taken at session start, so nothing saved during the session reaches the
   real save.
+
+Determinism (Phase 3). The session starts once character select has settled
+(both preview models posed, no file I/O for 10 frames), resets the CRT seed
+at every screen change, and carries every piece of pre-session history the
+fight reads: cameras, boot/screen counters, the idle timers and the per-fighter
+records at `0x46C6A0` (minus their heap pointers). Every source of drift was
+the same thing -- work whose amount depended on the wall clock or on where the
+menu music was when the session began (APU chip time and interrupts, worker
+laps, the always-ready CRI watchdog `0x16A530` eating the idle budget, QPC
+polls). Measured with record/replay (Online tab, developer section): a Single
+Battle match and a Tag Battle match with 21 tag changes, each replayed three
+times in fresh launches, matched the recording on every frame. Tools:
+`tools/online/compare_digests.py` and `state_diff.py`.
 
 ### PSGSFD fall-through restoration
 

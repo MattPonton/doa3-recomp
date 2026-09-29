@@ -15,3 +15,6 @@
 /doa3/*_err.txt
 /doa3/*_out.txt
 /doa3/netplay_digest_*.txt
+/doa3/netplay_replay_*.dnr
+/doa3/netplay_state_*.bin
+/doa3/netplay_full_*.bin

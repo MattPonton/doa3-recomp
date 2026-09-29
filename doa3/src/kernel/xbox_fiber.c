@@ -169,6 +169,32 @@ void xbox_fiber_init(void)
 
 int xbox_fiber_active(void) { return g_active; }
 
+/* Run the workers until none is ready (at most `cap` laps). Netplay
+ * sessions use this wherever the game gives its workers time, so how much
+ * work they finish never depends on how much was queued. */
+void xbox_fiber_run_workers_idle(int cap)
+{
+    extern int xbox_fiber_workers_ready(void);
+    xbox_fiber_yield();
+    while (--cap > 0 && xbox_fiber_workers_ready()) xbox_fiber_yield();
+}
+
+/* Any worker (not the primary, not a game-task coroutine) ready to run. */
+int xbox_fiber_workers_ready(void)
+{
+    int i;
+    for (i = 1; i < g_nfib; i++) {
+        if (g_fib[i].is_coroutine && g_doa3_post_movie) continue;
+        /* The CRI watchdog (sub_0016A530) is a pure yield loop and is always
+         * READY; counting it meant "until idle" always ran to its cap, and
+         * within that budget the file server's progress on a load depended
+         * on how much music streaming was queued ahead of it. */
+        if (g_fib[i].ctx1 == 0x0016A530u) continue;
+        if (g_fib[i].state == FIB_READY) return 1;
+    }
+    return 0;
+}
+
 int xbox_fiber_spawn(uint32_t start_routine, uint32_t ctx1, uint32_t ctx2,
                      uint32_t xhandle, int suspended)
 {
@@ -306,7 +332,17 @@ void xbox_fiber_timeslice(void)
         s_last = now;
         /* Netplay session: a fixed lap budget per lockstep frame, never the
          * wall clock, so both machines run their workers identically. */
-        if (g_xbox_det_active) laps = xbox_det_slice_laps();
+        if (g_xbox_det_active) {
+            /* Then keep going until every worker has blocked: whatever file
+             * or decode work is pending finishes inside this frame, so a
+             * load completes on the same frame however much music streaming
+             * was queued ahead of it (that amount depends on where the menu
+             * music was when the session started). */
+            laps = xbox_det_slice_laps();
+            while (laps-- > 0) xbox_fiber_yield();
+            xbox_fiber_run_workers_idle(1024);
+            laps = 0;
+        }
         while (laps-- > 0) xbox_fiber_yield();
     }
 }

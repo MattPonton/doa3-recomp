@@ -56,6 +56,10 @@ typedef struct {
     uint64_t digest;      /* digest of the latest frame */
     uint32_t sessions;    /* sessions completed since launch */
     char last_log[260];   /* digest log written by the last session */
+    int  replaying;       /* a replay is loaded or running */
+    uint32_t replay_frames;
+    uint32_t diverged_at; /* first differing frame, 0xFFFFFFFF while matching */
+    char message[200];    /* last record/replay message */
 } np_status;
 
 /* Online tab controls. `role` only matters for a local session: JOINER
@@ -68,8 +72,18 @@ int  netplay_mirror(void);
 int  netplay_active(void);
 void netplay_get_status(np_status *out);
 
+/* Determinism testing. Recording writes netplay_replay_*.dnr (start
+ * parameters, both pads and the digest for every frame) when a session
+ * ends. A replay starts at the same VS character select, plays the recorded
+ * pads, and reports the first frame whose digest differs. */
+void netplay_set_record(int on);
+int  netplay_record(void);
+void netplay_request_replay(const char *path);   /* loaded at the next game frame */
+int  netplay_list_replays(char (*names)[128], int max);
+
 /* Game hooks (recomp_manual.c). */
 void     netplay_input_tick(void);                  /* before the aggregate builder */
+void     netplay_note_rand(void);                   /* every CRT rand() call */
 uint32_t netplay_filter_pad_mask(uint32_t host_mask);  /* XGetDevices / XGetDeviceChanges */
 
 #ifdef __cplusplus

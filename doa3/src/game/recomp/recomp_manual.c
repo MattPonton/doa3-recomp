@@ -659,6 +659,14 @@ void doa3_netplay_force_pads(uint32_t mask)
     MEM32(0x5E5CCC) = 0;
     s_xpp_prev_mask = mask;
 }
+/* CRT rand() (sub_0018EE60; seed at [[0x1C] + 0x14]). Netplay sessions
+ * account for every call (netplay_note_rand). */
+void sub_0018EE60_gen(void);
+void sub_0018EE60(void)
+{
+    netplay_note_rand();
+    sub_0018EE60_gen();
+}
 void sub_001E6EAF_xppgen(void);
 void sub_001E6EAF(void)   /* XInputClose(handle), stdcall ret 4 */
 {
@@ -2633,6 +2641,11 @@ void doa3_apu_wait_retire(uint32_t obj)
         eax = r_eax; ecx = r_ecx; edx = r_edx; ebx = r_ebx; esi = r_esi;
         edi = r_edi; esp = r_esp; g_seh_ebp = r_seh;
         if (!(MEM32(obj + 8) & 0x10000000u)) break;
+        {   /* netplay session: the chip only moves when stepped (apu_core.c) */
+            extern volatile int g_apu_det;
+            extern void mcpx_apu_det_step(void);
+            if (g_apu_det) { mcpx_apu_det_step(); continue; }
+        }
         Sleep(1);
         if (!warned && GetTickCount() - t0 > 500) {
             warned = 1;
