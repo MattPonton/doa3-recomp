@@ -4,7 +4,6 @@
 #include "kernel/kernel.h"
 #include "xbox_det.h"
 #include "kernel/xbox_memory_layout.h"
-#include "kernel/xbox_fiber.h"
 
 volatile int g_xbox_det_active = 0;
 extern volatile int g_fib_slice_due;   /* xbox_fiber.c */
@@ -19,18 +18,6 @@ static uint64_t s_qpf;
 static uint64_t s_qpc_boost;        /* hot-poll boost accumulated this session */
 static uint32_t s_kcalls;           /* guest kernel calls since session start */
 static int      s_pending_laps;
-static uint32_t s_hist[XBOX_DET_HIST_SIZE];   /* kernel calls by ordinal, diagnostics */
-/* Per fiber: kernel calls and hot-poll QPC boost. The audio workers' polling
- * depends on how much streaming is pending, so neither may move the time or
- * the poll accounting another fiber (above all the game thread) sees. */
-#define DET_FIBERS 64
-static uint32_t s_fkcalls[DET_FIBERS];
-static uint64_t s_fboost[DET_FIBERS];
-static int fib_index(void)
-{
-    int f = xbox_fiber_current();
-    return (f >= 0 && f < DET_FIBERS) ? f : DET_FIBERS - 1;
-}
 static volatile uint32_t s_epoch;   /* bumped on begin and end */
 
 static uint32_t s_tick_offset;      /* added to the host tick after a session */
@@ -51,10 +38,6 @@ static uint64_t host_qpc(void)
 }
 
 uint32_t xbox_det_epoch(void) { return s_epoch; }
-
-static volatile uint32_t s_io;
-void     xbox_det_note_io(void)  { s_io++; }
-uint32_t xbox_det_io_count(void) { return s_io; }
 
 void xbox_det_current_bases(xbox_det_bases *out)
 {
@@ -82,10 +65,7 @@ void xbox_det_begin(const xbox_det_bases *b)
     s_qpf = (uint64_t)f.QuadPart;
     s_qpc_boost = 0;
     s_kcalls = 0;
-    memset(s_fkcalls, 0, sizeof(s_fkcalls));
-    memset(s_fboost, 0, sizeof(s_fboost));
     s_pending_laps = 0;
-    memset(s_hist, 0, sizeof(s_hist));
     s_epoch++;
     g_fib_slice_due = 0;
     *tick_export() = s_base.tick_ms;
@@ -127,21 +107,12 @@ uint32_t xbox_det_tick_ms(void)
     return s_base.tick_ms + (uint32_t)((s_frames * 1000u) / 60u);
 }
 
-/* The calling fiber's view of the session QPC. */
 uint64_t xbox_det_qpc(void)
 {
-    return s_base.qpc + (s_frames * s_qpf) / 60u + s_fboost[fib_index()];
+    return s_base.qpc + (s_frames * s_qpf) / 60u + s_qpc_boost;
 }
 
-void xbox_det_add_qpc_boost(uint64_t delta)
-{
-    s_fboost[fib_index()] += delta;
-    s_qpc_boost += delta;
-}
-
-uint32_t xbox_det_fiber_kcalls(void) { return s_fkcalls[fib_index()]; }
-uint32_t xbox_det_kcalls(void) { return s_kcalls; }
-uint64_t xbox_det_boost(void) { return s_fboost[0]; }   /* the game thread's */
+void xbox_det_add_qpc_boost(uint64_t delta) { s_qpc_boost += delta; }
 
 uint64_t xbox_det_filetime(void)
 {
@@ -166,19 +137,13 @@ void xbox_det_host_slice_timer(void)
     ReleaseSRWLockShared(&s_lock);
 }
 
-const uint32_t *xbox_det_kcall_histogram(void) { return s_hist; }
-
-void xbox_det_on_kernel_call(unsigned ordinal)
+void xbox_det_on_kernel_call(void)
 {
     if (!g_xbox_det_active) return;
-    if (s_frames < XBOX_DET_HIST_FRAMES && ordinal < XBOX_DET_HIST_SIZE) s_hist[ordinal]++;
-    s_kcalls++;
-    s_fkcalls[fib_index()]++;
-    /* No kernel-call-driven slices in a session: where they fell depended
-     * on how many calls the audio code had made, so a load could finish
-     * just before or just after the game's per-frame check. Workers run
-     * at the lockstep frame (until idle) and whenever a guest thread
-     * waits. */
+    if (++s_kcalls % XBOX_DET_KCALL_PERIOD == 0) {
+        s_pending_laps += 1;
+        g_fib_slice_due = 1;
+    }
 }
 
 int xbox_det_slice_laps(void)

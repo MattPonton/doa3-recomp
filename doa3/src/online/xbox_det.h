@@ -6,13 +6,13 @@
  * inputs see the same time values at the same frames:
  *
  *   KeTickCount            base_ms  + frames * 1000 / 60
- *   KeQueryPerformanceCounter  base_qpc + frames * freq / 60  (+ that fiber's poll boost)
+ *   KeQueryPerformanceCounter  base_qpc + frames * freq / 60  (+ poll boost)
  *   KeQuerySystemTime      base_ft  + frames * 10000000 / 60
  *
- * Worker-fiber timeslicing is taken off the 4 ms host timer as well: at each
- * lockstep frame the workers get a fixed number of laps and then run until
- * all of them have blocked (xbox_fiber_timeslice); otherwise they only run
- * when a guest thread waits.
+ * Worker-fiber timeslicing is taken off the 4 ms host timer as well: a
+ * fixed number of laps per lockstep frame, plus one lap every
+ * XBOX_DET_KCALL_PERIOD guest kernel calls (counted from session start) so
+ * scene loads, which run without frames, keep their workers going.
  *
  * Nothing here changes behaviour outside a session. When a session ends the
  * host clocks resume with an offset, so no guest clock ever runs backwards.
@@ -27,6 +27,7 @@ extern "C" {
 #endif
 
 #define XBOX_DET_LAPS_PER_FRAME  4     /* the host timer's 4 ms period at 60 Hz */
+#define XBOX_DET_KCALL_PERIOD    4096  /* one extra lap per this many kernel calls */
 
 /* Session clock bases. The host of a session chooses them and sends them to
  * the other side; a local session takes the current host values. */
@@ -54,23 +55,11 @@ uint32_t xbox_det_tick_ms(void);
 uint64_t xbox_det_qpc(void);
 uint64_t xbox_det_filetime(void);
 
-/* Guest file opens/reads, counted so a netplay session can start only once
- * the game's loading has gone quiet. */
-void     xbox_det_note_io(void);
-uint32_t xbox_det_io_count(void);
-
 /* Hot-poll time boost (kernel_bridge QPC) accumulated within the session. */
 void     xbox_det_add_qpc_boost(uint64_t delta);
 
 /* Changes on every begin/end, so callers can reset per-session state. */
 uint32_t xbox_det_epoch(void);
-
-/* Kernel calls made by the calling fiber this session (hot-poll detection). */
-uint32_t xbox_det_fiber_kcalls(void);
-
-/* Diagnostics: guest kernel calls, and the game thread's hot-poll boost. */
-uint32_t xbox_det_kcalls(void);
-uint64_t xbox_det_boost(void);
 
 /* Offsets applied to the host clocks after a session so they stay monotonic. */
 uint32_t xbox_det_tick_offset(void);
@@ -81,14 +70,7 @@ void     xbox_det_publish_host_tick(uint32_t host_ms);  /* 1 ms tick thread */
 void     xbox_det_host_slice_timer(void);                /* 4 ms slice timer */
 
 /* Called on every guest kernel call (game thread). */
-void     xbox_det_on_kernel_call(unsigned ordinal);
-
-/* Diagnostics: guest kernel calls per ordinal over the first
- * XBOX_DET_HIST_FRAMES frames of the session (for finding the call whose
- * count differs between two runs). */
-#define XBOX_DET_HIST_FRAMES 100
-#define XBOX_DET_HIST_SIZE   400
-const uint32_t *xbox_det_kcall_histogram(void);
+void     xbox_det_on_kernel_call(void);
 
 /* Worker laps for the slice that is due now (deterministic in a session). */
 int      xbox_det_slice_laps(void);

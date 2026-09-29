@@ -99,15 +99,9 @@ uint64_t mcpx_apu_read(void *opaque, hwaddr addr, unsigned int size)
     uint64_t r = 0;
 
     switch (addr) {
-    case NV_PAPU_XGSCNT: {
-        /* In a netplay session the sample clock is the stepped chip time
-         * (see g_apu_det), not the host clock. */
-        extern volatile int g_apu_det;
-        extern uint64_t mcpx_apu_det_xgscnt(void);
-        extern uint64_t mcpx_apu_xgscnt_now(void);
-        r = g_apu_det ? mcpx_apu_det_xgscnt() : mcpx_apu_xgscnt_now();
+    case NV_PAPU_XGSCNT:
+        r = (uint64_t)(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) / 100);
         break;
-    }
     default:
         if (addr < 0x20000) {
             r = qatomic_read(&d->regs[addr]);
@@ -463,139 +457,12 @@ static void se_frame(MCPXAPUState *d)
  * APU frame thread (background processing)
  * ============================================================ */
 
-/* Netplay lockstep sessions (src/online): the chip must not run on the wall
- * clock, because the game's audio driver reads the voice state it writes and
- * services its interrupts once per frame -- how far the chip got decided how
- * much driver work each frame did, and that shifted everything after it
- * (measured: guest kernel calls per frame differing between two replays of
- * the same input from frame 13 on). While a session runs the frame thread
- * parks and the game thread steps the chip itself: exactly 25 chip frames of
- * 32 samples (800 samples = 1/60 s) per lockstep frame, plus single frames
- * from inside DirectSound's retire wait, which are paid back from the next
- * frame's budget. */
-volatile int g_apu_det = 0;
-static int s_apu_det_debt;
-static uint64_t s_apu_det_xgs0;      /* XGSCNT (100 ns units) at session start */
-static uint64_t s_apu_det_chip;      /* chip frames stepped this session */
-static uint64_t s_apu_xgs_offset;    /* keeps the host counter monotonic after a session */
-
-/* The sample counter as the guest sees it outside a session. */
-uint64_t mcpx_apu_xgscnt_now(void)
-{
-    return (uint64_t)(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) / 100) + s_apu_xgs_offset;
-}
-
-uint64_t mcpx_apu_det_xgscnt(void)
-{
-    /* 32 samples at 48 kHz per chip frame = 6666.67 x 100 ns */
-    return s_apu_det_xgs0 + (s_apu_det_chip * 20000u) / 3u;
-}
-
-static void apu_frame_body(MCPXAPUState *d)
-{
-    int xcntmode = GET_MASK(qatomic_read(&d->regs[NV_PAPU_SECTL]),
-                            NV_PAPU_SECTL_XCNTMODE);
-    uint32_t fectl = qatomic_read(&d->regs[NV_PAPU_FECTL]);
-    /* FEMETHMODE is a field, not a set of flags: FREE_RUNNING 0x00,
-     * HALTED 0x80, TRAPPED 0xE0. Only HALTED stops the chip. Testing
-     * TRAPPED as a mask also matched HALTED, and more importantly it
-     * stopped the whole voice processor for as long as an idle-voice trap
-     * was outstanding, which from the title screen on was forever: that
-     * was the silence. A trapped front end stops accepting new methods,
-     * it does not stop mixing the voices already in the lists. */
-    bool apu_active = (xcntmode != NV_PAPU_SECTL_XCNTMODE_OFF) &&
-                      ((fectl & NV_PAPU_FECTL_FEMETHMODE) !=
-                       NV_PAPU_FECTL_FEMETHMODE_HALTED);
-
-    if (apu_active && !g_test_tone.active) {
-        /* Full pipeline: VP voices → DSP → monitor → waveOut */
-        se_frame(d);
-    } else {
-        /* Lightweight: just monitor frame (test tone + software mixer) */
-        mcpx_apu_monitor_frame(d);
-        d->ep_frame_div++;
-    }
-    /* FE trap / voice event raised during the frame: latch the status
-     * bits and assert the (virtual) interrupt line. */
-    if (d->set_irq) {
-        d->set_irq = false;
-        update_irq(d);
-    }
-}
-
-static void apu_det_run(MCPXAPUState *d, int n)
-{
-    while (n-- > 0) {
-        s_apu_det_chip++;
-        if (d->pause_requested && !g_test_tone.active && !g_mixer_active_count)
-            continue;   /* the thread would be parked idle: no chip time passes */
-        apu_frame_body(d);
-    }
-}
-
-void mcpx_apu_det_begin(uint64_t xgscnt_base)
-{
-    MCPXAPUState *d = g_state;
-    if (!d) return;
-    qemu_mutex_lock(&d->lock);      /* the thread is between frames once we hold it */
-    s_apu_det_xgs0 = xgscnt_base;
-    s_apu_det_chip = 0;
-    g_apu_det = 1;
-    s_apu_det_debt = 0;
-    qemu_mutex_unlock(&d->lock);
-}
-
-void mcpx_apu_det_end(void)
-{
-    MCPXAPUState *d = g_state;
-    if (!d) return;
-    qemu_mutex_lock(&d->lock);
-    {
-        uint64_t det = mcpx_apu_det_xgscnt(), real = mcpx_apu_xgscnt_now();
-        if (det > real) s_apu_xgs_offset += det - real;
-    }
-    g_apu_det = 0;
-    d->next_frame_time_us = 0;      /* resume on the wall clock without catching up */
-    qemu_cond_broadcast(&d->cond);
-    qemu_mutex_unlock(&d->lock);
-}
-
-/* One lockstep frame of chip time. */
-void mcpx_apu_det_frame(void)
-{
-    MCPXAPUState *d = g_state;
-    int n = 25;
-    if (!d || !g_apu_det) return;
-    if (s_apu_det_debt >= n) { s_apu_det_debt -= n; return; }
-    n -= s_apu_det_debt;
-    s_apu_det_debt = 0;
-    qemu_mutex_lock(&d->lock);
-    apu_det_run(d, n);
-    qemu_mutex_unlock(&d->lock);
-}
-
-/* One chip frame now, for a guest wait on the chip (paid back later). */
-void mcpx_apu_det_step(void)
-{
-    MCPXAPUState *d = g_state;
-    if (!d || !g_apu_det) return;
-    qemu_mutex_lock(&d->lock);
-    apu_det_run(d, 1);
-    qemu_mutex_unlock(&d->lock);
-    s_apu_det_debt++;
-}
-
 static void *mcpx_apu_frame_thread(void *arg)
 {
     MCPXAPUState *d = MCPX_APU_DEVICE(arg);
     qemu_mutex_lock(&d->lock);
 
     while (!qatomic_read(&d->exiting)) {
-        if (g_apu_det) {
-            /* a netplay session steps the chip from the game thread */
-            qemu_cond_timedwait(&d->cond, &d->lock, 5);
-            continue;
-        }
         if (d->pause_requested && !g_test_tone.active && !g_mixer_active_count) {
             d->is_idle = true;
             qemu_cond_signal(&d->idle_cond);
@@ -608,8 +475,35 @@ static void *mcpx_apu_frame_thread(void *arg)
          * need continuous frame delivery regardless of APU register state.
          * The VP/DSP pipeline (se_frame) only runs when registers allow it. */
         throttle(d);
-        if (g_apu_det) continue;    /* a session started during the wait */
-        apu_frame_body(d);
+
+        int xcntmode = GET_MASK(qatomic_read(&d->regs[NV_PAPU_SECTL]),
+                                NV_PAPU_SECTL_XCNTMODE);
+        uint32_t fectl = qatomic_read(&d->regs[NV_PAPU_FECTL]);
+        /* FEMETHMODE is a field, not a set of flags: FREE_RUNNING 0x00,
+         * HALTED 0x80, TRAPPED 0xE0. Only HALTED stops the chip. Testing
+         * TRAPPED as a mask also matched HALTED, and more importantly it
+         * stopped the whole voice processor for as long as an idle-voice trap
+         * was outstanding, which from the title screen on was forever: that
+         * was the silence. A trapped front end stops accepting new methods,
+         * it does not stop mixing the voices already in the lists. */
+        bool apu_active = (xcntmode != NV_PAPU_SECTL_XCNTMODE_OFF) &&
+                          ((fectl & NV_PAPU_FECTL_FEMETHMODE) !=
+                           NV_PAPU_FECTL_FEMETHMODE_HALTED);
+
+        if (apu_active && !g_test_tone.active) {
+            /* Full pipeline: VP voices → DSP → monitor → waveOut */
+            se_frame(d);
+        } else {
+            /* Lightweight: just monitor frame (test tone + software mixer) */
+            mcpx_apu_monitor_frame(d);
+            d->ep_frame_div++;
+        }
+        /* FE trap / voice event raised during the frame: latch the status
+         * bits and assert the (virtual) interrupt line. */
+        if (d->set_irq) {
+            d->set_irq = false;
+            update_irq(d);
+        }
     }
 
     qemu_mutex_unlock(&d->lock);

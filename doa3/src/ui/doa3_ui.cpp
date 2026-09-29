@@ -288,44 +288,6 @@ void DrawOnlineSection()
         }
         ImGui::Text("Sessions completed: %u", st.sessions);
         if (st.last_log[0]) ImGui::TextDisabled("Last log: %s", st.last_log);
-
-        /* Determinism check: record a session, then replay it (ideally in a
-         * fresh launch) and see whether every frame's digest matches. */
-        ImGui::Separator();
-        bool record = netplay_record() != 0;
-        if (ImGui::Checkbox("Record each session to a replay file", &record))
-            netplay_set_record(record ? 1 : 0);
-
-        static char s_files[32][128];
-        static int s_nfiles = -1, s_pick = 0;
-        if (s_nfiles < 0 || ImGui::Button("Refresh")) {
-            s_nfiles = netplay_list_replays(s_files, 32);
-            if (s_pick >= s_nfiles) s_pick = 0;
-        }
-        if (s_nfiles > 0) {
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(330);
-            if (ImGui::BeginCombo("##replay", s_files[s_pick])) {
-                for (int i = 0; i < s_nfiles; i++)
-                    if (ImGui::Selectable(s_files[i], i == s_pick)) s_pick = i;
-                ImGui::EndCombo();
-            }
-            if (running) ImGui::BeginDisabled();
-            if (ImGui::Button("Replay selected")) netplay_request_replay(s_files[s_pick]);
-            if (running) ImGui::EndDisabled();
-        } else {
-            ImGui::SameLine();
-            ImGui::TextDisabled("No replay files yet");
-        }
-        if (running && st.replaying) {
-            if (st.diverged_at == 0xFFFFFFFFu)
-                ImGui::Text("Replay frame %u / %u - matching", st.frame, st.replay_frames);
-            else
-                ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f),
-                                   "Replay frame %u / %u - diverged at frame %u",
-                                   st.frame, st.replay_frames, st.diverged_at);
-        }
-        if (st.message[0]) ImGui::TextWrapped("%s", st.message);
     }
 }
 
