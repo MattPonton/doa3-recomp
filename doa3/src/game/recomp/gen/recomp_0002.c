@@ -28195,7 +28195,12 @@ loc_0007835C: ;
 
 loc_0007836C: ;
     /* cmp LO8(ebx), 7 - flags set for next jcc */
-    goto loc_0007837D;
+    /* DOA3: the jae at 0x7837D has two flag producers (cmp bl,7 here for
+     * story mode, cmp bl,5 at 0x7837A) and was lifted with the 5 only, so
+     * story mode counted as cleared after 5 wins: stage 6 (second cutscene)
+     * and the stage 7 boss were skipped straight to the ending. */
+    if (CMP_AE(LO8(ebx), 7)) goto loc_0007839A; /* jae: above or equal (unsigned >=) */
+    goto loc_0007837F;
 
 loc_00078371: ;
     if (CMP_NE(LO8(ecx), 3)) goto loc_0007837F; /* jne: not equal / not zero */

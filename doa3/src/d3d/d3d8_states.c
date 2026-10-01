@@ -46,8 +46,19 @@ static D3D11_BLEND d3d8_to_d3d11_blend(DWORD d3d8blend)
     case D3DBLEND_DESTCOLOR:    return D3D11_BLEND_DEST_COLOR;
     case D3DBLEND_INVDESTCOLOR: return D3D11_BLEND_INV_DEST_COLOR;
     case D3DBLEND_SRCALPHASAT:  return D3D11_BLEND_SRC_ALPHA_SAT;
+    case D3DBLEND_BLENDFACTOR:    return D3D11_BLEND_BLEND_FACTOR;
+    case D3DBLEND_INVBLENDFACTOR: return D3D11_BLEND_INV_BLEND_FACTOR;
     default:                    return D3D11_BLEND_ONE;
     }
+}
+
+/* The constant for D3DBLEND_(INV)BLENDFACTOR, set by the pgraph translator
+ * from NV097_SET_BLEND_COLOR. White = the old ONE/ZERO mapping. */
+static float g_blend_factor[4] = { 1, 1, 1, 1 };
+void d3d8_SetBlendFactor(float r, float g, float b, float a)
+{
+    g_blend_factor[0] = r; g_blend_factor[1] = g;
+    g_blend_factor[2] = b; g_blend_factor[3] = a;
 }
 
 static D3D11_COMPARISON_FUNC d3d8_to_d3d11_cmp(DWORD d3d8cmp)
@@ -417,7 +428,7 @@ void d3d8_states_apply(void)
 {
     const DWORD *rs = d3d8_GetRenderStates();
     ID3D11DeviceContext *ctx = d3d8_GetD3D11Context();
-    float blend_factor[4] = { 1, 1, 1, 1 };
+    const float *blend_factor = g_blend_factor;
 
     if (!rs || !ctx) return;
 

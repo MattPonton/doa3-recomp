@@ -696,12 +696,14 @@ static void d3d8_apply_target_size_change(void)
     video_sync_guest_widescreen();
 }
 
+static void d3d8_keep_prev_frame(void);
 static HRESULT d3d8_compose_and_present(void)
 {
     D3D8DeviceState *s = &g_device_state;
     ID3D11DeviceContext *ctx = s->d3d11_context;
     HRESULT hr;
     if (!s->swap_chain || !ctx) return E_FAIL;
+    d3d8_keep_prev_frame();
 
     swap_resize_if_needed();
     if (s->swap_rtv && s->default_srv && blit_init()) {
@@ -1064,6 +1066,103 @@ int d3d8_BindOffscreenTexture(uint32_t key, UINT stage)
     ID3D11DeviceContext_PSSetShaderResources(g_device_state.d3d11_context, stage, 1,
                                              &g_offrt[slot].srv);
     return 1;
+}
+
+/* A draw that samples the frame buffer it is rendering into. The Omega
+ * boss fight runs a fullscreen effect whose stage-0 texture is the colour
+ * surface itself (0xEE8000): on the console that memory holds the scene
+ * just drawn, here the scene lives in default_tex and the guest memory is
+ * never written, so the quad sampled blank memory and covered the whole
+ * fight in black (only the one-pixel border it does not cover showed the
+ * stage). Bind a copy of the host frame as it is at this draw -- a copy,
+ * because D3D11 cannot sample the render target that is bound. */
+typedef struct { ID3D11Texture2D *tex; ID3D11ShaderResourceView *srv; UINT w, h; } FbCopy;
+static FbCopy g_fbcopy;      /* the current frame as of the sampling draw */
+static FbCopy g_prevframe;   /* the last presented frame */
+static int    g_prevframe_valid;
+static volatile LONG g_prevframe_want;   /* presents left to keep copying */
+
+static int fbcopy_ensure(FbCopy *c)
+{
+    D3D11_TEXTURE2D_DESC td;
+    ID3D11Texture2D *src = g_device_state.default_tex;
+    if (!g_device_state.d3d11_device || !src) return 0;
+    ID3D11Texture2D_GetDesc(src, &td);
+    if (c->tex && c->w == td.Width && c->h == td.Height) return 1;
+    if (c->srv) { ID3D11ShaderResourceView_Release(c->srv); c->srv = NULL; }
+    if (c->tex) { ID3D11Texture2D_Release(c->tex); c->tex = NULL; }
+    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    td.Usage = D3D11_USAGE_DEFAULT;
+    td.CPUAccessFlags = 0;
+    td.MiscFlags = 0;
+    if (FAILED(ID3D11Device_CreateTexture2D(g_device_state.d3d11_device, &td, NULL, &c->tex)))
+        { c->tex = NULL; return 0; }
+    if (FAILED(ID3D11Device_CreateShaderResourceView(g_device_state.d3d11_device,
+            (ID3D11Resource *)c->tex, NULL, &c->srv))) {
+        ID3D11Texture2D_Release(c->tex); c->tex = NULL; c->srv = NULL;
+        return 0;
+    }
+    c->w = td.Width; c->h = td.Height;
+    if (c == &g_prevframe) g_prevframe_valid = 0;
+    return 1;
+}
+
+int d3d8_BindFramebufferCopy(UINT stage)
+{
+    if (!fbcopy_ensure(&g_fbcopy)) return 0;   /* copying is fine with or without default_tex bound */
+    ID3D11DeviceContext_CopyResource(g_device_state.d3d11_context,
+                                     (ID3D11Resource *)g_fbcopy.tex,
+                                     (ID3D11Resource *)g_device_state.default_tex);
+    ID3D11DeviceContext_PSSetShaderResources(g_device_state.d3d11_context, stage, 1, &g_fbcopy.srv);
+    return 1;
+}
+
+/* The flip buffer the game is NOT drawing into holds the frame on screen,
+ * i.e. the last one presented. Omega's after-image effect blends exactly
+ * that over the new frame (it samples the other flip buffer: 0xEE8000 while
+ * rendering into 0x1050000, and vice versa), so keep a copy of each
+ * presented frame while the effect is in use. Before the first copy exists
+ * the current frame stands in for it. */
+int d3d8_BindPrevFrame(UINT stage)
+{
+    InterlockedExchange(&g_prevframe_want, 120);
+    /* also while an offscreen target is bound: the effect renders its after-image buffer from the frame on screen */
+    if (!g_prevframe_valid) return d3d8_BindFramebufferCopy(stage);
+    ID3D11DeviceContext_PSSetShaderResources(g_device_state.d3d11_context, stage, 1, &g_prevframe.srv);
+    return 1;
+}
+
+/* The after-image must be built from the 3D scene only. Copying the finished
+ * frame at present put the HUD and the KO / YOU LOSE text into the blur (the
+ * text ghosted) and fed each frame's blur overlay back into the next one,
+ * which compounded the smear until the fight looked like it was crawling.
+ * The pgraph translator calls this right before the first 2D screen-space
+ * draw of a frame (HUD, text, fades, the effect's own overlay pass); the
+ * present-time copy below only runs for a frame that had no such draw. */
+static int g_prevframe_snapped;
+
+void d3d8_SnapshotSceneForAfterImage(void)
+{
+    if (g_prevframe_want <= 0 || g_prevframe_snapped || g_off_active) return;
+    if (!fbcopy_ensure(&g_prevframe)) return;
+    ID3D11DeviceContext_CopyResource(g_device_state.d3d11_context,
+                                     (ID3D11Resource *)g_prevframe.tex,
+                                     (ID3D11Resource *)g_device_state.default_tex);
+    g_prevframe_valid = 1;
+    g_prevframe_snapped = 1;
+}
+
+static void d3d8_keep_prev_frame(void)
+{
+    int snapped = g_prevframe_snapped;
+    g_prevframe_snapped = 0;            /* next frame takes a fresh snapshot */
+    if (g_prevframe_want <= 0) return;
+    InterlockedDecrement(&g_prevframe_want);
+    if (snapped || !fbcopy_ensure(&g_prevframe)) return;
+    ID3D11DeviceContext_CopyResource(g_device_state.d3d11_context,
+                                     (ID3D11Resource *)g_prevframe.tex,
+                                     (ID3D11Resource *)g_device_state.default_tex);
+    g_prevframe_valid = 1;
 }
 
 static HRESULT __stdcall dev_Clear(IDirect3DDevice8 *self, DWORD Count, const D3DRECT *pRects, DWORD Flags, D3DCOLOR Color, float Z, DWORD Stencil)

@@ -61,6 +61,45 @@ static uint32_t s_host_audio_submitted;
 static int s_host_audio_active;
 static LARGE_INTEGER s_host_start, s_host_frequency;
 
+/* The .sfd the game is starting (file name only, from sub_0009DF60's index)
+ * and whether the presenter still has to be re-armed for it. The presenter used to be one-shot and
+ * hardcoded to ninja.sfd: after the intro it stayed stopped, and the intro's
+ * g_doa3_host_movie_ended made doa3_pump_cri_servers force PLAYEND on the
+ * story ending the moment it reached PLAYING -- the ending was skipped and
+ * the game went straight back to the title. */
+static char s_movie_name[64] = "ninja.sfd";
+static int  s_movie_pending;
+
+void doa3_movie_select(const char *guest_path)
+{
+    const char *name = guest_path, *p;
+    for (p = guest_path; *p; p++)
+        if (*p == '\\' || *p == '/' || *p == ':') name = p + 1;
+    extern void movie_prep_start(const char *name);
+    snprintf(s_movie_name, sizeof s_movie_name, "%s", name);
+    s_movie_pending = 1;
+    g_doa3_host_movie_ended = 0;      /* the previous movie's end is not this one's */
+    movie_prep_start(s_movie_name);   /* read + decode in the background now */
+}
+
+/* The guest movie handle just entered PLAYING: if a new movie was started
+ * since the last one finished, restart the presenter on it. Done here rather
+ * than at start time so a movie that never reaches PLAYING cannot leave the
+ * presenter owning (blanking) the screen. */
+void doa3_movie_arm(void)
+{
+    if (!s_movie_pending) return;
+    s_movie_pending = 0;
+    if (!s_host_stopped) return;      /* first movie: presenter is still fresh */
+    if (s_host_video) { plm_video_destroy(s_host_video); s_host_video = NULL; }
+    free(s_host_audio); s_host_audio = NULL;
+    s_host_audio_samples = s_host_audio_submitted = 0;
+    s_host_audio_active = 0;
+    s_host_frames = 0;
+    g_doa3_host_movie_ended = 0;
+    s_host_stopped = 0;
+}
+
 static const char s_hlsl[] =
     "Texture2D t : register(t0); SamplerState s : register(s0);\n"
     "struct V { float4 p : SV_Position; float2 uv : TEXCOORD0; };\n"
@@ -327,62 +366,119 @@ static void movie_queue_audio(void)
     }
 }
 
+/* Movie preparation off the game thread. Reading a 150-245 MB ending,
+ * demuxing it and decoding its whole ADX track used to happen inside the
+ * first movie_host_frame call, on the game thread -- the stall at the start
+ * of every story ending. doa3_movie_select starts it the moment the game
+ * calls its movie starter; by PLAYING it is done or nearly so. */
+static struct {
+    HANDLE   thread;
+    char     name[64];
+    char     asset[MAX_PATH];
+    int      ok;
+    uint8_t *video;
+    size_t   video_size;
+    int16_t *pcm;
+    uint32_t samples;
+    int      pcm_ok;
+} s_prep;
+
+static DWORD WINAPI movie_prep_thread(LPVOID unused)
+{
+    char paths[2][MAX_PATH];
+    uint8_t *audio = NULL;
+    size_t audio_size = 0;
+    (void)unused;
+    snprintf(paths[0], MAX_PATH, "..\\doa3gamefiles\\%s", s_prep.name);
+    snprintf(paths[1], MAX_PATH, "..\\..\\doa3gamefiles\\%s", s_prep.name);
+    for (int i = 0; i < 2 && !s_prep.ok; i++) {
+        if (GetFileAttributesA(paths[i]) == INVALID_FILE_ATTRIBUTES) continue;
+        snprintf(s_prep.asset, MAX_PATH, "%s", paths[i]);
+        s_prep.ok = movie_extract_streams(paths[i], &s_prep.video, &s_prep.video_size,
+                                          &audio, &audio_size);
+    }
+    if (s_prep.ok)
+        s_prep.pcm_ok = movie_decode_adx(audio, audio_size, &s_prep.pcm, &s_prep.samples);
+    free(audio);
+    return 0;
+}
+
+static void movie_prep_discard(void)
+{
+    if (s_prep.thread) {
+        WaitForSingleObject(s_prep.thread, INFINITE);
+        CloseHandle(s_prep.thread);
+    }
+    free(s_prep.video);
+    free(s_prep.pcm);
+    memset(&s_prep, 0, sizeof s_prep);
+}
+
+void movie_prep_start(const char *name)
+{
+    movie_prep_discard();
+    snprintf(s_prep.name, sizeof s_prep.name, "%s", name);
+    s_prep.thread = CreateThread(NULL, 0, movie_prep_thread, NULL, 0, NULL);
+    if (!s_prep.thread)
+        movie_prep_thread(NULL);          /* no thread: prepare inline */
+}
+
+/* Wait for the preparation of `name` to finish; 1 if its streams are ready. */
+static int movie_prep_take(const char *name)
+{
+    if (_stricmp(s_prep.name, name) != 0)
+        movie_prep_start(name);
+    if (s_prep.thread) {
+        WaitForSingleObject(s_prep.thread, INFINITE);
+        CloseHandle(s_prep.thread);
+        s_prep.thread = NULL;
+    }
+    return s_prep.ok;
+}
+
 static const void *movie_host_frame(void)
 {
     enum { WIDTH = 720, HEIGHT = 480, FRAME_SIZE = WIDTH * HEIGHT * 4 };
     if (s_host_stopped)
         return NULL;
     if (!s_host_video) {
-        static const char *assets[] = {
-            "..\\doa3gamefiles\\ninja.sfd",
-            "..\\..\\doa3gamefiles\\ninja.sfd"
-        };
-        const char *asset = NULL;
-        uint8_t *video_data = NULL;
-        uint8_t *audio_data = NULL;
-        size_t video_size = 0;
-        size_t audio_size = 0;
         plm_buffer_t *video_buffer;
-        for (unsigned i = 0; i < sizeof assets / sizeof assets[0]; i++) {
-            if (GetFileAttributesA(assets[i]) != INVALID_FILE_ATTRIBUTES) {
-                asset = assets[i];
-                break;
-            }
-        }
-        if (!asset || !movie_extract_streams(asset, &video_data, &video_size,
-                                             &audio_data, &audio_size)) {
-            fprintf(stderr, "[HOSTFMV] ninja.sfd video stream not found\n");
+        if (!movie_prep_take(s_movie_name)) {
+            fprintf(stderr, "[HOSTFMV] %s video stream not found\n", s_movie_name);
+            movie_prep_discard();
             s_host_stopped = 1;
             return NULL;
         }
-        video_buffer = plm_buffer_create_with_memory(video_data, video_size, TRUE);
+        video_buffer = plm_buffer_create_with_memory(s_prep.video, s_prep.video_size, TRUE);
+        s_prep.video = NULL;              /* owned by the buffer now */
         s_host_video = plm_video_create_with_buffer(video_buffer, TRUE);
-        s_host_frame = (unsigned char *)malloc(FRAME_SIZE);
+        if (!s_host_frame)
+            s_host_frame = (unsigned char *)malloc(FRAME_SIZE);
         if (!s_host_video || !plm_video_has_header(s_host_video) || !s_host_frame ||
             plm_video_get_width(s_host_video) != WIDTH ||
             plm_video_get_height(s_host_video) != HEIGHT) {
             fprintf(stderr, "[HOSTFMV] decoder startup failed\n");
-            free(audio_data);
+            movie_prep_discard();
             s_host_stopped = 1;
             return NULL;
         }
         QueryPerformanceFrequency(&s_host_frequency);
         QueryPerformanceCounter(&s_host_start);
-        if (movie_decode_adx(audio_data, audio_size, &s_host_audio,
-                             &s_host_audio_samples) && xa2_movie_start()) {
+        if (s_prep.pcm_ok && xa2_movie_start()) {
+            s_host_audio = s_prep.pcm;
+            s_host_audio_samples = s_prep.samples;
+            s_prep.pcm = NULL;            /* owned by the presenter now */
             s_host_audio_active = 1;
             movie_queue_audio();
             fprintf(stderr, "[HOSTFMV] ADX audio started (%u samples, 48 kHz stereo)\n",
                 s_host_audio_samples);
         } else {
-            free(s_host_audio);
-            s_host_audio = NULL;
             fprintf(stderr, "[HOSTFMV] ADX audio unavailable; using video clock\n");
         }
-        free(audio_data);
         fprintf(stderr, "[HOSTFMV] embedded presenter streaming %s at %.2f fps\n",
-            asset, plm_video_get_framerate(s_host_video));
+            s_prep.asset, plm_video_get_framerate(s_host_video));
         fflush(stderr);
+        movie_prep_discard();
     }
     {
         LARGE_INTEGER now;

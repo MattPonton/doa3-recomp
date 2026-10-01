@@ -1000,7 +1000,24 @@ CALL_COUNT_PROBE(sub_0006AADC)
 CALL_COUNT_PROBE(sub_0006AD6A)
 CALL_COUNT_PROBE(sub_001C6740)
 CALL_COUNT_PROBE(sub_00173B20)   /* wxCi cache-copy stream starter */
-CALL_COUNT_PROBE(sub_0009DF60)   /* intro movie starter */
+/* sub_0009DF60(index) -- movie starter (intro and story endings). The index
+ * picks the file from the name table at 0x331298 (0 = d:\ninja.sfd,
+ * 1..0x11 = d:\mv_ay.sfd .. d:\mv_st.sfd). The host presenter has to know
+ * which file to stream; every .sfd is opened once at boot, so the file-open
+ * path cannot tell it. */
+void sub_0009DF60_gen(void);
+void sub_0009DF60(void)
+{
+    extern void doa3_movie_select(const char *name);
+    uint32_t idx = MEM32(esp + 4), p;
+    char nm[32]; int i;
+    p = (idx <= 0x11u) ? MEM32(0x331298u + idx * 4u) : 0;
+    if (!p) p = MEM32(0x331298u);
+    for (i = 0; i < 31; i++) { nm[i] = (char)MEM8(p + i); if (!nm[i]) break; }
+    nm[31] = 0;
+    doa3_movie_select(nm);
+    sub_0009DF60_gen();
+}
 CALL_COUNT_PROBE(sub_00176580)   /* Sofdec movie player create */
 /* sub_0009DE90 — movie frame blit (Sofdec frame -> D3D surface upload via
  * sub_001762B0 -> sub_001B3760/sub_001B37F0 push-buffer inline copy). The
@@ -6222,6 +6239,10 @@ void doa3_pump_cri_servers(void)
         }
     }
     if (MEM32(0xC0F7C0u + 0x40) == 4) {
+                if (!s_was_playing) {
+                    extern void doa3_movie_arm(void);
+                    doa3_movie_arm();    /* a later movie (story ending) */
+                }
                 s_was_playing = 1;
                 if ((++s_rpn & 1) == 0) doa3_movie_repaint();
             } else if (s_was_playing) {

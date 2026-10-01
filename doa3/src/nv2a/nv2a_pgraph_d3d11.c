@@ -143,10 +143,13 @@ static uint32_t nv2a_blend_to_d3d(uint32_t nv) {
         case 0x0306: return D3DBLEND_DESTCOLOR;
         case 0x0307: return D3DBLEND_INVDESTCOLOR;
         case 0x0308: return D3DBLEND_SRCALPHASAT;
-        /* CONSTANT_COLOR/ALPHA have no fixed-function D3D8 equivalent; the
-         * constant is almost always opaque white in this title. */
-        case 0x8001: case 0x8003: return D3DBLEND_ONE;
-        case 0x8002: case 0x8004: return D3DBLEND_ZERO;
+        /* CONSTANT_COLOR/ALPHA: the blend colour (NV097_SET_BLEND_COLOR) goes
+         * to D3D11 as the blend factor. These used to be ONE/ZERO -- right
+         * only for an opaque white constant; Omega's after-image accumulates
+         * with CONSTANT_ALPHA/ONE_MINUS_CONSTANT_ALPHA and needs the real
+         * value. */
+        case 0x8001: case 0x8003: return D3DBLEND_BLENDFACTOR;
+        case 0x8002: case 0x8004: return D3DBLEND_INVBLENDFACTOR;
         default:     return 0;   /* not a blend factor */
     }
 }
@@ -1332,9 +1335,32 @@ static void nv_apply_stage1_factor(IDirect3DDevice8 *dev)
     dev->lpVtbl->SetTextureStageState(dev, 1, 6 /*ALPHAARG2*/, 3 /*TFACTOR*/);
 }
 
+static uint32_t g_pg_surf_coff;   /* defined with g_pg_surf_pitch below */
+static uint32_t g_pg_blend_color = 0xFFFFFFFFu;   /* NV097_SET_BLEND_COLOR */
+/* Colour surfaces that are the frame buffer (both flip buffers), recorded by
+ * nv_sync_render_target. A draw sampling one of them reads the frame on
+ * screen -- the previous presented frame. */
+static uint32_t g_fb_offs[4];
+static int      g_fb_offs_n;
+static int nv_samples_framebuffer(uint32_t tex_off)
+{
+    int k;
+    tex_off &= 0x07FFFFFFu;
+    if (!tex_off) return 0;
+    if (g_pg_surf_coff && tex_off == (g_pg_surf_coff & 0x07FFFFFFu)) return 1;
+    for (k = 0; k < g_fb_offs_n; k++) if (g_fb_offs[k] == tex_off) return 1;
+    return 0;
+}
 static void nv_apply_draw_state(IDirect3DDevice8 *dev, OutputVertex *out,
                                 uint32_t out_vert_count)
 {
+    if (g_nv_draw_inline && !g_pg.depth_test && !d3d8_OffscreenTargetActive()) {
+        /* first 2D screen-space draw of the frame: capture the 3D scene for
+         * Omega's after-image before the HUD and text land on it (no-op
+         * unless the effect is running) */
+        extern void d3d8_SnapshotSceneForAfterImage(void);
+        d3d8_SnapshotSceneForAfterImage();
+    }
     nv_apply_stage1_factor(dev);
     int diffuse_all_zero = 1;
     /* The fade-to-black quad carries an OPAQUE BLACK diffuse (0xFF000000) with
@@ -1443,6 +1469,19 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, OutputVertex *out,
                                     g_pg.blend_enable ? TRUE : FALSE);
         dev->lpVtbl->SetRenderState(dev, D3DRS_SRCBLEND, s_sf);
         dev->lpVtbl->SetRenderState(dev, D3DRS_DESTBLEND, s_df);
+        if (s_sf >= D3DBLEND_BLENDFACTOR || s_df >= D3DBLEND_BLENDFACTOR) {
+            /* CONSTANT_ALPHA factors use the blend colour's alpha for every
+             * channel, CONSTANT_COLOR its rgba. */
+            extern void d3d8_SetBlendFactor(float r, float g, float b, float a);
+            uint32_t c = g_pg_blend_color;
+            float a = (float)((c >> 24) & 0xFF) / 255.0f;
+            int alpha_only = g_pg.blend_sfactor == 0x8003 || g_pg.blend_sfactor == 0x8004 ||
+                             g_pg.blend_dfactor == 0x8003 || g_pg.blend_dfactor == 0x8004;
+            if (alpha_only) d3d8_SetBlendFactor(a, a, a, a);
+            else d3d8_SetBlendFactor((float)((c >> 16) & 0xFF) / 255.0f,
+                                     (float)((c >> 8) & 0xFF) / 255.0f,
+                                     (float)(c & 0xFF) / 255.0f, a);
+        }
     }
 
     /* Alpha test. DOA3 drives it hard -- SET_ALPHA_FUNC arrives ~785,000
@@ -1563,9 +1602,37 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, OutputVertex *out,
              * reflection pass and drew the stage over the whole screen. */
             extern int d3d8_BindOffscreenTexture(uint32_t key, UINT stage);
             extern int d3d8_HasOffscreenTexture(uint32_t key);
-            if (g_pg.tex[0].offset && !d3d8_OffscreenTargetActive() &&
-                d3d8_HasOffscreenTexture(g_pg.tex[0].offset)) {
+            extern int d3d8_BindPrevFrame(UINT stage);
+            /* Sampling a frame buffer (the Omega boss fight's after-image
+             * effect reads the other flip buffer): the last presented host
+             * frame, not the never-written guest memory behind it. */
+            int samples_fb = nv_samples_framebuffer(g_pg.tex[0].offset);
+            if (g_pg.tex[0].offset &&
+                (samples_fb || (!d3d8_OffscreenTargetActive() &&
+                                d3d8_HasOffscreenTexture(g_pg.tex[0].offset)))) {
                 int use_diffuse = !diffuse_all_zero;
+                if (samples_fb) {
+                    /* The frame buffer is a linear (rect) surface, sampled
+                     * with texel coordinates -- Omega's after-image pass
+                     * reads it with u 0..720, v 0..480 into its 512x512
+                     * buffer. The host copy is sampled 0..1. */
+                    uint32_t i4;
+                    float mu = 0.0f, mv = 0.0f, tw, th;
+                    for (i4 = 0; i4 < out_vert_count; i4++) {
+                        if (out[i4].u > mu) mu = out[i4].u;
+                        if (out[i4].v > mv) mv = out[i4].v;
+                    }
+                    if (mu > 1.5f || mv > 1.5f) {
+                        tw = (float)(g_pg.tex[0].image_rect >> 16);
+                        th = (float)(g_pg.tex[0].image_rect & 0xFFFF);
+                        if (tw < 16.0f) tw = 720.0f;
+                        if (th < 16.0f) th = 480.0f;
+                        for (i4 = 0; i4 < out_vert_count; i4++) {
+                            out[i4].u /= tw;
+                            out[i4].v /= th;
+                        }
+                    }
+                }
                 /* A second combiner stage with no texture of its own scales
                  * the result by the combiner factor. The beach's palm shadow
                  * is drawn that way -- stage 1 = CURRENT x TFACTOR with
@@ -1583,7 +1650,8 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, OutputVertex *out,
                     }
                 }
                 dev->lpVtbl->SetTexture(dev, 0, NULL);
-                if (d3d8_BindOffscreenTexture(g_pg.tex[0].offset, 0)) {
+                if (samples_fb ? d3d8_BindPrevFrame(0)
+                               : d3d8_BindOffscreenTexture(g_pg.tex[0].offset, 0)) {
                     dev->lpVtbl->SetTextureStageState(dev, 0, 1 /*COLOROP*/, use_diffuse ? 4 : 2);
                     dev->lpVtbl->SetTextureStageState(dev, 0, 2 /*COLORARG1*/, 2 /*TEXTURE*/);
                     dev->lpVtbl->SetTextureStageState(dev, 0, 3 /*COLORARG2*/, 0 /*DIFFUSE*/);
@@ -2024,6 +2092,10 @@ static void nv_sync_render_target(void)
         int k, is_fb = 1;
         for (k = 0; k < g_doa3_offrt_n; k++) if (g_doa3_offrt_offs[k] == g_pg_surf_coff) is_fb = 0;
         if (is_fb) {
+            /* remember the flip buffers (see nv_samples_framebuffer) */
+            int seen = 0;
+            for (k = 0; k < g_fb_offs_n; k++) if (g_fb_offs[k] == (g_pg_surf_coff & 0x07FFFFFFu)) seen = 1;
+            if (!seen && g_fb_offs_n < 4) g_fb_offs[g_fb_offs_n++] = g_pg_surf_coff & 0x07FFFFFFu;
             if (d3d8_OffscreenTargetActive()) d3d8_RestoreDefaultTarget();
         } else {
             /* Full-size targets take the host back-buffer size so the
@@ -3109,6 +3181,10 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
 
     case NV097_SET_BLEND_FUNC_DFACTOR:
         g_pg.blend_dfactor = param;
+        return 1;
+
+    case 0x034C: /* NV097_SET_BLEND_COLOR (A8R8G8B8) */
+        g_pg_blend_color = param;
         return 1;
 
     case NV097_SET_CULL_FACE_ENABLE:

@@ -26,12 +26,32 @@
 #include <math.h>
 
 void sub_0004FAA0(void);
+void sub_0006F5B0(void);
 void sub_000318D0(void);
 void sub_000BA810(void);
 void sub_00048140(void);
 void sub_00050380(void);
 void sub_000C89A0(void);
 void sub_000CEF80(void);
+
+/**
+ * sub_0006F5B0 -- story-mode cutscene task.
+ * Original: 0x0006F5B0 - 0x0006F5CC (inside sub_0006F560's range, never a
+ * call target). sub_00079530 / sub_00077700 set word 0x4A03A4 to the scene
+ * and register this address as task 3 through sub_0009E422; with no lifted
+ * body the task never ran, so neither story cutscene ever played (story
+ * mode went fight -> fight with no scene). Runs the match task on scene
+ * 0x306538[0x4A03A4], then tail-jumps to the task exit sub_0009E525.
+ */
+void sub_0006F5B0(void)
+{
+    eax = ZX16(MEM16(0x4A03A4));
+    ecx = ZX8(MEM8(eax + 0x306538));
+    PUSH32(esp, ecx);
+    PUSH32(esp, 0); sub_0007DA70(); /* call 0x0007DA70 */
+    esp = esp + 4;
+    sub_0009E525(); return;         /* jmp 0x0009E525 */
+}
 
 /**
  * sub_0004FAA0

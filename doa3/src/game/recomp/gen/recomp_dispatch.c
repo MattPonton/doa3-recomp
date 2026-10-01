@@ -72,6 +72,7 @@ void sub_00050380(void);
 void sub_000BA810(void);
 void sub_000C89A0(void);
 void sub_0004FAA0(void);
+void sub_0006F5B0(void);
 void sub_000CEF80(void);
 void sub_000E56A0(void);
 void sub_00050D30(void);
@@ -2303,6 +2304,7 @@ static const recomp_entry_t g_recomp_table[] = {
     { 0x0006F560u, (recomp_func_t)sub_0006F560 },
     { 0x0006F572u, (recomp_func_t)sub_0006F572 },
     { 0x0006F576u, (recomp_func_t)sub_0006F576 },
+    { 0x0006F5B0u, (recomp_func_t)sub_0006F5B0 },
     { 0x0006F5D0u, (recomp_func_t)sub_0006F5D0 },
     { 0x0006F5F0u, (recomp_func_t)sub_0006F5F0 },
     { 0x0006F65Fu, (recomp_func_t)sub_0006F65F },

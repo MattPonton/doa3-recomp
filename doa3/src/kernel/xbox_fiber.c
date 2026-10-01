@@ -207,6 +207,16 @@ void xbox_fiber_yield(void)
         n = g_direct_return;                  /* directed handoff: return to the caller */
         g_direct_return = -1;
         g_fib[n].state = FIB_READY;
+    } else if (g_fib[me].is_coroutine && g_doa3_post_movie) {
+        /* Rotate through the workers. Scanning from `me` always lands on the
+         * first READY worker after the task -- the CRI watchdog (#1) -- so a
+         * task spinning on a CRI handshake (sub_0016A4C0, waiting for the
+         * server #4 to clear 0xB24D3C) ping-ponged with the watchdog forever
+         * and the server never ran: the story-mode pre-FMV freeze (hang dump
+         * 2026-10-01). */
+        static int s_rr;
+        n = pick_next(s_rr);
+        if (n >= 0) s_rr = n;
     } else {
         n = pick_next(me);
     }

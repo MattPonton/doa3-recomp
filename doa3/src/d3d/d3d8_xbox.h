@@ -363,6 +363,10 @@ typedef enum D3DBLEND {
     D3DBLEND_DESTCOLOR       = 9,
     D3DBLEND_INVDESTCOLOR    = 10,
     D3DBLEND_SRCALPHASAT     = 11,
+    /* D3D9 values: the NV2A's CONSTANT_COLOR/ALPHA factors (blend colour from
+     * NV097_SET_BLEND_COLOR, passed in via d3d8_SetBlendFactor) */
+    D3DBLEND_BLENDFACTOR     = 14,
+    D3DBLEND_INVBLENDFACTOR  = 15,
 } D3DBLEND;
 
 typedef enum D3DCMPFUNC {
