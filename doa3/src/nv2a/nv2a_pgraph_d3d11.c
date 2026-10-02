@@ -3125,8 +3125,56 @@ static void submit_draw(void)
          } \
 } while (0)
 
+/* Methods the pre-switch chain of pgraph_d3d11_method can act on.
+ *
+ * Every method used to run ~40 range tests before reaching the switch -- 30%
+ * of this function's time in fights (sampled, mapped to source lines). Each
+ * of those tests depends only on the method number (the 0x0100 marker tests
+ * look at the parameter only after method == 0x0100), so a method none of
+ * them matches can skip the chain entirely. This table lists every method
+ * the chain names; anything outside it goes straight to the switch after the
+ * same bookkeeping the chain would have reached. Keep it in step with the
+ * chain below. */
+static const uint16_t s_pre_ranges[][2] = {
+    { 0x0680, 0x06BC }, { 0x0440, 0x047C }, { 0x0480, 0x057C }, { 0x0580, 0x067C },
+    { 0x06C0, 0x07BC }, { 0x0840, 0x093C }, { 0x0A50, 0x0A5C }, { 0x09C0, 0x09C8 },
+    { 0x0AF0, 0x0AFC }, { 0x0A20, 0x0A2C },                     /* constant mirror */
+    { 0x1E60, 0x1E60 }, { 0x0100, 0x0100 },                     /* combiner ctl, markers */
+    { 0x0318, 0x0318 }, { 0x031C, 0x031C }, { 0x043C, 0x043C },
+    { 0x0A30, 0x0A4C }, { 0x0A60, 0x0A7C },                     /* points, factors */
+    { 0x1E94, 0x1E94 },                                         /* transform mode */
+    { 0x0B00, 0x0B7C }, { 0x0B80, 0x0BFC }, { 0x1760, 0x179C }, { 0x1720, 0x175C },
+    { 0x0480, 0x04BC },                                         /* range methods */
+    { 0x0314, 0x0314 }, { 0x1000, 0x11FC }, { 0x03BC, 0x03BC }, { 0x0294, 0x0294 },
+    { 0x0298, 0x0298 }, { 0x03B8, 0x03B8 }, { 0x03A4, 0x03A4 }, { 0x0A10, 0x0A18 },
+    { 0x03A8, 0x03B0 }, { 0x03B4, 0x03B4 }, { 0x09E0, 0x09F4 },  /* lighting */
+    { 0x0680, 0x06BC },                                         /* composite */
+};
+static uint8_t s_pre_act[0x800];
+static int     s_pre_ready;
+
+static void nv_pre_act_init(void)
+{
+    unsigned i, m;
+    for (i = 0; i < sizeof s_pre_ranges / sizeof s_pre_ranges[0]; i++)
+        for (m = s_pre_ranges[i][0]; m <= s_pre_ranges[i][1]; m += 4)
+            s_pre_act[m >> 2] = 1;
+    s_pre_ready = 1;
+}
+
 int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
 {
+    if (method < 0x2000 && !(method & 3)) {
+        if (!s_pre_ready) nv_pre_act_init();
+        if (!s_pre_act[method >> 2]) {
+            extern uint32_t g_mhist[0x800];
+            if (!g_pg.initialized)
+                return 0;
+            g_pg.stats.methods_handled++;
+            g_mhist[method >> 2]++;
+            goto pg_switch;
+        }
+    }
     /* Fixed-function context -> transform constants c[0..95].
      *
      * On the NV2A the first 96 transform constants ARE the fixed-function
@@ -3275,6 +3323,7 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
         return 1;
     }
 
+pg_switch:
     switch (method) {
 
     /* ── Draw Begin/End ── */
@@ -3694,27 +3743,10 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
         }
 
         g_pg.stats.methods_ignored++;
-        {   /* DOA3 DIAG: histogram of ignored method IDs (dump via
-             * pgraph_d3d11_dump_ignored from the frame wrapper). */
-            extern void pgraph_diag_count_ignored(uint32_t method);
-            pgraph_diag_count_ignored(((uint32_t)subchannel << 16) | method);
-        }
         return 0;  /* Truly unhandled */
     }
 }
 
-/* DOA3 DIAG: ignored-method histogram */
-static struct { uint32_t method, count; } s_ign[64];
-void pgraph_diag_count_ignored(uint32_t method)
-{
-    for (int i = 0; i < 64; i++) {
-        if (s_ign[i].method == method || s_ign[i].count == 0) {
-            s_ign[i].method = method;
-            s_ign[i].count++;
-            return;
-        }
-    }
-}
 uint32_t g_mhist[0x800];
 void pgraph_diag_dump_ignored(void)
 {

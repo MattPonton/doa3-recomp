@@ -761,6 +761,11 @@ void doa3_cs_report2(const char *caller, const char *callee, uint32_t site, uint
 void doa3_cs_report3(const char *caller, const char *callee, uint32_t site,
                      uint32_t b, uint32_t sp, uint32_t si, uint32_t di)
 {
+    /* Retired: the register-drift report this produced is no longer read,
+     * and its 512-entry linear search ran on every drifting call (1-1.7%
+     * of the game thread in fights). The generated call sites stay. */
+    (void)caller; (void)callee; (void)site; (void)b; (void)sp; (void)si; (void)di;
+    return;
     static struct { const char *a, *b; uint32_t site; int n; } seen[512];
     static int nseen = 0;
     int i;
