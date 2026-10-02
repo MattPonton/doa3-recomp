@@ -292,16 +292,31 @@ static struct {
     int      dyn_src_valid; /* last upload was static (swizzled/DXT) */
     uint32_t dyn_w, dyn_h, dyn_fmt;
     uint32_t dyn_levels;          /* mip levels of the last binding */
-    /* Guest-texture cache: one D3D texture per (address, size, format). */
-#define TEXCACHE_N 192
+    /* Guest-texture cache: one D3D texture per (address, size, format).
+     *
+     * 192 slots evicted round-robin was too small: a fight on the Beach binds
+     * 198 distinct textures a frame and the attract window fall 223, so
+     * textures were thrown out and recreated a few draws later -- 53-158
+     * CreateTexture + uploads (1-2.6 MB) every frame, none of them because
+     * the contents had changed. A whole stage visit touches at most 415
+     * textures (~8 MB, measured), so 1024 slots under a byte budget keep
+     * several stages resident, and the least recently used slot goes first.
+     * Lookups go through a hash instead of scanning every slot. */
+#define TEXCACHE_N      1024
+#define TEXCACHE_HASH_N 4096                       /* power of two */
+#define TEXCACHE_BUDGET (192u * 1024u * 1024u)     /* host bytes: GPU + staging */
     struct {
         IDirect3DTexture8 *tex;
         uint32_t off, w, h, fmt, levels;
         uint32_t pal;       /* palette register this upload was expanded with */
         int uploaded;       /* static source already uploaded */
         uint32_t sig;       /* sampled fingerprint of level 0 at that upload */
+        uint32_t last_frame;/* g_pg.frame of the last draw that bound it */
+        uint32_t bytes;     /* host bytes held: D3D11 texture + D3D8 staging copy */
     } texcache[TEXCACHE_N];
-    uint32_t texcache_next;
+    int16_t  texhash[TEXCACHE_HASH_N];   /* slot index + 1, 0 = empty bucket */
+    uint32_t texcache_bytes;             /* sum of .bytes over live slots */
+    uint32_t frame;                      /* bumped once per pgraph_d3d11_flush */
 
     /* Cached texture pointers */
     void *menu_texture;           /* IDirect3DTexture8* from Global.txd */
@@ -610,6 +625,102 @@ static uint32_t nv_tex_signature(const uint8_t *p, size_t n)
     return h;
 }
 
+/* ---- texture cache: hash lookup + least-recently-used eviction ---- */
+static uint32_t texcache_hash(uint32_t off, uint32_t w, uint32_t h, uint32_t fmt, uint32_t pal)
+{
+    return (((off ^ (w << 20) ^ (h << 8) ^ (fmt * 0x9E3779B1u) ^ pal) * 2654435761u)
+            >> 20) & (TEXCACHE_HASH_N - 1);
+}
+
+static int texcache_find(uint32_t off, uint32_t w, uint32_t h, uint32_t fmt, uint32_t pal)
+{
+    uint32_t b = texcache_hash(off, w, h, fmt, pal), n;
+    for (n = 0; n < TEXCACHE_HASH_N; n++, b = (b + 1) & (TEXCACHE_HASH_N - 1)) {
+        int s = g_pg.texhash[b] - 1;
+        if (s < 0) return -1;
+        if (g_pg.texcache[s].off == off && g_pg.texcache[s].w == w &&
+            g_pg.texcache[s].h == h && g_pg.texcache[s].fmt == fmt &&
+            g_pg.texcache[s].pal == pal)
+            return s;
+    }
+    return -1;
+}
+
+static uint32_t texcache_home(int slot)
+{
+    return texcache_hash(g_pg.texcache[slot].off, g_pg.texcache[slot].w,
+                         g_pg.texcache[slot].h, g_pg.texcache[slot].fmt,
+                         g_pg.texcache[slot].pal);
+}
+
+static void texcache_hash_insert(int slot)
+{
+    uint32_t b = texcache_home(slot);
+    while (g_pg.texhash[b]) b = (b + 1) & (TEXCACHE_HASH_N - 1);
+    g_pg.texhash[b] = (int16_t)(slot + 1);
+}
+
+/* Drop a slot's bucket, then backward-shift the rest of its probe run so a
+ * later lookup never stops at the hole before reaching a live entry. */
+static void texcache_hash_remove(int slot)
+{
+    uint32_t b = texcache_home(slot), hole, j;
+    while (g_pg.texhash[b] && g_pg.texhash[b] != slot + 1)
+        b = (b + 1) & (TEXCACHE_HASH_N - 1);
+    if (!g_pg.texhash[b]) return;
+    hole = b;
+    g_pg.texhash[hole] = 0;
+    for (j = (hole + 1) & (TEXCACHE_HASH_N - 1); g_pg.texhash[j];
+         j = (j + 1) & (TEXCACHE_HASH_N - 1)) {
+        uint32_t home = texcache_home(g_pg.texhash[j] - 1);
+        /* j may move into the hole unless its home lies cyclically in (hole, j]. */
+        int stays = (hole <= j) ? (home > hole && home <= j)
+                                : (home > hole || home <= j);
+        if (!stays) {
+            g_pg.texhash[hole] = g_pg.texhash[j];
+            g_pg.texhash[j] = 0;
+            hole = j;
+        }
+    }
+}
+
+static void texcache_evict(int slot)
+{
+    texcache_hash_remove(slot);
+    g_pg.texcache[slot].tex->lpVtbl->Release(g_pg.texcache[slot].tex);
+    g_pg.texcache[slot].tex = NULL;
+    g_pg.texcache_bytes -= g_pg.texcache[slot].bytes;
+    g_pg.texcache[slot].bytes = 0;
+}
+
+/* A free slot for a new texture of `bytes`: an empty slot while under the
+ * budget, otherwise evict least-recently-used slots not bound this frame
+ * until it fits. If everything was bound this frame (never measured), the
+ * oldest goes anyway so a draw can always get a texture. Releasing a texture
+ * that is still bound is safe: the D3D11 binding holds its own reference, and
+ * eviction runs before the current draw binds anything. */
+static int texcache_make_room(uint32_t bytes)
+{
+    for (;;) {
+        int i, free_slot = -1, lru = -1, lru_any = -1;
+        for (i = 0; i < TEXCACHE_N; i++) {
+            if (!g_pg.texcache[i].tex) { if (free_slot < 0) free_slot = i; continue; }
+            if (lru_any < 0 ||
+                (int32_t)(g_pg.texcache[i].last_frame - g_pg.texcache[lru_any].last_frame) < 0)
+                lru_any = i;
+            if (g_pg.texcache[i].last_frame != g_pg.frame &&
+                (lru < 0 ||
+                 (int32_t)(g_pg.texcache[i].last_frame - g_pg.texcache[lru].last_frame) < 0))
+                lru = i;
+        }
+        if (free_slot >= 0 && g_pg.texcache_bytes + bytes <= TEXCACHE_BUDGET)
+            return free_slot;
+        if (lru < 0) lru = lru_any;
+        if (lru < 0) return free_slot >= 0 ? free_slot : 0;   /* nothing resident */
+        texcache_evict(lru);
+    }
+}
+
 static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
 {
     uint32_t fmtreg = g_pg.tex[0].format;
@@ -719,30 +830,31 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
      * exactly once and linear ones (movie frames, render targets) re-upload in
      * place. */
     {
-        int slot = -1, i;
-        for (i = 0; i < TEXCACHE_N; i++) {
-            if (g_pg.texcache[i].tex && g_pg.texcache[i].off == off &&
-                g_pg.texcache[i].w == w && g_pg.texcache[i].h == h &&
-                g_pg.texcache[i].fmt == (uint32_t)d3dfmt &&
-                g_pg.texcache[i].pal == (palettised ? palreg : 0u)) {
-                slot = i;
-                break;
-            }
-        }
+        uint32_t keypal = palettised ? palreg : 0u;
+        int slot = texcache_find(off, w, h, (uint32_t)d3dfmt, keypal);
         if (slot < 0) {
-            for (i = 0; i < TEXCACHE_N; i++)
-                if (!g_pg.texcache[i].tex) { slot = i; break; }
-            if (slot < 0) {                    /* full: round-robin evict */
-                slot = (int)(g_pg.texcache_next++ % TEXCACHE_N);
-                g_pg.texcache[slot].tex->lpVtbl->Release(g_pg.texcache[slot].tex);
-                g_pg.texcache[slot].tex = NULL;
+            /* Host bytes this texture will hold: every level in the host
+             * format (DXT stays block-compressed, swizzled sources keep their
+             * bpp, palettised ones are expanded to A8R8G8B8), twice -- the
+             * D3D11 texture plus the D3D8 layer's staging copy of each level. */
+            uint32_t bytes = 0, l, lw = w, lh = h;
+            for (l = 0; l < nlevels; l++) {
+                bytes += compressed
+                    ? ((lw + 3) / 4) * ((lh + 3) / 4) * ((d3dfmt == D3DFMT_DXT1) ? 8u : 16u)
+                    : lw * lh * (palettised ? 4u : bpp);
+                lw = (lw > 1) ? lw / 2 : 1;
+                lh = (lh > 1) ? lh / 2 : 1;
             }
+            bytes *= 2;
+            slot = texcache_make_room(bytes);
             if (dev->lpVtbl->CreateTexture(dev, w, h, nlevels, 0, d3dfmt, 0,
                                            &g_pg.texcache[slot].tex) != 0 ||
                 !g_pg.texcache[slot].tex) {
                 g_pg.texcache[slot].tex = NULL;
                 return NULL;
             }
+            g_pg.texcache[slot].bytes = bytes;
+            g_pg.texcache_bytes += bytes;
             /* Everything uploaded below is row-major: swizzled sources are
              * unswizzled here (they have to be, so palettised ones can be
              * expanded), and linear ones are copied straight through. Say so,
@@ -760,10 +872,9 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
             g_pg.texcache[slot].pal = palettised ? palreg : 0u;
             g_pg.texcache[slot].uploaded = 0;
             g_pg.texcache[slot].sig = 0;
-            {   static unsigned s_made = 0;
-                if (s_made < 64) { s_made++;
-                     } }
+            texcache_hash_insert(slot);
         }
+        g_pg.texcache[slot].last_frame = g_pg.frame;
         g_pg.dyn_tex = g_pg.texcache[slot].tex;
         g_pg.dyn_w = w; g_pg.dyn_h = h; g_pg.dyn_fmt = (uint32_t)d3dfmt;
         g_pg.dyn_levels = g_pg.texcache[slot].levels;
@@ -1139,26 +1250,68 @@ static uint32_t nv_pack_color(const float c[4])
  * rows as the position. Output: D0 = clamp(sceneAmbient + emission +
  * sum_i att_i * (amb_i + dif_i * max(0, N.L_i))), alpha = material alpha.
  * Specular (D1) is not produced yet. */
-static uint32_t nv_light_vertex(const float pos[4], const float nrm[3])
+/* Per-batch fixed-function context.
+ *
+ * Every input below is GPU state, which cannot change between BEGIN and END,
+ * so it is evaluated once per batch instead of once (or three times) per
+ * vertex: nv_composite_usable() scans the matrix, and every lit vertex used to
+ * re-normalise every directional light. Same operations in the same order on
+ * the same inputs, so every output bit is what the per-vertex code produced. */
+typedef struct {
+    int      composite_ok;   /* nv_composite_usable() */
+    int      run_program;    /* take the transform-program path */
+    int      lit;            /* fixed-function lighting with at least one light */
+    int      ambient_only;   /* lighting on, every light off: ambient + emission */
+    uint32_t ltype[4];       /* 0 off, 1 directional, 2 local, 3 spot */
+    float    dir_n[4][3];    /* directional lights, normalised */
+    int      has_local;      /* any local/spot light: eye-space P is needed */
+} NvBatchCtx;
+
+static void nv_batch_ctx_init(NvBatchCtx *c)
+{
+    int i;
+    c->composite_ok = nv_composite_usable();
+    c->run_program  = g_pg.vp.have_program &&
+                      ((g_pg.xform_mode & 3) == 2 || !c->composite_ok);
+    c->lit          = g_pg.lighting && (g_pg.light_mask & 0xFF) && c->composite_ok;
+    c->ambient_only = g_pg.lighting && !(g_pg.light_mask & 0xFF) &&
+                      !g_pg.color_material && c->composite_ok;
+    c->has_local = 0;
+    for (i = 0; i < 4; i++) {
+        c->ltype[i] = (g_pg.light_mask >> (2 * i)) & 3;
+        if (c->ltype[i] == 1) {
+            float L[3], len;
+            L[0] = g_pg.light[i].dir[0]; L[1] = g_pg.light[i].dir[1]; L[2] = g_pg.light[i].dir[2];
+            len = sqrtf(L[0] * L[0] + L[1] * L[1] + L[2] * L[2]);
+            if (len > 1e-12f) { L[0] /= len; L[1] /= len; L[2] /= len; }
+            c->dir_n[i][0] = L[0]; c->dir_n[i][1] = L[1]; c->dir_n[i][2] = L[2];
+        } else if (c->ltype[i] >= 2) {
+            c->has_local = 1;
+        }
+    }
+}
+
+static uint32_t nv_light_vertex(const float pos[4], const float nrm[3],
+                                const NvBatchCtx *ctx)
 {
     const float *mv = g_mv;
     float P[3], N[3], col[3], len;
     int i, k;
-    for (i = 0; i < 3; i++) {
-        P[i] = pos[0] * mv[i * 4 + 0] + pos[1] * mv[i * 4 + 1] + pos[2] * mv[i * 4 + 2] + mv[i * 4 + 3];
+    /* The eye-space position only feeds local and spot lights. */
+    if (ctx->has_local)
+        for (i = 0; i < 3; i++)
+            P[i] = pos[0] * mv[i * 4 + 0] + pos[1] * mv[i * 4 + 1] + pos[2] * mv[i * 4 + 2] + mv[i * 4 + 3];
+    for (i = 0; i < 3; i++)
         N[i] = nrm[0] * mv[i * 4 + 0] + nrm[1] * mv[i * 4 + 1] + nrm[2] * mv[i * 4 + 2];
-    }
     len = sqrtf(N[0] * N[0] + N[1] * N[1] + N[2] * N[2]);
     if (len > 1e-12f) { N[0] /= len; N[1] /= len; N[2] /= len; }
     for (k = 0; k < 3; k++) col[k] = g_pg.scene_ambient[k] + g_pg.emission[k];
     for (i = 0; i < 4; i++) {
-        uint32_t type = (g_pg.light_mask >> (2 * i)) & 3;
+        uint32_t type = ctx->ltype[i];
         float L[3], att = 1.0f, ndotl;
         if (!type) continue;
         if (type == 1) {
-            L[0] = g_pg.light[i].dir[0]; L[1] = g_pg.light[i].dir[1]; L[2] = g_pg.light[i].dir[2];
-            len = sqrtf(L[0] * L[0] + L[1] * L[1] + L[2] * L[2]);
-            if (len > 1e-12f) { L[0] /= len; L[1] /= len; L[2] /= len; }
+            L[0] = ctx->dir_n[i][0]; L[1] = ctx->dir_n[i][1]; L[2] = ctx->dir_n[i][2];
         } else {
             float d;
             L[0] = g_pg.light[i].pos[0] - P[0]; L[1] = g_pg.light[i].pos[1] - P[1]; L[2] = g_pg.light[i].pos[2] - P[2];
@@ -1180,7 +1333,8 @@ static uint32_t nv_light_vertex(const float pos[4], const float nrm[3])
     }
 }
 
-static void nv_build_array_vertex(uint32_t index, OutputVertex *v)
+static void nv_build_array_vertex(uint32_t index, OutputVertex *v,
+                                  const NvBatchCtx *ctx)
 {
     float pos[4], tex[4], col[4], nrm[4];
     uint32_t colour = 0xFFFFFFFFu;
@@ -1203,8 +1357,7 @@ static void nv_build_array_vertex(uint32_t index, OutputVertex *v)
      * viewport scale as (0, -0, 0, 0). A zero matrix cannot be a real
      * transform, so when the game has a program loaded and has given the
      * fixed pipeline nothing to work with, run the program. */
-    if (g_pg.vp.have_program &&
-        ((g_pg.xform_mode & 3) == 2 || !nv_composite_usable())) {
+    if (ctx->run_program) {
         float in[NV2A_VP_NUM_INPUT][4];
         float out[NV2A_VP_NUM_OUTPUT][4];
         int s;
@@ -1266,17 +1419,15 @@ static void nv_build_array_vertex(uint32_t index, OutputVertex *v)
         /* Fixed-function lighting: only when the guest enabled it, has a
          * light on, and supplies normals; otherwise diffuse stays white as
          * before. */
-        if (g_pg.lighting && (g_pg.light_mask & 0xFF) && nv_composite_usable() &&
-            nv_fetch_attr(2, index, nrm, NULL))
-            v->color = nv_light_vertex(pos, nrm);
+        if (ctx->lit && nv_fetch_attr(2, index, nrm, NULL))
+            v->color = nv_light_vertex(pos, nrm, ctx);
         /* Lighting on with every light off still lights: the NV2A outputs
          * scene ambient + emission with the material alpha. The beach's palm
          * shadow relies on it -- the fronds are drawn into the shadow surface
          * that way (ambient and emission 0) to get a black silhouette with
          * the texture's alpha. Left white, they rendered in the palm's own
          * green and the projected shadow showed green fronds. */
-        else if (g_pg.lighting && !(g_pg.light_mask & 0xFF) && !g_pg.color_material &&
-                 nv_composite_usable()) {
+        else if (ctx->ambient_only) {
             float c4[4] = { g_pg.scene_ambient[0] + g_pg.emission[0],
                             g_pg.scene_ambient[1] + g_pg.emission[1],
                             g_pg.scene_ambient[2] + g_pg.emission[2],
@@ -2283,6 +2434,47 @@ static int submit_inline_points(IDirect3DDevice8 *dev, const uint32_t *src, uint
     return 1;
 }
 
+/* Vertex reuse within one batch.
+ *
+ * Indexed batches repeat most of their indices -- only 50-65% of the indices
+ * in a frame are distinct -- and every repeat used to fetch, transform and
+ * light the same vertex again. A vertex's output depends only on its index
+ * and on GPU state, which is fixed for the batch, and nothing modifies out[]
+ * until the whole batch is built (the colour fold, nv_fit_to_backbuffer and
+ * the clipper all run afterwards), so a repeat copies the vertex built the
+ * first time. The table is indexed by (index - lowest index of the batch):
+ * the widest batch measured spans 21,646 indices, and a wider one simply
+ * builds every vertex as before. */
+#define NV_VREUSE_N 65536
+static uint32_t s_vstamp[NV_VREUSE_N], s_vslot[NV_VREUSE_N], s_vgen;
+
+static int nv_vreuse_begin(const uint32_t *idx, uint32_t n, uint32_t *lo_out)
+{
+    uint32_t i, lo = 0xFFFFFFFFu, hi = 0;
+    for (i = 0; i < n; i++) {
+        if (idx[i] < lo) lo = idx[i];
+        if (idx[i] > hi) hi = idx[i];
+    }
+    if (n == 0 || hi - lo >= NV_VREUSE_N) return 0;
+    if (++s_vgen == 0) { memset(s_vstamp, 0, sizeof s_vstamp); s_vgen = 1; }
+    *lo_out = lo;
+    return 1;
+}
+
+/* Build out[pos] for `index`, or copy it if this batch already built it. */
+static void nv_vreuse_build(uint32_t index, uint32_t lo, OutputVertex *out,
+                            uint32_t pos, const NvBatchCtx *ctx)
+{
+    uint32_t d = index - lo;
+    if (s_vstamp[d] == s_vgen) {
+        out[pos] = out[s_vslot[d]];
+    } else {
+        nv_build_array_vertex(index, &out[pos], ctx);
+        s_vstamp[d] = s_vgen;
+        s_vslot[d] = pos;
+    }
+}
+
 static void submit_array_draw(void)
 {
     nv_sync_render_target();
@@ -2292,6 +2484,7 @@ static void submit_array_draw(void)
     int prim = g_pg.d3d_prim_type;
     int is_quads = (g_pg.draw_mode == 8);
     int is_points = (g_pg.draw_mode == 1);
+    NvBatchCtx ctx;
 
     if (n < (uint32_t)(is_points ? 1 : 3)) { g_pg.idx_count = 0; return; }
 
@@ -2310,6 +2503,8 @@ static void submit_array_draw(void)
 
     dev = xbox_GetD3DDevice();
     if (!dev) { g_pg.idx_count = 0; return; }
+
+    nv_batch_ctx_init(&ctx);
 
     if (is_points) {
         /* Point sprites -> screen-space quads. D3D11 has no sized points, so
@@ -2334,7 +2529,7 @@ static void submit_array_draw(void)
         { extern int g_vpn; g_vpn = 0; }
         for (i = 0; i < n; i++) {
             OutputVertex v; float pos[4];
-            nv_build_array_vertex(g_pg.idx[i], &v);
+            nv_build_array_vertex(g_pg.idx[i], &v, &ctx);
             if (nv_point_quad(&v, nv_fetch_attr(0, g_pg.idx[i], pos, NULL) ? pos : NULL, out + o))
                 o += 6;
         }
@@ -2344,20 +2539,34 @@ static void submit_array_draw(void)
         out = nv_scratch_verts(0, out_n);
         if (!out) { g_pg.idx_count = 0; g_pg.idx_dropped = 0; g_pg.gtss_valid = 0; g_pg.tss3_valid = 0; return; }
         { extern int g_vpn; g_vpn = 0; }   /* reset the per-batch program-output range */
+        uint32_t lo = 0;
+        int reuse = nv_vreuse_begin(g_pg.idx, n, &lo);
         if (is_quads) {
             uint32_t q, o = 0;
             for (q = 0; q + 3 < n; q += 4) {
-                nv_build_array_vertex(g_pg.idx[q + 0], &out[o + 0]);
-                nv_build_array_vertex(g_pg.idx[q + 1], &out[o + 1]);
-                nv_build_array_vertex(g_pg.idx[q + 2], &out[o + 2]);
+                if (reuse) {
+                    nv_vreuse_build(g_pg.idx[q + 0], lo, out, o + 0, &ctx);
+                    nv_vreuse_build(g_pg.idx[q + 1], lo, out, o + 1, &ctx);
+                    nv_vreuse_build(g_pg.idx[q + 2], lo, out, o + 2, &ctx);
+                } else {
+                    nv_build_array_vertex(g_pg.idx[q + 0], &out[o + 0], &ctx);
+                    nv_build_array_vertex(g_pg.idx[q + 1], &out[o + 1], &ctx);
+                    nv_build_array_vertex(g_pg.idx[q + 2], &out[o + 2], &ctx);
+                }
                 out[o + 3] = out[o + 0];
                 out[o + 4] = out[o + 2];
-                nv_build_array_vertex(g_pg.idx[q + 3], &out[o + 5]);
+                if (reuse)
+                    nv_vreuse_build(g_pg.idx[q + 3], lo, out, o + 5, &ctx);
+                else
+                    nv_build_array_vertex(g_pg.idx[q + 3], &out[o + 5], &ctx);
                 o += 6;
             }
+        } else if (reuse) {
+            for (i = 0; i < n; i++)
+                nv_vreuse_build(g_pg.idx[i], lo, out, i, &ctx);
         } else {
             for (i = 0; i < n; i++)
-                nv_build_array_vertex(g_pg.idx[i], &out[i]);
+                nv_build_array_vertex(g_pg.idx[i], &out[i], &ctx);
         }
 
         {   /* Post-movie the title screen submits ~500 of these per frame and the
@@ -3527,6 +3736,7 @@ void pgraph_d3d11_flush(void)
         g_pg.in_draw = 0;
     }
     g_pg.stats.frames++;
+    g_pg.frame++;
 }
 
 void pgraph_d3d11_set_chyron_scroll(uint32_t pixels)
