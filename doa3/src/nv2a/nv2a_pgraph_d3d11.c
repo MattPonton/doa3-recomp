@@ -23,6 +23,7 @@
 #include "../d3d/d3d8_xbox.h"
 #include "../d3d/d3d8_swizzle.h"
 #include "nv2a_vertex_program.h"
+#include "../d3d/d3d8_nv2aff.h"
 extern IDirect3DDevice8 *xbox_GetD3DDevice(void);
 
 /* Global.txd texture lookup */
@@ -1502,8 +1503,23 @@ static int nv_samples_framebuffer(uint32_t tex_off)
     for (k = 0; k < g_fb_offs_n; k++) if (g_fb_offs[k] == tex_off) return 1;
     return 0;
 }
-static void nv_apply_draw_state(IDirect3DDevice8 *dev, OutputVertex *out,
-                                uint32_t out_vert_count)
+/* What the draw-state code needs to know about the batch's vertices, and
+ * the vertex edits it asks for in return. The CPU path fills the summary
+ * from its finished out[] and applies the post-ops to it; the GPU path
+ * derives the summary from the batch's inputs and hands the post-ops to the
+ * vertex shader as constants. */
+typedef struct {
+    int   all_zero;          /* every vertex colour is 0x00000000 */
+    float max_u, max_v;      /* largest texcoord in the batch */
+} NvDrawSummary;
+typedef struct {
+    int      fold;           /* multiply every colour by fold_factor, (c*f+127)/255 per channel */
+    uint32_t fold_factor;
+    float    uv_div_w, uv_div_h;   /* divide every texcoord by these (0 = none) */
+} NvPostOps;
+
+static void nv_apply_draw_state(IDirect3DDevice8 *dev, const NvDrawSummary *sum,
+                                NvPostOps *post)
 {
     if (g_nv_draw_inline && !g_pg.depth_test && !d3d8_OffscreenTargetActive()) {
         /* first 2D screen-space draw of the frame: capture the 3D scene for
@@ -1513,18 +1529,11 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, OutputVertex *out,
         d3d8_SnapshotSceneForAfterImage();
     }
     nv_apply_stage1_factor(dev);
-    int diffuse_all_zero = 1;
     /* The fade-to-black quad carries an OPAQUE BLACK diffuse (0xFF000000) with
-     * the stage disabled; diffuse_all_zero compares the whole 32-bit colour, so
-     * that read as a valid diffuse and the fade took its alpha from whatever
+     * the stage disabled; all_zero compares the whole 32-bit colour, so that
+     * read as a valid diffuse and the fade took its alpha from whatever
      * texture was still bound -- the character's hair. */
-    int diffuse_rgb_black = 1;
-    uint32_t _i;
-    for (_i = 0; _i < out_vert_count; _i++) {
-        if (out[_i].color != 0) diffuse_all_zero = 0;
-        if (out[_i].color & 0x00FFFFFFu) diffuse_rgb_black = 0;
-        if (!diffuse_all_zero && !diffuse_rgb_black) break;
-    }
+    int diffuse_all_zero = sum->all_zero;
 
     /* Alpha blending stays on for the 2D menu path. Depth follows the
      * guest: DOA3's 3D screens draw with SET_DEPTH_TEST_ENABLE and rely on
@@ -1767,21 +1776,14 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, OutputVertex *out,
                      * with texel coordinates -- Omega's after-image pass
                      * reads it with u 0..720, v 0..480 into its 512x512
                      * buffer. The host copy is sampled 0..1. */
-                    uint32_t i4;
-                    float mu = 0.0f, mv = 0.0f, tw, th;
-                    for (i4 = 0; i4 < out_vert_count; i4++) {
-                        if (out[i4].u > mu) mu = out[i4].u;
-                        if (out[i4].v > mv) mv = out[i4].v;
-                    }
-                    if (mu > 1.5f || mv > 1.5f) {
+                    float tw, th;
+                    if (sum->max_u > 1.5f || sum->max_v > 1.5f) {
                         tw = (float)(g_pg.tex[0].image_rect >> 16);
                         th = (float)(g_pg.tex[0].image_rect & 0xFFFF);
                         if (tw < 16.0f) tw = 720.0f;
                         if (th < 16.0f) th = 480.0f;
-                        for (i4 = 0; i4 < out_vert_count; i4++) {
-                            out[i4].u /= tw;
-                            out[i4].v /= th;
-                        }
+                        post->uv_div_w = tw;
+                        post->uv_div_h = th;
                     }
                 }
                 /* A second combiner stage with no texture of its own scales
@@ -1792,13 +1794,8 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, OutputVertex *out,
                  * below modulates by the diffuse, so folding the factor into
                  * the vertex colour gives the same product. */
                 if (use_diffuse && (g_pg.comb_control & 0xFF) >= 2 && !g_pg.tex[1].enabled) {
-                    uint32_t f = g_pg.comb_factor0[0], i3;
-                    for (i3 = 0; i3 < out_vert_count; i3++) {
-                        uint32_t c = out[i3].color, r = 0, sh;
-                        for (sh = 0; sh < 32; sh += 8)
-                            r |= ((((c >> sh) & 0xFFu) * ((f >> sh) & 0xFFu) + 127u) / 255u) << sh;
-                        out[i3].color = r;
-                    }
+                    post->fold = 1;
+                    post->fold_factor = g_pg.comb_factor0[0];
                 }
                 dev->lpVtbl->SetTexture(dev, 0, NULL);
                 if (samples_fb ? d3d8_BindPrevFrame(0)
@@ -1936,6 +1933,40 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, OutputVertex *out,
 
 }
 
+/* CPU path: summarise the finished vertices, apply the state, then apply the
+ * vertex edits the state code asked for. Same values in the same order as
+ * when the edits lived inside nv_apply_draw_state. */
+static void nv_apply_draw_state_cpu(IDirect3DDevice8 *dev, OutputVertex *out,
+                                    uint32_t out_vert_count)
+{
+    NvDrawSummary sum;
+    NvPostOps post;
+    uint32_t i;
+    sum.all_zero = 1;
+    sum.max_u = 0.0f; sum.max_v = 0.0f;
+    for (i = 0; i < out_vert_count; i++) {
+        if (out[i].color != 0) sum.all_zero = 0;
+        if (out[i].u > sum.max_u) sum.max_u = out[i].u;
+        if (out[i].v > sum.max_v) sum.max_v = out[i].v;
+    }
+    memset(&post, 0, sizeof post);
+    nv_apply_draw_state(dev, &sum, &post);
+    if (post.uv_div_w != 0.0f) {
+        for (i = 0; i < out_vert_count; i++) {
+            out[i].u /= post.uv_div_w;
+            out[i].v /= post.uv_div_h;
+        }
+    }
+    if (post.fold) {
+        uint32_t f = post.fold_factor;
+        for (i = 0; i < out_vert_count; i++) {
+            uint32_t c = out[i].color, r = 0, sh;
+            for (sh = 0; sh < 32; sh += 8)
+                r |= ((((c >> sh) & 0xFFu) * ((f >> sh) & 0xFFu) + 127u) / 255u) << sh;
+            out[i].color = r;
+        }
+    }
+}
 
 /* Near-plane clipping for the fixed-function array path.
  *
@@ -2356,13 +2387,13 @@ static void nv_apply_point_state(IDirect3DDevice8 *dev, const OutputVertex *out,
     unsigned char saved[sizeof g_pg.tex[0]];
     uint32_t cop, ca1, ca2, aop, aa1, aa2;
     if (!(g_pg.point_smooth && g_pg.tex[3].offset)) {
-        nv_apply_draw_state(dev, out, out_n);
+        nv_apply_draw_state_cpu(dev, out, out_n);
         return;
     }
     memcpy(saved, &g_pg.tex[0], sizeof saved);
     memcpy(&g_pg.tex[0], &g_pg.tex[3], sizeof saved);
     g_pg.tex[0].enabled = 1;
-    nv_apply_draw_state(dev, out, out_n);
+    nv_apply_draw_state_cpu(dev, out, out_n);
     memcpy(&g_pg.tex[0], saved, sizeof saved);
     if (g_pg.tss3_valid) {
         cop = nv_xbox_texop((g_pg.tss3_color >> 12) & 0x1F); ca1 = (g_pg.tss3_color >> 6) & 0x3F; ca2 = g_pg.tss3_color & 0x3F;
@@ -2475,6 +2506,182 @@ static void nv_vreuse_build(uint32_t index, uint32_t lo, OutputVertex *out,
     }
 }
 
+/* ---- GPU fixed-function path --------------------------------------------
+ *
+ * Array draws that take the fixed-function path are handed to a vertex
+ * shader (d3d8_nv2aff.h) as packed object-space vertices plus the per-draw
+ * constants the CPU math used. The composite matrix, the viewport origin,
+ * the window fit and the z range fold into one clip matrix:
+ *   xs = (c.x/c.w + ox) * sx          (nv_transform_clip, nv_fit_to_backbuffer)
+ *   clip.x = (2 xs / SW - 1) * c.w     (the XYZRHW vertex shader)
+ *          = (2 sx / SW) (c.x + ox c.w) - c.w
+ * and likewise for y (flipped) and z (c.z / zrange); the near-plane clipper's
+ * two planes (W > 0.01, Z >= 0) become clip distances. Everything else --
+ * lighting, colour quantisation, the combiner-factor fold -- is the CPU
+ * code ported operation for operation.
+ *
+ * Draws the shader cannot reproduce stay on the CPU path: transform-program
+ * draws, points and lines, the frame-buffer-sampling (Omega) draws, batches
+ * whose vertex colour summary cannot be derived from the inputs, and
+ * anything with a failed or non-finite fetch. */
+static Nv2aFFVertex *s_gv;  static uint32_t s_gv_cap;
+static uint16_t     *s_gi;  static uint32_t s_gi_cap;
+static uint16_t     *s_gs;  static uint32_t s_gs_cap;   /* source index -> packed slot */
+uint32_t g_gpuff_stat[4];   /* 0 = GPU draws, 1 = CPU fallbacks, 2 = GPU verts, 3 = dropped (non-finite) */
+
+static int nv_attr_enabled(int slot)
+{
+    uint32_t fmt = g_pg.attr_fmt[slot], base = g_pg.attr_off[slot];
+    return ((fmt >> 4) & 0xF) != 0 && base != 0 && base < 0x08000000u;
+}
+
+/* 1 = drawn (or legitimately dropped) on the GPU, 0 = use the CPU path. */
+static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int prim, int is_quads)
+{
+    uint32_t n = g_pg.idx_count, i, lo = 0, nv = 0, ni = 0, need_idx;
+    int has_color, has_uv, lit, all_zero = 1, k;
+    Nv2aFFConstants cb;
+    NvDrawSummary sum;
+    NvPostOps post;
+    static int s_flip = -1;
+    if (s_flip < 0) { const char *e = getenv("DOA3_FLIPW"); s_flip = (e && *e == '1'); }
+
+    if (ctx->run_program || !g_pg.composite_seen || s_flip) return 0;
+    if (prim != D3DPT_TRIANGLELIST && prim != D3DPT_TRIANGLESTRIP && prim != D3DPT_TRIANGLEFAN) return 0;
+    if (g_pg.tex[0].offset && nv_samples_framebuffer(g_pg.tex[0].offset)) return 0;
+    for (i = 0; i < 16; i++) if (!isfinite(g_pg.composite[i])) return 0;
+    if (!nv_attr_enabled(0)) return 0;
+    lit       = ctx->lit && nv_attr_enabled(2);
+    has_color = nv_attr_enabled(3);
+    has_uv    = nv_attr_enabled(9);
+    if (!has_color && lit) {
+        /* The colour summary (is every colour 0?) needs the lit colours'
+         * alpha to be non-zero to be decidable without lighting on the CPU. */
+        int a = (int)(g_pg.material_alpha * 255.0f + 0.5f);
+        if (a <= 0) return 0;
+    }
+    if (!nv_vreuse_begin(g_pg.idx, n, &lo)) return 0;
+
+    need_idx = is_quads ? (n / 4) * 6 : (prim == D3DPT_TRIANGLEFAN ? (n - 2) * 3 : n);
+    if (s_gv_cap < n)        { void *b = realloc(s_gv, n * sizeof *s_gv); if (!b) return 0; s_gv = b; s_gv_cap = n; }
+    if (s_gi_cap < need_idx) { void *b = realloc(s_gi, need_idx * sizeof *s_gi); if (!b) return 0; s_gi = b; s_gi_cap = need_idx; }
+    if (s_gs_cap < n)        { void *b = realloc(s_gs, n * sizeof *s_gs); if (!b) return 0; s_gs = b; s_gs_cap = n; }
+
+    /* Pack each unique vertex once; map every source index to its slot. */
+    for (i = 0; i < n; i++) {
+        uint32_t idx = g_pg.idx[i], d = idx - lo;
+        if (s_vstamp[d] == s_vgen) { s_gs[i] = (uint16_t)s_vslot[d]; continue; }
+        {
+            Nv2aFFVertex *v = &s_gv[nv];
+            float tmp[4];
+            uint32_t colour = 0xFFFFFFFFu;
+            if (nv >= 65535) return 0;
+            if (!nv_fetch_attr(0, idx, v->pos, NULL)) return 0;
+            if (!isfinite(v->pos[0]) || !isfinite(v->pos[1]) || !isfinite(v->pos[2]) || !isfinite(v->pos[3])) {
+                g_gpuff_stat[3]++;              /* the CPU path drops such a batch too */
+                return 1;
+            }
+            if (lit) { if (!nv_fetch_attr(2, idx, tmp, NULL)) return 0; v->nrm[0] = tmp[0]; v->nrm[1] = tmp[1]; v->nrm[2] = tmp[2]; }
+            else     { v->nrm[0] = v->nrm[1] = v->nrm[2] = 0.0f; }
+            if (has_color) { if (!nv_fetch_attr(3, idx, tmp, &colour)) return 0; if (colour) all_zero = 0; }
+            v->color = colour;
+            if (has_uv) { if (!nv_fetch_attr(9, idx, tmp, NULL)) return 0; v->uv[0] = tmp[0]; v->uv[1] = tmp[1]; }
+            else        { v->uv[0] = v->uv[1] = 0.0f; }
+            s_vstamp[d] = s_vgen; s_vslot[d] = nv;
+            s_gs[i] = (uint16_t)nv;
+            nv++;
+        }
+    }
+    if (is_quads) {
+        uint32_t q;
+        for (q = 0; q + 3 < n; q += 4) {
+            s_gi[ni++] = s_gs[q + 0]; s_gi[ni++] = s_gs[q + 1]; s_gi[ni++] = s_gs[q + 2];
+            s_gi[ni++] = s_gs[q + 0]; s_gi[ni++] = s_gs[q + 2]; s_gi[ni++] = s_gs[q + 3];
+        }
+    } else if (prim == D3DPT_TRIANGLEFAN) {
+        for (i = 2; i < n; i++) { s_gi[ni++] = s_gs[0]; s_gi[ni++] = s_gs[i - 1]; s_gi[ni++] = s_gs[i]; }
+    } else {
+        for (i = 0; i < n; i++) s_gi[ni++] = s_gs[i];
+    }
+    if (ni < 3) return 1;
+
+    /* The vertex colour summary, from the inputs. */
+    if (has_color)              sum.all_zero = all_zero;
+    else if (lit)               sum.all_zero = 0;             /* alpha != 0, checked above */
+    else if (ctx->ambient_only) {
+        float c4[4] = { g_pg.scene_ambient[0] + g_pg.emission[0], g_pg.scene_ambient[1] + g_pg.emission[1],
+                        g_pg.scene_ambient[2] + g_pg.emission[2], g_pg.material_alpha };
+        sum.all_zero = (nv_pack_color(c4) == 0);
+    } else                      sum.all_zero = 0;             /* white */
+    sum.max_u = sum.max_v = 0.0f;                              /* no frame-buffer sampling here */
+
+    g_nv_draw_has_uv = 1;
+    g_nv_draw_inline = 0;
+    memset(&post, 0, sizeof post);
+    nv_apply_draw_state(dev, &sum, &post);
+    g_pg.gtss_valid = 0;
+    g_pg.tss3_valid = 0;
+    g_pg.tss1_valid = 0;
+    g_pg.tss0_alpha_valid = 0;
+
+    /* Constants. */
+    memset(&cb, 0, sizeof cb);
+    {
+        float zrange = (((g_pg.surface_fmt >> 4) & 0xF) == 1) ? 65535.0f : 16777215.0f;
+        float ox = g_pg.vp_offset[0], oy = g_pg.vp_offset[1];
+        unsigned sw = (g_pg.surface_clip_h >> 16) & 0xFFFF, sh = (g_pg.surface_clip_v >> 16) & 0xFFFF;
+        unsigned bw = d3d8_GetBackbufferWidth(), bh = d3d8_GetBackbufferHeight();
+        float sx = 1.0f, sy = 1.0f, kx, ky;
+        if (!(ox >= 0.0f && oy >= 0.0f && sw && sh && ox < (float)sw && oy < (float)sh)) { ox = 0.0f; oy = 0.0f; }
+        if (sw && sh && bw && bh && !(sw == bw && sh == bh)) { sx = (float)bw / (float)sw; sy = (float)bh / (float)sh; }
+        kx = 2.0f * sx / (float)bw;
+        ky = 2.0f * sy / (float)bh;
+        for (k = 0; k < 4; k++) {
+            float r0 = g_pg.composite[0 * 4 + k], r1 = g_pg.composite[1 * 4 + k];
+            float r2 = g_pg.composite[2 * 4 + k], r3 = g_pg.composite[3 * 4 + k];
+            cb.clip[0][k] =  kx * r0 + (kx * ox - 1.0f) * r3;
+            cb.clip[1][k] = -ky * r1 + (1.0f - ky * oy) * r3;
+            cb.clip[2][k] =  r2 / zrange;
+            cb.clip[3][k] =  r3;
+        }
+    }
+    for (k = 0; k < 3; k++) { int j; for (j = 0; j < 4; j++) cb.mv[k][j] = g_mv[k * 4 + j]; }
+    for (k = 0; k < 4; k++) {
+        uint32_t t = ctx->ltype[k];
+        if (!t) continue;
+        if (t == 1) { cb.light_dir[k][0] = ctx->dir_n[k][0]; cb.light_dir[k][1] = ctx->dir_n[k][1]; cb.light_dir[k][2] = ctx->dir_n[k][2]; cb.light_dir[k][3] = 1.0f; }
+        else        { cb.light_dir[k][0] = g_pg.light[k].pos[0]; cb.light_dir[k][1] = g_pg.light[k].pos[1]; cb.light_dir[k][2] = g_pg.light[k].pos[2]; cb.light_dir[k][3] = 2.0f; }
+        cb.light_amb[k][0] = g_pg.light[k].amb[0]; cb.light_amb[k][1] = g_pg.light[k].amb[1]; cb.light_amb[k][2] = g_pg.light[k].amb[2];
+        cb.light_dif[k][0] = g_pg.light[k].dif[0]; cb.light_dif[k][1] = g_pg.light[k].dif[1]; cb.light_dif[k][2] = g_pg.light[k].dif[2];
+        cb.light_att[k][0] = g_pg.light[k].att[0]; cb.light_att[k][1] = g_pg.light[k].att[1]; cb.light_att[k][2] = g_pg.light[k].att[2];
+        cb.light_att[k][3] = g_pg.light[k].range;
+    }
+    for (k = 0; k < 3; k++) cb.ambemis[k] = g_pg.scene_ambient[k] + g_pg.emission[k];
+    cb.ambemis[3] = g_pg.material_alpha;
+    cb.flags = (lit ? NV2AFF_FLAG_LIT : 0) | (ctx->ambient_only ? NV2AFF_FLAG_AMBIENT_ONLY : 0) |
+               (has_color ? NV2AFF_FLAG_HAS_COLOR : 0);
+    if (post.fold) {
+        uint32_t f = post.fold_factor;
+        cb.flags |= NV2AFF_FLAG_FOLD;
+        cb.fold[0] = (float)((f >> 16) & 0xFF); cb.fold[1] = (float)((f >> 8) & 0xFF);
+        cb.fold[2] = (float)(f & 0xFF);         cb.fold[3] = (float)(f >> 24);
+    }
+
+    {
+        int clipped = nv_apply_window_clip();
+        dev->lpVtbl->BeginScene(dev);
+        d3d8_DrawNv2aFF(s_gv, nv, s_gi, ni,
+                        (prim == D3DPT_TRIANGLESTRIP) ? 5 /* D3D11 TRIANGLESTRIP */ : 4 /* TRIANGLELIST */,
+                        &cb);
+        if (clipped) { extern void d3d8_ResetScissorRect(void); d3d8_ResetScissorRect(); }
+    }
+    g_gpuff_stat[0]++;
+    g_gpuff_stat[2] += nv;
+    g_pg.stats.draw_calls++;
+    g_pg.stats.vertices_submitted += ni;
+    return 1;
+}
+
 static void submit_array_draw(void)
 {
     nv_sync_render_target();
@@ -2505,6 +2712,13 @@ static void submit_array_draw(void)
     if (!dev) { g_pg.idx_count = 0; return; }
 
     nv_batch_ctx_init(&ctx);
+
+    if (!is_points && nv_gpu_ff_submit(dev, &ctx, prim, is_quads)) {
+        g_pg.idx_count = 0;
+        g_pg.idx_dropped = 0;
+        return;
+    }
+    if (!is_points) g_gpuff_stat[1]++;
 
     if (is_points) {
         /* Point sprites -> screen-space quads. D3D11 has no sized points, so
@@ -2620,7 +2834,7 @@ static void submit_array_draw(void)
     if (is_points)
         nv_apply_point_state(dev, out, out_n);
     else
-        nv_apply_draw_state(dev, out, out_n);
+        nv_apply_draw_state_cpu(dev, out, out_n);
     g_pg.gtss_valid = 0;
     g_pg.tss3_valid = 0;
     g_pg.tss1_valid = 0;
@@ -3001,7 +3215,7 @@ static void submit_draw(void)
 
     g_nv_draw_has_uv = (lay_uv >= 0);
     g_nv_draw_inline = 1;
-    nv_apply_draw_state(dev, out, out_vert_count);
+    nv_apply_draw_state_cpu(dev, out, out_vert_count);
     g_pg.gtss_valid = 0;
     g_pg.tss1_valid = 0;
     g_nv_draw_inline = 0;

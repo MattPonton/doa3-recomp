@@ -17,6 +17,7 @@
  */
 
 #include "d3d8_internal.h"
+#include "d3d8_nv2aff.h"
 #include <d3dcompiler.h>
 #include <string.h>
 #include <stdio.h>
@@ -957,4 +958,167 @@ void d3d8_shaders_prepare_draw(DWORD fvf)
         ID3D11DeviceContext_VSSetConstantBuffers(ctx, 0, 2, vs_cbs);
     }
     ID3D11DeviceContext_PSSetConstantBuffers(ctx, 0, 1, &g_ps_cb);
+}
+
+/* ================================================================
+ * NV2A fixed-function vertex shader (see d3d8_nv2aff.h)
+ *
+ * Mirrors the pgraph translator's CPU path operation for operation:
+ * nv_transform_clip + nv_fit_to_backbuffer + the XYZRHW re-homogenise are
+ * folded into Clip[]; nv_light_vertex is ported line for line; colours are
+ * quantised to 8 bits the way nv_pack_color does before interpolation; the
+ * combiner-factor fold uses the same integer rounding.
+ * ================================================================ */
+static const char g_nv2aff_vs_source[] =
+    "cbuffer NvFF : register(b0) {\n"
+    "    float4 Clip[4];\n"
+    "    float4 MV[3];\n"
+    "    float4 LDir[4];\n"
+    "    float4 LAmb[4];\n"
+    "    float4 LDif[4];\n"
+    "    float4 LAtt[4];\n"
+    "    float4 AmbEmis;\n"
+    "    float4 Fold;\n"
+    "    uint   Flags;\n"
+    "    uint3  _pad;\n"
+    "};\n"
+    "struct VS_IN {\n"
+    "    float4 pos   : POSITION;\n"
+    "    float3 nrm   : NORMAL;\n"
+    "    float4 color : COLOR0;\n"
+    "    float2 uv    : TEXCOORD0;\n"
+    "};\n"
+    "struct VS_OUT {\n"
+    "    float4 pos      : SV_POSITION;\n"
+    "    float4 diffuse  : COLOR0;\n"
+    "    float4 specular : COLOR1;\n"
+    "    float2 tex0     : TEXCOORD0;\n"
+    "    float2 tex1     : TEXCOORD1;\n"
+    "    float2 tex2     : TEXCOORD2;\n"
+    "    float2 tex3     : TEXCOORD3;\n"
+    "    float  fog      : TEXCOORD4;\n"
+    "    float2 clipd    : SV_ClipDistance0;\n"
+    "};\n"
+    "float4 quant(float4 c) {\n"                 /* nv_pack_color: (int)(c*255+0.5) clamped */
+    "    return clamp(floor(c * 255.0 + 0.5), 0.0, 255.0) / 255.0;\n"
+    "}\n"
+    "VS_OUT main(VS_IN i) {\n"
+    "    VS_OUT o;\n"
+    "    float4 c = float4(dot(Clip[0], i.pos), dot(Clip[1], i.pos),\n"
+    "                      dot(Clip[2], i.pos), dot(Clip[3], i.pos));\n"
+    "    o.pos = c;\n"
+    "    o.clipd = float2(c.w - 0.01, c.z);\n"       /* W > near epsilon, Z >= 0 */
+    "    float4 col = float4(1, 1, 1, 1);\n"
+    "    if (Flags & 4u) {\n"                        /* vertex colour */
+    "        col = i.color;\n"
+    "    } else if (Flags & 1u) {\n"                 /* NV2A fixed-function lighting */
+    "        float3 P = float3(0, 0, 0);\n"
+    "        float3 N;\n"
+    "        [unroll] for (int k = 0; k < 3; k++) {\n"
+    "            P[k] = dot(MV[k].xyz, i.pos.xyz) + MV[k].w;\n"
+    "            N[k] = dot(MV[k].xyz, i.nrm);\n"
+    "        }\n"
+    "        float len = sqrt(dot(N, N));\n"
+    "        if (len > 1e-12) N = N / len;\n"
+    "        float3 rgb = AmbEmis.rgb;\n"
+    "        [unroll] for (int l = 0; l < 4; l++) {\n"
+    "            float type = LDir[l].w;\n"
+    "            if (type == 0.0) continue;\n"
+    "            float3 L; float att = 1.0;\n"
+    "            if (type == 1.0) {\n"
+    "                L = LDir[l].xyz;\n"
+    "            } else {\n"
+    "                L = LDir[l].xyz - P;\n"
+    "                float d = sqrt(dot(L, L));\n"
+    "                if (d <= 1e-12) continue;\n"
+    "                L = L / d;\n"
+    "                float den = LAtt[l].x + LAtt[l].y * d + LAtt[l].z * d * d;\n"
+    "                att = (den > 1e-12) ? 1.0 / den : 1.0;\n"
+    "                if (LAtt[l].w > 0.0 && d > LAtt[l].w) att = 0.0;\n"
+    "            }\n"
+    "            float ndotl = max(dot(N, L), 0.0);\n"
+    "            rgb += att * (LAmb[l].rgb + LDif[l].rgb * ndotl);\n"
+    "        }\n"
+    "        col = quant(float4(rgb, AmbEmis.w));\n"
+    "    } else if (Flags & 2u) {\n"                 /* lighting on, every light off */
+    "        col = quant(float4(AmbEmis.rgb, AmbEmis.w));\n"
+    "    }\n"
+    "    if (Flags & 8u) {\n"                        /* combiner factor fold: (c*f + 127) / 255 per channel */
+    "        float4 c8 = floor(col * 255.0 + 0.5);\n"
+    "        col = floor((c8 * Fold + 127.0) / 255.0) / 255.0;\n"
+    "    }\n"
+    "    o.diffuse = col;\n"
+    "    o.specular = float4(0, 0, 0, 0);\n"
+    "    o.tex0 = i.uv;\n"
+    "    o.tex1 = i.uv;\n"
+    "    o.tex2 = i.uv;\n"
+    "    o.tex3 = i.uv;\n"
+    "    o.fog = 1.0;\n"
+    "    return o;\n"
+    "}\n";
+
+static ID3D11VertexShader *g_nv2aff_vs;
+static ID3D11InputLayout  *g_nv2aff_layout;
+static ID3D11Buffer       *g_nv2aff_cb;
+
+long d3d8_Nv2aFF_Init(void)
+{
+    ID3DBlob *blob = NULL, *errors = NULL;
+    D3D11_BUFFER_DESC cbd;
+    HRESULT hr;
+    static const D3D11_INPUT_ELEMENT_DESC elems[] = {
+        { "POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0,  0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        { "COLOR",    0, DXGI_FORMAT_B8G8R8A8_UNORM,     0, 28, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,       0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+    };
+
+    hr = D3DCompile(g_nv2aff_vs_source, strlen(g_nv2aff_vs_source), "vs_nv2aff",
+                    NULL, NULL, "main", "vs_5_0", 0, 0, &blob, &errors);
+    if (FAILED(hr)) {
+        if (errors) {
+            fprintf(stderr, "nv2aff VS compile failed: %s\n", (const char *)ID3D10Blob_GetBufferPointer(errors));
+            ID3D10Blob_Release(errors);
+        }
+        return hr;
+    }
+    hr = ID3D11Device_CreateVertexShader(d3d8_GetD3D11Device(),
+        ID3D10Blob_GetBufferPointer(blob), ID3D10Blob_GetBufferSize(blob), NULL, &g_nv2aff_vs);
+    if (SUCCEEDED(hr))
+        hr = ID3D11Device_CreateInputLayout(d3d8_GetD3D11Device(), elems, 4,
+            ID3D10Blob_GetBufferPointer(blob), ID3D10Blob_GetBufferSize(blob), &g_nv2aff_layout);
+    ID3D10Blob_Release(blob);
+    if (FAILED(hr)) return hr;
+
+    memset(&cbd, 0, sizeof cbd);
+    cbd.ByteWidth = (sizeof(Nv2aFFConstants) + 15) & ~15u;
+    cbd.Usage = D3D11_USAGE_DYNAMIC;
+    cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    cbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    return ID3D11Device_CreateBuffer(d3d8_GetD3D11Device(), &cbd, NULL, &g_nv2aff_cb);
+}
+
+void d3d8_Nv2aFF_Shutdown(void)
+{
+    if (g_nv2aff_cb)     { ID3D11Buffer_Release(g_nv2aff_cb); g_nv2aff_cb = NULL; }
+    if (g_nv2aff_layout) { ID3D11InputLayout_Release(g_nv2aff_layout); g_nv2aff_layout = NULL; }
+    if (g_nv2aff_vs)     { ID3D11VertexShader_Release(g_nv2aff_vs); g_nv2aff_vs = NULL; }
+}
+
+/* Bind the NV2A VS, its layout and constants. The PS side (shader, PS
+ * constants, combiners, render/sampler state) is set up by the caller through
+ * the ordinary prepare path; only the VS stage is replaced here. */
+int d3d8_Nv2aFF_Bind(const Nv2aFFConstants *cb)
+{
+    ID3D11DeviceContext *ctx = d3d8_GetD3D11Context();
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    if (!ctx || !g_nv2aff_vs || !g_nv2aff_cb) return 0;
+    if (FAILED(ID3D11DeviceContext_Map(ctx, (ID3D11Resource *)g_nv2aff_cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+        return 0;
+    memcpy(mapped.pData, cb, sizeof *cb);
+    ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource *)g_nv2aff_cb, 0);
+    ID3D11DeviceContext_VSSetShader(ctx, g_nv2aff_vs, NULL, 0);
+    ID3D11DeviceContext_IASetInputLayout(ctx, g_nv2aff_layout);
+    ID3D11DeviceContext_VSSetConstantBuffers(ctx, 0, 1, &g_nv2aff_cb);
+    return 1;
 }

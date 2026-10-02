@@ -252,6 +252,33 @@ BOOL xbox_MemoryLayoutInit(const void *xbe_data, size_t xbe_size)
     }
 
     /*
+     * Reserve the MCPX APU MMIO aperture (Xbox VA 0xFE800000-0xFE87FFFF) for
+     * the same reason. The recompiled DirectSound driver drives the audio
+     * front end by storing methods into this window, and the VEH routes those
+     * faults to apu_hook_handle_mmio. Nothing held the window, so a host
+     * allocation could land on it: measured at the attract start, the page
+     * at 0xFE820000 turned up committed PAGE_READWRITE (a 3 MB region), the
+     * driver's SET_CURRENT_VOICE / CFG_FMT / VOICE_OFF stores for a buffer it
+     * was stopping stopped faulting, the voice stayed active, and
+     * CMcpxBuffer_Stop spun forever in its retire wait -- the intermittent
+     * freeze ten seconds into the attract loop. Reserved, the stores trap
+     * again and later VirtualAlloc(NULL, ...) calls stay out of the window.
+     */
+    {
+        void *apu = (void *)((uintptr_t)0xFE800000u + g_memory_offset);
+        LPVOID r = VirtualAlloc(apu, 0x00080000u, MEM_RESERVE, PAGE_NOACCESS);
+        if (r == apu) {
+            fprintf(stderr, "xbox_MemoryLayoutInit: APU MMIO aperture reserved at %p "
+                            "(Xbox VA 0xFE800000, 512 KB)\n", apu);
+        } else {
+            fprintf(stderr, "xbox_MemoryLayoutInit: WARNING could not reserve the APU "
+                            "MMIO aperture at %p (got %p, error %lu) -- audio register "
+                            "writes may be lost\n", apu, r, GetLastError());
+            if (r) VirtualFree(r, 0, MEM_RELEASE);
+        }
+    }
+
+    /*
      * Helper macro: convert Xbox VA to actual mapped address.
      * When g_memory_offset == 0 (ideal case), this is identity.
      */

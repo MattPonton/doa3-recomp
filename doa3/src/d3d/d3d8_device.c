@@ -16,6 +16,9 @@
  */
 
 #include "d3d8_internal.h"
+#include "d3d8_nv2aff.h"
+static ID3D11Buffer *g_nv2aff_idx_ring;   /* NV2A FF index ring, see d3d8_DrawNv2aFF */
+static UINT          g_nv2aff_idx_off;
 #include "ui/doa3_ui.h"
 #include <stdio.h>
 #include <string.h>
@@ -512,6 +515,8 @@ static ULONG __stdcall dev_Release(IDirect3DDevice8 *self)
     if (ref <= 0) {
         /* Cleanup subsystems first */
         up_ring_shutdown();
+        if (g_nv2aff_idx_ring) { ID3D11Buffer_Release(g_nv2aff_idx_ring); g_nv2aff_idx_ring = NULL; g_nv2aff_idx_off = 0; }
+        d3d8_Nv2aFF_Shutdown();
         d3d8_vsh_shutdown();
         d3d8_combiners_shutdown();
         d3d8_states_shutdown();
@@ -2017,6 +2022,7 @@ static HRESULT __stdcall d3d8_CreateDevice(IDirect3D8 *self, UINT Adapter, DWORD
 
     /* Initialize shader and state subsystems */
     hr = d3d8_shaders_init();
+    if (SUCCEEDED(hr)) hr = d3d8_Nv2aFF_Init();
     if (FAILED(hr)) {
         return hr;
     }
@@ -2056,4 +2062,82 @@ IDirect3D8 *xbox_Direct3DCreate8(UINT SDKVersion)
     g_d3d8.lpVtbl = &g_d3d8_vtbl;
     g_d3d8_ref = 1;
     return &g_d3d8;
+}
+
+/* ================================================================
+ * NV2A fixed-function GPU draw (see d3d8_nv2aff.h)
+ * ================================================================ */
+
+#define NV2AFF_IDX_RING_SIZE (4 * 1024 * 1024)   /* 2M 16-bit indices */
+
+/* Same ring discipline as the vertex ring above. Returns the byte offset. */
+static UINT nv2aff_idx_upload(const void *data, UINT size)
+{
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    D3D11_MAP map_type;
+    UINT off;
+    if (!g_nv2aff_idx_ring) {
+        D3D11_BUFFER_DESC bd;
+        memset(&bd, 0, sizeof bd);
+        bd.ByteWidth = NV2AFF_IDX_RING_SIZE;
+        bd.Usage = D3D11_USAGE_DYNAMIC;
+        bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+        bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        if (FAILED(ID3D11Device_CreateBuffer(g_device_state.d3d11_device, &bd, NULL, &g_nv2aff_idx_ring)))
+            return (UINT)-1;
+    }
+    if (size > NV2AFF_IDX_RING_SIZE) return (UINT)-1;
+    if (g_nv2aff_idx_off + size > NV2AFF_IDX_RING_SIZE) {
+        g_nv2aff_idx_off = 0;
+        map_type = D3D11_MAP_WRITE_DISCARD;
+    } else {
+        map_type = D3D11_MAP_WRITE_NO_OVERWRITE;
+    }
+    if (FAILED(ID3D11DeviceContext_Map(g_device_state.d3d11_context,
+            (ID3D11Resource *)g_nv2aff_idx_ring, 0, map_type, 0, &mapped)))
+        return (UINT)-1;
+    off = g_nv2aff_idx_off;
+    memcpy((BYTE *)mapped.pData + off, data, size);
+    ID3D11DeviceContext_Unmap(g_device_state.d3d11_context, (ID3D11Resource *)g_nv2aff_idx_ring, 0);
+    g_nv2aff_idx_off = (off + size + 15) & ~15u;
+    return off;
+}
+
+long d3d8_DrawNv2aFF(const Nv2aFFVertex *verts, unsigned nverts,
+                     const uint16_t *idx, unsigned nidx, int topology,
+                     const Nv2aFFConstants *cb)
+{
+    UINT stride = sizeof(Nv2aFFVertex), vb_off, ib_off;
+    if (!verts || !idx || !nverts || !nidx) return E_INVALIDARG;
+    g_d3d_draw_count++; if (g_off_active) g_d3d_draw_off++;
+
+    vb_off = up_ring_upload(verts, nverts * stride);
+    if (vb_off == (UINT)-1) return E_OUTOFMEMORY;
+    ib_off = nv2aff_idx_upload(idx, nidx * 2);
+    if (ib_off == (UINT)-1) return E_OUTOFMEMORY;
+
+    /* PS side exactly as the XYZRHW path: PS constants, combiner override,
+     * render + sampler state. The VS it binds is replaced just below. */
+    d3d8_shaders_prepare_draw(D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
+    d3d8_combiners_prepare_draw();
+    d3d8_states_apply();
+    if (!d3d8_Nv2aFF_Bind(cb)) return E_FAIL;
+
+    ID3D11DeviceContext_IASetVertexBuffers(g_device_state.d3d11_context, 0, 1, &g_up_ring_buffer, &stride, &vb_off);
+    ID3D11DeviceContext_IASetIndexBuffer(g_device_state.d3d11_context, g_nv2aff_idx_ring, DXGI_FORMAT_R16_UINT, 0);
+    ID3D11DeviceContext_IASetPrimitiveTopology(g_device_state.d3d11_context, (D3D11_PRIMITIVE_TOPOLOGY)topology);
+    ID3D11DeviceContext_DrawIndexed(g_device_state.d3d11_context, nidx, ib_off / 2, 0);
+
+    /* Restore the game's own bindings, as DrawPrimitiveUP does. */
+    if (g_cur_vb) {
+        D3D8VertexBuffer *vb = (D3D8VertexBuffer *)g_cur_vb;
+        UINT restore_offset = 0;
+        ID3D11DeviceContext_IASetVertexBuffers(g_device_state.d3d11_context, 0, 1, &vb->d3d11_buffer, &g_cur_vb_stride, &restore_offset);
+    }
+    if (g_cur_ib) {
+        D3D8IndexBuffer *ib = (D3D8IndexBuffer *)g_cur_ib;
+        ID3D11DeviceContext_IASetIndexBuffer(g_device_state.d3d11_context, ib->d3d11_buffer,
+            (ib->format == D3DFMT_INDEX32) ? DXGI_FORMAT_R32_UINT : DXGI_FORMAT_R16_UINT, 0);
+    }
+    return S_OK;
 }
