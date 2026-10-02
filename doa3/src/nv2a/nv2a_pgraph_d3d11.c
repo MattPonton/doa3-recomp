@@ -3339,69 +3339,95 @@ static void submit_draw(void)
          } \
 } while (0)
 
-/* Methods the pre-switch chain of pgraph_d3d11_method can act on.
+/* Per-method dispatch table.
  *
- * Every method used to run ~40 range tests before reaching the switch -- 30%
- * of this function's time in fights (sampled, mapped to source lines). Each
- * of those tests depends only on the method number (the 0x0100 marker tests
- * look at the parameter only after method == 0x0100), so a method none of
- * them matches can skip the chain entirely. This table lists every method
- * the chain names; anything outside it goes straight to the switch after the
- * same bookkeeping the chain would have reached. Keep it in step with the
- * chain below. */
-static const uint16_t s_pre_ranges[][2] = {
-    { 0x0680, 0x06BC }, { 0x0440, 0x047C }, { 0x0480, 0x057C }, { 0x0580, 0x067C },
-    { 0x06C0, 0x07BC }, { 0x0840, 0x093C }, { 0x0A50, 0x0A5C }, { 0x09C0, 0x09C8 },
-    { 0x0AF0, 0x0AFC }, { 0x0A20, 0x0A2C },                     /* constant mirror */
-    { 0x1E60, 0x1E60 }, { 0x0100, 0x0100 },                     /* combiner ctl, markers */
-    { 0x0318, 0x0318 }, { 0x031C, 0x031C }, { 0x043C, 0x043C },
-    { 0x0A30, 0x0A4C }, { 0x0A60, 0x0A7C },                     /* points, factors */
-    { 0x1E94, 0x1E94 },                                         /* transform mode */
-    { 0x0B00, 0x0B7C }, { 0x0B80, 0x0BFC }, { 0x1760, 0x179C }, { 0x1720, 0x175C },
-    { 0x0480, 0x04BC },                                         /* range methods */
-    { 0x0314, 0x0314 }, { 0x1000, 0x11FC }, { 0x03BC, 0x03BC }, { 0x0294, 0x0294 },
-    { 0x0298, 0x0298 }, { 0x03B8, 0x03B8 }, { 0x03A4, 0x03A4 }, { 0x0A10, 0x0A18 },
-    { 0x03A8, 0x03B0 }, { 0x03B4, 0x03B4 }, { 0x09E0, 0x09F4 },  /* lighting */
-    { 0x0680, 0x06BC },                                         /* composite */
+ * Every method used to run ~40 independent range tests before reaching the
+ * switch -- the record-only state handlers (transform-constant mirror,
+ * combiner markers, point parameters, lighting registers, matrices, the
+ * vertex-array format/offset runs) plus a 15-term "silently ignored" list in
+ * the switch's default. With ~190k methods a frame in the heavy scenes that
+ * chain was a third of the translator's time. Each test depends only on the
+ * method number (the 0x0100 markers look at the parameter only once the
+ * method matches), so the outcome of every test is precomputed here once,
+ * into one flag word and one constant-slot index per method. The handler
+ * bodies below are the original ones, run under their precomputed flag in
+ * the original order; the switch and its cases are unchanged. */
+enum {
+    MF_CONST       = 1u << 0,    /* transform-constant mirror, slot in cslot */
+    MF_COMBCTL     = 1u << 1,    /* 0x1E60 */
+    MF_MARKER      = 1u << 2,    /* 0x0100: wrapper-carried markers in the top byte */
+    MF_PT_EN       = 1u << 3,    /* 0x0318 */
+    MF_PT_SMOOTH   = 1u << 4,    /* 0x031C */
+    MF_PT_SIZE     = 1u << 5,    /* 0x043C */
+    MF_PT_PARAM    = 1u << 6,    /* 0x0A30..0x0A4C */
+    MF_COMB_FACTOR = 1u << 7,    /* 0x0A60..0x0A7C, returns */
+    MF_XMODE       = 1u << 8,    /* 0x1E94 diag */
+    MF_VP_PROG     = 1u << 9,    /* 0x0B00..0x0B7C, returns */
+    MF_VP_CONST    = 1u << 10,   /* 0x0B80..0x0BFC, returns */
+    MF_ATTR_FMT    = 1u << 11,   /* 0x1760..0x179C, returns */
+    MF_ATTR_OFF    = 1u << 12,   /* 0x1720..0x175C, returns */
+    MF_MV          = 1u << 13,   /* 0x0480..0x04BC, returns */
+    MF_LIGHT_EN    = 1u << 14,   /* 0x0314 */
+    MF_LIGHT_REG   = 1u << 15,   /* 0x1000..0x11FC */
+    MF_LIGHT_MASK  = 1u << 16,   /* 0x03BC */
+    MF_LIGHT_CTL   = 1u << 17,   /* 0x0294 */
+    MF_COLOR_MAT   = 1u << 18,   /* 0x0298 */
+    MF_SPEC_EN     = 1u << 19,   /* 0x03B8 */
+    MF_NORM_EN     = 1u << 20,   /* 0x03A4 */
+    MF_SCENE_AMB   = 1u << 21,   /* 0x0A10..0x0A18 */
+    MF_EMISSION    = 1u << 22,   /* 0x03A8..0x03B0 */
+    MF_MAT_ALPHA   = 1u << 23,   /* 0x03B4 */
+    MF_SPEC_PARAM  = 1u << 24,   /* 0x09E0..0x09F4 */
+    MF_COMPOSITE   = 1u << 25,   /* 0x0680..0x06BC, returns */
+    MF_SILENT      = 1u << 26,   /* the switch default's "ignored but acknowledged" list */
+    MF_PRE  = MF_CONST | MF_COMBCTL | MF_MARKER | MF_PT_EN | MF_PT_SMOOTH | MF_PT_SIZE |
+              MF_PT_PARAM | MF_COMB_FACTOR,
+    MF_POST = MF_XMODE | MF_VP_PROG | MF_VP_CONST | MF_ATTR_FMT | MF_ATTR_OFF | MF_MV |
+              MF_LIGHT_EN | MF_LIGHT_REG | MF_LIGHT_MASK | MF_LIGHT_CTL | MF_COLOR_MAT |
+              MF_SPEC_EN | MF_NORM_EN | MF_SCENE_AMB | MF_EMISSION | MF_MAT_ALPHA |
+              MF_SPEC_PARAM | MF_COMPOSITE
 };
-static uint8_t s_pre_act[0x800];
-static int     s_pre_ready;
+typedef struct { uint32_t mask; int8_t cslot; } NvMethodEntry;
+static NvMethodEntry s_mtab[0x800];
+static int s_mtab_ready;
 
-static void nv_pre_act_init(void)
+/* The switch default's "known range we can safely ignore" test, as written. */
+static int nv_method_silent(uint32_t method)
 {
-    unsigned i, m;
-    for (i = 0; i < sizeof s_pre_ranges / sizeof s_pre_ranges[0]; i++)
-        for (m = s_pre_ranges[i][0]; m <= s_pre_ranges[i][1]; m += 4)
-            s_pre_act[m >> 2] = 1;
-    s_pre_ready = 1;
+    return (method >= 0x0B80 && method < 0x0C00) ||  /* Transform program */
+           (method >= 0x0E00 && method < 0x1000) ||  /* Transform constants */
+           (method >= 0x1680 && method < 0x1780) ||  /* Vertex array format/offset */
+           (method >= 0x1B00 && method < 0x1C00) ||  /* Texture registers */
+           (method >= 0x1D60 && method < 0x1EA0) ||  /* Combiners */
+           method == 0x0100 ||                        /* NOP */
+           method == 0x0180 ||                        /* SET_OBJECT */
+           method == 0x0394 ||                        /* TRANSFORM_EXECUTION_MODE */
+           method == 0x0398 ||                        /* TRANSFORM_PROGRAM_CXT_WRITE_EN */
+           method == 0x039C ||                        /* TRANSFORM_PROGRAM_LOAD */
+           method == 0x01E0 ||                        /* SHADER_STAGE_PROGRAM */
+           method == 0x0108 || method == 0x010C ||    /* FLIP_READ/WRITE */
+           method == 0x0110 || method == 0x0114 ||    /* FLIP_MODULO/INCREMENT */
+           method == 0x0118;                          /* FLIP_STALL */
 }
 
-int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
+static void nv_mtab_init(void)
 {
-    if (method < 0x2000 && !(method & 3)) {
-        if (!s_pre_ready) nv_pre_act_init();
-        if (!s_pre_act[method >> 2]) {
-            extern uint32_t g_mhist[0x800];
-            if (!g_pg.initialized)
-                return 0;
-            g_pg.stats.methods_handled++;
-            g_mhist[method >> 2]++;
-            goto pg_switch;
-        }
-    }
-    /* Fixed-function context -> transform constants c[0..95].
-     *
-     * On the NV2A the first 96 transform constants ARE the fixed-function
-     * context: SET_COMPOSITE_MATRIX lands in c[0..3], SET_PROJECTION_MATRIX in
-     * c[4..7], the model-view / inverse model-view matrices in c[8..39], the
-     * texgen planes and texture matrices in c[64..95], the eye position in c[56], the fog
-     * parameters in c[57], SET_VIEWPORT_SCALE in c[58] and SET_VIEWPORT_OFFSET
-     * in c[59] (xemu's NV_IGRAPH_XF_XFCTX_* slots). The XDK's vertex-shader
-     * epilogue reads the viewport back as c[-38]/c[-37] = c[58]/c[59]; no code
-     * ever loads them through SET_TRANSFORM_CONSTANT, so a program that runs
-     * without this mirror scales every position by zero (the pond's water). */
-    {
+    uint32_t method;
+    for (method = 0; method < 0x2000; method += 4) {
+        NvMethodEntry *e = &s_mtab[method >> 2];
+        uint32_t f = 0;
         int slot = -1;
+        /* Fixed-function context -> transform constants c[0..95].
+         *
+         * On the NV2A the first 96 transform constants ARE the fixed-function
+         * context: SET_COMPOSITE_MATRIX lands in c[0..3], SET_PROJECTION_MATRIX in
+         * c[4..7], the model-view / inverse model-view matrices in c[8..39], the
+         * texgen planes and texture matrices in c[64..95], the eye position in c[56], the fog
+         * parameters in c[57], SET_VIEWPORT_SCALE in c[58] and SET_VIEWPORT_OFFSET
+         * in c[59] (xemu's NV_IGRAPH_XF_XFCTX_* slots). The XDK's vertex-shader
+         * epilogue reads the viewport back as c[-38]/c[-37] = c[58]/c[59]; no code
+         * ever loads them through SET_TRANSFORM_CONSTANT, so a program that runs
+         * without this mirror scales every position by zero (the pond's water). */
         if      (method >= 0x0680 && method <= 0x06BC) slot = 0x00 + (method - 0x0680) / 16;
         else if (method >= 0x0440 && method <= 0x047C) slot = 0x04 + (method - 0x0440) / 16;
         else if (method >= 0x0480 && method <= 0x057C) slot = 0x08 + ((method - 0x0480) / 64) * 8 + ((method - 0x0480) % 64) / 16;
@@ -3412,41 +3438,96 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
         else if (method >= 0x09C0 && method <= 0x09C8) slot = 0x39;
         else if (method >= 0x0AF0 && method <= 0x0AFC) slot = 0x3A;
         else if (method >= 0x0A20 && method <= 0x0A2C) slot = 0x3B;
-        if (slot >= 0 && slot < NV2A_VP_NUM_CONST)
-            g_pg.vp.consts[slot][(method / 4) & 3] = u2f(param);
+        if (slot >= 0 && slot < NV2A_VP_NUM_CONST) f |= MF_CONST; else slot = -1;
+        if (method == 0x1E60) f |= MF_COMBCTL;
+        if (method == 0x0100) f |= MF_MARKER;
+        if (method == 0x0318) f |= MF_PT_EN;
+        if (method == 0x031C) f |= MF_PT_SMOOTH;
+        if (method == 0x043C) f |= MF_PT_SIZE;
+        if (method >= 0x0A30 && method <= 0x0A4C) f |= MF_PT_PARAM;
+        if (method >= 0x0A60 && method <= 0x0A7C) f |= MF_COMB_FACTOR;
+        if (method == 0x1E94) f |= MF_XMODE;
+        if (method >= 0x0B00 && method <= 0x0B7C) f |= MF_VP_PROG;
+        if (method >= 0x0B80 && method <= 0x0BFC) f |= MF_VP_CONST;
+        if (method >= 0x1760 && method <= 0x179C) f |= MF_ATTR_FMT;
+        if (method >= 0x1720 && method <= 0x175C) f |= MF_ATTR_OFF;
+        if (method >= 0x0480 && method <= 0x04BC) f |= MF_MV;
+        if (method == 0x0314) f |= MF_LIGHT_EN;
+        if (method >= 0x1000 && method <= 0x11FC) f |= MF_LIGHT_REG;
+        if (method == 0x03BC) f |= MF_LIGHT_MASK;
+        if (method == 0x0294) f |= MF_LIGHT_CTL;
+        if (method == 0x0298) f |= MF_COLOR_MAT;
+        if (method == 0x03B8) f |= MF_SPEC_EN;
+        if (method == 0x03A4) f |= MF_NORM_EN;
+        if (method >= 0x0A10 && method <= 0x0A18) f |= MF_SCENE_AMB;
+        if (method >= 0x03A8 && method <= 0x03B0) f |= MF_EMISSION;
+        if (method == 0x03B4) f |= MF_MAT_ALPHA;
+        if (method >= 0x09E0 && method <= 0x09F4) f |= MF_SPEC_PARAM;
+        if (method >= 0x0680 && method <= 0x06BC) f |= MF_COMPOSITE;
+        if (nv_method_silent(method)) f |= MF_SILENT;
+        e->mask = f;
+        e->cslot = (int8_t)slot;
     }
-    if (method == 0x1E60) g_pg.comb_control = param;
-    if (method == 0x0100 && (param >> 24) == 0xA3u) {
-        g_pg.gtss = param;
-        g_pg.gtss_valid = 1;
-        return 1;
+    s_mtab_ready = 1;
+}
+
+int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
+{
+    const NvMethodEntry *me;
+    uint32_t f;
+    (void)subchannel;
+    if (!s_mtab_ready) nv_mtab_init();
+
+    if (method >= 0x2000 || (method & 3)) {
+        /* Outside the table (the push-buffer walker masks methods to 0x1FFC,
+         * so this never happens): no handler matched such a method before
+         * either, so it went straight to the switch default. */
+        if (!g_pg.initialized) return 0;
+        g_pg.stats.methods_handled++;
+        if (nv_method_silent(method)) return 1;
+        g_pg.stats.methods_ignored++;
+        return 0;
     }
-    if (method == 0x0100 && (param >> 24) == 0xA4u) { g_pg.tss3_color = param; g_pg.tss3_valid = 1; return 1; }
-    if (method == 0x0100 && (param >> 24) == 0xA5u) { g_pg.tss3_alpha = param; return 1; }
-    if (method == 0x0100 && (param >> 24) == 0xA6u) { g_pg.tss1_color = param; g_pg.tss1_valid = 1; return 1; }
-    if (method == 0x0100 && (param >> 24) == 0xA7u) { g_pg.tss1_alpha = param; return 1; }
-    if (method == 0x0100 && (param >> 24) == 0xABu) { g_pg.tss0_alpha = param; g_pg.tss0_alpha_valid = 1; return 1; }
-    if (method == 0x0100 && (param >> 24) == 0xA9u) { g_pg.tfactor_lo = param & 0xFFFFFF; return 1; }
-    /* Inline vertex layout / counts for the next DrawVerticesUP, carried in
-     * the stream by the recompiled wrapper (see recomp_manual.c): the
-     * globals the direct calls set are only right for the last such draw
-     * before a kick. Offsets are 6-bit two's complement (0x3F = none). */
-    if (method == 0x0100 && (param >> 24) == 0xACu) {
-        int uv = (int)((param >> 6) & 0x3Fu), col = (int)(param & 0x3Fu);
-        pgraph_d3d11_set_vertex_layout((param >> 16) & 0x1Fu, (int)((param >> 12) & 0x7u),
-                                       uv == 0x3F ? -1 : uv, col == 0x3F ? -1 : col);
-        return 1;
-    }
-    if (method == 0x0100 && (param >> 24) == 0xADu) { pgraph_d3d11_set_inline_hint((param >> 8) & 0xFFFFu, param & 0xFFu); return 1; }
-    if (method == 0x0100 && (param >> 24) == 0xAAu) { g_pg.tfactor_hi = param & 0xFF; return 1; }
-    if (method == 0x0318) g_pg.point_params_en = param;
-    if (method == 0x031C) g_pg.point_smooth = param;
-    if (method == 0x043C) g_pg.point_size = param;
-    if (method >= 0x0A30 && method <= 0x0A4C) g_pg.point_params[(method - 0x0A30) >> 2] = u2f(param);
-    /* Combiner factors: recorded, not executed. */
-    if (method >= 0x0A60 && method <= 0x0A7C) {
-        g_pg.comb_factor0[(method - 0x0A60) >> 2] = param;
-        return 1;
+    me = &s_mtab[method >> 2];
+    f = me->mask;
+
+    if (f & MF_PRE) {
+        if (f & MF_CONST)
+            g_pg.vp.consts[me->cslot][(method / 4) & 3] = u2f(param);
+        if (f & MF_COMBCTL) g_pg.comb_control = param;
+        if (f & MF_MARKER) {
+            switch (param >> 24) {
+            case 0xA3u: g_pg.gtss = param; g_pg.gtss_valid = 1; return 1;
+            case 0xA4u: g_pg.tss3_color = param; g_pg.tss3_valid = 1; return 1;
+            case 0xA5u: g_pg.tss3_alpha = param; return 1;
+            case 0xA6u: g_pg.tss1_color = param; g_pg.tss1_valid = 1; return 1;
+            case 0xA7u: g_pg.tss1_alpha = param; return 1;
+            case 0xABu: g_pg.tss0_alpha = param; g_pg.tss0_alpha_valid = 1; return 1;
+            case 0xA9u: g_pg.tfactor_lo = param & 0xFFFFFF; return 1;
+            /* Inline vertex layout / counts for the next DrawVerticesUP, carried in
+             * the stream by the recompiled wrapper (see recomp_manual.c): the
+             * globals the direct calls set are only right for the last such draw
+             * before a kick. Offsets are 6-bit two's complement (0x3F = none). */
+            case 0xACu: {
+                int uv = (int)((param >> 6) & 0x3Fu), col = (int)(param & 0x3Fu);
+                pgraph_d3d11_set_vertex_layout((param >> 16) & 0x1Fu, (int)((param >> 12) & 0x7u),
+                                               uv == 0x3F ? -1 : uv, col == 0x3F ? -1 : col);
+                return 1;
+            }
+            case 0xADu: pgraph_d3d11_set_inline_hint((param >> 8) & 0xFFFFu, param & 0xFFu); return 1;
+            case 0xAAu: g_pg.tfactor_hi = param & 0xFF; return 1;
+            default: break;
+            }
+        }
+        if (f & MF_PT_EN)     g_pg.point_params_en = param;
+        if (f & MF_PT_SMOOTH) g_pg.point_smooth = param;
+        if (f & MF_PT_SIZE)   g_pg.point_size = param;
+        if (f & MF_PT_PARAM)  g_pg.point_params[(method - 0x0A30) >> 2] = u2f(param);
+        /* Combiner factors: recorded, not executed. */
+        if (f & MF_COMB_FACTOR) {
+            g_pg.comb_factor0[(method - 0x0A60) >> 2] = param;
+            return 1;
+        }
     }
     if (!g_pg.initialized)
         return 0;
@@ -3456,88 +3537,72 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
     {   /* DOA3 DIAG: exact per-method histogram + transform mode. */
         extern uint32_t g_mhist[0x800];
         extern uint32_t g_xmode, g_xmode_n[4];
-        if (method < 0x2000) g_mhist[method >> 2]++;
-        if (method == 0x1E94) { g_xmode = param; g_xmode_n[param & 3]++; }
+        g_mhist[method >> 2]++;
+        if (f & MF_XMODE) { g_xmode = param; g_xmode_n[param & 3]++; }
     }
 
-    /* Range methods: the pushbuffer streams these as runs, so they cannot be
-     * expressed as switch cases. */
-    if (method >= 0x0B00 && method <= 0x0B7C) {          /* TRANSFORM_PROGRAM  */
-        nv2a_vp_write_program(&g_pg.vp, (method - 0x0B00) / 4, param);
-        return 1;
-    }
-    if (method >= 0x0B80 && method <= 0x0BFC) {          /* TRANSFORM_CONSTANT */
-        /* 32 dwords (0x0B80..0x0BFC; 0x0C00 is the next register). The range
-         * used to stop at 0x0B9C, so the third and fourth rows of every 4x4
-         * matrix the XDK uploads in one burst were dropped: the pond's water
-         * program got c2 = c3 = 0 and every vertex came out with w = 0. */
-        nv2a_vp_write_constant(&g_pg.vp, (method - 0x0B80) / 4, param);
-        return 1;
-    }
-    if (method >= 0x1760 && method <= 0x179C) {          /* VERTEX_DATA_ARRAY_FORMAT */
-        g_pg.attr_fmt[(method - 0x1760) / 4] = param;
-        g_pg.attr_fmt_seen = 1;
-        return 1;
-    }
-    if (method >= 0x1720 && method <= 0x175C) {          /* VERTEX_DATA_ARRAY_OFFSET */
-        g_pg.attr_off[(method - 0x1720) / 4] = param;
-        return 1;
-    }
-    if (method >= 0x0480 && method <= 0x04BC) {          /* SET_MODEL_VIEW_MATRIX */
-        /* DOA3 DIAG: the composite matrix arrives as 16 zero dwords. Is the
-         * model-view matrix -- streamed the same way, the same number of
-         * times -- real? If it is zero too the parse is at fault; if it is
-         * real the game genuinely drives the transform some other way. */
-        extern float g_mv[16];
-        extern volatile int g_doa3_post_movie;
-        static int s_n = 0;
-        g_mv[(method - 0x0480) / 4] = u2f(param);
-        if (g_doa3_post_movie && method == 0x04BC && s_n < 4) { s_n++;
-             }
-        return 1;
-    }
-    /* Fixed-function lighting state (record only; the draw path consumes it
-     * and the methods keep their previous handled/ignored classification). */
-    if (method == 0x0314) g_pg.lighting = param;
-    if (method >= 0x1000 && method <= 0x11FC) {
-        int li = (method - 0x1000) / 0x80, o = (method - 0x1000) % 0x80;
-        float f = u2f(param);
-        if      (o < 0x0C) g_pg.light[li].amb[o / 4] = f;
-        else if (o < 0x18) g_pg.light[li].dif[(o - 0x0C) / 4] = f;
-        else if (o < 0x24) g_pg.light[li].spec[(o - 0x18) / 4] = f;
-        else if (o < 0x28) g_pg.light[li].range = f;
-        else if (o < 0x34) g_pg.light[li].half[(o - 0x28) / 4] = f;
-        else if (o < 0x40) g_pg.light[li].dir[(o - 0x34) / 4] = f;
-        else if (o < 0x4C) g_pg.light[li].spot_fall[(o - 0x40) / 4] = f;
-        else if (o < 0x5C) g_pg.light[li].spot_dir[(o - 0x4C) / 4] = f;
-        else if (o < 0x68) g_pg.light[li].pos[(o - 0x5C) / 4] = f;
-        else if (o < 0x74) g_pg.light[li].att[(o - 0x68) / 4] = f;
-    }
-    if (method == 0x03BC) g_pg.light_mask = param;
-    if (method == 0x0294) g_pg.light_control = param;
-    if (method == 0x0298) g_pg.color_material = param;
-    if (method == 0x03B8) g_pg.spec_enable = param;
-    if (method == 0x03A4) g_pg.normalize_en = param;
-    if (method >= 0x0A10 && method <= 0x0A18) g_pg.scene_ambient[(method - 0x0A10) / 4] = u2f(param);
-    if (method >= 0x03A8 && method <= 0x03B0) g_pg.emission[(method - 0x03A8) / 4] = u2f(param);
-    if (method == 0x03B4) g_pg.material_alpha = u2f(param);
-    if (method >= 0x09E0 && method <= 0x09F4) g_pg.spec_params[(method - 0x09E0) / 4] = u2f(param);
-
-    if (method >= 0x0680 && method <= 0x06BC) {          /* SET_COMPOSITE_MATRIX */
-        g_pg.composite[(method - 0x0680) / 4] = u2f(param);
-        g_pg.composite_seen = 1;
-        {   /* DOA3 DIAG: the stored matrix reads all-zero at draw time even
-             * though these methods are streamed ~1600x a frame -- print what
-             * the pushbuffer actually carries. */
-            extern volatile int g_doa3_post_movie;
-            static int s_n = 0;
-            if (g_doa3_post_movie && method == 0x06BC && s_n < 6) { s_n++;
-                 }
+    if (f & MF_POST) {
+        /* Range methods: the pushbuffer streams these as runs, so they cannot be
+         * expressed as switch cases. */
+        if (f & MF_VP_PROG) {                                /* TRANSFORM_PROGRAM  */
+            nv2a_vp_write_program(&g_pg.vp, (method - 0x0B00) / 4, param);
+            return 1;
         }
-        return 1;
+        if (f & MF_VP_CONST) {                               /* TRANSFORM_CONSTANT */
+            /* 32 dwords (0x0B80..0x0BFC; 0x0C00 is the next register). The range
+             * used to stop at 0x0B9C, so the third and fourth rows of every 4x4
+             * matrix the XDK uploads in one burst were dropped: the pond's water
+             * program got c2 = c3 = 0 and every vertex came out with w = 0. */
+            nv2a_vp_write_constant(&g_pg.vp, (method - 0x0B80) / 4, param);
+            return 1;
+        }
+        if (f & MF_ATTR_FMT) {                               /* VERTEX_DATA_ARRAY_FORMAT */
+            g_pg.attr_fmt[(method - 0x1760) / 4] = param;
+            g_pg.attr_fmt_seen = 1;
+            return 1;
+        }
+        if (f & MF_ATTR_OFF) {                               /* VERTEX_DATA_ARRAY_OFFSET */
+            g_pg.attr_off[(method - 0x1720) / 4] = param;
+            return 1;
+        }
+        if (f & MF_MV) {                                     /* SET_MODEL_VIEW_MATRIX */
+            extern float g_mv[16];
+            g_mv[(method - 0x0480) / 4] = u2f(param);
+            return 1;
+        }
+        /* Fixed-function lighting state (record only; the draw path consumes it
+         * and the methods keep their previous handled/ignored classification). */
+        if (f & MF_LIGHT_EN) g_pg.lighting = param;
+        if (f & MF_LIGHT_REG) {
+            int li = (method - 0x1000) / 0x80, o = (method - 0x1000) % 0x80;
+            float fl = u2f(param);
+            if      (o < 0x0C) g_pg.light[li].amb[o / 4] = fl;
+            else if (o < 0x18) g_pg.light[li].dif[(o - 0x0C) / 4] = fl;
+            else if (o < 0x24) g_pg.light[li].spec[(o - 0x18) / 4] = fl;
+            else if (o < 0x28) g_pg.light[li].range = fl;
+            else if (o < 0x34) g_pg.light[li].half[(o - 0x28) / 4] = fl;
+            else if (o < 0x40) g_pg.light[li].dir[(o - 0x34) / 4] = fl;
+            else if (o < 0x4C) g_pg.light[li].spot_fall[(o - 0x40) / 4] = fl;
+            else if (o < 0x5C) g_pg.light[li].spot_dir[(o - 0x4C) / 4] = fl;
+            else if (o < 0x68) g_pg.light[li].pos[(o - 0x5C) / 4] = fl;
+            else if (o < 0x74) g_pg.light[li].att[(o - 0x68) / 4] = fl;
+        }
+        if (f & MF_LIGHT_MASK) g_pg.light_mask = param;
+        if (f & MF_LIGHT_CTL)  g_pg.light_control = param;
+        if (f & MF_COLOR_MAT)  g_pg.color_material = param;
+        if (f & MF_SPEC_EN)    g_pg.spec_enable = param;
+        if (f & MF_NORM_EN)    g_pg.normalize_en = param;
+        if (f & MF_SCENE_AMB)  g_pg.scene_ambient[(method - 0x0A10) / 4] = u2f(param);
+        if (f & MF_EMISSION)   g_pg.emission[(method - 0x03A8) / 4] = u2f(param);
+        if (f & MF_MAT_ALPHA)  g_pg.material_alpha = u2f(param);
+        if (f & MF_SPEC_PARAM) g_pg.spec_params[(method - 0x09E0) / 4] = u2f(param);
+        if (f & MF_COMPOSITE) {                              /* SET_COMPOSITE_MATRIX */
+            g_pg.composite[(method - 0x0680) / 4] = u2f(param);
+            g_pg.composite_seen = 1;
+            return 1;
+        }
     }
 
-pg_switch:
     switch (method) {
 
     /* ── Draw Begin/End ── */
@@ -3937,25 +4002,8 @@ pg_switch:
     }
 
     default:
-        /* Check if it's in a known range we can safely ignore */
-        if ((method >= 0x0B80 && method < 0x0C00) ||  /* Transform program */
-            (method >= 0x0E00 && method < 0x1000) ||  /* Transform constants */
-            (method >= 0x1680 && method < 0x1780) ||  /* Vertex array format/offset */
-            (method >= 0x1B00 && method < 0x1C00) ||  /* Texture registers */
-            (method >= 0x1D60 && method < 0x1EA0) ||  /* Combiners */
-            method == 0x0100 ||                        /* NOP */
-            method == 0x0180 ||                        /* SET_OBJECT */
-            method == 0x0394 ||                        /* TRANSFORM_EXECUTION_MODE */
-            method == 0x0398 ||                        /* TRANSFORM_PROGRAM_CXT_WRITE_EN */
-            method == 0x039C ||                        /* TRANSFORM_PROGRAM_LOAD */
-            method == 0x01E0 ||                        /* SHADER_STAGE_PROGRAM */
-            method == 0x0108 || method == 0x010C ||    /* FLIP_READ/WRITE */
-            method == 0x0110 || method == 0x0114 ||    /* FLIP_MODULO/INCREMENT */
-            method == 0x0118)                          /* FLIP_STALL */
-        {
+        if (f & MF_SILENT)
             return 1;  /* Silently handled (ignored but acknowledged) */
-        }
-
         g_pg.stats.methods_ignored++;
         return 0;  /* Truly unhandled */
     }
