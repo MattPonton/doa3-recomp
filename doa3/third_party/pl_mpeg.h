@@ -1673,6 +1673,18 @@ int plm_buffer_has(plm_buffer_t *self, size_t count) {
 }
 
 int plm_buffer_read(plm_buffer_t *self, int count) {
+	// Fast path: read a 32-bit big-endian window when it lies inside the
+	// buffer. Bit-identical to the loop below; that loop costs a branchy
+	// iteration per byte boundary on every call.
+	size_t bi = self->bit_index;
+	if (count > 0 && count <= 24 && bi + 32 <= (self->length << 3)) {
+		const uint8_t *p = self->bytes + (bi >> 3);
+		uint32_t w = ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
+		             ((uint32_t)p[2] << 8) | (uint32_t)p[3];
+		self->bit_index = bi + count;
+		return (int)((w << (bi & 7)) >> (32 - count));
+	}
+
 	if (!plm_buffer_has(self, count)) {
 		return 0;
 	}
@@ -1768,6 +1780,24 @@ int plm_buffer_peek_non_zero(plm_buffer_t *self, int bit_count) {
 
 int16_t plm_buffer_read_vlc(plm_buffer_t *self, const plm_vlc_t *table) {
 	plm_vlc_t state = {0, 0};
+	// Fast path: walk the tree over a register-held window of 25+ bits
+	// instead of one bounds-checked plm_buffer_read(1) per tree level.
+	size_t bi = self->bit_index;
+	if (bi + 32 <= (self->length << 3)) {
+		const uint8_t *p = self->bytes + (bi >> 3);
+		uint32_t w = (((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
+		              ((uint32_t)p[2] << 8) | (uint32_t)p[3]) << (bi & 7);
+		int n = 0;
+		do {
+			state = table[state.index + (w >> 31)];
+			w <<= 1;
+			n++;
+		} while (state.index > 0 && n < 25);
+		self->bit_index = bi + n;
+		if (state.index <= 0) {
+			return state.value;
+		}
+	}
 	do {
 		state = table[state.index + plm_buffer_read(self, 1)];
 	} while (state.index > 0);
@@ -2764,6 +2794,7 @@ static inline uint8_t plm_clamp(int n) {
 
 int plm_video_decode_sequence_header(plm_video_t *self);
 void plm_video_init_frame(plm_video_t *self, plm_frame_t *frame, uint8_t *base);
+static void plm_video_decode_quant_matrices(plm_video_t *self);
 void plm_video_decode_picture(plm_video_t *self);
 void plm_video_decode_slice(plm_video_t *self, int slice);
 void plm_video_decode_macroblock(plm_video_t *self);
@@ -2860,7 +2891,15 @@ plm_frame_t *plm_video_decode(plm_video_t *self) {
 	plm_frame_t *frame = NULL;
 	do {
 		if (self->start_code != PLM_START_PICTURE) {
-			self->start_code = plm_buffer_find_start_code(self->buffer, PLM_START_PICTURE);
+			// Honour repeated sequence headers: each may load new quant
+			// matrices (CRI Sofdec streams switch them per GOP). Skipping
+			// them dequantized whole GOPs with the first header's matrix.
+			do {
+				self->start_code = plm_buffer_next_start_code(self->buffer);
+				if (self->start_code == PLM_START_SEQUENCE) {
+					plm_video_decode_quant_matrices(self);
+				}
+			} while (self->start_code != PLM_START_PICTURE && self->start_code != -1);
 			
 			if (self->start_code == -1) {
 				// If we reached the end of the file and the previously decoded
@@ -3016,6 +3055,31 @@ int plm_video_decode_sequence_header(plm_video_t *self) {
 
 	self->has_sequence_header = TRUE;
 	return TRUE;
+}
+
+// Re-read only the quant matrices of a repeated sequence header; size and
+// frame buffers stay as set up by the first one.
+static void plm_video_decode_quant_matrices(plm_video_t *self) {
+	if (!plm_buffer_has(self->buffer, 64 + 2 * 64 * 8)) {
+		return;
+	}
+	plm_buffer_skip(self->buffer, 12 + 12 + 4 + 4 + 18 + 1 + 10 + 1);
+	if (plm_buffer_read(self->buffer, 1)) {
+		for (int i = 0; i < 64; i++) {
+			self->intra_quant_matrix[PLM_VIDEO_ZIG_ZAG[i]] = plm_buffer_read(self->buffer, 8);
+		}
+	}
+	else {
+		memcpy(self->intra_quant_matrix, PLM_VIDEO_INTRA_QUANT_MATRIX, 64);
+	}
+	if (plm_buffer_read(self->buffer, 1)) {
+		for (int i = 0; i < 64; i++) {
+			self->non_intra_quant_matrix[PLM_VIDEO_ZIG_ZAG[i]] = plm_buffer_read(self->buffer, 8);
+		}
+	}
+	else {
+		memcpy(self->non_intra_quant_matrix, PLM_VIDEO_NON_INTRA_QUANT_MATRIX, 64);
+	}
 }
 
 void plm_video_init_frame(plm_video_t *self, plm_frame_t *frame, uint8_t *base) {

@@ -55,6 +55,78 @@ int g_doa3_host_movie_ended = 0;
 static plm_video_t *s_host_video;
 static unsigned char *s_host_frame;
 static unsigned s_host_frames;
+
+/* Decoder thread. The story endings are ~22 Mbit/s and pl_mpeg needs 25-35 ms
+ * a frame for them -- a whole 30 fps frame period. Decoding them on the game
+ * thread cut the pump to ~7 calls/s and the ending played in 5-frame jumps.
+ * The thread decodes ahead into a ring; the game thread only picks the frame
+ * the audio clock says is due. The slot behind `head` is the frame on screen
+ * and is never written while queued frames exist, so the producer stops at
+ * DEC_SLOTS - 1 queued frames. */
+enum { DEC_SLOTS = 8, DEC_FRAME_SIZE = 720 * 480 * 4 };
+static struct {
+    HANDLE             thread;
+    SRWLOCK            lock;
+    CONDITION_VARIABLE room;
+    unsigned char     *slot[DEC_SLOTS];
+    unsigned           head, count;  /* queued frames, oldest at head */
+    int                eof, quit;
+} s_dec;
+
+static DWORD WINAPI movie_decode_thread(LPVOID unused)
+{
+    (void)unused;
+    for (;;) {
+        plm_frame_t *frame;
+        unsigned char *dst;
+        AcquireSRWLockExclusive(&s_dec.lock);
+        while (!s_dec.quit && s_dec.count >= DEC_SLOTS - 1)
+            SleepConditionVariableSRW(&s_dec.room, &s_dec.lock, INFINITE, 0);
+        if (s_dec.quit) { ReleaseSRWLockExclusive(&s_dec.lock); break; }
+        dst = s_dec.slot[(s_dec.head + s_dec.count) % DEC_SLOTS];
+        ReleaseSRWLockExclusive(&s_dec.lock);
+
+        frame = plm_video_decode(s_host_video);
+        if (frame)
+            plm_frame_to_bgra(frame, dst, 720 * 4);
+
+        AcquireSRWLockExclusive(&s_dec.lock);
+        if (frame) s_dec.count++;
+        else       s_dec.eof = 1;
+        ReleaseSRWLockExclusive(&s_dec.lock);
+        if (!frame) break;
+    }
+    return 0;
+}
+
+static int movie_decoder_start(void)
+{
+    for (int i = 0; i < DEC_SLOTS; i++)
+        if (!s_dec.slot[i] && !(s_dec.slot[i] = (unsigned char *)malloc(DEC_FRAME_SIZE)))
+            return 0;
+    InitializeSRWLock(&s_dec.lock);
+    InitializeConditionVariable(&s_dec.room);
+    s_dec.head = s_dec.count = 0;
+    s_dec.eof = s_dec.quit = 0;
+    s_dec.thread = CreateThread(NULL, 0, movie_decode_thread, NULL, 0, NULL);
+    return s_dec.thread != NULL;
+}
+
+/* Stop the decoder thread and release the decoder (movie over, skipped, or
+ * replaced by the next one). */
+static void movie_decoder_stop(void)
+{
+    if (s_dec.thread) {
+        AcquireSRWLockExclusive(&s_dec.lock);
+        s_dec.quit = 1;
+        ReleaseSRWLockExclusive(&s_dec.lock);
+        WakeAllConditionVariable(&s_dec.room);
+        WaitForSingleObject(s_dec.thread, INFINITE);
+        CloseHandle(s_dec.thread);
+        s_dec.thread = NULL;
+    }
+    if (s_host_video) { plm_video_destroy(s_host_video); s_host_video = NULL; }
+}
 static int16_t *s_host_audio;
 static uint32_t s_host_audio_samples;
 static uint32_t s_host_audio_submitted;
@@ -91,7 +163,13 @@ void doa3_movie_arm(void)
     if (!s_movie_pending) return;
     s_movie_pending = 0;
     if (!s_host_stopped) return;      /* first movie: presenter is still fresh */
-    if (s_host_video) { plm_video_destroy(s_host_video); s_host_video = NULL; }
+    movie_decoder_stop();
+    s_host_frame = NULL;
+    /* Fresh voice: a movie that played to its end leaves its voice alive,
+     * and xa2_movie_start would reuse it with SamplesPlayed still counting
+     * from the previous movie -- the video clock started minutes ahead and
+     * the next movie raced to catch up. */
+    xa2_movie_stop();
     free(s_host_audio); s_host_audio = NULL;
     s_host_audio_samples = s_host_audio_submitted = 0;
     s_host_audio_active = 0;
@@ -437,7 +515,7 @@ static int movie_prep_take(const char *name)
 
 static const void *movie_host_frame(void)
 {
-    enum { WIDTH = 720, HEIGHT = 480, FRAME_SIZE = WIDTH * HEIGHT * 4 };
+    enum { WIDTH = 720, HEIGHT = 480 };
     if (s_host_stopped)
         return NULL;
     if (!s_host_video) {
@@ -451,15 +529,25 @@ static const void *movie_host_frame(void)
         video_buffer = plm_buffer_create_with_memory(s_prep.video, s_prep.video_size, TRUE);
         s_prep.video = NULL;              /* owned by the buffer now */
         s_host_video = plm_video_create_with_buffer(video_buffer, TRUE);
-        if (!s_host_frame)
-            s_host_frame = (unsigned char *)malloc(FRAME_SIZE);
-        if (!s_host_video || !plm_video_has_header(s_host_video) || !s_host_frame ||
+        if (!s_host_video || !plm_video_has_header(s_host_video) ||
             plm_video_get_width(s_host_video) != WIDTH ||
-            plm_video_get_height(s_host_video) != HEIGHT) {
+            plm_video_get_height(s_host_video) != HEIGHT ||
+            !movie_decoder_start()) {
             fprintf(stderr, "[HOSTFMV] decoder startup failed\n");
+            movie_decoder_stop();
             movie_prep_discard();
             s_host_stopped = 1;
             return NULL;
+        }
+        /* Let the first frame land before the audio clock starts, as when
+         * it was decoded inline here. */
+        for (int i = 0; i < 500; i++) {
+            int ready;
+            AcquireSRWLockShared(&s_dec.lock);
+            ready = s_dec.count || s_dec.eof;
+            ReleaseSRWLockShared(&s_dec.lock);
+            if (ready) break;
+            Sleep(1);
         }
         QueryPerformanceFrequency(&s_host_frequency);
         QueryPerformanceCounter(&s_host_start);
@@ -491,20 +579,30 @@ static const void *movie_host_frame(void)
         } else
             target = (unsigned)(((now.QuadPart - s_host_start.QuadPart) * 30) /
                                 s_host_frequency.QuadPart);
-        while (s_host_frames <= target) {
-            plm_frame_t *frame = plm_video_decode(s_host_video);
-            if (!frame) {
+        {
+            int popped = 0, ended;
+            AcquireSRWLockExclusive(&s_dec.lock);
+            while (s_host_frames <= target && s_dec.count) {
+                s_host_frame = s_dec.slot[s_dec.head];
+                s_dec.head = (s_dec.head + 1) % DEC_SLOTS;
+                s_dec.count--;
+                s_host_frames++;
+                popped = 1;
+                if (s_host_frames <= 4 || (s_host_frames % 64) == 0) {
+                    fprintf(stderr, "[HOSTFMV] decoded frame %u\n", s_host_frames);
+                    fflush(stderr);
+                }
+            }
+            ended = s_host_frames <= target && !s_dec.count && s_dec.eof;
+            ReleaseSRWLockExclusive(&s_dec.lock);
+            if (popped)
+                WakeConditionVariable(&s_dec.room);
+            if (ended) {
                 fprintf(stderr, "[HOSTFMV] presenter ended at frame %u\n", s_host_frames);
                 fflush(stderr);
+                movie_decoder_stop();
                 s_host_stopped = 1;
                 g_doa3_host_movie_ended = 1;
-                break;
-            }
-            plm_frame_to_bgra(frame, s_host_frame, WIDTH * 4);
-            s_host_frames++;
-            if (s_host_frames <= 4 || (s_host_frames % 64) == 0) {
-                fprintf(stderr, "[HOSTFMV] decoded frame %u\n", s_host_frames);
-                fflush(stderr);
             }
         }
     }
@@ -603,6 +701,7 @@ void doa3_movie_present_finish(void)
     if (s_host_stopped && !s_tex)
         return;
     s_host_stopped = 1;
+    movie_decoder_stop();             /* skipped with START: stop decoding */
     if (!ctx || !rtv || !s_tex)
         return;
     /* clear each buffer in the chain, not just the current one */
