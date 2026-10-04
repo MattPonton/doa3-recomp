@@ -98,32 +98,40 @@ bool CaptureBinding(PadBinding &out)
 
 /* ── Controls section ─────────────────────────────────────────────────────*/
 
+/* "Reset to defaults" and "Save" at the right end of the row, the last
+ * status message at the left. Returns 1 for reset, 2 for save. */
+int ResetSaveRow()
+{
+    const ImGuiStyle &style = ImGui::GetStyle();
+    float w = ImGui::CalcTextSize("Reset to defaults").x + ImGui::CalcTextSize("Save").x +
+              style.FramePadding.x * 4.0f + style.ItemSpacing.x;
+    float right = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
+    int hit = 0;
+    ImGui::AlignTextToFramePadding();
+    if (g_status[0]) ImGui::TextDisabled("%s", g_status);
+    else ImGui::TextUnformatted("");
+    ImGui::SameLine(right - w);
+    if (ImGui::Button("Reset to defaults")) hit = 1;
+    ImGui::SameLine();
+    if (ImGui::Button("Save")) hit = 2;
+    return hit;
+}
+
 void DrawControlsSection()
 {
     PadMapping *m = pad_mapping_get();
 
-    ImGui::TextWrapped(
-        "Click a binding to listen, then press a button, trigger, stick direction "
-        "or key. Esc cancels listening; right-click a row to clear it.");
-    ImGui::Spacing();
-
-    if (ImGui::Button("Reset to defaults")) {
+    switch (ResetSaveRow()) {
+    case 1:
         pad_mapping_reset_defaults();
         g_listening = -1;
         SetStatus("Mapping reset to defaults");
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Save")) {
+        break;
+    case 2:
         SetStatus(pad_mapping_save(NULL) ? "Saved doa3_input.ini"
                                          : "Could not write doa3_input.ini");
+        break;
     }
-    ImGui::SameLine();
-    if (ImGui::Button("Reload")) {
-        SetStatus(pad_mapping_load(NULL) ? "Loaded doa3_input.ini"
-                                         : "No doa3_input.ini to load");
-        g_listening = -1;
-    }
-    if (g_status[0]) { ImGui::SameLine(); ImGui::TextDisabled("%s", g_status); }
 
     ImGui::Separator();
 
@@ -208,28 +216,18 @@ void DrawVideoSection()
     static const char *kAspect[] = { "4:3", "16:9" };
     static const char *kScale[]  = { "1x (480p)", "2x (960p)", "3x (1440p)" };
 
-    if (ImGui::Button("Reset to defaults")) {
+    switch (ResetSaveRow()) {
+    case 1:
         video_set_window_mode(VIDEO_BORDERLESS);
         video_set_aspect(VIDEO_ASPECT_16_9);
         video_set_scale(3);
         SetStatus("Video settings reset to defaults");
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Save")) {
+        break;
+    case 2:
         SetStatus(video_settings_save() ? "Saved doa3_settings.ini"
                                         : "Could not write doa3_settings.ini");
+        break;
     }
-    ImGui::SameLine();
-    if (ImGui::Button("Reload")) {
-        /* Load falls back to defaults for anything the file lacks; apply it. */
-        int found = video_settings_load();
-        video_set_window_mode(video_get_window_mode());
-        video_set_aspect(video_get_aspect());
-        video_set_scale(video_get_scale());
-        SetStatus(found ? "Loaded doa3_settings.ini"
-                        : "No doa3_settings.ini to load");
-    }
-    if (g_status[0]) { ImGui::SameLine(); ImGui::TextDisabled("%s", g_status); }
 
     ImGui::Separator();
 
@@ -297,13 +295,27 @@ void DrawOnlineSection()
     bool online = nl.state != NPL_OFFLINE;
     bool connected = nl.state == NPL_CONNECTED || nl.state == NPL_INMATCH;
 
-    /* status */
-    if (nl.state == NPL_INMATCH && nl.stalling)
-        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "%s", nl.status);
-    else if (nl.desynced)
-        ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", nl.status);
-    else
-        ImGui::TextWrapped("%s", nl.status);
+    /* status, with Save at the right end of the same line */
+    {
+        const ImGuiStyle &style = ImGui::GetStyle();
+        float w = ImGui::CalcTextSize("Save").x + style.FramePadding.x * 2.0f;
+        float right = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
+        ImGui::AlignTextToFramePadding();
+        ImGui::PushTextWrapPos(right - w - style.ItemSpacing.x);
+        if (nl.state == NPL_INMATCH && nl.stalling)
+            ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "%s", nl.status);
+        else if (nl.desynced)
+            ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", nl.status);
+        else
+            ImGui::TextWrapped("%s", nl.status);
+        ImGui::PopTextWrapPos();
+        ImGui::SameLine(right - w);
+        if (ImGui::Button("Save")) {
+            netplay_set_port((unsigned short)s_port);
+            SetStatus(netplay_settings_save() ? "Saved doa3_settings.ini" : "Could not write doa3_settings.ini");
+        }
+        if (g_status[0]) ImGui::TextDisabled("%s", g_status);
+    }
     if (nl.event[0]) ImGui::TextWrapped("%s", nl.event);
 
     (void)connected;
@@ -314,7 +326,7 @@ void DrawOnlineSection()
             ImGui::Text("%s", nl.my_code);
             ImGui::SameLine();
             if (ImGui::SmallButton("Copy")) { ImGui::SetClipboardText(nl.my_code); SetStatus("Code copied"); }
-            ImGui::TextDisabled("%s", nl.my_code_note);
+            if (nl.my_code_note[0]) ImGui::TextDisabled("%s", nl.my_code_note);
         }
     } else if (!online) {
         ImGui::SeparatorText("Join");
@@ -345,27 +357,12 @@ void DrawOnlineSection()
         ImGui::SetNextItemWidth(120);
         if (ImGui::SliderInt("frames", &manual, 1, 8)) netplay_set_delay(automatic, manual);
         if (in_match) ImGui::EndDisabled();
-        ImGui::TextDisabled("%s uses %d frame%s. The host's setting applies to both players.",
-                            in_match ? "This match" : "The next match", nl.delay, nl.delay == 1 ? "" : "s");
     }
-    if (online) ImGui::BeginDisabled();
-    ImGui::SetNextItemWidth(100);
-    if (ImGui::InputInt("UDP port", &s_port, 0, 0)) {
-        if (s_port < 1) s_port = 1;
-        if (s_port > 65535) s_port = 65535;
-    }
-    if (online) ImGui::EndDisabled();
-    ImGui::SameLine();
-    if (ImGui::Button("Save online settings")) {
-        netplay_set_port((unsigned short)s_port);
-        SetStatus(netplay_settings_save() ? "Saved doa3_settings.ini" : "Could not write doa3_settings.ini");
-    }
-    if (g_status[0]) { ImGui::SameLine(); ImGui::TextDisabled("%s", g_status); }
 
     ImGui::Separator();
     if (nl.state == NPL_INMATCH)
-        ImGui::Text("%s Battle online, frame %u, %.1f frames ahead of the other side",
-                    nl.match_tag ? "Tag" : "Single", nl.match_frame, nl.frames_ahead);
+        ImGui::Text("%s Battle online, %.1f frames ahead of the other side",
+                    nl.match_tag ? "Tag" : "Single", nl.frames_ahead);
 
     ImGui::Separator();
     if (ImGui::CollapsingHeader("Developer Settings")) {
@@ -373,15 +370,10 @@ void DrawOnlineSection()
         bool armed = netplay_armed() != 0;
         bool running = st.state == NP_STATE_ACTIVE;
 
-        ImGui::TextWrapped("Runs a VS session with both players on this machine "
-                           "under the lockstep rules: frame-driven clocks and "
-                           "workers, synced seed/settings/fight state, ports 0-1 "
-                           "only. A per-frame digest log is written next to the "
-                           "game when you leave Versus.");
         if (running || online) ImGui::BeginDisabled();
         ImGui::RadioButton("Host path", &role, NP_ROLE_HOST);
         ImGui::SameLine();
-        ImGui::RadioButton("Joiner path (save redirect, settings blob, restore)", &role, NP_ROLE_JOINER);
+        ImGui::RadioButton("Joiner path", &role, NP_ROLE_JOINER);
         bool mirror = netplay_mirror() != 0;
         if (ImGui::Checkbox("Player 2 mirrors Player 1 (one controller)", &mirror))
             netplay_set_mirror(mirror ? 1 : 0);
@@ -390,7 +382,7 @@ void DrawOnlineSection()
         if (running || online) ImGui::EndDisabled();
 
         bool diag = netplay_diag() != 0;
-        if (ImGui::Checkbox("Diagnostic logs (netplay_events.txt, digest logs on desync)", &diag))
+        if (ImGui::Checkbox("Diagnostic logs", &diag))
             netplay_set_diag(diag ? 1 : 0);
         ImGui::Text("State: %s", kState[st.state < 3 ? st.state : 0]);
         if (running) {

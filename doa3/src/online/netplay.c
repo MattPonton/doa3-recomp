@@ -847,7 +847,8 @@ static void on_connected(const struct sockaddr_in *from)
         netplay_set_provider(&k_provider);
     }
     netplay_set_armed(1, s_is_host ? NP_ROLE_HOST : NP_ROLE_JOINER);
-    set_event("Connected to %s. Both players: open Versus and pick the same battle type.", s_peer_str);
+    set_event("Connected to %s.", s_peer_str);
+    s_event[0] = 0;   /* the status line already says it */
     set_banner("Connected! Both players: open Versus and pick the same battle type (Single or Tag).", 8000);
 }
 
@@ -1335,7 +1336,7 @@ static void pv_end(void)
             t[sizeof(t) - 1] = 0;
             set_banner(t, 15000);
         } else if (s_end_reason == LEAVE_LEFT) {
-            set_event("Match over (%u frames). Still connected: play again from Versus.", s_match_frame);
+            set_event("Match over. Still connected: play again from Versus.");
             set_banner("Match over. Still connected - both open Versus again for a rematch.", 6000);
         } else if (s_end_reason == LEAVE_DESYNC) {
             set_banner("The two games went out of sync; the match was ended on both sides. "
@@ -1523,11 +1524,11 @@ void netplay_get(npl_status *out)
     if (neps) {
         join_code_make(eps, neps, out->my_code);
         if (s_stun_valid)
-            strcpy(out->my_code_note, "Public address found - this code works over the internet.");
+            out->my_code_note[0] = 0;
         else if (now - s_stun_t0 < STUN_GIVEUP_MS)
-            strcpy(out->my_code_note, "Finding your public address...");
+            out->my_code_note[0] = 0;
         else
-            strcpy(out->my_code_note, "Could not reach a STUN server (no internet?): this code only works on your own network.");
+            strcpy(out->my_code_note, "Local network only");
     }
     out->delay_auto = s_delay_auto;
     out->delay = (s_state == NPL_INMATCH) ? s_delay_used
@@ -1547,7 +1548,7 @@ void netplay_get(npl_status *out)
     switch (s_state) {
     case NPL_OFFLINE:
         strcpy(out->status, "Offline");
-        strcpy(out->hint, "One player clicks Host and sends the code to the other, who pastes it and clicks Join.");
+        out->hint[0] = 0;
         break;
     case NPL_HOSTING:
         _snprintf(out->status, sizeof(out->status) - 1, "Hosting - waiting for the other player to join");
@@ -1560,13 +1561,12 @@ void netplay_get(npl_status *out)
                   "Connected to %s (ping %.0f ms, input delay %d)", s_peer_str, out->ping_ms, out->delay);
         /* what used to flash over the game (waiting / mismatch) is read here */
         if (s_banner[0] && !s_banner_until) strncpy(out->hint, s_banner, sizeof(out->hint) - 1);
-        else strcpy(out->hint, "Both players: open Versus and pick the same battle type (Single or Tag). "
-                               "The match starts when you both reach character select.");
+        else out->hint[0] = 0;
         break;
     case NPL_INMATCH:
         _snprintf(out->status, sizeof(out->status) - 1,
-                  "In match: %s Battle, frame %u, input delay %d, ping %.0f ms%s",
-                  s_match_tag ? "Tag" : "Single", s_match_frame, s_delay_used, out->ping_ms,
+                  "In match: %s Battle, input delay %d, ping %.0f ms%s",
+                  s_match_tag ? "Tag" : "Single", s_delay_used, out->ping_ms,
                   s_stalling ? " - waiting for the other side" : "");
         break;
     }

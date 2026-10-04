@@ -116,6 +116,7 @@ void xbox_det_frame(void)
     *tick_export() = xbox_det_tick_ms();
     s_pending_laps += XBOX_DET_LAPS_PER_FRAME;
     g_fib_slice_due = 1;
+    xbox_fiber_wake(XBOX_DET_VBLANK_KEY);
 }
 
 uint64_t xbox_det_frames(void) { return s_frames; }

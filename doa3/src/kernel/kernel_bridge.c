@@ -871,7 +871,14 @@ static void bridge_KeWaitForSingleObject(void)
          * report the wait satisfied. */
         /* Netplay session: the workers finish all queued work here, so a load
          * wait loop takes the same number of vblanks on every machine. */
-        if (g_xbox_det_active && (xbox_fiber_is_primary() || xbox_fiber_is_coroutine())) xbox_fiber_run_workers_idle(1024);
+        /* The ADX vsync server (sub_0016A570) takes exactly one vblank per
+         * lockstep frame: spinning it here ticked the stream ~1000 times a
+         * frame and the music stopped reading. The file server keeps
+         * finishing all queued I/O inside the frame, so a load completes on
+         * the same frame on both machines whatever music was in flight. */
+        if (g_xbox_det_active && xbox_fiber_current_ctx1() == 0x0016A570u)
+            xbox_fiber_block(XBOX_DET_VBLANK_KEY);
+        else if (g_xbox_det_active && (xbox_fiber_is_primary() || xbox_fiber_is_coroutine())) xbox_fiber_run_workers_idle(1024);
         else xbox_fiber_yield();
         BRIDGE_MEM32(obj + 4) = 0;
         /* Run the CRI server pump on each vblank wait: on hardware the ADXM

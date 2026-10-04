@@ -27,6 +27,7 @@ extern "C" {
 #endif
 
 #define XBOX_DET_LAPS_PER_FRAME  4     /* the host timer's 4 ms period at 60 Hz */
+#define XBOX_DET_VBLANK_KEY      0xDE7FB1A0u   /* wait key for workers parked on the vblank in a session */
 
 /* Session clock bases. The host of a session chooses them and sends them to
  * the other side; a local session takes the current host values. */

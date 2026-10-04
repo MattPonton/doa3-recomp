@@ -6259,6 +6259,26 @@ void doa3_pump_cri_servers(void)
                 }
             }
         }
+        {   /* Online session: each file-server pass performs one read, and the
+             * music stream (bgm.afs) and a stage load (loadfile.afs) share it.
+             * The music's position depends on each machine's menu history, so
+             * a music read due on one side pushed that side's stage chunk to
+             * the next pass and the load finished a frame later (rematch split
+             * at frame 765). Keep passing while reads come out, so every
+             * queued read lands in this vblank on both machines. */
+            extern volatile int g_xbox_det_active;
+            extern uint32_t xbox_det_io_count(void);
+            extern volatile int g_doa3_post_movie;
+            if (g_xbox_det_active && g_doa3_post_movie) {
+                int pass;
+                for (pass = 0; pass < 8; pass++) {
+                    uint32_t io = xbox_det_io_count();
+                    PUSH32(esp, 0); sub_00170710(); esp = saved_esp2;
+                    PUSH32(esp, 2); PUSH32(esp, 0); sub_001705E0(); esp = saved_esp2;
+                    if (xbox_det_io_count() == io) break;
+                }
+            }
+        }
         /* item 92: decode runs on worker fibers that only progress when the
          * main fiber yields. Harness sessions yield thousands of times/s
          * (unthrottled), interactive sessions ~60/s (vsync-locked) -> their

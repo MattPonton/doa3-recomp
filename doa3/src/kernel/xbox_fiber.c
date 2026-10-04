@@ -373,6 +373,7 @@ void xbox_fiber_block(uint32_t event_va)
     } else {
         n = pick_next(me);
     }
+    if (n < 0 && g_xbox_det_active) { xbox_fiber_wake(XBOX_DET_VBLANK_KEY); n = pick_next(me); }
     if (n < 0) {
         /* Nobody runnable. Wake all waiters to avoid a hard deadlock; they will
          * re-check their own condition and block again if still unsatisfied. */
@@ -517,6 +518,8 @@ int xbox_fiber_is_primary(void)
 {
     return g_active && g_cur == 0;
 }
+
+uint32_t xbox_fiber_current_ctx1(void) { return g_active ? g_fib[g_cur].ctx1 : 0; }
 
 int xbox_fiber_current(void)
 {
