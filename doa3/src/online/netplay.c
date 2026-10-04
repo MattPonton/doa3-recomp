@@ -878,7 +878,7 @@ static void handle_control(const struct sockaddr_in *from, const pk_hdr *h, cons
             addr_str(from, who, sizeof(who));
             w.accept = 0;
             _snprintf(w.reason, sizeof(w.reason) - 1,
-                      "Different game build (host %08X, you %08X): both need the same doa3.exe.",
+                      "Different game build (host %08X, you %08X): both need the same DOA3.exe.",
                       w.build, hl.build);
             send_raw(from, PK_WELCOME, &w, sizeof(w));
             set_event("Refused %s: different build (%08X, ours %08X).", who, hl.build, w.build);

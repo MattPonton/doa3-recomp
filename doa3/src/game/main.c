@@ -51,16 +51,21 @@ static LRESULT CALLBACK doa3_wndproc(HWND h, UINT m, WPARAM w, LPARAM l)
 
 static HWND doa3_create_window(void)
 {
-    WNDCLASSA wc; RECT r = { 0, 0, 640, 480 };
+    WNDCLASSEXA wc; RECT r = { 0, 0, 640, 480 };
     memset(&wc, 0, sizeof(wc));
+    wc.cbSize = sizeof(wc);
     wc.lpfnWndProc = doa3_wndproc;
     wc.hInstance = GetModuleHandleA(NULL);
     wc.lpszClassName = "DOA3Window";
     wc.hCursor = LoadCursorA(NULL, IDC_ARROW);
+    wc.hIcon = (HICON)LoadImageA(wc.hInstance, MAKEINTRESOURCEA(1), IMAGE_ICON,
+                                 GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), 0);
+    wc.hIconSm = (HICON)LoadImageA(wc.hInstance, MAKEINTRESOURCEA(1), IMAGE_ICON,
+                                   GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), 0);
     /* Black until the first frame: a borderless window covers the whole
      * monitor, and an unpainted one shows white blocks during boot. */
     wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
-    RegisterClassA(&wc);
+    RegisterClassExA(&wc);
     AdjustWindowRect(&r, WS_OVERLAPPEDWINDOW, FALSE);
     HWND h = CreateWindowExA(0, "DOA3Window", "Dead or Alive 3",
                              WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,

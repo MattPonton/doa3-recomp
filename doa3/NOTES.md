@@ -1,23 +1,10 @@
 # Dead or Alive 3 Static Recompilation Notes
 
-This document is the maintained technical guide for the DOA3 static recompilation.
-It describes the behavior implemented by the current tree, the fixes that must
-survive regeneration, and the remaining limitations. Historical experiments,
-reverted patches, and unverified hypotheses do not belong here.
+Random technical notes that may be helpful when working on the project
 
-## Current Status
+## Overview
 
-The project boots the retail Xbox executable through a native Windows static
-recompilation. The opening movie is user-verified to play through the Team Ninja
-logo at the expected frame rate with no visible artifacts.
-
-This is not yet a claim that the full game is playable. In particular:
-
-- Audio behavior has not been accepted as complete.
-
-## Source and Runtime Inputs
-
-The project expects legally obtained game data outside the repository:
+The project expects legally obtained game data including files like:
 
 - XBE: `../doa3gamefiles/default.xbe`
 - Opening movie: `../doa3gamefiles/ninja.sfd`
@@ -50,7 +37,7 @@ cmake --build build --config Release
 Output:
 
 ```text
-build/release/doa3.exe
+build/release/DOA3.exe
 ```
 
 No external movie decoder or FFmpeg installation is required.
@@ -86,22 +73,157 @@ swap-chain presentation.
 
 ### Opening movie
 
-The opening movie is handled by `src/game/movie_present.c`:
+FMVs handled by `src/game/movie_present.c`:
 
 - The bundled PL_MPEG decoder decodes `ninja.sfd` to BGRA.
 - `QueryPerformanceCounter` paces presentation at 30 fps.
 - D3D11 presents all 571 frames through the Team Ninja logo.
 
-This is the default path and is user-verified to play correctly without visible
-artifacts.
+## Online Play
 
-## Applied Recompilation Fixes
+Two-player Versus (Single or Tag Battle) over the internet, from the **Online**
+tab of the Esc menu. Delay-based lockstep: both machines run the same game from
+the same inputs, so nothing is predicted and nothing is rolled back.
 
-These are behavior-changing fixes present in the current tree. Do not remove
-them because an internal metric looks cleaner; validate changes against actual
-game behavior.
+How to play:
 
-### PSGSFD fall-through restoration
+1. One player clicks **Host**. The game asks a public STUN server what its UDP
+   socket looks like from the internet and shows a 17-character join code
+   (`XXXXXXXX-XXXXXXXX`: public address and port, then LAN address and port,
+   64-symbol alphabet). Copy it to the other player.
+2. The other player pastes it and clicks **Join**. It sends to both addresses
+   (and announces itself on the local network); whichever answers is used.
+   No router setup. The host PC needs a Windows Firewall inbound rule for
+   `DOA3.exe` (Windows never shows its prompt when the game is borderless), e.g.
+   `New-NetFirewallRule -DisplayName "DOA3 PC online" -Direction Inbound -Program <path>\DOA3.exe -Protocol UDP -Action Allow -Profile Any`
+   from an administrator PowerShell. A symmetric NAT (some mobile/corporate
+   networks) cannot be crossed without a relay; Tailscale/ZeroTier works there.
+3. Both players open Versus and pick the same battle type (Single or Tag). The
+   match starts when both have reached character select; the host's settings
+   and unlocks apply, the joiner keeps its own button layout and volumes, and
+   the joiner's saves go to `TitleData_netplay` for the duration. Both builds
+   must be the same `DOA3.exe`; a mismatch is refused with the two build stamps.
+4. Leaving Versus ends the match; the connection stays up for a rematch.
+
+What keeps the two games identical (all verified frame by frame with
+`tools/online/compare_digests.py` on the two digest logs):
+
+- the start state (seed, clock bases, APU counter, save image, fight-state
+  regions, character-select cursor state) sent by the host at character select;
+- a resync of the same fight-state regions at every screen transition inside
+  the match (select -> stage -> fight), because preview models load a frame
+  apart on different machines;
+- the CRT math library pinned to its non-FMA path (`_set_FMA3_enable(0)`), so
+  different CPUs round alike;
+- worker fibers (audio/file streaming) draw `rand()` from private per-fiber
+  streams reseeded from the session seed, so host-timing-dependent call counts
+  never move the game's seed.
+
+Pieces (all in `src/online/`):
+
+- `netplay_session.c`: the session core. At the character-select barrier it
+  captures the start parameters (seed, clock bases, APU sample counter, the save
+  image, the fight-state regions) and both sides apply the same bytes; every
+  frame it writes both pads into guest ports 0 (host) and 1 (joiner) before the
+  aggregate builder and digests the fight state. `xbox_det.c` derives every
+  guest clock from the frame counter and runs the worker fibers until idle at
+  each frame, so timing cannot differ between machines.
+- `netplay.c`: one UDP socket for everything: the STUN request (repeated
+  every 15 s to keep the NAT mapping alive while waiting), the lobby protocol
+  (hello/welcome with the build stamp, pings for the input-delay estimate,
+  ready, the start parameters and transition resyncs as acknowledged chunks,
+  leave/bye with a per-match token) and GekkoNet's packets through a custom
+  adapter. With "Diagnostic logs" on in the tab's developer section (off by
+  default), every event is appended to `netplay_events.txt` next to the game
+  and a desync reports the frame and the state region on both sides. GekkoNet (`third_party/GekkoNet`, prediction window
+  0) exchanges the per-frame inputs and compares the digests; a mismatch raises
+  a desync, ends the match and leaves `netplay_digest_*_host.txt` /
+  `netplay_digest_*_joiner.txt` next to the game (written only on a desync or
+  when recording) for `tools/online/compare_digests.py`.
+- `net_upnp.c` (miniupnpc, `third_party/miniupnpc`) maps and unmaps the port on
+  a background thread; `join_code.c` encodes the address.
+- While the game thread waits for the other side's input it redraws the last
+  frame with the overlay (`d3d8_PresentHold`) and pumps the window, so the Esc
+  menu and its Disconnect button keep working. The side that runs ahead waits
+  up to 1 ms extra per frame so the two drift back together.
+
+Input delay: auto (`ceil(ping/2 / 16.7 ms) + 1`, 1..8 frames) or manual; the
+host's choice applies to both. Settings live under `[Online]` in
+`doa3_settings.ini`. Nothing in this section is active without a connection;
+offline play is the same code path as before.
+
+The developer section of the tab still records and replays local sessions
+(`netplay_replay_*.dnr`), the determinism gate that every change to timing,
+audio or fiber scheduling must keep passing.
+
+## Regeneration
+
+A full pipeline regeneration can overwrite generated fixes. Run from `doa3/`:
+
+```powershell
+py -3 tools/xbe_parser/xbe_parser.py ../doa3gamefiles/default.xbe --json tools/xbe_parser/doa3_analysis.json --quiet
+py -3 -m tools.disasm ../doa3gamefiles/default.xbe --force -v
+py -3 -m tools.func_id ../doa3gamefiles/default.xbe
+py -3 -m tools.recomp ../doa3gamefiles/default.xbe --all --split 1000
+```
+
+The analysis filename is retained for loader compatibility even though it
+contains DOA3 data. Use full disassembly; data sections marked executable by the
+XBE must still be excluded by section name.
+
+After regeneration:
+
+1. Re-run missing-function seeding until every valid in-section call target has
+   a generated definition and dispatch entry.
+2. Confirm immediate function-pointer targets, thread starts, callbacks, and
+   vtable entries are seeded; direct-call scans cannot discover all of them.
+3. Restore the six PSGSFD fall-throughs listed under Lifter Defect Reference unless the generator has
+   gained a general fix for adjacent split blocks.
+4. Confirm the `0x0017C025` deferred comparison still snapshots operands before
+   `ebp` is overwritten.
+5. Confirm generated PSGSFD code emits `mmx_pavgb`; the lifter mapping should
+   make this survive regeneration.
+6. Confirm `fnstcw`/`fldcw`/`frndint` emit the `g_x87_cw` / `x87_frndint`
+   forms (the lifter now does this) and that `sub_0018DF33` still preserves
+   `g_seh_ebp` across `sub_00191848` -- a fragment-boundary fix the lifter
+   does not yet make on its own.
+7. Re-run `py -3 -m tools.recomp.fix_deferred_cmp` (deferred compares whose
+   operands are overwritten before the branch) -- 271 sites.
+8. Re-seed the eight attract-flow function-pointer targets and re-emit
+   `recomp_seedattract.c`; confirm `recomp_dispatch.c` stays sorted and its
+   size constant covers the new entries.
+9. Build Release and run the opening movie before accepting regenerated output.
+
+Do not edit generated files casually. When a generated correction is general,
+implement it in the lifter/translator as well; keep a local generated patch only
+when the correction is specific to an imperfect function boundary or this XBE.
+
+### Generated support units
+
+Several generated translation units are deliberate pipeline supplements and
+must be recreated or preserved during regeneration:
+
+- `recomp_extra.c` and `recomp_extra2.c` cover seeded direct and indirect
+   targets that ordinary function discovery misses.
+- `recomp_fpufix.c` contains corrected x87 translations whose originals are
+   retained under alternate names.
+- `recomp_jumptables.c` carries switch bodies that cross imperfect detected
+   function boundaries.
+- `recomp_mwply.c` and `recomp_psgsfd.c` contain CRI movie functions emitted
+   from the non-main XBE code sections.
+- `recomp_seedattract.c` carries the eight attract-flow entry points that only
+   a function-pointer table references.
+
+Do not treat these files as disposable build products. A regeneration is not
+complete until their symbols and behavior are represented in the new output.
+
+## Lifter Defect Reference
+
+Past lifting bugs, grouped by kind. New bugs are usually another instance of one of these.
+
+### Dropped fall-throughs
+
+#### PSGSFD fall-through restoration
 
 Function detection split several adjacent PSGSFD blocks and dropped required
 fall-through control flow. Six generated transitions in
@@ -118,82 +240,7 @@ The `sub_001E2C92` transition is especially important because it restores the
 macroblock worker epilogue and prevents a 36-byte guest-stack drift. Before this
 fix, decode collapsed after only a handful of real pictures.
 
-### Deferred-compare operand preservation
-
-At guest address `0x0017C025`, the original code compares `ebx` with the old
-`ebp` value and then overwrites `ebp` before the conditional branch. Deferred
-C emission previously evaluated the comparison after the overwrite.
-
-`src/game/recomp/gen/recomp_extra2.c` snapshots both operands before the
-clobber. This preserves delivery of the first video PES packet, including the
-MPEG sequence header, so playback begins from the real first frame.
-
-### MMX `pavgb`
-
-The lifter previously dropped `pavgb` instructions used by half-pixel motion
-compensation. The current implementation includes:
-
-- `mmx_pavgb` in `src/game/recomp/recomp_types.h`
-- the `pavgb` mapping in `tools/recomp/lifter.py`
-- generated calls in `src/game/recomp/gen/recomp_psgsfd.c`
-
-The helper implements unsigned packed-byte averaging with Xbox/MMX rounding:
-`(a + b + 1) >> 1` for each byte.
-
-### x87 control word and `frndint` rounding mode
-
-The lifter emitted `fnstcw`/`fldcw` as comments and translated `frndint` as
-host `rint()` (round-to-nearest). The CRT `floor()` (`sub_0018DE71`) sets the
-rounding mode to "down" with `fldcw` around `frndint`, then reads the old
-control word back through `_ctrlfp` (`sub_00191A4D`) to decide which
-exceptions are masked. With neither modelled, `floor(x)` rounded to nearest,
-flagged the result inexact, read stack garbage as the mask, and took its
-exception path (`RtlRaiseException 0xC000008F`). On that path `_except1`
-(`sub_00191848`) tail-jumps internally and leaves `g_seh_ebp` at its own
-frame, and the fragment `sub_0018DF33` falls into the epilogue
-`sub_0018DF3B` (`mov esp, ebp`) without restoring it, so `floor()` returned
-with esp 52 bytes low.
-
-The Sofdec timecode splitter (`sub_001796F0` -> `sub_001797FF`) calls this
-`floor()` once per picture through `sub_001809E0` and then reads its output
-pointer from `[esp+0x20]`; with esp shifted it read a leftover double
-(`0x3FE0....`) as the pointer and wrote four dwords through it every frame of
-the intro movie. Those writes landed in the loadfile.afs partition
-sector-size table at `0x4BDA20+0x116`, so every post-movie resource load
-resolved to the wrong file offset and the title screen never got its data.
-
-Current fixes:
-
-- `g_x87_cw` (`xbox_memory_layout.c`, default 0x027F) and `x87_frndint()`
-  (`recomp_types.h`) model the control word; `tools/recomp/lifter.py` emits
-  `MEM16(m) = g_x87_cw` / `g_x87_cw = MEM16(m)` for `fnstcw`/`fldcw` and
-  `x87_frndint()` for `frndint`. The same translation was applied to every
-  live site in `src/game/recomp/gen/` (13 `fnstcw`, 18 `fldcw`, 39 `frndint`).
-- `sub_0018DF33` (`recomp_0009.c`) saves and restores `g_seh_ebp` around its
-  call to `sub_00191848`.
-
-Measured result: `floor` returns +4, no float exception is raised, the
-timecode output lands on the stack, the partition table is intact after the
-movie, and the post-movie loads read `XPR0` data.
-
-### Packed SSE (xmm as 128-bit lanes)
-
-The lifter modelled every xmm register as one `float`: `movaps` moved 4 of
-16 bytes and `mulps`/`addps`/`subps`/`shufps`/`cmpneqps`/`orps` were emitted
-as comments. The XDK maths library (matrix copy, multiply, inverse,
-translate on the matrix stack at `0x90FAA0`) is built from those, so the
-post-movie camera/model matrices came out NaN and every vertex of the title
-screen collapsed.
-
-`tools/recomp/lifter.py` now translates the SSE set through `xmm128_t` and
-the `xmm_*` helpers in `recomp_types.h` (`translator.py` declares xmm
-registers as `xmm128_t`); `comiss`/`ucomiss` set `_fpu_cmp` for the
-following `jcc`. The 11 functions in the image that use xmm were re-emitted
-into `src/game/recomp/gen/recomp_sse.c`; their previous bodies remain as
-`sub_*_oldsse`. `sub_001B7E50` keeps its `recomp_manual.c` wrapper (body is
-`sub_001B7E50_gen`).
-
-### Dropped fall-through in the D3D state applier
+#### Dropped fall-through in the D3D state applier
 
 `sub_001B632C` (`recomp_cffix.c`) lost its fall-through into the shared
 epilogue `sub_001B63E5` during the cffix re-emission and returned with its
@@ -201,39 +248,7 @@ four pushes still on the stack (-24 bytes); the flusher `sub_001B7690` then
 lost esi/ebx and the lazy vertex apply walked wild pointers on the first
 post-movie draw. Restored.
 
-### Function pointer target `sub_000E5590`
-
-Reached only through the callback table built at `sub_000B8xxx`
-(`recomp_0005.c`: `[ebp-56] = 0xE5590`); binds the post-movie screen's four
-texture stages. Seeded in `functions.json` and emitted into
-`recomp_extra2.c`.
-
-### Dropped x87 arithmetic in functions emitted before bug #13
-
-234 live functions still carried `/* FPU: fsubr|fdivr|fidiv|fimul|fiadd|
-fisub|fdivrp|fsubrp ... */` comments -- instructions the pre-bug-#13 lifter
-dropped -- because they were never in the fpuarith re-emission batch. One of
-them is the character position update `sub_000910B9` (writes the position
-table at `0x4BB950 + 16*i`), whose dropped `fsubr` produced NaN positions
-after the movie and so NaN camera/model matrices. They were re-emitted with
-the current lifter into `src/game/recomp/gen/recomp_fpu2.c` (previous
-bodies kept as `sub_*_oldfpu2`; 31 restored fall-throughs transplanted).
-The remaining `/* FPU: fnsave|frstor|fnclex|ffree|fxam */` sites are CRT
-state save/restore and were dropped before as well.
-
-### Dropped `fld st(i)` / `fstp st(0)` in hand-emitted units
-
-13 live functions (the `recomp_extra2.c` animation helpers `sub_00095430`,
-`sub_000954E0`, `sub_000955B0`, `sub_00046030`, and nine in `recomp_fpufix.c`
-/ `recomp_jumptables.c`) still had `fld st(i)` and `fstp st(0)` as bare
-comments (emitted before recomp bug #12 was fixed). A dropped load with a
-kept pop unbalances the global x87 stack index by one per call, which is how
-the character base positions at `0x4BAFD0 + 0xE8*k` became NaN after the
-movie. Re-emitted into `src/game/recomp/gen/recomp_fpu3.c` (previous bodies
-`sub_*_oldfpu3`). Rule for any hand emission: run it through the CURRENT
-lifter and grep the result for bare `/* f... */` lines before committing it.
-
-### Fall-throughs after a conditional tail-call, and statement-less fragments
+#### Fall-throughs after a conditional tail-call, and statement-less fragments
 
 `tools/recomp/fix_fallthroughs.py` decided that a body was terminated when its
 last statement contained `return`; the lifter's conditional tail-call form
@@ -267,107 +282,19 @@ Measured: ebx stays 0 through `sub_000833C0`, screen id 5 -> 1, ~250 array
 draws per frame, the walker's boundary check shows only the +4 of the dummy
 return slot, no wild reads in the title phase. FMV unchanged (568 frames).
 
-### Composite matrix convention in the array-draw path
+### Compares and flags
 
-`SET_COMPOSITE_MATRIX` rows are the coefficients of each output component
-(the D3D runtime uploads the row-vector matrix transposed), and the Xbox D3D
-folds the viewport (`proj x [w/2, -h/2, 2^24-1; x0+w/2, y0+h/2]`, visible in
-the game's `[MATMUL]`) into it, so `c.xy / w` is already the pixel position.
-`nv_transform_clip` in `src/nv2a/nv2a_pgraph_d3d11.c` multiplied the
-transpose and then applied `SET_VIEWPORT_SCALE/OFFSET` again, which put the
-2^24 z-scale into w and collapsed every title-screen draw to one point. Now
-`c[i] = dot(in, row i)`, screen = `c.xy / w`, z = `(c.z / w) / vp_scale.z`.
-Pre-movie screens issue no array draws, so this path cannot affect the FMV.
-User-observed: real stage geometry after the movie.
+#### Deferred-compare operand preservation
 
-### Title-screen array path: render target, depth test, near-plane clipping
+At guest address `0x0017C025`, the original code compares `ebx` with the old
+`ebp` value and then overwrites `ebp` before the conditional branch. Deferred
+C emission previously evaluated the comparison after the overwrite.
 
-Three more pieces were needed before the title stage was visible for more
-than one frame (all in `src/nv2a/nv2a_pgraph_d3d11.c` / `src/d3d/d3d8_device.c`):
+`src/game/recomp/gen/recomp_extra2.c` snapshots both operands before the
+clobber. This preserves delivery of the first video PES packet, including the
+MPEG sequence header, so playback begins from the real first frame.
 
-- **Render target.** Every frame the guest binds a 256x256 texture surface
-  (reflection/shadow pass: clear + a few draws) before the back buffer. The
-  compat layer's `SetRenderTarget` is a no-op and the translator ignored
-  `NV097_SET_SURFACE_COLOR_OFFSET`, so that pass and its clear landed on the
-  swap chain. The surface clip rectangle (0x0200/0x0204, which arrives after
-  the colour offset) now selects the target lazily at each clear/draw:
-  `nv_sync_render_target` binds an offscreen D3D11 target of the clip size
-  (`d3d8_SetOffscreenTarget`) and restores the swap chain when the clip is the
-  guest frame size (720x480 -- not the 640x480 host back buffer). `dev_Clear`
-  clears whichever target is bound. The offscreen result is not yet fed back
-  to draws that sample it.
-- **Depth.** `nv_apply_draw_state` forced `D3DRS_ZENABLE = FALSE` (2D menu
-  state); it now follows `SET_DEPTH_TEST_ENABLE`. Without it the stage wall
-  drawn last covered the scene.
-- **Clipping.** XYZRHW cannot represent w <= 0. Batches with any vertex behind
-  the eye or the near plane are rebuilt in clip space from the transformed
-  output, clipped against Zc >= 0 (Sutherland-Hodgman, attributes interpolated
-  pre-divide) and re-projected; strips/fans become triangle lists only then.
-  `DOA3_NOCLIP=1` bypasses it for A/B. `DOA3_FLIPW=1` (negate the homogeneous
-  position) was tested and is wrong: the game's own w sign is correct.
-
-
-### Deferred compares whose operands are overwritten before the branch
-
-The screen-ready wait above was one instance of a class. The lifter emits
-`cmp`/`test` as a comment and re-evaluates the operand EXPRESSIONS at the
-conditional branch, so any write to an operand register in between makes the
-branch test the wrong values. `tools/recomp/fix_deferred_cmp.py` finds and
-repairs them; it rewrites a site to the `_rccf` form:
-
-```c
-/* test LO8(edx), LO8(edx) - flags set for next jcc */
-_rccf = (TEST_NZ(LO8(edx), LO8(edx)));   /* evaluated where x86 evaluates it */
-SET_LO8(edx, MEM8(esp + 0x10));
-if (_rccf) goto loc_X;
-```
-
-Nothing is rewritten on the C text alone. Each candidate is checked against
-the guest disassembly and the C-to-guest mapping has to be unambiguous:
-
-- the comment and the branch must be in the same straight-line run (the scan
-  stops at a `loc_` label, a bare `goto`, a `return` and at the next compare
-  comment) -- past any of those the branch can be reached with other flags;
-- the block must hold exactly one candidate in the C and exactly one
-  qualifying compare in the guest;
-- the guest compare must be the same kind, carry the same literal operand when
-  there is one, and reach its branch with no other flag-writing instruction,
-  no `call` and no branch target in between.
-
-Run applied 271 rewrites across 20 generated units and skipped 5 ambiguous
-blocks. `FIX_DRYRUN=1` lists candidates without writing. Re-run after any
-re-emission; the rewrite is idempotent.
-
-Do not "simplify" the tool to a text substitution. An earlier version paired a
-comment with a consumer past a label and produced a wrong rewrite in
-`sub_000F2506` (two `fnstsw`/`test` pairs in a row); the straight-line-run rule
-is what stops that.
-
-### Attract-flow targets reached only through a function-pointer table
-
-Eight entry points in the screen/demo cluster were never emitted, because the
-only references to them are in a dispatch table the detector cannot follow:
-`0x0004A630`, `0x0004A6E0`, `0x0004A930`, `0x0004A960`, `0x0004BBB0`,
-`0x0004C040`, `0x0004C930`, `0x0004CA10`. Every call through them resolved to
-nothing and returned 0 -- `[ICALL-CENSUS]` counted 816 failed calls each in a
-single attract cycle. They sit inside larger detected functions, so the code
-was already present; what was missing was an entry point at the table's
-address.
-
-They are seeded into `tools/disasm/output/functions.json` as `link_seed`
-entries and emitted into `src/game/recomp/gen/recomp_seedattract.c`
-(`tools.recomp -f`), declared in `recomp_funcs.h` and registered in
-`recomp_dispatch.c`. Distinct unresolved indirect-call targets fell from 65 to
-46 in an attract cycle.
-
-`g_recomp_table` must stay sorted -- `recomp_lookup` binary-searches it -- and
-`g_recomp_table_size` must be bumped for every entry inserted before the
-prefix it covers. Note that the constant (11927) is smaller than the number of
-entries in the array (12144): the last 217, from VA `0x001E938E` up, are not
-searched. That predates this work and is left alone deliberately; making them
-resolvable changes behaviour for 217 functions and wants its own measurement.
-
-### The attract loop's screen-ready wait, and two general compare defects
+#### The attract loop's screen-ready wait, and two general compare defects
 
 After the opening movie the attract flow runs a demo fight (screen id
 `0x484C49` = 12), then asks the screen manager for the next screen. The port
@@ -443,7 +370,137 @@ eight-minute soak. Cxbx-Reloaded on the same XBE runs 0 -> 12 -> 20 -> 14 ->
 9 -> 1 -> 9 -> 8 -> 11, so the order matches the hardware oracle. The opening
 movie is unchanged at 568 presented frames.
 
-### Callee-saved ABI leak in the texture-stage applier's callees
+#### Deferred compares whose operands are overwritten before the branch
+
+The screen-ready wait above was one instance of a class. The lifter emits
+`cmp`/`test` as a comment and re-evaluates the operand EXPRESSIONS at the
+conditional branch, so any write to an operand register in between makes the
+branch test the wrong values. `tools/recomp/fix_deferred_cmp.py` finds and
+repairs them; it rewrites a site to the `_rccf` form:
+
+```c
+/* test LO8(edx), LO8(edx) - flags set for next jcc */
+_rccf = (TEST_NZ(LO8(edx), LO8(edx)));   /* evaluated where x86 evaluates it */
+SET_LO8(edx, MEM8(esp + 0x10));
+if (_rccf) goto loc_X;
+```
+
+Nothing is rewritten on the C text alone. Each candidate is checked against
+the guest disassembly and the C-to-guest mapping has to be unambiguous:
+
+- the comment and the branch must be in the same straight-line run (the scan
+  stops at a `loc_` label, a bare `goto`, a `return` and at the next compare
+  comment) -- past any of those the branch can be reached with other flags;
+- the block must hold exactly one candidate in the C and exactly one
+  qualifying compare in the guest;
+- the guest compare must be the same kind, carry the same literal operand when
+  there is one, and reach its branch with no other flag-writing instruction,
+  no `call` and no branch target in between.
+
+Run applied 271 rewrites across 20 generated units and skipped 5 ambiguous
+blocks. `FIX_DRYRUN=1` lists candidates without writing. Re-run after any
+re-emission; the rewrite is idempotent.
+
+Do not "simplify" the tool to a text substitution. An earlier version paired a
+comment with a consumer past a label and produced a wrong rewrite in
+`sub_000F2506` (two `fnstsw`/`test` pairs in a row); the straight-line-run rule
+is what stops that.
+
+### x87, MMX and SSE
+
+#### MMX `pavgb`
+
+The lifter previously dropped `pavgb` instructions used by half-pixel motion
+compensation. The current implementation includes:
+
+- `mmx_pavgb` in `src/game/recomp/recomp_types.h`
+- the `pavgb` mapping in `tools/recomp/lifter.py`
+- generated calls in `src/game/recomp/gen/recomp_psgsfd.c`
+
+The helper implements unsigned packed-byte averaging with Xbox/MMX rounding:
+`(a + b + 1) >> 1` for each byte.
+
+#### x87 control word and `frndint` rounding mode
+
+The lifter emitted `fnstcw`/`fldcw` as comments and translated `frndint` as
+host `rint()` (round-to-nearest). The CRT `floor()` (`sub_0018DE71`) sets the
+rounding mode to "down" with `fldcw` around `frndint`, then reads the old
+control word back through `_ctrlfp` (`sub_00191A4D`) to decide which
+exceptions are masked. With neither modelled, `floor(x)` rounded to nearest,
+flagged the result inexact, read stack garbage as the mask, and took its
+exception path (`RtlRaiseException 0xC000008F`). On that path `_except1`
+(`sub_00191848`) tail-jumps internally and leaves `g_seh_ebp` at its own
+frame, and the fragment `sub_0018DF33` falls into the epilogue
+`sub_0018DF3B` (`mov esp, ebp`) without restoring it, so `floor()` returned
+with esp 52 bytes low.
+
+The Sofdec timecode splitter (`sub_001796F0` -> `sub_001797FF`) calls this
+`floor()` once per picture through `sub_001809E0` and then reads its output
+pointer from `[esp+0x20]`; with esp shifted it read a leftover double
+(`0x3FE0....`) as the pointer and wrote four dwords through it every frame of
+the intro movie. Those writes landed in the loadfile.afs partition
+sector-size table at `0x4BDA20+0x116`, so every post-movie resource load
+resolved to the wrong file offset and the title screen never got its data.
+
+Current fixes:
+
+- `g_x87_cw` (`xbox_memory_layout.c`, default 0x027F) and `x87_frndint()`
+  (`recomp_types.h`) model the control word; `tools/recomp/lifter.py` emits
+  `MEM16(m) = g_x87_cw` / `g_x87_cw = MEM16(m)` for `fnstcw`/`fldcw` and
+  `x87_frndint()` for `frndint`. The same translation was applied to every
+  live site in `src/game/recomp/gen/` (13 `fnstcw`, 18 `fldcw`, 39 `frndint`).
+- `sub_0018DF33` (`recomp_0009.c`) saves and restores `g_seh_ebp` around its
+  call to `sub_00191848`.
+
+Measured result: `floor` returns +4, no float exception is raised, the
+timecode output lands on the stack, the partition table is intact after the
+movie, and the post-movie loads read `XPR0` data.
+
+#### Packed SSE (xmm as 128-bit lanes)
+
+The lifter modelled every xmm register as one `float`: `movaps` moved 4 of
+16 bytes and `mulps`/`addps`/`subps`/`shufps`/`cmpneqps`/`orps` were emitted
+as comments. The XDK maths library (matrix copy, multiply, inverse,
+translate on the matrix stack at `0x90FAA0`) is built from those, so the
+post-movie camera/model matrices came out NaN and every vertex of the title
+screen collapsed.
+
+`tools/recomp/lifter.py` now translates the SSE set through `xmm128_t` and
+the `xmm_*` helpers in `recomp_types.h` (`translator.py` declares xmm
+registers as `xmm128_t`); `comiss`/`ucomiss` set `_fpu_cmp` for the
+following `jcc`. The 11 functions in the image that use xmm were re-emitted
+into `src/game/recomp/gen/recomp_sse.c`; their previous bodies remain as
+`sub_*_oldsse`. `sub_001B7E50` keeps its `recomp_manual.c` wrapper (body is
+`sub_001B7E50_gen`).
+
+#### Dropped x87 arithmetic in functions emitted before bug #13
+
+234 live functions still carried `/* FPU: fsubr|fdivr|fidiv|fimul|fiadd|
+fisub|fdivrp|fsubrp ... */` comments -- instructions the pre-bug-#13 lifter
+dropped -- because they were never in the fpuarith re-emission batch. One of
+them is the character position update `sub_000910B9` (writes the position
+table at `0x4BB950 + 16*i`), whose dropped `fsubr` produced NaN positions
+after the movie and so NaN camera/model matrices. They were re-emitted with
+the current lifter into `src/game/recomp/gen/recomp_fpu2.c` (previous
+bodies kept as `sub_*_oldfpu2`; 31 restored fall-throughs transplanted).
+The remaining `/* FPU: fnsave|frstor|fnclex|ffree|fxam */` sites are CRT
+state save/restore and were dropped before as well.
+
+#### Dropped `fld st(i)` / `fstp st(0)` in hand-emitted units
+
+13 live functions (the `recomp_extra2.c` animation helpers `sub_00095430`,
+`sub_000954E0`, `sub_000955B0`, `sub_00046030`, and nine in `recomp_fpufix.c`
+/ `recomp_jumptables.c`) still had `fld st(i)` and `fstp st(0)` as bare
+comments (emitted before recomp bug #12 was fixed). A dropped load with a
+kept pop unbalances the global x87 stack index by one per call, which is how
+the character base positions at `0x4BAFD0 + 0xE8*k` became NaN after the
+movie. Re-emitted into `src/game/recomp/gen/recomp_fpu3.c` (previous bodies
+`sub_*_oldfpu3`). Rule for any hand emission: run it through the CURRENT
+lifter and grep the result for bare `/* f... */` lines before committing it.
+
+### Callee-saved ABI leaks
+
+#### Callee-saved ABI leak in the texture-stage applier's callees
 
 `sub_001BCC00` (`ret 0xC`) and `sub_001BC260` (`ret 0x10`), both called from
 the texture-stage applier `sub_001B6410`, returned with `ebx`/`esi`/`edi`
@@ -484,6 +541,80 @@ do not repeat them:
 - Skipping the parse-cursor rewind for wraps whose device is not the main one
   produced **zero draws** (run 207) -- while the device pointer was being lost,
   that rewind was the only thing making those pushes reachable.
+
+### Entry points reached only through function pointers
+
+#### Function pointer target `sub_000E5590`
+
+Reached only through the callback table built at `sub_000B8xxx`
+(`recomp_0005.c`: `[ebp-56] = 0xE5590`); binds the post-movie screen's four
+texture stages. Seeded in `functions.json` and emitted into
+`recomp_extra2.c`.
+
+#### Attract-flow targets reached only through a function-pointer table
+
+Eight entry points in the screen/demo cluster were never emitted, because the
+only references to them are in a dispatch table the detector cannot follow:
+`0x0004A630`, `0x0004A6E0`, `0x0004A930`, `0x0004A960`, `0x0004BBB0`,
+`0x0004C040`, `0x0004C930`, `0x0004CA10`. Every call through them resolved to
+nothing and returned 0 -- `[ICALL-CENSUS]` counted 816 failed calls each in a
+single attract cycle. They sit inside larger detected functions, so the code
+was already present; what was missing was an entry point at the table's
+address.
+
+They are seeded into `tools/disasm/output/functions.json` as `link_seed`
+entries and emitted into `src/game/recomp/gen/recomp_seedattract.c`
+(`tools.recomp -f`), declared in `recomp_funcs.h` and registered in
+`recomp_dispatch.c`. Distinct unresolved indirect-call targets fell from 65 to
+46 in an attract cycle.
+
+`g_recomp_table` must stay sorted -- `recomp_lookup` binary-searches it -- and
+`g_recomp_table_size` must be bumped for every entry inserted before the
+prefix it covers. Note that the constant (11927) is smaller than the number of
+entries in the array (12144): the last 217, from VA `0x001E938E` up, are not
+searched. That predates this work and is left alone deliberately; making them
+resolvable changes behaviour for 217 functions and wants its own measurement.
+
+## Translator Notes
+
+### Composite matrix convention in the array-draw path
+
+`SET_COMPOSITE_MATRIX` rows are the coefficients of each output component
+(the D3D runtime uploads the row-vector matrix transposed), and the Xbox D3D
+folds the viewport (`proj x [w/2, -h/2, 2^24-1; x0+w/2, y0+h/2]`, visible in
+the game's `[MATMUL]`) into it, so `c.xy / w` is already the pixel position.
+`nv_transform_clip` in `src/nv2a/nv2a_pgraph_d3d11.c` multiplied the
+transpose and then applied `SET_VIEWPORT_SCALE/OFFSET` again, which put the
+2^24 z-scale into w and collapsed every title-screen draw to one point. Now
+`c[i] = dot(in, row i)`, screen = `c.xy / w`, z = `(c.z / w) / vp_scale.z`.
+Pre-movie screens issue no array draws, so this path cannot affect the FMV.
+User-observed: real stage geometry after the movie.
+
+### Title-screen array path: render target, depth test, near-plane clipping
+
+Three more pieces were needed before the title stage was visible for more
+than one frame (all in `src/nv2a/nv2a_pgraph_d3d11.c` / `src/d3d/d3d8_device.c`):
+
+- **Render target.** Every frame the guest binds a 256x256 texture surface
+  (reflection/shadow pass: clear + a few draws) before the back buffer. The
+  compat layer's `SetRenderTarget` is a no-op and the translator ignored
+  `NV097_SET_SURFACE_COLOR_OFFSET`, so that pass and its clear landed on the
+  swap chain. The surface clip rectangle (0x0200/0x0204, which arrives after
+  the colour offset) now selects the target lazily at each clear/draw:
+  `nv_sync_render_target` binds an offscreen D3D11 target of the clip size
+  (`d3d8_SetOffscreenTarget`) and restores the swap chain when the clip is the
+  guest frame size (720x480 -- not the 640x480 host back buffer). `dev_Clear`
+  clears whichever target is bound. The offscreen result is not yet fed back
+  to draws that sample it.
+- **Depth.** `nv_apply_draw_state` forced `D3DRS_ZENABLE = FALSE` (2D menu
+  state); it now follows `SET_DEPTH_TEST_ENABLE`. Without it the stage wall
+  drawn last covered the scene.
+- **Clipping.** XYZRHW cannot represent w <= 0. Batches with any vertex behind
+  the eye or the near plane are rebuilt in clip space from the transformed
+  output, clipped against Zc >= 0 (Sutherland-Hodgman, attributes interpolated
+  pre-divide) and re-projected; strips/fans become triangle lists only then.
+  `DOA3_NOCLIP=1` bypasses it for A/B. `DOA3_FLIPW=1` (negate the homogeneous
+  position) was tested and is wrong: the game's own w sign is correct.
 
 ### Guest blend state is applied
 
@@ -542,193 +673,3 @@ draw, so the title stage was making ~3500 `CreateSamplerState` calls a frame for
 a handful of distinct samplers. They are now cached by the six stage states that
 feed the descriptor, and a stage that already has the right sampler bound does
 nothing.
-
-
-## Regeneration Contract
-
-A full pipeline regeneration can overwrite generated fixes. Run from `doa3/`:
-
-```powershell
-py -3 tools/xbe_parser/xbe_parser.py ../doa3gamefiles/default.xbe --json tools/xbe_parser/doa3_analysis.json --quiet
-py -3 -m tools.disasm ../doa3gamefiles/default.xbe --force -v
-py -3 -m tools.func_id ../doa3gamefiles/default.xbe
-py -3 -m tools.recomp ../doa3gamefiles/default.xbe --all --split 1000
-```
-
-The analysis filename is retained for loader compatibility even though it
-contains DOA3 data. Use full disassembly; data sections marked executable by the
-XBE must still be excluded by section name.
-
-After regeneration:
-
-1. Re-run missing-function seeding until every valid in-section call target has
-   a generated definition and dispatch entry.
-2. Confirm immediate function-pointer targets, thread starts, callbacks, and
-   vtable entries are seeded; direct-call scans cannot discover all of them.
-3. Restore the six PSGSFD fall-throughs listed above unless the generator has
-   gained a general fix for adjacent split blocks.
-4. Confirm the `0x0017C025` deferred comparison still snapshots operands before
-   `ebp` is overwritten.
-5. Confirm generated PSGSFD code emits `mmx_pavgb`; the lifter mapping should
-   make this survive regeneration.
-6. Confirm `fnstcw`/`fldcw`/`frndint` emit the `g_x87_cw` / `x87_frndint`
-   forms (the lifter now does this) and that `sub_0018DF33` still preserves
-   `g_seh_ebp` across `sub_00191848` -- a fragment-boundary fix the lifter
-   does not yet make on its own.
-6. Re-run `py -3 -m tools.recomp.fix_deferred_cmp` (deferred compares whose
-   operands are overwritten before the branch) -- 271 sites.
-7. Re-seed the eight attract-flow function-pointer targets and re-emit
-   `recomp_seedattract.c`; confirm `recomp_dispatch.c` stays sorted and its
-   size constant covers the new entries.
-8. Build Release and run the opening movie before accepting regenerated output.
-
-Do not edit generated files casually. When a generated correction is general,
-implement it in the lifter/translator as well; keep a local generated patch only
-when the correction is specific to an imperfect function boundary or this XBE.
-
-### Generated support units
-
-Several generated translation units are deliberate pipeline supplements and
-must be recreated or preserved during regeneration:
-
-- `recomp_extra.c` and `recomp_extra2.c` cover seeded direct and indirect
-   targets that ordinary function discovery misses.
-- `recomp_fpufix.c` contains corrected x87 translations whose originals are
-   retained under alternate names.
-- `recomp_jumptables.c` carries switch bodies that cross imperfect detected
-   function boundaries.
-- `recomp_mwply.c` and `recomp_psgsfd.c` contain CRI movie functions emitted
-   from the non-main XBE code sections.
-- `recomp_seedattract.c` carries the eight attract-flow entry points that only
-   a function-pointer table references.
-
-Do not treat these files as disposable build products. A regeneration is not
-complete until their symbols and behavior are represented in the new output.
-
-## Online Play
-
-Two-player Versus (Single or Tag Battle) over the internet, from the **Online**
-tab of the Esc menu. Delay-based lockstep: both machines run the same game from
-the same inputs, so nothing is predicted and nothing is rolled back.
-
-How to play:
-
-1. One player clicks **Host**. The game asks a public STUN server what its UDP
-   socket looks like from the internet and shows a 17-character join code
-   (`XXXXXXXX-XXXXXXXX`: public address and port, then LAN address and port,
-   64-symbol alphabet). Copy it to the other player.
-2. The other player pastes it and clicks **Join**. It sends to both addresses
-   (and announces itself on the local network); whichever answers is used.
-   No router setup. The host PC needs a Windows Firewall inbound rule for
-   `doa3.exe` (Windows never shows its prompt when the game is borderless), e.g.
-   `New-NetFirewallRule -DisplayName "DOA3 PC online" -Direction Inbound -Program <path>\doa3.exe -Protocol UDP -Action Allow -Profile Any`
-   from an administrator PowerShell. A symmetric NAT (some mobile/corporate
-   networks) cannot be crossed without a relay; Tailscale/ZeroTier works there.
-3. Both players open Versus and pick the same battle type (Single or Tag). The
-   match starts when both have reached character select; the host's settings
-   and unlocks apply, the joiner keeps its own button layout and volumes, and
-   the joiner's saves go to `TitleData_netplay` for the duration. Both builds
-   must be the same `doa3.exe`; a mismatch is refused with the two build stamps.
-4. Leaving Versus ends the match; the connection stays up for a rematch.
-
-What keeps the two games identical (all verified frame by frame with
-`tools/online/compare_digests.py` on the two digest logs):
-
-- the start state (seed, clock bases, APU counter, save image, fight-state
-  regions, character-select cursor state) sent by the host at character select;
-- a resync of the same fight-state regions at every screen transition inside
-  the match (select -> stage -> fight), because preview models load a frame
-  apart on different machines;
-- the CRT math library pinned to its non-FMA path (`_set_FMA3_enable(0)`), so
-  different CPUs round alike;
-- worker fibers (audio/file streaming) draw `rand()` from private per-fiber
-  streams reseeded from the session seed, so host-timing-dependent call counts
-  never move the game's seed.
-
-Pieces (all in `src/online/`):
-
-- `netplay_session.c`: the session core. At the character-select barrier it
-  captures the start parameters (seed, clock bases, APU sample counter, the save
-  image, the fight-state regions) and both sides apply the same bytes; every
-  frame it writes both pads into guest ports 0 (host) and 1 (joiner) before the
-  aggregate builder and digests the fight state. `xbox_det.c` derives every
-  guest clock from the frame counter and runs the worker fibers until idle at
-  each frame, so timing cannot differ between machines.
-- `netplay.c`: one UDP socket for everything: the STUN request (repeated
-  every 15 s to keep the NAT mapping alive while waiting), the lobby protocol
-  (hello/welcome with the build stamp, pings for the input-delay estimate,
-  ready, the start parameters and transition resyncs as acknowledged chunks,
-  leave/bye with a per-match token) and GekkoNet's packets through a custom
-  adapter. With "Diagnostic logs" on in the tab's developer section (off by
-  default), every event is appended to `netplay_events.txt` next to the game
-  and a desync reports the frame and the state region on both sides. GekkoNet (`third_party/GekkoNet`, prediction window
-  0) exchanges the per-frame inputs and compares the digests; a mismatch raises
-  a desync, ends the match and leaves `netplay_digest_*_host.txt` /
-  `netplay_digest_*_joiner.txt` next to the game (written only on a desync or
-  when recording) for `tools/online/compare_digests.py`.
-- `net_upnp.c` (miniupnpc, `third_party/miniupnpc`) maps and unmaps the port on
-  a background thread; `join_code.c` encodes the address.
-- While the game thread waits for the other side's input it redraws the last
-  frame with the overlay (`d3d8_PresentHold`) and pumps the window, so the Esc
-  menu and its Disconnect button keep working. The side that runs ahead waits
-  up to 1 ms extra per frame so the two drift back together.
-
-Input delay: auto (`ceil(ping/2 / 16.7 ms) + 1`, 1..8 frames) or manual; the
-host's choice applies to both. Settings live under `[Online]` in
-`doa3_settings.ini`. Nothing in this section is active without a connection;
-offline play is the same code path as before.
-
-The developer section of the tab still records and replays local sessions
-(`netplay_replay_*.dnr`), the determinism gate that every change to timing,
-audio or fiber scheduling must keep passing.
-
-## Diagnostics
-
-Normal runs write `doa3_log.txt`; generated logs and frame captures are ignored
-by Git.
-
-Useful opt-in switches:
-
-- `DOA3_DISPLAYTRACE=1`: capture exact display-time YUV/BGRA and descriptor data.
-- `DOA3_REFTRACE=1`: trace reference-pair and plane-integrity behavior.
-- `DOA3_IFRAME=1`: dump selected completion-time planes and an index CSV.
-
-Frame dumps are evidence, not perceptual acceptance. For visible or audible
-issues, the running game is the final validation.
-
-## Next Work
-
-### The two render-list walkers spin on a bad record
-
-`sub_00158DE0` (flat list at `0x00A1F388`) and `sub_00159180` (block-chained
-list from `[0x0099A1F8]`) both dispatch on a record type word of 0, 1 or 2 and
-send anything else to a bound check that does not advance the cursor -- the
-guest spins at 100% CPU with the process alive. That is the hang about a minute
-into the title phase; real hardware would spin too, so the list is genuinely
-bad.
-
-`[WALKCHK]` validates the whole chain at every walk entry and it has **never**
-reported a bad chain, so the corruption happens *during* the walk. Captured
-live at the stall, the record the walk stopped on held `0x001C0800` -- the
-address of the D3D device object, i.e. a push-buffer method/parameter pair
-written through the wrong cursor -- with runs of small integers around it.
-`src/game/main.c` carries an opt-in write watch (`DOA3_WATCHVA=<hex guest VA>`,
-`DOA3_WATCHLEN=<hex>`) that reports the writing RIP; it is armed post-movie and
-has not yet been pointed at the list pages.
-
-### The pixel pipeline is fixed-function only
-
-DOA3 drives colour through the NV2A register combiners
-(`SET_COMBINER_*`, ~330k writes every two seconds) and the translator
-substitutes a single fixed-function stage. Only texture stage 0 is ever bound,
-which matches the guest -- `[TEXCTL0]` shows stages 1 to 3 enabled zero times --
-so multi-texturing is not the gap; the combiner program is.
-
-`SET_SURFACE_ZETA_OFFSET` (0x0214) and `SET_WINDOW_CLIP_*` (0x02B4/0x02C0/
-0x02E0) are still ignored, so the render-to-texture pass shares the main depth
-buffer and no scissor is applied.
-
-Hardware vertex blending is **not** a gap: `SET_SKIN_MODE` is written with
-non-zero modes, but model-view matrices 1 to 3 (`0x04C0`, `0x0500`, `0x0540`)
-are never uploaded, so there is nothing to blend.
-

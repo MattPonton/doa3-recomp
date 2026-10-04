@@ -26,6 +26,7 @@ set(NV2A_SOURCES
 # Game host sources
 set(GAME_SOURCES
     main.c
+    doa3.rc                  # window/taskbar/exe icon
     movie_present.c
     video_settings.c
     recomp/recomp_manual.c
@@ -98,6 +99,7 @@ endif()
 
 # Keep configuration outputs separate.
 set_target_properties(doa3 PROPERTIES
+    OUTPUT_NAME "DOA3"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
     RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/debug"
     RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/release"
