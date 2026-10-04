@@ -28,6 +28,7 @@
 #include "kernel.h"
 #include "xbox_memory_layout.h"
 #include "xbox_fiber.h"
+#include "xbox_det.h"
 #include <stdio.h>
 #include <string.h>
 #include <float.h>
@@ -109,8 +110,8 @@ static DWORD WINAPI xbox_tick_count_thread(LPVOID arg)
     ULONGLONG t0 = GetTickCount64();
     (void)arg;
     for (;;) {
-        BRIDGE_MEM32(XBOX_KERNEL_DATA_BASE + KDATA_TICK_COUNT) =
-            (uint32_t)(GetTickCount64() - t0);
+        /* Skipped while a netplay session drives the clock (xbox_det.c). */
+        xbox_det_publish_host_tick((uint32_t)(GetTickCount64() - t0));
         Sleep(1);
     }
     return 0;
@@ -666,7 +667,58 @@ static void bridge_KeQueryPerformanceCounter(void)
     static uint32_t s_consec = 0;
     static long long s_last_call = -2;   /* 64-bit: see g_kernel_call_count */
     static uint32_t s_run = 0;      /* every-Nth-poll fallback, never reset */
+    static uint32_t s_epoch = 0;
     int hot = 0;
+    if (s_epoch != xbox_det_epoch()) {
+        /* A netplay session started or ended: both machines must begin the
+         * session with the same poll history, so it cannot carry over. */
+        s_epoch = xbox_det_epoch();
+        s_consec = 0;
+        s_run = 0;
+        s_last_call = -2;
+    }
+    if (g_xbox_det_active) {
+        /* Netplay session: the same hot-poll rules, kept per fiber. The CRI
+         * audio workers poll QPC as often as their streaming work demands,
+         * which depends on where the menu music was when the session began;
+         * counted together with the game thread's polls (and adding to one
+         * shared boost) that moved the game thread's time and yields. Each
+         * fiber now sees frame time plus only its own boost. */
+        static uint32_t d_consec[64], d_run[64];
+        static long long d_last[64];
+        static uint32_t d_epoch = 0;
+        extern int xbox_fiber_is_primary(void);
+        int fb = xbox_fiber_current();
+        long long kc = (long long)xbox_det_fiber_kcalls();
+        uint64_t dv;
+        if (fb < 0 || fb >= 64) fb = 63;
+        if (d_epoch != xbox_det_epoch()) {
+            int i;
+            d_epoch = xbox_det_epoch();
+            memset(d_consec, 0, sizeof(d_consec));
+            memset(d_run, 0, sizeof(d_run));
+            for (i = 0; i < 64; i++) d_last[i] = -2;
+        }
+        if (kc <= d_last[fb] + 2) {
+            if (++d_consec[fb] > 150) hot = 1;
+        } else {
+            d_consec[fb] = 0;
+        }
+        d_last[fb] = kc;
+        if (hot || ++d_run[fb] >= 2048) {
+            xbox_det_add_qpc_boost(733333);
+            /* The game thread's poll loops wait on worker results (loads):
+             * let the workers finish everything, so the number of polls --
+             * and with it the boost, which reaches the game's frame delta
+             * time (sub_000A06D0 -> 0x85B9C0) -- is the same everywhere. */
+            if (xbox_fiber_active() && xbox_fiber_is_primary()) xbox_fiber_run_workers_idle(1024);
+            d_run[fb] = 0;
+        }
+        dv = xbox_det_qpc();
+        g_eax = (uint32_t)(dv & 0xFFFFFFFFu);
+        g_edx = (uint32_t)(dv >> 32);
+        return;
+    }
     if ((long long)g_kernel_call_count <= s_last_call + 2) {   /* tolerate 1 interleaved call
                                                      * (e.g. QPC+QueryFrequency loops) */
         if (++s_consec > 150) hot = 1;   /* >150 near-back-to-back QPC calls = hot loop */
@@ -695,7 +747,7 @@ static void bridge_KeQueryPerformanceCounter(void)
         s_run = 0;
     }
     LARGE_INTEGER li = xbox_KeQueryPerformanceCounter();
-    uint64_t v = (uint64_t)li.QuadPart + s_boost;
+    uint64_t v = (uint64_t)li.QuadPart + s_boost + xbox_det_qpc_offset();
     g_eax = (uint32_t)(v & 0xFFFFFFFFu);
     g_edx = (uint32_t)(v >> 32);
 }
@@ -711,7 +763,13 @@ static void bridge_KeQueryPerformanceFrequency(void)
 static void bridge_KeQuerySystemTime(void)
 {
     uint32_t time_ptr = STACK_ARG(0);
-    xbox_KeQuerySystemTime(XBOX_TO_NATIVE(time_ptr));
+    if (g_xbox_det_active && time_ptr) {
+        uint64_t ft = xbox_det_filetime();   /* netplay session clock */
+        BRIDGE_MEM32(time_ptr) = (uint32_t)ft;
+        BRIDGE_MEM32(time_ptr + 4) = (uint32_t)(ft >> 32);
+    } else {
+        xbox_KeQuerySystemTime(XBOX_TO_NATIVE(time_ptr));
+    }
     g_eax = 0;
 }
 
@@ -811,7 +869,10 @@ static void bridge_KeWaitForSingleObject(void)
          * froze at 1801, the whole XAPI task system starved). Model "vblank
          * always fires": yield once so other fibers get their slice, then
          * report the wait satisfied. */
-        xbox_fiber_yield();
+        /* Netplay session: the workers finish all queued work here, so a load
+         * wait loop takes the same number of vblanks on every machine. */
+        if (g_xbox_det_active && (xbox_fiber_is_primary() || xbox_fiber_is_coroutine())) xbox_fiber_run_workers_idle(1024);
+        else xbox_fiber_yield();
         BRIDGE_MEM32(obj + 4) = 0;
         /* Run the CRI server pump on each vblank wait: on hardware the ADXM
          * user callbacks fire from the vsync interrupt, so game-side wait
@@ -1486,6 +1547,7 @@ static NTSTATUS bridge_create_file_impl(
 /* ── NtCreateFile (ordinal 190, 9 args = 36 bytes) ─────── */
 static void bridge_NtCreateFile(void)
 {
+    xbox_det_note_io();
     uint32_t handle_va   = STACK_ARG(0);  /* PHANDLE */
     uint32_t access      = STACK_ARG(1);  /* ACCESS_MASK */
     uint32_t obj_attrs   = STACK_ARG(2);  /* POBJECT_ATTRIBUTES */
@@ -1504,6 +1566,7 @@ static void bridge_NtCreateFile(void)
 /* ── NtOpenFile (ordinal 202, 6 args = 24 bytes) ──────── */
 static void bridge_NtOpenFile(void)
 {
+    xbox_det_note_io();
     uint32_t handle_va = STACK_ARG(0);  /* PHANDLE */
     uint32_t access    = STACK_ARG(1);  /* ACCESS_MASK */
     uint32_t obj_attrs = STACK_ARG(2);  /* POBJECT_ATTRIBUTES */
@@ -1569,8 +1632,10 @@ static void bridge_KeDelayExecutionThread(void)
         g_eax = 0x000000C0u; /* STATUS_USER_APC */
         return;
     }
-    if (xbox_fiber_active())
-        xbox_fiber_yield();  /* let other fibers run during the sleep */
+    if (xbox_fiber_active()) {
+        if (g_xbox_det_active && (xbox_fiber_is_primary() || xbox_fiber_is_coroutine())) xbox_fiber_run_workers_idle(1024);
+        else xbox_fiber_yield();  /* let other fibers run during the sleep */
+    }
     g_eax = 0; /* STATUS_SUCCESS (timeout elapsed) */
 }
 
@@ -1578,6 +1643,7 @@ int g_kernel_trace_reads = 0;
 extern void (*g_kernel_ptinfo_hook)(const char *where);
 static void bridge_NtReadFile(void)
 {
+    xbox_det_note_io();   /* netplay barrier: waits for file activity to stop */
     HANDLE   handle     = xbox_fh_resolve(STACK_ARG(0)); /* opaque guest handle */
     /* arg1: Event handle - ignored for sync I/O */
     uint32_t apc_va     = STACK_ARG(2);  /* ApcRoutine (kernel NtUserIoApcDispatcher thunk) */
@@ -2796,6 +2862,7 @@ static void kernel_thunk_dispatch(void)
     bridge = g_slot_bridges[slot];
 
     g_kernel_call_count++;
+    xbox_det_on_kernel_call(ordinal);
     {   /* worker-thread scheduling point (see xbox_fiber_timeslice). Only
          * once the movie is over (its verified timing is left alone), and
          * never from inside the CRI server pump or with the CRI lock held. */

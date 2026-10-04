@@ -55916,7 +55916,7 @@ loc_0018EE58: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0018EE60(void)
+void sub_0018EE60_gen(void)
 {
 
 loc_0018EE60: ;

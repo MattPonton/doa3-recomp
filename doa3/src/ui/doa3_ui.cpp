@@ -12,6 +12,9 @@
 extern "C" {
 #include "pad_mapping.h"
 #include "../game/video_settings.h"
+#include "../online/netplay_session.h"
+#include "../online/netplay.h"
+#include "../online/net_upnp.h"
 ID3D11RenderTargetView *d3d8_GetPresentRTV(void);
 UINT                    d3d8_GetPresentWidth(void);
 UINT                    d3d8_GetPresentHeight(void);
@@ -246,6 +249,199 @@ void DrawVideoSection()
         video_set_scale(sc + 1);
 }
 
+/* ── Online section ───────────────────────────────────────────────────────*/
+
+/* Online play has something to show over the game (a wait, a disconnect, a
+ * desync) even when the menu is closed. */
+bool NetplayBannerPending()
+{
+    char b[8];
+    return netplay_banner(b, sizeof(b)) != 0;
+}
+
+void DrawNetplayBanner()
+{
+    char text[200];
+    if (!netplay_banner(text, sizeof(text))) return;
+    const ImGuiViewport *vp = ImGui::GetMainViewport();
+    ImVec2 size = ImGui::CalcTextSize(text);
+    ImGui::SetNextWindowPos(ImVec2(vp->WorkPos.x + vp->WorkSize.x * 0.5f, vp->WorkPos.y + 24.0f),
+                            ImGuiCond_Always, ImVec2(0.5f, 0.0f));
+    ImGui::SetNextWindowSize(ImVec2(size.x + 32.0f, 0.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.75f);
+    if (ImGui::Begin("##netplay_banner", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
+                     ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+                     ImGuiWindowFlags_NoNav | ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextUnformatted(text);
+    }
+    ImGui::End();
+}
+
+void DrawOnlineSection()
+{
+    static const char *kState[] = { "Off", "Armed - waiting for VS character select", "Session running" };
+    static char s_join[128];
+    static int  s_join_init = 0;
+    static int  s_port = 0;
+    np_status st;
+    npl_status nl;
+    netplay_get_status(&st);
+    netplay_get(&nl);
+    if (!s_join_init) {
+        s_join_init = 1;
+        s_join[0] = 0;   /* starts empty; nothing pre-filled */
+    }
+    if (!s_port) s_port = (int)netplay_port();
+
+    bool online = nl.state != NPL_OFFLINE;
+    bool connected = nl.state == NPL_CONNECTED || nl.state == NPL_INMATCH;
+
+    /* status */
+    if (nl.state == NPL_INMATCH && nl.stalling)
+        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "%s", nl.status);
+    else if (nl.desynced)
+        ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", nl.status);
+    else
+        ImGui::TextWrapped("%s", nl.status);
+    if (nl.event[0]) ImGui::TextWrapped("%s", nl.event);
+
+    (void)connected;
+    if (nl.is_host && online) {
+        /* the host's code: the one thing the other player needs */
+        ImGui::SeparatorText("Your code");
+        if (nl.my_code[0]) {
+            ImGui::Text("%s", nl.my_code);
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Copy")) { ImGui::SetClipboardText(nl.my_code); SetStatus("Code copied"); }
+            ImGui::TextDisabled("%s", nl.my_code_note);
+        }
+    } else if (!online) {
+        ImGui::SeparatorText("Join");
+        ImGui::SetNextItemWidth(220);
+        bool enter = ImGui::InputText("##code", s_join, sizeof(s_join), ImGuiInputTextFlags_EnterReturnsTrue);
+        ImGui::SameLine();
+        if (ImGui::Button("Join") || enter) netplay_use_code(s_join);
+        ImGui::SameLine();
+        if (ImGui::Button("Host")) {
+            netplay_set_port((unsigned short)s_port);
+            netplay_host((unsigned short)s_port);
+        }
+    }
+    if (online && ImGui::Button("Disconnect")) netplay_disconnect();
+    if (nl.hint[0]) ImGui::TextWrapped("%s", nl.hint);
+
+    /* delay */
+    ImGui::SeparatorText("Input delay");
+    {
+        int automatic = netplay_delay_auto();
+        int manual = netplay_delay_manual();
+        bool in_match = nl.state == NPL_INMATCH;
+        if (in_match) ImGui::BeginDisabled();
+        if (ImGui::RadioButton("Auto (from the ping)", automatic != 0)) netplay_set_delay(1, manual);
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Manual", automatic == 0)) netplay_set_delay(0, manual);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(120);
+        if (ImGui::SliderInt("frames", &manual, 1, 8)) netplay_set_delay(automatic, manual);
+        if (in_match) ImGui::EndDisabled();
+        ImGui::TextDisabled("%s uses %d frame%s. The host's setting applies to both players.",
+                            in_match ? "This match" : "The next match", nl.delay, nl.delay == 1 ? "" : "s");
+    }
+    if (online) ImGui::BeginDisabled();
+    ImGui::SetNextItemWidth(100);
+    if (ImGui::InputInt("UDP port", &s_port, 0, 0)) {
+        if (s_port < 1) s_port = 1;
+        if (s_port > 65535) s_port = 65535;
+    }
+    if (online) ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button("Save online settings")) {
+        netplay_set_port((unsigned short)s_port);
+        SetStatus(netplay_settings_save() ? "Saved doa3_settings.ini" : "Could not write doa3_settings.ini");
+    }
+    if (g_status[0]) { ImGui::SameLine(); ImGui::TextDisabled("%s", g_status); }
+
+    ImGui::Separator();
+    if (nl.state == NPL_INMATCH)
+        ImGui::Text("%s Battle online, frame %u, %.1f frames ahead of the other side",
+                    nl.match_tag ? "Tag" : "Single", nl.match_frame, nl.frames_ahead);
+
+    ImGui::Separator();
+    if (ImGui::CollapsingHeader("Developer Settings")) {
+        static int role = NP_ROLE_HOST;
+        bool armed = netplay_armed() != 0;
+        bool running = st.state == NP_STATE_ACTIVE;
+
+        ImGui::TextWrapped("Runs a VS session with both players on this machine "
+                           "under the lockstep rules: frame-driven clocks and "
+                           "workers, synced seed/settings/fight state, ports 0-1 "
+                           "only. A per-frame digest log is written next to the "
+                           "game when you leave Versus.");
+        if (running || online) ImGui::BeginDisabled();
+        ImGui::RadioButton("Host path", &role, NP_ROLE_HOST);
+        ImGui::SameLine();
+        ImGui::RadioButton("Joiner path (save redirect, settings blob, restore)", &role, NP_ROLE_JOINER);
+        bool mirror = netplay_mirror() != 0;
+        if (ImGui::Checkbox("Player 2 mirrors Player 1 (one controller)", &mirror))
+            netplay_set_mirror(mirror ? 1 : 0);
+        if (ImGui::Checkbox("Arm local session", &armed))
+            netplay_set_armed(armed ? 1 : 0, role);
+        if (running || online) ImGui::EndDisabled();
+
+        bool diag = netplay_diag() != 0;
+        if (ImGui::Checkbox("Diagnostic logs (netplay_events.txt, digest logs on desync)", &diag))
+            netplay_set_diag(diag ? 1 : 0);
+        ImGui::Text("State: %s", kState[st.state < 3 ? st.state : 0]);
+        if (running) {
+            ImGui::Text("%s Battle, %s path, frame %u",
+                        st.tag ? "Tag" : "Single",
+                        st.role == NP_ROLE_JOINER ? "joiner" : "host", st.frame);
+            ImGui::Text("Digest %016llX", (unsigned long long)st.digest);
+        }
+        ImGui::Text("Sessions completed: %u", st.sessions);
+        if (st.last_log[0]) ImGui::TextDisabled("Last log: %s", st.last_log);
+
+        /* Determinism check: record a session, then replay it (ideally in a
+         * fresh launch) and see whether every frame's digest matches. */
+        ImGui::Separator();
+        bool record = netplay_record() != 0;
+        if (ImGui::Checkbox("Record each session to a replay file", &record))
+            netplay_set_record(record ? 1 : 0);
+
+        static char s_files[32][128];
+        static int s_nfiles = -1, s_pick = 0;
+        if (s_nfiles < 0 || ImGui::Button("Refresh")) {
+            s_nfiles = netplay_list_replays(s_files, 32);
+            if (s_pick >= s_nfiles) s_pick = 0;
+        }
+        if (s_nfiles > 0) {
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(330);
+            if (ImGui::BeginCombo("##replay", s_files[s_pick])) {
+                for (int i = 0; i < s_nfiles; i++)
+                    if (ImGui::Selectable(s_files[i], i == s_pick)) s_pick = i;
+                ImGui::EndCombo();
+            }
+            if (running) ImGui::BeginDisabled();
+            if (ImGui::Button("Replay selected")) netplay_request_replay(s_files[s_pick]);
+            if (running) ImGui::EndDisabled();
+        } else {
+            ImGui::SameLine();
+            ImGui::TextDisabled("No replay files yet");
+        }
+        if (running && st.replaying) {
+            if (st.diverged_at == 0xFFFFFFFFu)
+                ImGui::Text("Replay frame %u / %u - matching", st.frame, st.replay_frames);
+            else
+                ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f),
+                                   "Replay frame %u / %u - diverged at frame %u",
+                                   st.frame, st.replay_frames, st.diverged_at);
+        }
+        if (st.message[0]) ImGui::TextWrapped("%s", st.message);
+    }
+}
+
 void DrawMenu()
 {
     const ImGuiViewport *vp = ImGui::GetMainViewport();
@@ -257,6 +453,10 @@ void DrawMenu()
     bool open = true;
     if (ImGui::Begin("Dead or Alive 3", &open, ImGuiWindowFlags_NoCollapse)) {
         if (ImGui::BeginTabBar("##tabs")) {
+            if (ImGui::BeginTabItem("Online")) {
+                DrawOnlineSection();
+                ImGui::EndTabItem();
+            }
             if (ImGui::BeginTabItem("Controls")) {
                 DrawControlsSection();
                 ImGui::EndTabItem();
@@ -376,7 +576,9 @@ extern "C" int doa3_ui_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 
 extern "C" void doa3_ui_render(void)
 {
-    if (!g_visible) return;              /* nothing to do on a normal frame */
+    /* Nothing to do on a normal frame unless the menu is open or online play
+     * has something to say over the game. */
+    if (!g_visible && !NetplayBannerPending()) return;
     if (!g_ready && !doa3_ui_init()) return;
 
     ID3D11DeviceContext *ctx = d3d8_GetD3D11Context();
@@ -396,7 +598,8 @@ extern "C" void doa3_ui_render(void)
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
 
-    DrawMenu();
+    if (g_visible) DrawMenu();
+    DrawNetplayBanner();
 
     ImGui::Render();
 

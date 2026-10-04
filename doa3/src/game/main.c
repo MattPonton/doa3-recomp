@@ -80,6 +80,10 @@ static int doa3_init_graphics(void)
     unsigned gw, gh;
 
     video_settings_load();
+    {   /* online play: settings and winsock (no sockets until the user hosts or joins) */
+        extern void netplay_init(void);
+        netplay_init();
+    }
     video_guest_target_size(video_get_aspect(), &gw, &gh);
     g_hwnd = doa3_create_window();
     if (!g_hwnd) { fprintf(stderr, "WARNING: window creation failed\n"); }
@@ -123,8 +127,10 @@ void doa3_pump_messages(void)
     MSG msg;
     while (PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE)) {
         if (msg.message == WM_QUIT) {
+            extern void netplay_shutdown(void);
             fprintf(stderr, "[EXIT] window closed by user%c", 10);
             fflush(stderr);
+            netplay_shutdown();
             ExitProcess(0);
         }
         TranslateMessage(&msg);
@@ -254,8 +260,10 @@ void doa3_present_frame(void)
         if (msg.message == WM_QUIT) {
             /* The recompiled game never returns to us — hard-exit the host
              * when the user closes the window. */
+            extern void netplay_shutdown(void);
             fprintf(stderr, "[EXIT] window closed by user\n");
             fflush(stderr);
+            netplay_shutdown();
             ExitProcess(0);
         }
         TranslateMessage(&msg);
@@ -1248,8 +1256,10 @@ static DWORD WINAPI diag_sampler(LPVOID p)
 
 static void doa3_atexit(void)
 {
+    extern void netplay_shutdown(void);
     fprintf(stderr, "[EXIT] process exiting via exit()/CRT (g_esp=0x%08X)\n", g_esp);
     fflush(stderr);
+    netplay_shutdown();   /* tell the other player, close the router port */
 }
 
 static LONG WINAPI doa3_unhandled(PEXCEPTION_POINTERS info)
@@ -1285,6 +1295,11 @@ int main(int argc, char **argv)
 {
     void *xbe_data = NULL; size_t xbe_size = 0;
     (void)argc; (void)argv;
+    {   /* The CRT math library picks FMA3 or non-FMA code per CPU; online
+         * lockstep needs identical results on both machines. */
+        extern int __cdecl _set_FMA3_enable(int flag);
+        _set_FMA3_enable(0);
+    }
     doa3_watchdog_start();   /* localise non-faulting hangs (see doa3_watchdog) */
     /* Find the project root so relative asset paths work from any build
      * configuration directory. */

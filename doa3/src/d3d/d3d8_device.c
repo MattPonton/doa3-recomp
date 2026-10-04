@@ -130,7 +130,7 @@ void d3d8_PresentFrame(void)
     /* Pump Windows messages */
     MSG msg;
     while (PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE)) {
-        if (msg.message == WM_QUIT) ExitProcess(0);
+        if (msg.message == WM_QUIT) { extern void netplay_shutdown(void); netplay_shutdown(); ExitProcess(0); }
         TranslateMessage(&msg);
         DispatchMessageA(&msg);
     }
@@ -800,6 +800,14 @@ static HRESULT d3d8_compose_and_present(void)
     return hr;
 }
 
+/* Online play: while the game thread waits for the other player's input it
+ * redraws the last guest frame with the overlay on top, so the window and
+ * the Esc menu stay live during the wait. */
+HRESULT d3d8_PresentHold(void)
+{
+    return d3d8_compose_and_present();
+}
+
 static HRESULT __stdcall dev_Present(IDirect3DDevice8 *self, const RECT *src, const RECT *dst, HWND hWnd, void *pDirty)
 {
     static DWORD frame_count = 0;
@@ -856,6 +864,8 @@ static HRESULT __stdcall dev_Present(IDirect3DDevice8 *self, const RECT *src, co
     MSG msg;
     while (PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE)) {
         if (msg.message == WM_QUIT) {
+            extern void netplay_shutdown(void);
+            netplay_shutdown();
             ExitProcess(0);
         }
         TranslateMessage(&msg);
@@ -1869,6 +1879,8 @@ static HRESULT __stdcall dev_Swap(IDirect3DDevice8 *self, DWORD Flags)
     MSG msg;
     while (PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE)) {
         if (msg.message == WM_QUIT) {
+            extern void netplay_shutdown(void);
+            netplay_shutdown();
             ExitProcess(0);
         }
         TranslateMessage(&msg);

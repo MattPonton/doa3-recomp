@@ -19,6 +19,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <windows.h>
+#include "online/netplay_session.h"
+#include "online/netplay.h"
 
    /* CaptureStackBackTrace (SBH alloc-loop diagnostics) */
 
@@ -584,7 +586,7 @@ void sub_001E6958(void)   /* XGetDevices(type) -> connected mask, stdcall ret 4 
      * inside cxbx reproduces this port's teardown exactly. */
     {
         extern DWORD xbox_InputHostMask(void);
-        uint32_t mask = xbox_InputHostMask();
+        uint32_t mask = netplay_filter_pad_mask(xbox_InputHostMask());
         /* Real XAPI semantics (cxbx Xapi.cpp, XGetDevices): reporting the
          * connected set also resets the change baseline, so the next
          * XGetDeviceChanges does NOT re-report these pads as insertions. */
@@ -617,9 +619,19 @@ void sub_001E697A(void)   /* XGetDeviceChanges(type, &ins, &rem), stdcall ret 12
      * skip, and the corner logo never armed. */
     extern DWORD xbox_InputHostMask(void);
     uint32_t p_ins = MEM32(esp + 8), p_rem = MEM32(esp + 12);
-    uint32_t cur = xbox_InputHostMask();
+    /* A netplay session fixes the topology at ports 0 and 1 on both
+     * machines, whatever pads they have (netplay_session.c). */
+    uint32_t cur = netplay_filter_pad_mask(xbox_InputHostMask());
     uint32_t ins = cur & ~s_xpp_prev_mask;
     uint32_t rem = s_xpp_prev_mask & ~cur;
+    {   /* A forced port the game has not opened yet (no handle at
+         * pad+0x78) is reported as an insertion whatever the baseline says:
+         * XGetDevices from the menus would otherwise swallow it. */
+        uint32_t forced = netplay_forced_pads(), p;
+        for (p = 0; p < 4; p++)
+            if ((forced & (1u << p)) && MEM32(0x5E5CD0u + 0x80u * p + 0x78u) == 0)
+                ins |= 1u << p;
+    }
     s_xpp_prev_mask = cur;
     if (p_ins) MEM32(p_ins) = ins;
     if (p_rem) MEM32(p_rem) = rem;
@@ -627,6 +639,63 @@ void sub_001E697A(void)   /* XGetDeviceChanges(type, &ins, &rem), stdcall ret 12
     }
     eax = (ins | rem) ? 1u : 0u;
     esp += 16;
+}
+/* Netplay session start: put the four pad structs into the same state on
+ * both machines -- the ports in `mask` open with the fake handle XInputOpen
+ * hands out, the others closed, no carried-over pad or rumble state, and the
+ * per-frame aggregates (which hold last frame's buttons and the auto-repeat
+ * counters) cleared. The change baseline is set so XGetDeviceChanges reports
+ * nothing for these ports on the next frame. */
+void doa3_netplay_force_pads(uint32_t mask)
+{
+    uint32_t p, i;
+    for (p = 0; p < 4; p++) {
+        uint32_t pad = 0x5E5CD0u + 0x80u * p;
+        for (i = 0x00; i < 0x19; i++) MEM8(pad + i) = 0;       /* caps blob */
+        for (i = 0x19; i < 0x45; i++) MEM8(pad + i) = 0;       /* both state slots */
+        for (i = 0x71; i < 0x78; i++) MEM8(pad + i) = 0;       /* rumble motors */
+        MEM32(pad + 0x7C) = 0;                                  /* rumble timer */
+        if (mask & (1u << p)) {
+            MEM8(pad) = 1;                                      /* XINPUT_DEVSUBTYPE_GC_GAMEPAD */
+            MEM32(pad + 0x78) = 0x0AD00001u + p;                /* XInputOpen's handle */
+        } else {
+            MEM32(pad + 0x78) = 0;
+        }
+    }
+    for (i = 0x5E5ED8u; i < 0x5E5FA4u; i++) MEM8(i) = 0;
+    MEM32(0x5E5ED0) = mask;
+    MEM32(0x5E5CC8) = 0;
+    MEM32(0x5E5CCC) = 0;
+    s_xpp_prev_mask = mask;
+}
+/* CRT rand() (sub_0018EE60; seed at [[0x1C] + 0x14]). Netplay sessions
+ * account for every call (netplay_note_rand). */
+void sub_0018EE60_gen(void);
+/* Worker fibers' private rand() state, one stream per fiber, reseeded from
+ * the session seed at session start and every screen change. */
+static uint32_t s_wseed[64];
+void doa3_worker_rand_seed(uint32_t seed)
+{
+    int i;
+    for (i = 0; i < 64; i++) s_wseed[i] = (seed ^ (uint32_t)(i * 0x9E3779B1u)) | 1u;
+}
+void sub_0018EE60(void)
+{
+    netplay_note_rand();
+    /* Online session: worker fibers (audio/file) call rand() a host-timing
+     * dependent number of times; they draw from their own streams so the
+     * game thread's seed only moves with gameplay. */
+    extern int xbox_fiber_active(void), xbox_fiber_is_primary(void), xbox_fiber_is_coroutine(void);
+    if (netplay_active() && xbox_fiber_active() && !xbox_fiber_is_primary() && !xbox_fiber_is_coroutine()) {
+        extern int xbox_fiber_current(void);
+        int f = xbox_fiber_current();
+        uint32_t *w = &s_wseed[(f >= 0 && f < 64) ? f : 63];
+        if (!*w) *w = 0x12345u | (uint32_t)f;
+        *w = *w * 214013u + 2531011u;
+        eax = (*w >> 16) & 0x7FFFu;
+        return;
+    }
+    sub_0018EE60_gen();
 }
 void sub_001E6EAF_xppgen(void);
 void sub_001E6EAF(void)   /* XInputClose(handle), stdcall ret 4 */
@@ -2619,6 +2688,11 @@ void doa3_apu_wait_retire(uint32_t obj)
         eax = r_eax; ecx = r_ecx; edx = r_edx; ebx = r_ebx; esi = r_esi;
         edi = r_edi; esp = r_esp; g_seh_ebp = r_seh;
         if (!(MEM32(obj + 8) & 0x10000000u)) break;
+        {   /* netplay session: the chip only moves when stepped (apu_core.c) */
+            extern volatile int g_apu_det;
+            extern void mcpx_apu_det_step(void);
+            if (g_apu_det) { mcpx_apu_det_step(); continue; }
+        }
         Sleep(1);
         if (!warned && GetTickCount() - t0 > 500) {
             warned = 1;
@@ -3887,6 +3961,11 @@ unsigned g_in_getstate, g_in_build;
 void sub_0009EB90_gen(void);
 void sub_0009EB90(void) {
     g_in_build++;
+    /* Netplay: the lockstep frame. Supplies both players' pads to the raw
+     * slots this builder reads (no-op outside a session). The poll before
+     * it services the online lobby (one flag check when offline). */
+    netplay_poll();
+    netplay_input_tick();
     sub_0009EB90_gen();
     {   /* Did a press actually reach the aggregate the post-movie screen
          * tests (sub_00081E90 reads bits 4-15 of 0x5E5EE0)? */
@@ -6608,6 +6687,12 @@ void sub_001B8970(void)
                 QueryPerformanceCounter(&now);
                 if (!s_next) s_next = now.QuadPart;
                 s_next += period;
+                {   /* online match: the side that runs ahead of the other
+                     * waits a little longer (<= 1 ms per frame) so it drifts
+                     * back instead of stalling on every late input */
+                    int xs = netplay_pacing_extra_us();
+                    if (xs) s_next += (period * xs) / 16667;
+                }
                 /* A frame that overran its slot leaves the deadline in the
                  * past, and the next frames then run without waiting until the
                  * schedule is met again.  The catch-up is bounded to 8 frames:

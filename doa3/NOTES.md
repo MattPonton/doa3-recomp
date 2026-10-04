@@ -605,6 +605,83 @@ must be recreated or preserved during regeneration:
 Do not treat these files as disposable build products. A regeneration is not
 complete until their symbols and behavior are represented in the new output.
 
+## Online Play
+
+Two-player Versus (Single or Tag Battle) over the internet, from the **Online**
+tab of the Esc menu. Delay-based lockstep: both machines run the same game from
+the same inputs, so nothing is predicted and nothing is rolled back.
+
+How to play:
+
+1. One player clicks **Host**. The game asks a public STUN server what its UDP
+   socket looks like from the internet and shows a 17-character join code
+   (`XXXXXXXX-XXXXXXXX`: public address and port, then LAN address and port,
+   64-symbol alphabet). Copy it to the other player.
+2. The other player pastes it and clicks **Join**. It sends to both addresses
+   (and announces itself on the local network); whichever answers is used.
+   No router setup. The host PC needs a Windows Firewall inbound rule for
+   `doa3.exe` (Windows never shows its prompt when the game is borderless), e.g.
+   `New-NetFirewallRule -DisplayName "DOA3 PC online" -Direction Inbound -Program <path>\doa3.exe -Protocol UDP -Action Allow -Profile Any`
+   from an administrator PowerShell. A symmetric NAT (some mobile/corporate
+   networks) cannot be crossed without a relay; Tailscale/ZeroTier works there.
+3. Both players open Versus and pick the same battle type (Single or Tag). The
+   match starts when both have reached character select; the host's settings
+   and unlocks apply, the joiner keeps its own button layout and volumes, and
+   the joiner's saves go to `TitleData_netplay` for the duration. Both builds
+   must be the same `doa3.exe`; a mismatch is refused with the two build stamps.
+4. Leaving Versus ends the match; the connection stays up for a rematch.
+
+What keeps the two games identical (all verified frame by frame with
+`tools/online/compare_digests.py` on the two digest logs):
+
+- the start state (seed, clock bases, APU counter, save image, fight-state
+  regions, character-select cursor state) sent by the host at character select;
+- a resync of the same fight-state regions at every screen transition inside
+  the match (select -> stage -> fight), because preview models load a frame
+  apart on different machines;
+- the CRT math library pinned to its non-FMA path (`_set_FMA3_enable(0)`), so
+  different CPUs round alike;
+- worker fibers (audio/file streaming) draw `rand()` from private per-fiber
+  streams reseeded from the session seed, so host-timing-dependent call counts
+  never move the game's seed.
+
+Pieces (all in `src/online/`):
+
+- `netplay_session.c`: the session core. At the character-select barrier it
+  captures the start parameters (seed, clock bases, APU sample counter, the save
+  image, the fight-state regions) and both sides apply the same bytes; every
+  frame it writes both pads into guest ports 0 (host) and 1 (joiner) before the
+  aggregate builder and digests the fight state. `xbox_det.c` derives every
+  guest clock from the frame counter and runs the worker fibers until idle at
+  each frame, so timing cannot differ between machines.
+- `netplay.c`: one UDP socket for everything: the STUN request (repeated
+  every 15 s to keep the NAT mapping alive while waiting), the lobby protocol
+  (hello/welcome with the build stamp, pings for the input-delay estimate,
+  ready, the start parameters and transition resyncs as acknowledged chunks,
+  leave/bye with a per-match token) and GekkoNet's packets through a custom
+  adapter. With "Diagnostic logs" on in the tab's developer section (off by
+  default), every event is appended to `netplay_events.txt` next to the game
+  and a desync reports the frame and the state region on both sides. GekkoNet (`third_party/GekkoNet`, prediction window
+  0) exchanges the per-frame inputs and compares the digests; a mismatch raises
+  a desync, ends the match and leaves `netplay_digest_*_host.txt` /
+  `netplay_digest_*_joiner.txt` next to the game (written only on a desync or
+  when recording) for `tools/online/compare_digests.py`.
+- `net_upnp.c` (miniupnpc, `third_party/miniupnpc`) maps and unmaps the port on
+  a background thread; `join_code.c` encodes the address.
+- While the game thread waits for the other side's input it redraws the last
+  frame with the overlay (`d3d8_PresentHold`) and pumps the window, so the Esc
+  menu and its Disconnect button keep working. The side that runs ahead waits
+  up to 1 ms extra per frame so the two drift back together.
+
+Input delay: auto (`ceil(ping/2 / 16.7 ms) + 1`, 1..8 frames) or manual; the
+host's choice applies to both. Settings live under `[Online]` in
+`doa3_settings.ini`. Nothing in this section is active without a connection;
+offline play is the same code path as before.
+
+The developer section of the tab still records and replays local sessions
+(`netplay_replay_*.dnr`), the determinism gate that every change to timing,
+audio or fiber scheduling must keep passing.
+
 ## Diagnostics
 
 Normal runs write `doa3_log.txt`; generated logs and frame captures are ignored
