@@ -16,12 +16,14 @@ cmake -S doa3 -B doa3/build
 cmake --build doa3/build --config Release --target doa3
 ```
 
-The binary lands in `doa3/build/release/doa3.exe`.
+The binary lands in `doa3/build/release/DOA3.exe`.
 
 ## Running
 
-Game files are **not** included. Extract a Dead or Alive 3 disc image to `doa3gamefiles/` next to
-the `doa3/` folder, so `doa3gamefiles/default.xbe` exists, then run the executable.
+Game files are **not** included. On first launch, select your legally obtained copy of Dead or Alive 3 (USA) in `.xiso` or
+`.xiso` format. Assets files are automatically extracted and the game will be ready to play.
+
+Logs are written to `doa3_log.txt` and `xbox_kernel.log` while save data can be found in `%LOCALAPPDATA%\DeadOrAlive3`
 
 ## Credits
 

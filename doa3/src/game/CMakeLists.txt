@@ -29,6 +29,7 @@ set(GAME_SOURCES
     doa3.rc                  # window/taskbar/exe icon
     movie_present.c
     video_settings.c
+    xiso_extract.c           # first-run install of the game files from a disc image
     recomp/recomp_manual.c
     burnout_compat_stubs.c   # inert stubs for burnout-only symbols the nv2a srcs need
     ${NV2A_SOURCES}

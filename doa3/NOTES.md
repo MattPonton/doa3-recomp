@@ -6,8 +6,8 @@ Random technical notes that may be helpful when working on the project
 
 The project expects legally obtained game data including files like:
 
-- XBE: `../doa3gamefiles/default.xbe`
-- Opening movie: `../doa3gamefiles/ninja.sfd`
+- XBE: `assets/default.xbe`
+- Opening movie: `assets/ninja.sfd`
 
 Relevant XBE facts:
 
@@ -41,6 +41,11 @@ build/release/DOA3.exe
 ```
 
 No external movie decoder or FFmpeg installation is required.
+
+### Game folder
+
+`assets/`, `doa3_log.txt` and `xbox_kernel.log` live next to `DOA3.exe`. If
+`assets/` is incomplete, a setup screen extracts it from the user's xiso.
 
 ## Runtime Architecture
 
@@ -161,10 +166,10 @@ audio or fiber scheduling must keep passing.
 A full pipeline regeneration can overwrite generated fixes. Run from `doa3/`:
 
 ```powershell
-py -3 tools/xbe_parser/xbe_parser.py ../doa3gamefiles/default.xbe --json tools/xbe_parser/doa3_analysis.json --quiet
-py -3 -m tools.disasm ../doa3gamefiles/default.xbe --force -v
-py -3 -m tools.func_id ../doa3gamefiles/default.xbe
-py -3 -m tools.recomp ../doa3gamefiles/default.xbe --all --split 1000
+py -3 tools/xbe_parser/xbe_parser.py build/release/assets/default.xbe --json tools/xbe_parser/doa3_analysis.json --quiet
+py -3 -m tools.disasm build/release/assets/default.xbe --force -v
+py -3 -m tools.func_id build/release/assets/default.xbe
+py -3 -m tools.recomp build/release/assets/default.xbe --all --split 1000
 ```
 
 The analysis filename is retained for loader compatibility even though it

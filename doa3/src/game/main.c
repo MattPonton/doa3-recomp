@@ -26,11 +26,14 @@
 #include "recomp/gen/recomp_funcs.h"
 #include "recomp/recomp_dispatch.h"   /* recomp_lookup for the CRT initializers */
 #include "ui/doa3_ui.h"
+#include "ui/doa3_setup.h"
+#include "xiso_extract.h"
 #include "video_settings.h"
 
 #define DOA3_ENTRY_POINT   0x001651A5
-#define DOA3_XBE_PATH      "../doa3gamefiles/default.xbe"
-#define DOA3_GAME_DIR      "../doa3gamefiles"
+/* Game files live in an "assets" folder next to the exe; the working
+ * directory is set to the exe's folder at startup. */
+#define DOA3_XBE_PATH      "assets/default.xbe"
 
 /* Host window + D3D8->D3D11 device (mirrors burnout3's graphics init). The NV2A
  * pgraph->D3D11 translator renders through this device via xbox_GetD3DDevice(). */
@@ -45,6 +48,7 @@ static LRESULT CALLBACK doa3_wndproc(HWND h, UINT m, WPARAM w, LPARAM l)
     if (m == WM_DESTROY) { PostQuitMessage(0); return 0; }
     /* The Esc overlay gets first refusal on input: it opens/closes itself and,
      * while visible, keeps keyboard and mouse out of the game. */
+    if (doa3_setup_wndproc(h, m, w, l)) return 0;   /* first-run setup screen */
     if (doa3_ui_wndproc(h, m, w, l)) return 0;
     return DefWindowProcA(h, m, w, l);
 }
@@ -90,7 +94,8 @@ static int doa3_init_graphics(void)
         netplay_init();
     }
     video_guest_target_size(video_get_aspect(), &gw, &gh);
-    g_hwnd = doa3_create_window();
+    if (!g_hwnd)   /* the first-run setup screen may already have made it */
+        g_hwnd = doa3_create_window();
     if (!g_hwnd) { fprintf(stderr, "WARNING: window creation failed\n"); }
 
     g_d3d8 = xbox_Direct3DCreate8(0);
@@ -1306,28 +1311,18 @@ int main(int argc, char **argv)
         _set_FMA3_enable(0);
     }
     doa3_watchdog_start();   /* localise non-faulting hangs (see doa3_watchdog) */
-    /* Find the project root so relative asset paths work from any build
-     * configuration directory. */
+    /* Run from the exe's folder, whatever the launcher's working directory:
+     * the assets folder, the log and the ini files all sit next to the exe. */
+    WCHAR assets_dir[MAX_PATH] = L"assets";
     {
-        char exedir[MAX_PATH];
-        DWORD n = GetModuleFileNameA(NULL, exedir, MAX_PATH);
+        WCHAR exedir[MAX_PATH];
+        DWORD n = GetModuleFileNameW(NULL, exedir, MAX_PATH);
         if (n > 0 && n < MAX_PATH) {
-            char *slash = strrchr(exedir, 0x5c);
+            WCHAR *slash = wcsrchr(exedir, L'\\');
             if (slash) {
-                char asset[MAX_PATH];
                 *slash = 0;
-                for (int depth = 0; depth < 4; depth++) {
-                    snprintf(asset, sizeof(asset),
-                             "%s\\..\\doa3gamefiles\\default.xbe", exedir);
-                    if (GetFileAttributesA(asset) != INVALID_FILE_ATTRIBUTES) {
-                        SetCurrentDirectoryA(exedir);
-                        break;
-                    }
-                    slash = strrchr(exedir, 0x5c);
-                    if (!slash)
-                        break;
-                    *slash = 0;
-                }
+                SetCurrentDirectoryW(exedir);
+                swprintf_s(assets_dir, MAX_PATH, L"%s\\assets", exedir);
             }
         }
     }
@@ -1375,6 +1370,19 @@ int main(int argc, char **argv)
                     &g_diag_main_thread, 0, FALSE, DUPLICATE_SAME_ACCESS);
     CreateThread(NULL, 0, diag_sampler, NULL, 0, NULL);
 
+    /* First run (or a damaged install): ask for the disc image and extract it
+     * into assets before anything reads from there. */
+    if (!xiso_assets_ready(assets_dir)) {
+        fprintf(stderr, "[SETUP] game files missing from %S, showing setup screen\n", assets_dir);
+        video_settings_load();
+        g_hwnd = doa3_create_window();
+        if (!doa3_setup_run(g_hwnd, assets_dir)) {
+            fprintf(stderr, "[EXIT] setup closed without installing the game files\n");
+            return 0;
+        }
+        fprintf(stderr, "[SETUP] game files installed\n");
+    }
+
     if (!load_xbe(DOA3_XBE_PATH, &xbe_data, &xbe_size)) {
         {
             char cwd[MAX_PATH] = {0};
@@ -1382,7 +1390,7 @@ int main(int argc, char **argv)
             char msg[512];
             snprintf(msg, sizeof(msg),
                      "Could not load %s\n(working directory: %s)\n\n"
-                     "Expected the game files in a doa3gamefiles folder next to the doa3 project folder.",
+                     "Expected the game files in the assets folder next to DOA3.exe.",
                      DOA3_XBE_PATH, cwd);
             fprintf(stderr, "FATAL: %s\n", msg);
             MessageBoxA(NULL, msg, "DOA3 recomp - startup error", 0x10);
@@ -1398,7 +1406,7 @@ int main(int argc, char **argv)
            (unsigned long long)(uintptr_t)xbox_GetMemoryOffset());
 
     xbox_kernel_init();
-    xbox_path_init(DOA3_GAME_DIR, NULL);
+    xbox_path_init(NULL, NULL);   /* D:\ -> <exe folder>\assets */
     xbox_kernel_bridge_init();
 
     /* Pre-initialize CRT bootstrap locks (replicates _mtinitlocks @ 0x00191ACA).

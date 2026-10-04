@@ -385,13 +385,12 @@ static struct {
 
 static DWORD WINAPI movie_prep_thread(LPVOID unused)
 {
-    char paths[2][MAX_PATH];
+    char paths[1][MAX_PATH];
     uint8_t *audio = NULL;
     size_t audio_size = 0;
     (void)unused;
-    snprintf(paths[0], MAX_PATH, "..\\doa3gamefiles\\%s", s_prep.name);
-    snprintf(paths[1], MAX_PATH, "..\\..\\doa3gamefiles\\%s", s_prep.name);
-    for (int i = 0; i < 2 && !s_prep.ok; i++) {
+    snprintf(paths[0], MAX_PATH, "assets\\%s", s_prep.name);
+    for (int i = 0; i < 1 && !s_prep.ok; i++) {
         if (GetFileAttributesA(paths[i]) == INVALID_FILE_ATTRIBUTES) continue;
         snprintf(s_prep.asset, MAX_PATH, "%s", paths[i]);
         s_prep.ok = movie_extract_streams(paths[i], &s_prep.video, &s_prep.video_size,

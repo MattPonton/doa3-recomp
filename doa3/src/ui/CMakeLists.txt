@@ -1,9 +1,11 @@
-# In-game overlay: Dear ImGui + the pad remapping panel.
+# In-game overlay: Dear ImGui + the pad remapping panel, and the first-run
+# setup screen that installs the game files from a disc image.
 
 set(IMGUI_DIR ${CMAKE_SOURCE_DIR}/third_party/imgui)
 
 add_library(doa3_ui STATIC
     doa3_ui.cpp
+    doa3_setup.cpp
     ${IMGUI_DIR}/imgui.cpp
     ${IMGUI_DIR}/imgui_draw.cpp
     ${IMGUI_DIR}/imgui_tables.cpp
@@ -24,6 +26,8 @@ target_link_libraries(doa3_ui PRIVATE
     xinput
     user32
     dwmapi
+    comdlg32
+    shell32
 )
 
 # ImGui is third-party: build it clean but do not hold it to our warning level.
