@@ -20,7 +20,7 @@ int video_get_window_mode(void) { return g_window_mode; }
 int video_get_aspect(void)      { return g_aspect; }
 int video_get_scale(void)       { return g_scale; }
 
-static const char *video_ini_path(void)
+const char *doa3_settings_ini_path(void)
 {
     static char path[MAX_PATH];
     char *slash;
@@ -37,7 +37,7 @@ static const char *video_ini_path(void)
 
 int video_settings_load(void)
 {
-    const char *p = video_ini_path();
+    const char *p = doa3_settings_ini_path();
     int wm = (int)GetPrivateProfileIntA("Video", "WindowMode", VIDEO_BORDERLESS, p);
     int ar = (int)GetPrivateProfileIntA("Video", "Widescreen", VIDEO_ASPECT_16_9, p);
     int sc = (int)GetPrivateProfileIntA("Video", "InternalResolution", 3, p);
@@ -49,7 +49,7 @@ int video_settings_load(void)
 
 int video_settings_save(void)
 {
-    const char *p = video_ini_path();
+    const char *p = doa3_settings_ini_path();
     /* WindowMode: 0 = windowed, 1 = borderless fullscreen.
      * Widescreen: 0 = 4:3, 1 = 16:9.
      * InternalResolution: 1 = 480 lines, 2 = 960, 3 = 1440. */

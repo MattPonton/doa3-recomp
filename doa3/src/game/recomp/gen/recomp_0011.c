@@ -1527,7 +1527,6 @@ void sub_001C7D21_gen(void)
 loc_001C7D21: ;
     PUSH32(esp, ebp);
     ebp = esp;
-    { static int n=0; if (n<4) { n++; fprintf(stderr, "[7D21] ebp=%08X [ebp+8]=%08X [ebp+C]=%08X\n", ebp, MEM32(ebp+8), MEM32(ebp+0xC)); } } /* DOA3 probe */
     esp = esp - 0xC;
     PUSH32(esp, 0); sub_001C6B22(); /* call 0x001C6B22 */
 

@@ -33,6 +33,7 @@ ULONG_PTR xbox_kernel_thunk_table[XBOX_KERNEL_THUNK_TABLE_SIZE] = {0};
  * ============================================================================ */
 
 static FILE* g_log_file = NULL;
+static int   g_log_on = 0;   /* xbox_kernel.log, off unless logging is enabled */
 static int   g_log_level = XBOX_LOG_INFO;
 static CRITICAL_SECTION g_log_cs;
 static BOOL  g_log_cs_init = FALSE;
@@ -55,7 +56,7 @@ void xbox_log(int level, const char* subsystem, const char* fmt, ...)
     char timestamp[32];
     SYSTEMTIME st;
 
-    if (level > g_log_level)
+    if (!g_log_on || level > g_log_level)
         return;
 
     GetLocalTime(&st);
@@ -65,7 +66,11 @@ void xbox_log(int level, const char* subsystem, const char* fmt, ...)
     if (g_log_cs_init)
         EnterCriticalSection(&g_log_cs);
 
-    FILE* out = g_log_file ? g_log_file : stderr;
+    FILE* out = g_log_file;
+    if (!out) {   /* closed by xbox_log_set_enabled since the check above */
+        if (g_log_cs_init) LeaveCriticalSection(&g_log_cs);
+        return;
+    }
     fprintf(out, "[%s] %s [%-6s] ", timestamp, xbox_log_level_str(level), subsystem);
 
     va_start(args, fmt);
@@ -77,6 +82,16 @@ void xbox_log(int level, const char* subsystem, const char* fmt, ...)
 
     if (g_log_cs_init)
         LeaveCriticalSection(&g_log_cs);
+}
+
+/* Open or close xbox_kernel.log. Safe before xbox_kernel_init. */
+void xbox_log_set_enabled(int on)
+{
+    if (g_log_cs_init) EnterCriticalSection(&g_log_cs);
+    if (on && !g_log_file) g_log_file = fopen("xbox_kernel.log", "w");
+    if (!on && g_log_file) { fclose(g_log_file); g_log_file = NULL; }
+    g_log_on = on && g_log_file;
+    if (g_log_cs_init) LeaveCriticalSection(&g_log_cs);
 }
 
 /* ============================================================================
@@ -340,9 +355,6 @@ void xbox_kernel_init(void)
     /* Initialize logging */
     InitializeCriticalSection(&g_log_cs);
     g_log_cs_init = TRUE;
-
-    /* Try to open log file, fall back to stderr */
-    g_log_file = fopen("xbox_kernel.log", "w");
 
     /* Set log level from environment variable if present */
     const char* log_env = getenv("XBOX_LOG_LEVEL");

@@ -8,7 +8,6 @@
 #include <stdio.h>
 #include <intrin.h>
 #include <math.h>
-extern void doa3_cs_report2(const char *, const char *, uint32_t, uint32_t, uint32_t); /* DOA3 diag */
 
 /**
  * sub_0006B610
@@ -53237,7 +53236,7 @@ loc_00081F05: ;
 loc_00081F0F: ;
     eax = ZX8(MEM8(0x4B83B1));
     PUSH32(esp, eax);
-    { uint32_t _cb = ebx, _cs = esp; PUSH32(esp, 0); sub_0009DF60(); if (ebx != _cb || esp != _cs) doa3_cs_report2("sub_00081EB0_gen", "sub_0009DF60", 0x0009DF60, _cb, _cs); } /* call 0x0009DF60 */
+    PUSH32(esp, 0); sub_0009DF60(); /* call 0x0009DF60 */
 
 loc_00081F1C: ;
     esp = esp + 4;
@@ -53249,13 +53248,13 @@ loc_00081F2A: ;
     MEM16(0x4B83B6) = MEM16(0x4B83B6) + 1;
 
 loc_00081F31: ;
-    { uint32_t _cb = ebx, _cs = esp; PUSH32(esp, 0); sub_0009E1F0(); if (ebx != _cb || esp != _cs) doa3_cs_report2("sub_00081EB0_gen", "sub_0009E1F0", 0x0009E1F0, _cb, _cs); } /* call 0x0009E1F0 */
+    PUSH32(esp, 0); sub_0009E1F0(); /* call 0x0009E1F0 */
 
 loc_00081F36: ;
     if (TEST_Z(eax, eax)) goto loc_00081F4E; /* je: equal / zero */
 
 loc_00081F3A: ;
-    { uint32_t _cb = ebx, _cs = esp; PUSH32(esp, 0); sub_0009E340(); if (ebx != _cb || esp != _cs) doa3_cs_report2("sub_00081EB0_gen", "sub_0009E340", 0x0009E340, _cb, _cs); } /* call 0x0009E340 */
+    PUSH32(esp, 0); sub_0009E340(); /* call 0x0009E340 */
 
 loc_00081F3F: ;
     MEM8(0x4B83B0) = MEM8(0x4B83B0) + 1;

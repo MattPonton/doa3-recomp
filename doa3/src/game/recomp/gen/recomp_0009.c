@@ -7,7 +7,6 @@
 #include "recomp_funcs.h"
 #include <stdio.h>
 #include <math.h>
-extern void doa3_cs_report2(const char *, const char *, uint32_t, uint32_t, uint32_t); /* DOA3 diag */
 
 /**
  * sub_0017BDB0
@@ -14230,10 +14229,6 @@ loc_001814F3: ;
     POP32(esp, ebx);
     esp = esp + 8;
     MEM32(esp + 4) = eax;
-    { static int s_t22c = 0;
-      if (MEM32(eax + 0x22C) != 0x001E4C40 && s_t22c < 20) { s_t22c++;
-        fprintf(stderr, "[T22C] #%d -> %X ctx=%X%c", s_t22c, MEM32(eax + 0x22C), eax, 10);
-        fflush(stderr); } }
     g_seh_ebp = ebp; RECOMP_ITAIL(MEM32(eax + 0x22C)); return; /* indirect tail jmp */
 
 loc_00181513: ;
@@ -16516,14 +16511,6 @@ loc_001822A3: ;
     eax = MEM32(eax + 0x218460);
     MEM32(ebx + 0x24C) = eax;
     MEM32(ebx + 0x240) = ecx;
-    { static int s_wi = 0;
-      if (s_wi < 6) { s_wi++;
-        fprintf(stderr, "[WINST] #%d ctx=%X f178=%X f180=%X w22C=%X w230=%X w234=%X w238=%X w23C=%X w240=%X w244=%X w248=%X w24C=%X%c",
-            s_wi, ebx, MEM32(ebx + 0x178), MEM32(ebx + 0x180),
-            MEM32(ebx + 0x22C), MEM32(ebx + 0x230), MEM32(ebx + 0x234),
-            MEM32(ebx + 0x238), MEM32(ebx + 0x23C), MEM32(ebx + 0x240),
-            MEM32(ebx + 0x244), MEM32(ebx + 0x248), MEM32(ebx + 0x24C), 10);
-        fflush(stderr); } }
     if (CMP_GE(edi & edi, 0)) goto loc_00182476; /* jge: greater or equal (signed >=) */
 
 loc_00182349: ;
@@ -51653,7 +51640,7 @@ loc_0018DAD6: ;
     MEM32(ebp + -20) = 0x42;
     MEM32(ebp + -24) = esi;
     MEM32(ebp + -32) = esi;
-    { uint32_t _cb = ebx, _cs = esp; PUSH32(esp, 0); sub_001903CF(); if (ebx != _cb || esp != _cs) doa3_cs_report2("sub_0018DAD6", "sub_001903CF", 0x001903CF, _cb, _cs); } /* call 0x001903CF */
+    PUSH32(esp, 0); sub_001903CF(); /* call 0x001903CF */
 
 loc_0018DB05: ;
     esp = esp + 0xC;
@@ -51674,7 +51661,7 @@ loc_0018DB1B: ;
     eax = ebp + -32;
     PUSH32(esp, eax);
     PUSH32(esp, 0);
-    { uint32_t _cb = ebx, _cs = esp; PUSH32(esp, 0); sub_00190228(); if (ebx != _cb || esp != _cs) doa3_cs_report2("sub_0018DAD6", "sub_00190228", 0x00190228, _cb, _cs); } /* call 0x00190228 */
+    PUSH32(esp, 0); sub_00190228(); /* call 0x00190228 */
 
 loc_0018DB26: ;
     POP32(esp, ecx);

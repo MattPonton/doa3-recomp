@@ -3010,15 +3010,6 @@ static void submit_draw(void)
     }
     g_dbail[4]++;
 
-    {   /* DOA3 DIAG: one-shot dump of a program-mode draw. */
-        static int s_dumped = 0;
-        if (!s_dumped && (g_pg.xform_mode & 3) == 2 && g_pg.vp.have_program &&
-            g_pg.stats.draw_calls > 180000) {
-            s_dumped = 1;
-            nv2a_vp_dump(&g_pg.vp);
-        }
-    }
-
     {   /* DOA3 DIAG: per-draw-mode tally (count, last vert count, stride). */
             int dm = g_pg.draw_mode & 15;
         g_dstat[dm][0]++; g_dstat[dm][1] = num_verts; g_dstat[dm][2] = stride;

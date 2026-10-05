@@ -29,6 +29,7 @@ set(GAME_SOURCES
     doa3.rc                  # window/taskbar/exe icon
     movie_present.c
     video_settings.c
+    log_settings.c           # log files on/off (Esc menu, doa3_settings.ini)
     xiso_extract.c           # first-run install of the game files from a disc image
     recomp/recomp_manual.c
     burnout_compat_stubs.c   # inert stubs for burnout-only symbols the nv2a srcs need
@@ -89,7 +90,7 @@ if(MSVC)
     target_link_options(doa3 PRIVATE
         /DYNAMICBASE:NO
         /FIXED:NO
-        /MAP
+        $<$<CONFIG:Debug>:/MAP>
         $<$<CONFIG:Debug>:/DEBUG>
         $<$<CONFIG:Release>:/SUBSYSTEM:WINDOWS>
         $<$<CONFIG:Release>:/ENTRY:mainCRTStartup>

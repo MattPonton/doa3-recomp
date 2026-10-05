@@ -15403,16 +15403,6 @@ void sub_000E1660(void)
 
 loc_000E1660: ;
     eax = ecx;
-    /* DOA3 probe: which of the 175 elements at 0x370C48 (stride 0x3C)
-     * actually get constructed? Their vtable is written at [eax]. */
-    { extern unsigned g_e1660_n, g_e1660_lo, g_e1660_hi, g_e1660_mask[8];
-      if (eax >= 0x370C48u && eax < 0x37354Cu) {
-        unsigned _i = (eax - 0x370C48u) / 0x3Cu;
-        g_e1660_n++;
-        if (_i < g_e1660_lo) g_e1660_lo = _i;
-        if (_i > g_e1660_hi || g_e1660_hi == 0xFFFFFFFFu) g_e1660_hi = _i;
-        if (_i < 256) g_e1660_mask[_i / 32] |= 1u << (_i % 32);
-      } }
     SET_LO16(ecx, MEM16(esp + 4));
     edx = MEM32(esp + 8);
     MEM16(eax + 4) = LO16(ecx);

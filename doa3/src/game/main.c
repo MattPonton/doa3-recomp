@@ -29,6 +29,7 @@
 #include "ui/doa3_setup.h"
 #include "xiso_extract.h"
 #include "video_settings.h"
+#include "log_settings.h"
 
 #define DOA3_ENTRY_POINT   0x001651A5
 /* Game files live in an "assets" folder next to the exe; the working
@@ -223,47 +224,7 @@ static void doa3_watchdog_start(void)
 void doa3_present_frame(void)
 {
     InterlockedIncrement(&g_doa3_heartbeat);
-    {   /* DOA3 DIAG: render command list occupancy.
-         * list 1 = 0x00A1F388 .. write ptr [0x00B1F390]  (1 MB)
-         * list 2 = 0x0099F378 .. write ptr [0x00A1F378]  (1 MB)
-         * Both write-pointer globals sit immediately above their buffer, so
-         * an overflow destroys the pointer itself and everything above it.
-         * sub_00158BE0 appends without any bound check; the only reset is
-         * sub_00158B60, once per frame from sub_000B8855. */
-        extern volatile int g_doa3_post_movie;
-        static DWORD s_next = 0;
-        static uint32_t s_hi1 = 0, s_hi2 = 0, s_over = 0, s_frames = 0;
-        uint32_t w1 = MEM32(0x00B1F390u), w2 = MEM32(0x00A1F378u);
-        uint32_t u1 = (w1 >= 0x00A1F388u && w1 <= 0x00B1F388u) ? w1 - 0x00A1F388u : 0xFFFFFFFFu;
-        uint32_t u2 = (w2 >= 0x0099F378u && w2 <= 0x00A1F378u) ? w2 - 0x0099F378u : 0xFFFFFFFFu;
-        s_frames++;
-        if (u1 == 0xFFFFFFFFu || u2 == 0xFFFFFFFFu) s_over++;
-        else { if (u1 > s_hi1) s_hi1 = u1; if (u2 > s_hi2) s_hi2 = u2; }
-        if (g_doa3_post_movie && GetTickCount() >= s_next) {
-            s_next = GetTickCount() + 2000;
-            fprintf(stderr, "  [LIST] frames=%u list1=%u/1048576 (hi %u) list2=%u/1048576 (hi %u) bad_ptr_frames=%u w1=%08X w2=%08X\n",
-                    s_frames, (u1 == 0xFFFFFFFFu) ? 0 : u1, s_hi1,
-                    (u2 == 0xFFFFFFFFu) ? 0 : u2, s_hi2, s_over, w1, w2);
-            fflush(stderr);
-            s_frames = 0;
-        }
-    }
-    {   /* DOA3 DIAG: which surface the guest device is rendering into at
-         * present time (device+0x40C), sampled every ~2 s post-movie. */
-        extern volatile int g_doa3_post_movie;
-        static DWORD s_next = 0;
-        if (g_doa3_post_movie && GetTickCount() >= s_next) {
-            s_next = GetTickCount() + 2000;
-            fprintf(stderr, "[RT@PRESENT] dev40C=%08X dev5A0[0]=%g\n", MEM32(0x1C0C0Cu), MEMF(0x1C0DA0u));
-        }
-    }
-    {   /* DOA3 DIAG: APU state every ~2 s (audio bring-up) */
-        extern void apu_debug_stats_line(void);
-        static DWORD s_next = 0;
-        { extern void doa3_apu_deliver_irq(void); doa3_apu_deliver_irq(); }
-        if (GetTickCount() >= s_next) { s_next = GetTickCount() + 2000; apu_debug_stats_line();
-             }
-    }
+    { extern void doa3_apu_deliver_irq(void); doa3_apu_deliver_irq(); }
     if (getenv("DOA3_NO_PRESENT")) return;   /* isolation: skip pump + present entirely */
     MSG msg;
     while (PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE)) {
@@ -756,59 +717,6 @@ void doa3_ebxwp_resume(void)
 {
     if (g_ebxwp_paused) { g_ebxwp_paused = 0; doa3_ebxwp_arm(); }
 }
-/* Same, plus esp drift: in this recomp model a callee pops only the dummy
- * return slot, so esp must come back exactly where it was before the
- * PUSH32(esp, 0) -- except for callee-clean (ret N) functions, which show a
- * constant positive delta at every site. Deduped per (caller, callee). */
-void doa3_cs_report2(const char *caller, const char *callee, uint32_t site, uint32_t before, uint32_t esp_before)
-{
-    static struct { const char *a, *b; uint32_t site; int n; } seen[512];
-    static int nseen = 0;
-    int i;
-    for (i = 0; i < nseen; i++)
-        if (seen[i].a == caller && seen[i].b == callee && seen[i].site == site) break;
-    if (i == nseen) { if (nseen >= 512) return; seen[nseen].a = caller; seen[nseen].b = callee; seen[nseen].site = site; seen[nseen].n = 0; nseen++; }
-    if (seen[i].n >= 3) return;
-    seen[i].n++;
-    fprintf(stderr, "[CSCHK2] %s: %s (site 0x%08X) ebx %08X -> %08X, esp %08X -> %08X (d=%+d) fiber=%d\n",
-            caller, callee, site, before, g_ebx, esp_before, g_esp, (int)(g_esp - esp_before), xbox_fiber_current());
-    fflush(stderr);
-}
-/* Callee-saved ebx/esi/edi + esp drift, deduped per (caller, callee, site).
- * Emitted into the vertex-block walker sub_00157700 and its callees. */
-void doa3_cs_report3(const char *caller, const char *callee, uint32_t site,
-                     uint32_t b, uint32_t sp, uint32_t si, uint32_t di)
-{
-    /* Retired: the register-drift report this produced is no longer read,
-     * and its 512-entry linear search ran on every drifting call (1-1.7%
-     * of the game thread in fights). The generated call sites stay. */
-    (void)caller; (void)callee; (void)site; (void)b; (void)sp; (void)si; (void)di;
-    return;
-    static struct { const char *a, *b; uint32_t site; int n; } seen[512];
-    static int nseen = 0;
-    int i;
-    for (i = 0; i < nseen; i++)
-        if (seen[i].a == caller && seen[i].b == callee && seen[i].site == site) break;
-    if (i == nseen) { if (nseen >= 512) return; seen[nseen].a = caller; seen[nseen].b = callee; seen[nseen].site = site; seen[nseen].n = 0; nseen++; }
-    if (seen[i].n >= 3) return;
-    seen[i].n++;
-    fprintf(stderr, "[CSCHK3] %s: %s (site 0x%08X)%s%s%s%s ebx %08X->%08X esi %08X->%08X edi %08X->%08X esp %08X->%08X (d=%+d) fiber=%d\n",
-            caller, callee, site,
-            (g_ebx != b) ? " EBX" : "", (g_esi != si) ? " ESI" : "", (g_edi != di) ? " EDI" : "", (g_esp != sp) ? " ESP" : "",
-            b, g_ebx, si, g_esi, di, g_edi, sp, g_esp, (int)(g_esp - sp), xbox_fiber_current());
-    fflush(stderr);
-}
-/* Call-site callee-saved check emitted into sub_00084340_gen and
- * sub_00021F70_gen: reports a callee that returned with ebx changed. */
-void doa3_cs_report(const char *caller, const char *callee, uint32_t site, uint32_t before)
-{
-    static int n = 0;
-    if (n >= 60) return;
-    n++;
-    fprintf(stderr, "[CSCHK] %s: %s (site 0x%08X) returned with ebx %08X -> %08X esp=%08X fiber=%d\n",
-            caller, callee, site, before, g_ebx, g_esp, xbox_fiber_current());
-    fflush(stderr);
-}
 /* Walk the guest thread's native frames from an exception context. */
 static void doa3_ctx_backtrace(const CONTEXT *src, int max)
 {
@@ -1032,39 +940,7 @@ static LONG WINAPI crash_veh(PEXCEPTION_POINTERS info)
      * positive offset land just beyond base+4GB and still need the skip treatment. */
     int in_region = (fault >= base && fault < base + 0x100010000ull);
 
-    /* Log the first 60 faults, then every 1,000,000th (to reveal a spin's
-     * repeated faulting access without flooding). */
     g_fault_logged++;
-    {   /* First wild accesses: outside guest RAM and outside the GPU MMIO
-         * aperture, i.e. a genuinely corrupted pointer rather than the normal
-         * emulated-register traffic. Report the guest block of sub_00050380
-         * that was executing, so the bad value can be traced to a statement. */
-        uint32_t _xv = (uint32_t)(fault - base);
-        extern uint32_t g_blk50380;
-        static int s_wild = 0;
-        if (_xv >= 0x08000000u && (_xv & 0xFF000000u) != 0xFD000000u &&
-            g_blk50380 != 0 && s_wild < 12) {
-            s_wild++;
-            fprintf(stderr, "[WILD] #%d xbva=0x%08X rip=0x%llX blk50380=0x000%05X "
-                            "eax=%08X ecx=%08X edx=%08X ebx=%08X esi=%08X edi=%08X\n",
-                    s_wild, _xv, (unsigned long long)info->ContextRecord->Rip,
-                    g_blk50380, g_eax, g_ecx, g_edx, g_ebx, g_esi, g_edi);
-            { extern void doa3_vbw_dump(void); if (s_wild <= 6) doa3_vbw_dump(); }
-            fflush(stderr);
-        }
-    }
-    if (g_fault_logged <= 60 || (g_fault_logged % 1000000ull) == 0) {
-        fprintf(stderr,
-            "[FAULT] #%llu %s 0x%llX (xbva 0x%08X) rip=0x%llX  eax=%08X ecx=%08X edx=%08X "
-            "ebx=%08X esi=%08X edi=%08X esp=%08X\n",
-            (unsigned long long)g_fault_logged,
-            is_write ? "write" : "read",
-            (unsigned long long)fault,
-            (uint32_t)(fault - base),
-            (unsigned long long)info->ContextRecord->Rip,
-            g_eax, g_ecx, g_edx, g_ebx, g_esi, g_edi, g_esp);
-        fflush(stderr);
-    }
 
     /* NV2A GPU / hardware I/O address space (Xbox VA >= 0xF0000000):
      *   0xFD000000-0xFDFFFFFF  GPU MMIO registers -> NV2A register state machine
@@ -1299,7 +1175,6 @@ static LONG WINAPI doa3_unhandled(PEXCEPTION_POINTERS info)
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
-unsigned g_e1660_n, g_e1660_lo = 0xFFFFFFFFu, g_e1660_hi = 0xFFFFFFFFu, g_e1660_mask[8];
 
 int main(int argc, char **argv)
 {
@@ -1327,26 +1202,9 @@ int main(int argc, char **argv)
         }
     }
     setvbuf(stdout, NULL, _IONBF, 0);
-    /* Diagnostics go to a file whenever stderr would otherwise reach a
-     * console.
-     *
-     * This build logs heavily and stderr is unbuffered, so every line is a
-     * synchronous console write. Launched from a shell that redirects
-     * stderr that costs nothing, but double-clicked -- where the process
-     * owns a real console -- it starves the guest badly enough that boot
-     * never completes and the window just stays blank. Release builds have
-     * no console at all and already needed this.
-     *
-     * GetConsoleMode only succeeds on a console handle, so a redirected or
-     * piped stderr is left exactly as the caller set it. */
-    {
-        HANDLE herr = GetStdHandle(STD_ERROR_HANDLE);
-        DWORD cmode;
-        if (herr == NULL || herr == INVALID_HANDLE_VALUE ||
-            GetConsoleMode(herr, &cmode))
-            freopen("doa3_log.txt", "w", stderr);
-    }
-    setvbuf(stderr, NULL, _IONBF, 0);
+    /* stderr -> doa3_log.txt when logging is on in the Esc menu, NUL when
+     * off (the default). See log_settings.h. */
+    doa3_log_init();
 
     atexit(doa3_atexit);
     SetUnhandledExceptionFilter(doa3_unhandled);
@@ -1588,14 +1446,6 @@ int main(int argc, char **argv)
             }
             fprintf(stderr, "  CRT init: %s: %u run, %u missing\n",
                     s_ini[t].what, ran, miss);
-        }
-        {   extern unsigned g_e1660_n, g_e1660_lo, g_e1660_hi, g_e1660_mask[8];
-            int _m;
-            fprintf(stderr, "  [CTOR370C48] constructed=%u of 175 (idx %u..%u) mask:",
-                    g_e1660_n, g_e1660_lo, g_e1660_hi);
-            for (_m = 0; _m < 6; _m++)
-                fprintf(stderr, " %08X", g_e1660_mask[_m]);
-            fprintf(stderr, "\n");
         }
         fflush(stderr);
     }

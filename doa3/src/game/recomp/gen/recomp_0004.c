@@ -51567,8 +51567,6 @@ loc_000C5D49: ;
  */
 void sub_000C5D70_gen(void)
 {
-    extern uint32_t g_blkC5D70;
-    extern unsigned g_c5d70cnt[16];
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
@@ -51610,7 +51608,6 @@ loc_000C5DB7: ;
     if (CMP_EQ(ecx, edx)) goto loc_000C5ED6; /* je: equal / zero */
 
 loc_000C5DC6: ;
-    g_c5d70cnt[4]++;
     eax = (uint32_t)(int32_t)SMEM16(edi + 0xC);
     if (TEST_S(eax, eax)) goto loc_000C5ED6; /* jl: less (signed <) */
 
@@ -51665,15 +51662,12 @@ loc_000C5E52: ;
     goto loc_000C5ED6;
 
 loc_000C5E5B: ;
-    g_c5d70cnt[5]++;
     if (TEST_Z(MEM16(esi * 8 + 0x86132A), 0x220)) goto loc_000C5ED6; /* je: equal / zero */
 
 loc_000C5E67: ;
-    g_c5d70cnt[7]++;
     if (CMP_G(MEM32(ebx), 0)) goto loc_000C5ED6; /* jg: greater (signed >) */
 
 loc_000C5E6C: ;
-    g_c5d70cnt[8]++;
     eax = ebx + -32;
     PUSH32(esp, ebp);
     PUSH32(esp, 0); sub_000C4EE0(); /* call 0x000C4EE0 */
@@ -51683,13 +51677,11 @@ loc_000C5E75: ;
     if (TEST_Z(eax, eax)) goto loc_000C5ED6; /* je: equal / zero */
 
 loc_000C5E7C: ;
-    g_c5d70cnt[9]++;
     PUSH32(esp, 0);
     PUSH32(esp, 0x29);
     PUSH32(esp, 0); sub_0009FD00(); /* call 0x0009FD00 */
 
 loc_000C5E85: ;
-    g_c5d70cnt[10]++;
     MEM16(edi + 0xC) = 3;
     ecx = ZX8(MEM8(0x2FD55C));
     ecx = ecx << 5;
@@ -51882,11 +51874,9 @@ loc_000C6030: ;
     esp += 4; return; /* ret */
 
 loc_000C605B: ;
-    g_c5d70cnt[0]++;
     if (CMP_G(MEM16(edi + 0xE), 0)) goto loc_000C60E9; /* jg: greater (signed >) */
 
 loc_000C6066: ;
-    g_c5d70cnt[1]++;
     PUSH32(esp, ebp);
     PUSH32(esp, 0); sub_000C4E80(); /* call 0x000C4E80 */
 
@@ -51895,7 +51885,6 @@ loc_000C606C: ;
     if (TEST_Z(eax, eax)) goto loc_000C6081; /* je: equal / zero */
 
 loc_000C6073: ;
-    g_c5d70cnt[6]++;
     PUSH32(esp, ebp);
     PUSH32(esp, 0); sub_000D04B0(); /* call 0x000D04B0 */
 
@@ -51908,7 +51897,6 @@ loc_000C6079: ;
     esp += 4; return; /* ret */
 
 loc_000C6081: ;
-    g_c5d70cnt[2]++;
     SET_LO8(ecx, MEM8(ebp + 0x1CD));
     SET_LO8(eax, 0xA);
     MEM8(ebp + 0x1CE) = LO8(ecx);
@@ -51942,7 +51930,6 @@ loc_000C60D6: ;
     if (CMP_G(MEM16(edi + 0xE), 0)) goto loc_000C60E9; /* jg: greater (signed >) */
 
 loc_000C60E0: ;
-    g_c5d70cnt[3]++;
     PUSH32(esp, ebp);
     PUSH32(esp, 0); sub_000C4D00(); /* call 0x000C4D00 */
 

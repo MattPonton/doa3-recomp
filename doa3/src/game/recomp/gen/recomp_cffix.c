@@ -84799,7 +84799,6 @@ void sub_001C7D4F(void)
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
 
 loc_001C7D4F: ;
-    { static int n=0; if (n<4) { n++; fprintf(stderr, "[7D4F] ebp=%08X esp=%08X [ebp+8]=%08X [ebp+C]=%08X ecx=%08X\n", ebp, esp, MEM32(ebp+8), MEM32(ebp+0xC), ecx); } } /* DOA3 probe */
     PUSH32(esp, esi);
     esi = MEM32(ebp + 8);
     PUSH32(esp, edi);

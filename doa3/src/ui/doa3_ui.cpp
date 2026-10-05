@@ -12,6 +12,7 @@
 extern "C" {
 #include "pad_mapping.h"
 #include "../game/video_settings.h"
+#include "../game/log_settings.h"
 #include "../online/netplay_session.h"
 #include "../online/netplay.h"
 #include "../online/net_upnp.h"
@@ -247,6 +248,28 @@ void DrawVideoSection()
         video_set_scale(sc + 1);
 }
 
+/* ── General section ──────────────────────────────────────────────────────*/
+
+void DrawGeneralSection()
+{
+    switch (ResetSaveRow()) {
+    case 1:
+        doa3_log_set_enabled(0);
+        SetStatus("General settings reset to defaults");
+        break;
+    case 2:
+        SetStatus(doa3_log_save() ? "Saved doa3_settings.ini"
+                                  : "Could not write doa3_settings.ini");
+        break;
+    }
+
+    ImGui::Separator();
+
+    bool on = doa3_log_enabled() != 0;
+    if (ImGui::Checkbox("Write log files", &on))
+        doa3_log_set_enabled(on ? 1 : 0);
+}
+
 /* ── Online section ───────────────────────────────────────────────────────*/
 
 /* Online play has something to show over the game (a wait, a disconnect, a
@@ -455,6 +478,10 @@ void DrawMenu()
             }
             if (ImGui::BeginTabItem("Video")) {
                 DrawVideoSection();
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem("General")) {
+                DrawGeneralSection();
                 ImGui::EndTabItem();
             }
 

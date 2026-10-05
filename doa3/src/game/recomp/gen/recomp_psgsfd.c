@@ -208,9 +208,6 @@ loc_001E4DDC: ;
     { uint32_t _icall_esp = g_esp;
     PUSH32(esp, ebp);
     { uint32_t _icall_t = MEM32(ebp + 0x23C);
-      { static int s_p = 0;
-        if (s_p < 6) { s_p++;
-          fprintf(stderr, "[W23C] target=%X ebp=%X%c", _icall_t, ebp, 10); fflush(stderr); } }
       PUSH32(esp, 0); RECOMP_ICALL_SAFE(_icall_t, _icall_esp); } /* indirect call */
     }
 

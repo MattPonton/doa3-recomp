@@ -588,10 +588,6 @@ static const void *movie_host_frame(void)
                 s_dec.count--;
                 s_host_frames++;
                 popped = 1;
-                if (s_host_frames <= 4 || (s_host_frames % 64) == 0) {
-                    fprintf(stderr, "[HOSTFMV] decoded frame %u\n", s_host_frames);
-                    fflush(stderr);
-                }
             }
             ended = s_host_frames <= target && !s_dec.count && s_dec.eof;
             ReleaseSRWLockExclusive(&s_dec.lock);
@@ -847,8 +843,4 @@ void doa3_present_movie_surface(const void *src, int w, int h, int pitch)
     d3d8_RestoreDefaultTarget();           /* see doa3_present_movie_frame */
 
     s_frames++;
-    if (s_frames <= 4 || (s_frames % 256) == 0) {
-        fprintf(stderr, "[MVPRES] frame %u presented\n", s_frames);
-        fflush(stderr);
-    }
 }

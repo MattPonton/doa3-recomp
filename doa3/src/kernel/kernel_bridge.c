@@ -587,13 +587,13 @@ static void bridge_ExAllocatePoolWithTag(void)
 /* ── KfRaiseIrql / KfLowerIrql (ordinals 160, 161) ────── */
 static void bridge_KfRaiseIrql(void)
 {
-    uint32_t new_irql = STACK_ARG(0);
+    uint32_t new_irql = g_ecx;   /* fastcall: the stack holds no argument */
     g_eax = (uint32_t)xbox_KfRaiseIrql((UCHAR)new_irql);
 }
 
 static void bridge_KfLowerIrql(void)
 {
-    uint32_t new_irql = STACK_ARG(0);
+    uint32_t new_irql = g_ecx;   /* fastcall: the stack holds no argument */
     xbox_KfLowerIrql((UCHAR)new_irql);
     g_eax = 0;
 }
@@ -2353,27 +2353,6 @@ static void bridge_ObReferenceObjectByHandle(void)
     uint32_t object_ptr = STACK_ARG(2);
     if (object_ptr) BRIDGE_MEM32(object_ptr) = 0;
     g_eax = 0;  /* STATUS_SUCCESS */
-    {
-        static uint32_t s_last_h = 0; static int s_rep = 0;
-        uint32_t h = STACK_ARG(0);
-        if (h == s_last_h) {
-            if (++s_rep == 5000) {
-                {
-                    void *bt[16];
-                    USHORT nf = CaptureStackBackTrace(1, 16, bt, NULL);
-                }
-                {   /* spin forensics: full fiber table + CRI lock globals */
-                    extern void xbox_fiber_dump_states(void);
-                    static int s_dumps = 0;
-                    if (s_dumps < 12) {
-                        s_dumps++;
-                        xbox_fiber_dump_states();
-                    }
-                }
-                s_rep = 0;
-            }
-        } else { s_last_h = h; s_rep = 0; }
-    }
     /* A game-task coroutine polling a thread in a tight
      * ObReferenceObjectByHandle + wait loop (e.g. the mwPly frame-sync in
      * the movie blit) must yield or the polled worker never runs and the

@@ -9,7 +9,6 @@
 #include <stdio.h>
 #include <intrin.h>
 #include <math.h>
-extern void doa3_cs_report3(const char *, const char *, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t); /* DOA3 diag */
 
 /**
  * sub_001866BD
@@ -784,7 +783,7 @@ loc_001B3940: ;
     PUSH32(esp, eax);
     ecx = esi;
     MEM32(ebp + -8) = esi;
-    { uint32_t _cb = ebx, _cs = esp, _ci = esi, _cd = edi; PUSH32(esp, 0); sub_001B7700(); if (ebx != _cb || esp != _cs || esi != _ci || edi != _cd) doa3_cs_report3("sub_001B3940_gen", "sub_001B7700", 0x001B7700, _cb, _cs, _ci, _cd); } /* call 0x001B7700 */
+    PUSH32(esp, 0); sub_001B7700(); /* call 0x001B7700 */
 
 loc_001B3960: ;
     eax = MEM32(esi + 0xC);
@@ -792,7 +791,7 @@ loc_001B3960: ;
     eax = eax | 0x800;
     PUSH32(esp, esi);
     MEM32(esi + 0xC) = eax;
-    { uint32_t _cb = ebx, _cs = esp, _ci = esi, _cd = edi; PUSH32(esp, 0); sub_001B8DC0(); if (ebx != _cb || esp != _cs || esi != _ci || edi != _cd) doa3_cs_report3("sub_001B3940_gen", "sub_001B8DC0", 0x001B8DC0, _cb, _cs, _ci, _cd); } /* call 0x001B8DC0 */
+    PUSH32(esp, 0); sub_001B8DC0(); /* call 0x001B8DC0 */
 
 loc_001B3976: ;
     /* DOA3 probe: arg2 ([ebp+0x10]) is the SOURCE vertex pointer this
@@ -949,7 +948,7 @@ loc_001B3AE1: ;
     MEM32(ebp + 0x10) = edi;
     MEM32(ebp + 0xC) = edx;
     MEM32(eax) = ecx;
-    { uint32_t _cb = ebx, _cs = esp, _ci = esi, _cd = edi; PUSH32(esp, 0); sub_001B8DC0(); if (ebx != _cb || esp != _cs || esi != _ci || edi != _cd) doa3_cs_report3("sub_001B3940_gen", "sub_001B8DC0", 0x001B8DC0, _cb, _cs, _ci, _cd); } /* call 0x001B8DC0 */
+    PUSH32(esp, 0); sub_001B8DC0(); /* call 0x001B8DC0 */
 
 loc_001B3B0F: ;
     /* DOA3 probe: second pushbuffer acquisition, inside the outer
@@ -1006,7 +1005,7 @@ loc_001B3B70: ;
 
 loc_001B3B8D: ;
     PUSH32(esp, 1);
-    { uint32_t _cb = ebx, _cs = esp, _ci = esi, _cd = edi; PUSH32(esp, 0); sub_001B8970(); if (ebx != _cb || esp != _cs || esi != _ci || edi != _cd) doa3_cs_report3("sub_001B3940_gen", "sub_001B8970", 0x001B8970, _cb, _cs, _ci, _cd); } /* call 0x001B8970 */
+    PUSH32(esp, 0); sub_001B8970(); /* call 0x001B8970 */
 
 loc_001B3B94: ;
     eax = MEM32(esi + 0xC);

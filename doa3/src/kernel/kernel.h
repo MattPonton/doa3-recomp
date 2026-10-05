@@ -808,6 +808,7 @@ VOID    __stdcall xbox_Unknown_42(void);
 #define XBOX_LOG_TRACE   4
 
 void xbox_log(int level, const char* subsystem, const char* fmt, ...);
+void xbox_log_set_enabled(int on);   /* xbox_kernel.log on/off (default off) */
 
 #ifdef _DEBUG
 #define XBOX_TRACE(subsystem, fmt, ...) xbox_log(XBOX_LOG_TRACE, subsystem, fmt, ##__VA_ARGS__)

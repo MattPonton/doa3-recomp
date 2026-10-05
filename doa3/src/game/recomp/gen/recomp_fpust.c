@@ -8,7 +8,6 @@
 #define RECOMP_GENERATED_CODE
 #include "recomp_funcs.h"
 #include <math.h>
-extern void doa3_cs_report3(const char *, const char *, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t); /* DOA3 diag */
 
 /**
  * sub_00015600
@@ -224589,7 +224588,7 @@ loc_001B4534: ;
     ecx = edi + 0x1E;
     PUSH32(esp, ecx);
     PUSH32(esp, esi);
-    { uint32_t _cb = ebx, _cs = esp, _ci = esi, _cd = edi; PUSH32(esp, 0); sub_001B8DC0(); if (ebx != _cb || esp != _cs || esi != _ci || edi != _cd) doa3_cs_report3("sub_001B44F0", "sub_001B8DC0", 0x001B8DC0, _cb, _cs, _ci, _cd); } /* call 0x001B8DC0 */
+    PUSH32(esp, 0); sub_001B8DC0(); /* call 0x001B8DC0 */
 
 loc_001B453E: ;
     MEM32(eax) = 0x41EA4;
@@ -224646,7 +224645,7 @@ loc_001B45CE: ;
     PUSH32(esp, ebp);
     eax = eax + 0x34;
     PUSH32(esp, eax);
-    { uint32_t _cb = ebx, _cs = esp, _ci = esi, _cd = edi; PUSH32(esp, 0); sub_001B3DA0(); if (ebx != _cb || esp != _cs || esi != _ci || edi != _cd) doa3_cs_report3("sub_001B44F0", "sub_001B3DA0", 0x001B3DA0, _cb, _cs, _ci, _cd); } /* call 0x001B3DA0 */
+    PUSH32(esp, 0); sub_001B3DA0(); /* call 0x001B3DA0 */
 
 loc_001B45E9: ;
     POP32(esp, edi);

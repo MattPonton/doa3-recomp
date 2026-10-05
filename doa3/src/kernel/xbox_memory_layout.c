@@ -720,10 +720,6 @@ uint32_t xbox_HeapAlloc(uint32_t size, uint32_t alignment)
             memset((void *)((uintptr_t)g_heap_track[best].va + g_memory_offset), 0,
                    g_heap_track[best].size);
             g_heap_alloc_count++;
-            fprintf(stderr, "  [HEAP] #%d: size=%u align=%u -> 0x%08X (REUSED %u)%c",
-                    g_heap_alloc_count, size, alignment, g_heap_track[best].va,
-                    g_heap_track[best].size, 10);
-            fflush(stderr);
             return g_heap_track[best].va;
         }
     }
@@ -775,11 +771,6 @@ uint32_t xbox_HeapAlloc(uint32_t size, uint32_t alignment)
             memset((void *)((uintptr_t)g_heap_track[best].va + g_memory_offset), 0,
                    g_heap_track[best].size);
             g_heap_alloc_count++;
-            fprintf(stderr, "  [HEAP] #%d: size=%u align=%u -> 0x%08X "
-                            "(REUSED OVERSIZED %u, bump exhausted)%c",
-                    g_heap_alloc_count, size, alignment,
-                    g_heap_track[best].va, g_heap_track[best].size, 10);
-            fflush(stderr);
             return g_heap_track[best].va;
         }
         fprintf(stderr, "xbox_HeapAlloc: out of memory (requested %u, used %u/%u)\n",
@@ -801,17 +792,6 @@ uint32_t xbox_HeapAlloc(uint32_t size, uint32_t alignment)
     }
 
     g_heap_alloc_count++;
-    fprintf(stderr, "  [HEAP] #%d: size=%u align=%u → 0x%08X..0x%08X (used %u/%u)\n",
-            g_heap_alloc_count, size, alignment, result, result + size,
-            g_heap_next - XBOX_HEAP_BASE, XBOX_HEAP_SIZE);
-    if (size >= 1024 * 1024) {   /* DIAG: who allocates the big blocks */
-        void *bt[10];
-        int n = (int)CaptureStackBackTrace(1, 10, bt, NULL);
-        fprintf(stderr, "  [HEAP-BT]");
-        for (int i = 0; i < n; i++) fprintf(stderr, " %p", bt[i]);
-        fprintf(stderr, "\n");
-    }
-    fflush(stderr);
 
     return result;
 }
@@ -857,12 +837,8 @@ void xbox_HeapFree(uint32_t xbox_va)
          * load then failed with out-of-memory on NOW LOADING. */
         if (!g_heap_track[i].size) continue;
         if (g_heap_track[i].va == xbox_va && !g_heap_track[i].free) {
-            uint32_t size = g_heap_track[i].size;   /* before coalescing retires it */
             g_heap_track[i].free = 1;
             heap_coalesce();
-            fprintf(stderr, "  [HEAP] freed 0x%08X (%u bytes)\n",
-                    xbox_va, size);
-            fflush(stderr);
             return;
         }
     }

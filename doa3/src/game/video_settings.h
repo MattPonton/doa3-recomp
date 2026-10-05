@@ -26,6 +26,9 @@ extern "C" {
 #define VIDEO_ASPECT_4_3  0
 #define VIDEO_ASPECT_16_9 1
 
+/* Full path of doa3_settings.ini next to the executable. */
+const char *doa3_settings_ini_path(void);
+
 int  video_get_window_mode(void);
 int  video_get_aspect(void);
 

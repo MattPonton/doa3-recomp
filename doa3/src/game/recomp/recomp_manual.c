@@ -44,7 +44,6 @@ void sub_0016D330(void)
         uint32_t buf = xbox_HeapAlloc(0x40000, 16);   /* 256 KB partition metadata */
         MEM32(esp + 0xC)  = buf;                   /* arg3 = buffer */
         MEM32(esp + 0x10) = 0x40000;               /* arg4 = size */
-        fprintf(stderr, "[CRI] partition buffer supplied: 0x%08X (256KB)\n", buf);
     }
     sub_0016D330_gen();
 }
@@ -267,8 +266,6 @@ void sub_00169BC0(void)
         for (int i = 0; i < 40; i++) {
             uint32_t ent = 0xC05AC0 + i * 0x40;   /* cvFs stream pool (sub_0016BD20) */
             if (!MEM8(ent) && !MEM32(ent + 0x14)) continue;   /* skip empty slots */
-            fprintf(stderr, " [%d]a=%u,st=%u,sz=0x%X,h=0x%X,pos=0x%X", i,
-                    MEM8(ent), MEM8(ent + 1), MEM32(ent + 0x14), MEM32(ent + 8), MEM32(ent + 0xC));
         }
         uint32_t op = MEM32(0xC07620);
         {   /* the stream's FILE object + its vtbl (stream+4 -> file, file+0 -> vtbl) */
@@ -2411,7 +2408,6 @@ void sub_0016AE80(void)
          * 0xFFFFF800 writes anywhere = guest-wide memory corruption (junk
          * sfdec handles / ASCII stream bytes showing up as pointers).
          * Dump the caller frame to identify the layout bug, then clamp. */
-        fprintf(stderr, "[SJNEG] a1=0x%X a2=0x%X frame:", a1, a2);
         MEM32(esp + 8) = 0x800;  /* clamp: minimal sane ring */
     }
     sub_0016AE80_gen();
@@ -2490,8 +2486,6 @@ void sub_0017D240(void)
             MEM32(rec + 0x48) = 0;                       /* count */
             MEM32(rec + 0x4C) = 0;                       /* write cursor */
             MEM32(rec + 0x50) = 0;                       /* read cursor */
-            fprintf(stderr, "[IDXFIX] q%u table=0x%X cap=%u\n",
-                    qq, base + ringsz, idxsz / 12u);
         }
         /* PASS-THROUGH BYPASS: substreams 4/5 (the q3->q5 and q4->q6 movers)
          * have no vtable in this config (table 0x2199AC slots 4/5 = 0), so no
@@ -2501,11 +2495,9 @@ void sub_0017D240(void)
          * the producer queues. */
         if (MEM32(hh + 0x53B0) == 5) {
             MEM32(hh + 0x53B0) = 3;                      /* video out: q5 -> q3 */
-            fprintf(stderr, "[QBYP] slot6 reads q3\n");
         }
         if (MEM32(hh + 0x59C0) == 6) {
             MEM32(hh + 0x59C0) = 4;                      /* audio out: q6 -> q4 */
-            fprintf(stderr, "[QBYP] slot7 reads q4\n");
         }
     }
 }
@@ -3248,12 +3240,6 @@ void sub_00050250(void) {
          * latch shut, so show the rumble record it is derived from:
          * 0x004920E0 + pad*0x2C, +0x24 elapsed vs +0x28 duration, where the
          * duration is (0x004A0D94 + 1) * 0xF0. */
-        fprintf(stderr, "          rumble cfg4A0D94=%d dur=(%d,%d) elapsed=(%d,%d) "
-                        "act=(%u,%u)\n",
-                (int)MEM32(0x4A0D94),
-                (int)MEM32(0x4920E0 + 0x28), (int)MEM32(0x4920E0 + 0x2C + 0x28),
-                (int)MEM32(0x4920E0 + 0x24), (int)MEM32(0x4920E0 + 0x2C + 0x24),
-                MEM8(0x4920E0 + 0x20), MEM8(0x4920E0 + 0x2C + 0x20));
     }
 }
 void sub_00050160_gen(void);
@@ -3279,9 +3265,6 @@ void sub_00067220(void) {
 }
 /* Set once the movie teardown has returned -- i.e. the game has genuinely
  * left the intro movie. The frame-capture diagnostic keys off this. */
-uint32_t g_blk50380;   /* last basic block entered in sub_00050380 */
-uint32_t g_blkC5D70;   /* last basic block entered in sub_000C5D70 */
-unsigned g_c5d70cnt[16];  /* decision-block hit counts in sub_000C5D70 */
 volatile int g_doa3_post_movie = 0;
 volatile int g_doa3_in_pump = 0;   /* doa3_pump_cri_servers is on the stack */
 /* May the primary fiber hand a time slice to the worker threads right now?
@@ -3311,14 +3294,6 @@ void sub_00082950_gen(void);
 void sub_00082950(void) { g_fc[1]++; sub_00082950_gen(); }
 void sub_000C5D70_gen(void);
 void sub_000C5D70(void) {
-    /* Does the consumer ever run on a frame where the producer had an edge to
-     * publish? 0x5E5EE0 is the edge word sub_000CDB90 derives the 0x220 flag
-     * from; 0x86132A is the flag the first bail tests. Sampled at entry, i.e.
-     * immediately after sub_000CEAC0 ran earlier in sub_000C6890. */
-    extern unsigned g_c5d70cnt[16];
-    if (MEM32(0x5E5EE0)) g_c5d70cnt[11]++;          /* edge live at entry */
-    if (MEM16(0x86132A) & 0x220) g_c5d70cnt[12]++;  /* flag actually set */
-    if (MEM32(0x5E5ED8)) g_c5d70cnt[13]++;          /* held word live */
     g_fc[2]++;
     sub_000C5D70_gen();
 }
@@ -3456,11 +3431,6 @@ void sub_001B1350(void)
              * the render-target size -- the only route to a real viewport, and
              * so to a non-zero projection-viewport and composite matrix. Show
              * the target and the implicit surface descriptor it sizes from. */
-            fprintf(stderr, "[SETRT] arg=%08X -> dev+40C=%08X | surf %08X: "
-                            "[0]=%08X [C]=%08X [10]=%08X\n",
-                    arg, MEM32(d + 0x40C), d + 0x2150,
-                    MEM32(d + 0x2150), MEM32(d + 0x2150 + 0xC),
-                    MEM32(d + 0x2150 + 0x10));
              } }
 }
 
@@ -4020,20 +3990,6 @@ void sub_00169150(void)
     if (eax != 3) {
         MEM32(0x001C2CF0 + 4) = 1;              /* vblank KEVENT.SignalState */
         xbox_fiber_wake(0x001C2CF0);
-        /* MOUNT-STALL FORENSICS (user's session hangs here; harness doesn't):
-         * after ~30s of failed polls, dump the fiber table + CRI lock
-         * globals once so the user's own log identifies the parked fiber. */
-        {
-            static unsigned s_mn = 0;
-            if (++s_mn == 600000) {
-                extern void xbox_fiber_dump_states(void);
-                xbox_fiber_dump_states();
-                /* op pool snapshot: what op sits unprocessed? */
-                for (int op = 0; op < 4; op++) {
-                    uint32_t o = 0xC07A40 + op * 0x40u;
-                }
-            }
-        }
         {   /* no presents happen during this spin — service the window so it
              * doesn't go "Not Responding" under the user's clicks */
             extern void doa3_pump_messages(void);
@@ -4177,7 +4133,6 @@ void sub_0006E0B0(void)
         /* sub_0006E0B0 rejects the blob unless it starts with 'XPR0' (Xbox
          * Packed Resource); dump the first bytes so an empty buffer (never
          * loaded) is distinguishable from wrong/misaligned data. */
-        fprintf(stderr, "[TEXHDR] #%d a1=0x%08X magic=%08X bytes:", s_n, a1, MEM32(a1));
     }
 }
 
@@ -4194,8 +4149,6 @@ void sub_00069BF3(void)
         uint32_t vt  = obj ? MEM32(obj) : 0;
         uint32_t tgt = vt ? MEM32(vt + 0x14) : 0;
         uint32_t tp  = MEM32(0x49A95C);          /* texture slot ptr */
-        fprintf(stderr, "[DXDRAW] obj=0x%08X vtbl=0x%08X slot14=0x%08X texptr=0x%08X tex=0x%08X esp=0x%08X\n",
-                obj, vt, tgt, tp, tp ? MEM32(tp) : 0, esp);
     }
     sub_00069BF3_gen();
 }
@@ -4229,12 +4182,6 @@ void sub_0006C480(void)
          * draws, all returning D3DERR_INVALIDCALL because the sprite argument
          * is NULL. Report the bounds so it is clear whether the end pointer is
          * simply unreachable or the list grows under the walk. */
-        fprintf(stderr, "[RWALK] #%d a1=0x%08X a2=0x%08X ecx=0x%08X "
-                        "beg=%08X end=%08X cap=%08X n=%d dxflag=%u dxobj=%08X\n",
-                s_n, MEM32(esp + 4), MEM32(esp + 8), ecx,
-                MEM32(0x49A98C), MEM32(0x49A990), MEM32(0x49A994),
-                (int)((MEM32(0x49A990) - MEM32(0x49A98C)) / 4),
-                MEM32(0x49A950), MEM32(0x49A954));
     }
     /* This walk used to be skipped whenever [0x49A954] was zero, on the
      * theory that it was the D3DX sprite every command here draws through.
@@ -6139,28 +6086,6 @@ void doa3_pump_cri_servers(void)
          * doa3_movie_present_finish() had blanked every swap-chain buffer --
          * so it could only ever record a black frame. */
     }
-    {   static unsigned s_vs = 0;
-        if ((++s_vs % 60) == 0 && MEM32(0xC0F7C0u + 0x40) == 4) {
-        {   /* video ES joint + picture index + frame slots: says whether
-             * the decoder is starved of ES or blocked holding slots */
-            uint32_t vsj = 0xC09770u, ix = 0xC108BCu, h = 0xC0F7C0u;
-            /* end-of-stream inputs: sub_00179070 marks the video stream
-             * ended when inEnd==1 and (p0F==0 || sub_0017E880 != 0), and
-             * sub_0017E880 compares servedPTS/scale against clock/scale. */
-            fprintf(stderr, "[VEOS2] ended6=%X inEnd=%X p0F=%X spts=%d sscale=%d clk=%d cscale=%d f940=%X 9A8=%X 9AC=%X | tcH=%X tcM=%X tcS=%X picPTS=%X picScale=%X\n",
-                MEM32(h + 6u * 0x610u + 0x2978u),
-                MEM32(h + 1u * 0x388u + 0xD70u),
-                MEM32(h + 0x994u + 0x0Fu * 4u),
-                (int)MEM32(h + 0xCC4), (int)MEM32(h + 0xCC8),
-                (int)MEM32(h + 0xCCC), (int)MEM32(h + 0xCD0),
-                MEM32(h + 0x940), MEM32(h + 0x9A8), MEM32(h + 0x9AC),
-                /* running timecode accumulator at h+0xAD8 and the last
-                 * picture timestamp sub_0017A400 produced at h+0xB44 */
-                MEM32(h + 0xAE0), MEM32(h + 0xAE4), MEM32(h + 0xAE8),
-                MEM32(h + 0xB44), MEM32(h + 0xB48));
-        }
-        }
-    }
     {   /* item 102: movie-ingest stall forensics. In stalled user runs the
          * ninja.sfd stream joint (0xC09890) sticks at w=0x12000 with the
          * cvFs stream stepper never issuing another read. Dump the joint
@@ -6509,152 +6434,6 @@ void sub_001B8970(void)
         for (int pi = 0; pi < 4; pi++) {
             uint32_t pst = 0x5E5CFF + 0x80u * pi;
             if (MEM32(pst) == 0x3E5) MEM32(pst) = 0;
-        }
-        static unsigned fr = 0;
-        ++fr;
-        if ((fr <= 1200 ? (fr % 60) : (fr % 600)) == 1) {
-            extern void pgraph_d3d11_get_stats(void *out);
-            struct { uint32_t frames, draws, verts, handled, ignored, clears; } s = {0};
-            pgraph_d3d11_get_stats(&s);
-            {   /* movie surface content check (both double-buffer surfaces) */
-                fprintf(stderr, "[SURF] A: %08X %08X mid %08X | B: %08X %08X mid %08X\n",
-                        MEM32(0x0258C000), MEM32(0x0258C004), MEM32(0x0258C000 + 0xA8C00),
-                        MEM32(0x02A24000), MEM32(0x02A24004), MEM32(0x02A24000 + 0xA8C00));
-            }
-            {   extern void pgraph_diag_dump_ignored(void);
-                pgraph_diag_dump_ignored(); }
-            /* DIAG: intro sequencer (sub_00081EB0) + game state. 0x4B83B0=state,
-             * B1=movie idx, B2/B4=phase durations, B6=frame counter; 0x5E597C=the
-             * game-state flag gating per-frame sub_00153D90 (see NOTES.md). */
-            fprintf(stderr, "[INTRO] st=%u mv=%u dur=%u/%u ctr=%u  gstate=0x%X 5E5A04=0x%X 5E5978=0x%X\n",
-                    MEM8(0x4B83B0), MEM8(0x4B83B1), MEM16(0x4B83B2), MEM16(0x4B83B4),
-                    MEM16(0x4B83B6), MEM32(0x5E597C), MEM32(0x5E5A04), MEM32(0x5E5978));
-            /* DIAG: Sofdec movie player state (sub_0009DF60 init path).
-             * 0x5E5900=movie obj (vtbl calls +0x18 open / +0x2C serve),
-             * 0x5E59C8=sub_00176580 result, 0x5E5974=sub_0016B400 handle,
-             * 0x331298[idx]=filename ptr table. */
-            {   uint32_t mobj = MEM32(0x5E5900);
-                uint32_t fn0 = MEM32(0x331298);
-                char nm[32] = {0};
-                if (fn0 >= 0x10000 && fn0 < 0x2000000) {
-                    for (int i = 0; i < 31; i++) { nm[i] = (char)MEM8(fn0 + i); if (!nm[i]) break; }
-                }
-            }
-            /* DIAG: XAPI game-task table @0x5E5A08 stride 0x20 (18 slots,
-             * cur idx @0x5E5C4C): +0 flags, +4 sleep arg (sub_0009E562).
-             * The boot task parks here and stops being dispatched. */
-            {   char tl[240]; int tn = 0;
-                for (int ti = 0; ti < 18 && tn < 220; ti++) {
-                    uint32_t tb = 0x5E5A08 + 0x20u * ti;
-                    if (MEM32(tb) || MEM32(tb + 4))
-                        tn += snprintf(tl + tn, sizeof tl - tn, " %d:%X/%X", ti, MEM32(tb), MEM32(tb + 4));
-                }
-            }
-            /* DIAG: VRAM bank table @0x4889B8 stride 0x1C (movie surface prep
-             * sub_0009DDE0 reads bank[i]+0 as the frame buffer; entries beyond
-             * 0 are empty -> 7 of 8 movie surfaces fail). */
-            fprintf(stderr, "[BANKS]");
-            /* DIAG: sfdec PES queues (h+0xD34 stride 0x388): +0xC = complete-
-             * unit flag/count per queue, for queues 0..7. */
-            {   uint32_t sh = 0xC0F7C0;
-                /* deeper: PES queue record heads (first 6 dwords) for q0/q5
-                 * (q5 = video), substream present flags h+0x994[0..8], and
-                 * substream readiness h+0x2974+i*0x610 */
-                fprintf(stderr, "[QDET] q0:");
-                for (int q = 1; q < 8; q++) {
-                }
-                {   uint32_t vt6 = MEM32(sh + 0x2F4C + 0x610u * 6);
-                }
-                {   uint32_t fc = MEM32(sh + 0x3668);
-                    if (fc > 16) fc = 16;
-                }
-                /* SJ pool dump: 0xC09500 stride 0x30, 16 slots. Fields:
-                 * +0 vtbl, +4 used, +0xC/+0x10 counters, +0x1C base, +0x20 cap */
-                fprintf(stderr, "[SJSTAT]");
-                for (int i = 0; i < 16; i++) {
-                    uint32_t sj = 0xC09500 + 0x30u * i;
-                    if (!MEM32(sj + 4)) continue;
-                }
-            }
-            /* DIAG: wxCi cache registry @0xC057C0 stride 0x30 (12 slots):
-             * +0=active, +0x18=prefix, +0x24=file count, +0x28=list head.
-             * Populated by sub_0009C840 via sub_0016D330; wxCiOpen's lookup
-             * (cb 0xB25610=sub_0016D190) fails "not in cache" when empty. */
-            {   char line[256]; int n = 0;
-                for (int i = 0; i < 12 && n < 200; i++) {
-                    uint32_t b = 0xC057C0 + 0x30u * i;
-                    if (MEM32(b)) {
-                        char pfx[20] = {0}, fn[20] = {0};
-                        uint32_t pp = MEM32(b + 0x18);
-                        if (pp >= 0x10000 && pp < 0x8000000)
-                            for (int k = 0; k < 19; k++) { pfx[k] = (char)MEM8(pp + k); if (!pfx[k]) break; }
-                        uint32_t node = MEM32(b + 0x28);          /* list head */
-                        uint32_t np = (node >= 0x10000 && node < 0x8000000) ? MEM32(node + 0xC) : 0;
-                        if (np >= 0x10000 && np < 0x8000000)
-                            for (int k = 0; k < 19; k++) { fn[k] = (char)MEM8(np + k); if (!fn[k]) break; }
-                        n += snprintf(line + n, sizeof line - n, " [%d]a=%X n=%d p='%s' f0='%s'", i, MEM32(b), (int)MEM32(b + 0x24), pfx, fn);
-                    }
-                }
-                /* Walk the z: slot list in full: the count at +0x24 says 1
-                 * but three files are scanned, so either only one node is
-                 * linked or the count is not being incremented. Dump the head
-                 * node raw so the link field can be identified. */
-                {   uint32_t b = 0xC057C0 + 0x30u * 2;   /* z:\ slot */
-                    uint32_t node = MEM32(b + 0x28);
-                    int hop;
-                    if (node >= 0x10000 && node < 0x8000000u) {
-                        int k;
-                    }
-                    for (hop = 0; hop < 8 && node >= 0x10000 && node < 0x8000000u; hop++) {
-                        char fn[24] = {0};
-                        uint32_t np = MEM32(node + 0xC);
-                        if (np >= 0x10000 && np < 0x8000000u)
-                            for (int k = 0; k < 23; k++) { fn[k] = (char)MEM8(np + k); if (!fn[k]) break; }
-                        /* node: +0x04 file size, +0x08 next, +0x0C -> inline
-                         * name at +0x10. (+0x04 held 0x0D835000 = 226709504,
-                         * bgm.afs to the byte, which identified the layout.) */
-                        node = MEM32(node + 8);
-                    }
-                }
-            }
-            /* DIAG: ADXM user-callback group 4 (the mwPly/Sofdec server tick;
-             * dispatcher sub_001705E0 from sub_001778F0). Empty slots = the
-             * Sofdec state machine is never pumped (player state stuck 0). */
-            fprintf(stderr, "[ADXCB4] %X/%X %X/%X %X/%X %X/%X\n",
-                    MEM32(0xB25530), MEM32(0xB25534), MEM32(0xB25538), MEM32(0xB2553C),
-                    MEM32(0xB25540), MEM32(0xB25544), MEM32(0xB25548), MEM32(0xB2554C));
-            /* cvFs device table health: slot flags @0xB25264 stride 16 (wiped
-             * -> every open fails), default name @0xB24FE0. */
-            fprintf(stderr, "[CVFS] def=%c%c slotflags=%02X %02X wxci0=%02X wxci1=%02X wxciSt=%02X\n",
-                    MEM8(0xB24FE0) ? MEM8(0xB24FE0) : 48,
-                    MEM8(0xB24FE1) ? MEM8(0xB24FE1) : 48,
-                    MEM8(0xB25264), MEM8(0xB25274),
-                    MEM8(0xBFEE80), MEM8(0xBFEE80 + 0x10E0*4/2), MEM8(0xBFEE81));
-            /* warning-screen sequencer (sub_000566D0 tail): 0x491AFC = frame
-             * counter, limit = 3*MEM8(0x2FD55C); 0x305B70 = screen-active. */
-            {   /* The post-movie load state machine. sub_00084340 blocks in
-             * sub_0006AD20 -> sub_0006AD6A waiting for MEM8(0x4A2128) to
-             * clear, which only the load task sub_00080200 does. That task
-             * enters and never returns. Its gates are these bytes; note
-             * 0x00080267 is a register spin with no reload, taken when
-             * 0x4A2120 != 0 and 0x4A2122 == 0. */
-                uint32_t ph = MEM32(0x4A1004);
-                uint32_t op = (ph < 8) ? MEM32(ph * 4 + 0x4A10A8) : 0;
-            }
-            if ((fr % 600) == 1) {
-                extern void xbox_fiber_dump(void);
-                extern uint32_t g_task_yields[16];
-                xbox_fiber_dump();
-            }
-            {   /* scene-manager stream poll (sub_0009CDA0): handle @0x4BE420 must reach
-                 * state 5; partition handles 0x4BE3F8/0x4BE40C for reference. */
-                uint32_t h420 = MEM32(0x4BE420), h3F8 = MEM32(0x4BE3F8), h40C = MEM32(0x4BE40C);
-                {   /* boot loader (sub_0009F730 loc_0009F7A8): 5 phases at 0x4A1004;
-                     * sub_0007FFDD polls op = MEM32(phase*4 + 0x4A10A8) for status 3. */
-                    uint32_t ph = MEM32(0x4A1004);
-                    uint32_t op = (ph < 8) ? MEM32(ph * 4 + 0x4A10A8) : 0;
-                }
-            }
         }
         /* ---- frame pacing: 60 Hz -----------------------------------------
          * D3DDevice_Swap (0x001B5850) is the game's frame gate.  It blocks in
