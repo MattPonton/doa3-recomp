@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 if(POLICY CMP0184)
     cmake_policy(SET CMP0184 NEW)
 endif()
-project(doa3_recomp C CXX)
+project(doa3_recomp VERSION 1.0 LANGUAGES C CXX)
 
 if(MSVC AND POLICY CMP0184)
     foreach(language C CXX)

@@ -1,11 +1,17 @@
 # Dead or Alive 3 — Static Recompilation for Windows
 
-**In Progress** Translation of the original Xbox binary of Dead or Alive 3 into native C
-that compiles and runs on Windows. No emulation, just recompiled functions
-running as a native x86-64 executable, with the Xbox kernel, D3D8 and NV2A GPU replaced by host
-layers.
+Translation of the original Xbox binary of Dead or Alive 3 into native C
+that compiles and runs on Windows as a native x86-64 executable.
 
-<img width="639" height="510" alt="Screenshot 2026-09-14 191920" src="https://github.com/user-attachments/assets/108cf4d7-8010-4148-91cf-b1179a2715e6" />
+**Status:** All game modes are fully playable
+
+## Features
+- New online mode added for single and tag matches
+- Capped 60 FPS
+- Windowed/Borderless and 4:3/16:9 options
+- Internal resolution scaling to 1440p (3x)
+
+
 
 ## Building
 
@@ -20,10 +26,14 @@ The binary lands in `doa3/build/release/DOA3.exe`.
 
 ## Running
 
-Game files are **not** included. On first launch, select your legally obtained copy of Dead or Alive 3 (USA) in `.xiso` or
-`.xiso` format. Assets files are automatically extracted and the game will be ready to play.
+Download the latest release from the releases tab
 
-Logs are written to `doa3_log.txt` and `xbox_kernel.log` while save data can be found in `%LOCALAPPDATA%\DeadOrAlive3`
+Game files are **not** included. On first launch of DOA3.exe, select your legally obtained copy of Dead or Alive 3 (USA) in `.xiso` or
+`.xiso` format. Assets files are automatically extracted, save data created, and then the game will be ready to play once this completes.
+
+Press **Escape** key to open the overlay menu. This has online, controller mapping, and other settings.
+
+
 
 ## Credits
 
@@ -48,3 +58,8 @@ Also relies on:
 
 Project code is MIT, following xboxrecomp. Dead or Alive 3 and its assets are property of Tecmo /
 Koei Tecmo; nothing from the game is distributed here. You need your own copy.
+
+## Bugs & Contributing
+
+- Come across any issues? Be sure to open an issue ticket with reproduction steps. Error logs written to `doa3_log.txt` are also helpful.
+- Pull requests are welcome.

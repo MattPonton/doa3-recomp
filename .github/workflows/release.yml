@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Derive version
+        id: version
+        shell: pwsh
+        run: |
+          $text = Get-Content -Raw doa3/CMakeLists.txt
+          $m = [regex]::Match($text, 'project\(doa3_recomp\s+VERSION\s+([0-9]+\.[0-9]+)')
+          if (-not $m.Success) {
+              throw "Could not parse VERSION out of project(doa3_recomp ...) in doa3/CMakeLists.txt"
+          }
+          $tag = "v$($m.Groups[1].Value).$env:GITHUB_RUN_NUMBER"
+          Write-Host "version: $tag"
+          "tag=$tag"                     | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "zip=DOA3-$tag-win64.zip"      | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake --version
+          cmake -S doa3 -B doa3/build -A x64
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build doa3/build --config Release --target doa3 -- /m
+
+      - name: Stage and zip
+        shell: pwsh
+        run: |
+          $stage = "staging"
+          if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
+          New-Item -ItemType Directory $stage | Out-Null
+
+          $exe = "doa3/build/release/DOA3.exe"
+          if (-not (Test-Path $exe)) {
+              throw "DOA3.exe is missing from doa3/build/release -- refusing to publish an empty archive"
+          }
+          # Only the exe ships. assets/ (the extracted game), the ini files and
+          # the logs are all created beside it on the player's machine.
+          Copy-Item $exe $stage
+
+          # Never publish game data: fail if anything other than the exe got staged.
+          $extra = Get-ChildItem $stage -Recurse | Where-Object { $_.Name -ne 'DOA3.exe' }
+          if ($extra) {
+              throw "Unexpected files staged: $($extra.Name -join ', ')"
+          }
+
+          Write-Host "--- archive contents ---"
+          Get-ChildItem $stage -Recurse -File | ForEach-Object { "$($_.Name)  $($_.Length) bytes" }
+
+          Compress-Archive -Path (Join-Path $stage '*') `
+                           -DestinationPath "${{ steps.version.outputs.zip }}" -Force
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" "${{ steps.version.outputs.zip }}" `
+              --title "DOA3 ${{ steps.version.outputs.tag }}" `
+              --target "$env:GITHUB_SHA" `
+              --generate-notes
