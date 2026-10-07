@@ -1,27 +1,36 @@
 {
-  "total_functions": 11858,
+  "total_functions": 10068,
   "classification": {
     "renderware": 0,
-    "crt": 11,
+    "crt": 10,
     "data_init": 0,
-    "game_classified": 0,
-    "vtable_methods": 0,
-    "unknown": 11847
+    "game_classified": 743,
+    "vtable_methods": 3,
+    "unknown": 9315
   },
   "percentages": {
     "renderware": 0.0,
     "crt": 0.1,
     "data_init": 0.0,
-    "game_classified": 0.0,
-    "unknown": 99.9
+    "game_classified": 7.4,
+    "unknown": 92.5
   },
   "by_category": {
-    "crt": 11,
-    "unknown": 11847
+    "crt": 10,
+    "game_audio": 248,
+    "game_debug": 20,
+    "game_input": 92,
+    "game_io": 6,
+    "game_render": 374,
+    "game_vtable": 3,
+    "unknown": 9315
   },
   "by_method": {
-    "crt_signature": 11,
-    "none": 11847
+    "crt_signature": 10,
+    "none": 9315,
+    "string_keyword": 30,
+    "vtable_scan": 3,
+    "xdk_caller": 710
   },
   "rw_modules": {},
   "rw_module_count": 0

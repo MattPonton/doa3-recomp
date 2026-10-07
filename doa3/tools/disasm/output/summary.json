@@ -1,101 +1,101 @@
 {
-  "binary": "..\\doa3gamefiles\\default.xbe",
+  "binary": "build/release/assets/default.xbe",
   "base_address": "0x00010000",
-  "entry_point": "0x001651A5",
-  "total_instructions": 613009,
-  "total_functions": 5821,
-  "functions_with_prologue": 941,
+  "entry_point": "0x0018CB89",
+  "total_instructions": 658292,
+  "total_functions": 5632,
+  "functions_with_prologue": 1005,
   "functions_by_method": {
-    "call_target": 4928,
-    "prologue": 878,
-    "entry_point": 1,
-    "cc_boundary": 14
+    "call_target": 4681,
+    "prologue": 934,
+    "cc_boundary": 16,
+    "entry_point": 1
   },
   "functions_by_section": {
-    ".text": 5007,
-    "D3D": 267,
+    ".text": 4854,
+    "D3D": 247,
     "D3DX": 14,
-    "XGRPH": 11,
-    "DSOUND": 328,
-    "PSGSFD00": 10,
+    "XGRPH": 8,
+    "DSOUND": 318,
+    "PSGSFD00": 11,
     "PSGSFD_B": 3,
-    "XPP": 181
+    "XPP": 177
   },
-  "total_xrefs": 133645,
+  "total_xrefs": 144895,
   "xrefs_by_type": {
-    "cond_jump": 42724,
-    "jump": 10841,
-    "data_read": 44182,
-    "call": 35354,
-    "kernel_call": 544
+    "cond_jump": 48693,
+    "jump": 12849,
+    "call": 27229,
+    "data_read": 55623,
+    "kernel_call": 501
   },
-  "total_labels": 11269,
-  "total_strings": 5336,
-  "kernel_imports": 112,
+  "total_labels": 12798,
+  "total_strings": 7050,
+  "kernel_imports": 116,
   "sections_analyzed": [
     {
       "name": ".text",
       "va": "0x00011000",
-      "size": 1703392,
-      "functions": 5007
+      "size": 1880880,
+      "functions": 4854
     },
     {
       "name": "D3D",
-      "va": "0x001B0DE0",
-      "size": 75724,
-      "functions": 267
+      "va": "0x001DC340",
+      "size": 73056,
+      "functions": 247
     },
     {
       "name": "D3DX",
-      "va": "0x001C35C0",
-      "size": 11976,
+      "va": "0x001EE0A0",
+      "size": 11944,
       "functions": 14
     },
     {
       "name": "XGRPH",
-      "va": "0x001C64A0",
-      "size": 1532,
-      "functions": 11
+      "va": "0x001F0F60",
+      "size": 764,
+      "functions": 8
     },
     {
       "name": "DSOUND",
-      "va": "0x001C6AA0",
-      "size": 110568,
-      "functions": 328
+      "va": "0x001F1260",
+      "size": 111684,
+      "functions": 318
     },
     {
       "name": "PSGSFD00",
-      "va": "0x001E1AA0",
-      "size": 12688,
-      "functions": 10
+      "va": "0x0020C6C0",
+      "size": 13200,
+      "functions": 11
     },
     {
       "name": "PSGSFD_I",
-      "va": "0x001E4C40",
+      "va": "0x0020FA60",
       "size": 496,
       "functions": 0
     },
     {
       "name": "PSGSFD_B",
-      "va": "0x001E4E40",
+      "va": "0x0020FC60",
       "size": 1728,
       "functions": 3
     },
     {
       "name": "PSGSFD_P",
-      "va": "0x001E5500",
+      "va": "0x00210320",
       "size": 1072,
       "functions": 0
     },
     {
       "name": "XPP",
-      "va": "0x001E5940",
-      "size": 30620,
-      "functions": 181
+      "va": "0x00210760",
+      "size": 29340,
+      "functions": 177
     },
     {
       "name": "DOLBY",
-      "va": "0x00C27F60",
+      "va": "0x00CA2560",
       "size": 28056,
       "functions": 0
     }
