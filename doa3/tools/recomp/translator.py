@@ -266,7 +266,8 @@ class FunctionTranslator:
 
         # Ensure ebp tracked if function calls __SEH_prolog or __SEH_epilog
         # (lifter emits ebp = g_seh_ebp readback after these calls).
-        SEH_FUNCS = {0x00244784, 0x002447BF}
+        from .config import SEH_PROLOG, SEH_EPILOG
+        SEH_FUNCS = {SEH_PROLOG, SEH_EPILOG}  # was Burnout 3's addresses
         if any(insn.call_target in SEH_FUNCS for insn in instructions):
             used_regs.add("ebp")
 

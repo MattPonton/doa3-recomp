@@ -12,41 +12,23 @@ Values derived from: py -3 tools/xbe_parser/xbe_parser.py ../doa3gamefiles/defau
 # XBE Memory Layout
 # ============================================================
 
-XBE_BASE_ADDRESS = 0x00010000
-XBE_IMAGE_SIZE = 0x00C21500  # 12.13 MB
+# Layout is read from the XBE selected by DOA3_XBE (see tools/xbe_layout.py).
+from tools import xbe_layout as _L
 
-# Entry point (retail, XOR-decoded from 0xA8EA060E)
-ENTRY_POINT = 0x001651A5
-
-# Kernel thunk table start (in .rdata)
-KERNEL_THUNK_ADDR = 0x001ED0E0
+XBE_BASE_ADDRESS = _L.XBE_BASE_ADDRESS
+XBE_IMAGE_SIZE = _L.XBE_IMAGE_SIZE
+ENTRY_POINT = _L.ENTRY_POINT
+KERNEL_THUNK_ADDR = _L.KERNEL_THUNK_ADDR
 
 # ============================================================
 # Section Definitions
 # ============================================================
 
 # Executable code sections (name, va_start, va_size)
-# These are the sections we'll disassemble.
-EXECUTABLE_SECTIONS = [
-    (".text",    0x00011000, 0x0019FDE0),
-    ("D3D",      0x001B0DE0, 0x000127CC),
-    ("D3DX",     0x001C35C0, 0x00002EC8),
-    ("XGRPH",    0x001C64A0, 0x000005FC),
-    ("DSOUND",   0x001C6AA0, 0x0001AFE8),
-    ("PSGSFD00", 0x001E1AA0, 0x00003190),
-    ("PSGSFD_I", 0x001E4C40, 0x000001F0),
-    ("PSGSFD_B", 0x001E4E40, 0x000006C0),
-    ("PSGSFD_P", 0x001E5500, 0x00000430),
-    ("XPP",      0x001E5940, 0x0000779C),
-    ("DOLBY",    0x00C27F60, 0x00006D98),
-]
+EXECUTABLE_SECTIONS = _L.EXECUTABLE_SECTIONS
 
 # Data sections
-DATA_SECTIONS = [
-    (".rdata",    0x001ED0E0, 0x0002C54C),
-    (".data",     0x00219640, 0x00A0E91C),
-    ("$$XTIMAGE", 0x00C2ED00, 0x00002800),
-]
+DATA_SECTIONS = _L.DATA_SECTIONS
 
 # All sections by name for quick lookup
 ALL_SECTIONS = {

@@ -1259,8 +1259,8 @@ class Lifter:
     # DOA3: __SEH_prolog4 @ 0x0018F494, __SEH_epilog4 @ 0x0018F4CD
     # (the entry's thread trampoline sub_00164C28 opens with
     #  push 0x18; push <scopetable>; call 0x0018F494).
-    SEH_PROLOG = 0x0018F494  # __SEH_prolog4
-    SEH_EPILOG = 0x0018F4CD  # __SEH_epilog4
+    # Version-specific: located in the selected XBE by tools/xbe_layout.py.
+    from tools.recomp.config import SEH_PROLOG, SEH_EPILOG  # noqa: E402
 
     def _lift_call(self, insn, ops):
         # x86 'call' pushes return address then jumps.

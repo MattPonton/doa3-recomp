@@ -9,48 +9,32 @@ confidence thresholds for each identification method.
 # Section Address Ranges (from XBE analysis)
 # ============================================================
 
-# .text section: game code + CRT + RenderWare engine
-TEXT_VA_START = 0x00011000
-TEXT_VA_SIZE = 2863616
-TEXT_VA_END = TEXT_VA_START + TEXT_VA_SIZE  # 0x002BD000
-TEXT_RAW_ADDR = 0x00001000
+# Layout is read from the XBE selected by DOA3_XBE (see tools/xbe_layout.py).
+# (Upstream still carried Burnout 3's layout here.)
+from tools import xbe_layout as _L
 
-# .rdata section: read-only data (strings, vtables, constants)
-RDATA_VA_START = 0x0036B7C0
-RDATA_VA_SIZE = 289684
-RDATA_VA_END = RDATA_VA_START + RDATA_VA_SIZE  # 0x003B2394
-RDATA_RAW_ADDR = 0x0035C000
+TEXT_VA_START = _L.TEXT_VA_START
+TEXT_VA_SIZE = _L.TEXT_VA_SIZE
+TEXT_VA_END = _L.TEXT_VA_END
+TEXT_RAW_ADDR = _L.TEXT_RAW_ADDR
 
-# .data section
-DATA_VA_START = 0x003B2360
-DATA_VA_SIZE = 3904988
-DATA_VA_END = DATA_VA_START + DATA_VA_SIZE
-DATA_RAW_ADDR = 0x003A3000
+RDATA_VA_START = _L.RDATA_VA_START
+RDATA_VA_SIZE = _L.RDATA_VA_SIZE
+RDATA_VA_END = _L.RDATA_VA_END
+RDATA_RAW_ADDR = _L.RDATA_RAW_ADDR
 
-# XBE base address
-XBE_BASE_ADDRESS = 0x00010000
+DATA_VA_START = _L.DATA_VA_START
+DATA_VA_END = _L.DATA_VA_END
+DATA_RAW_ADDR = _L.section(".data")[3]
+
+XBE_BASE_ADDRESS = _L.XBE_BASE_ADDRESS
 
 # ============================================================
 # VA-to-file-offset helpers
 # ============================================================
 
-SECTIONS = [
-    # (name, va_start, va_size, raw_addr)
-    (".text",   0x00011000, 2863616, 0x00001000),
-    ("XMV",     0x002CC200, 163124,  0x002BD000),
-    ("DSOUND",  0x002F3F40, 52668,   0x002E5000),
-    ("WMADEC",  0x00300D00, 105828,  0x002F2000),
-    ("XONLINE", 0x0031AA80, 124764,  0x0030C000),
-    ("XNET",    0x003391E0, 78056,   0x0032B000),
-    ("D3D",     0x0034C2E0, 83828,   0x0033F000),
-    ("XGRPH",   0x00360A60, 8300,    0x00350000),
-    ("XPP",     0x00362AE0, 36052,   0x00353000),
-    (".rdata",  0x0036B7C0, 289684,  0x0035C000),
-    (".data",   0x003B2360, 3904988, 0x003A3000),
-    ("DOLBY",   0x0076B940, 29056,   0x0040C000),
-    ("XON_RD",  0x00772AC0, 5416,    0x00414000),
-    (".data1",  0x00774000, 224,     0x00416000),
-]
+# (name, va_start, raw_size, raw_addr)
+SECTIONS = _L.RAW_SECTIONS
 
 
 def va_to_file_offset(va):
@@ -67,15 +51,16 @@ def va_to_file_offset(va):
 # Maps section name -> (va_start, va_end, game_category)
 # Functions calling into these sections get classified accordingly.
 
+_XDK_CATEGORY = {
+    "D3D": "game_render", "D3DX": "game_render", "XGRPH": "game_render",
+    "DSOUND": "game_audio", "DOLBY": "game_audio",
+    "PSGSFD00": "game_video", "PSGSFD_I": "game_video",
+    "PSGSFD_B": "game_video", "PSGSFD_P": "game_video",
+    "XPP": "game_input",
+}
 XDK_SECTIONS = {
-    "D3D":     (0x0034C2E0, 0x0034C2E0 + 83828,  "game_render"),
-    "DSOUND":  (0x002F3F40, 0x002F3F40 + 52668,  "game_audio"),
-    "WMADEC":  (0x00300D00, 0x00300D00 + 105828, "game_audio"),
-    "XMV":     (0x002CC200, 0x002CC200 + 163124, "game_video"),
-    "XONLINE": (0x0031AA80, 0x0031AA80 + 124764, "game_network"),
-    "XNET":    (0x003391E0, 0x003391E0 + 78056,  "game_network"),
-    "XGRPH":   (0x00360A60, 0x00360A60 + 8300,   "game_render"),
-    "XPP":     (0x00362AE0, 0x00362AE0 + 36052,  "game_input"),
+    name: (va, va + size, _XDK_CATEGORY[name])
+    for name, va, size in _L.EXECUTABLE_SECTIONS if name in _XDK_CATEGORY
 }
 
 # ============================================================
