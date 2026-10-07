@@ -31,7 +31,7 @@
 #include "video_settings.h"
 #include "log_settings.h"
 
-#define DOA3_ENTRY_POINT   0x001651A5
+#include "xbe_layout.h"  /* DOA3_ENTRY_POINT and the rest of the version layout */
 /* Game files live in an "assets" folder next to the exe; the working
  * directory is set to the exe's folder at startup. */
 #define DOA3_XBE_PATH      "assets/default.xbe"
@@ -1400,8 +1400,8 @@ int main(int argc, char **argv)
      * these tables, so direct-call function detection never found them. */
     {
         static const struct { uint32_t lo, hi; const char *what; } s_ini[] = {
-            { 0x00219640u, 0x0021964Cu, "C initializers"   },  /* __xi_a .. __xi_z */
-            { 0x00219650u, 0x002196F4u, "C++ constructors" },  /* __xc_a .. __xc_z */
+            { DOA3_CRT_XI_LO, DOA3_CRT_XI_HI, "C initializers"   },  /* __xi_a .. __xi_z */
+            { DOA3_CRT_XC_LO, DOA3_CRT_XC_HI, "C++ constructors" },  /* __xc_a .. __xc_z */
         };
         /* DOA3_CRTMAX=N limits how many initializers run (bisecting a bad
          * one); DOA3_CRTMAX=0 disables them entirely. */

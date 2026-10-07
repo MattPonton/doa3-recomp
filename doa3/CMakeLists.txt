@@ -21,6 +21,10 @@ add_compile_definitions(
     NOMINMAX
 )
 
+# Version-specific XBE layout (xbe_layout.h), generated next to the recompiled
+# code by `py -3 -m tools.xbe_layout --header src/game/recomp/gen/xbe_layout.h`.
+include_directories(${CMAKE_SOURCE_DIR}/src/game/recomp/gen)
+
 # ── Compatibility layers (static libraries) — mirrors burnout3 ──
 add_subdirectory(src/kernel)   # Xbox kernel imports -> Win32, memory layout, dispatch
 add_subdirectory(src/d3d)      # D3D8 -> D3D11 graphics abstraction

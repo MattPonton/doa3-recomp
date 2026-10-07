@@ -18,14 +18,10 @@
 
 /* Section info from XBE analysis */
 
-/* .text raw file offset (XBE stores this at section header +0x0C) (DOA3) */
-#define TEXT_RAW_OFFSET         0x00001000
-
-/* .rdata raw file offset (DOA3) */
-#define RDATA_RAW_OFFSET        0x001DF000
-
-/* .data raw file offset (DOA3) */
-#define DATA_RAW_OFFSET         0x0020C000
+/* Raw file offsets of the main sections (xbe_layout.h) */
+#define TEXT_RAW_OFFSET         DOA3_TEXT_RAW_OFFSET
+#define RDATA_RAW_OFFSET        DOA3_RDATA_RAW_OFFSET
+#define DATA_RAW_OFFSET         DOA3_DATA_RAW_OFFSET
 
 /* Additional XBE sections to map (DOA3).
  * All sections are placed at their original Xbox VAs because the recompiled
@@ -37,19 +33,8 @@ static const struct {
     DWORD size;
     DWORD raw_offset;
 } g_extra_sections[] = {
-    /* XDK library code sections (between .text and .rdata) */
-    { "D3D",       0x001B0DE0, 0x0000F36C, 0x001A1000 },
-    { "D3DX",      0x001C35C0, 0x00002EC0, 0x001B1000 },
-    { "XGRPH",     0x001C64A0, 0x000005FC, 0x001B4000 },
-    { "DSOUND",    0x001C6AA0, 0x0001AEB4, 0x001B5000 },
-    { "PSGSFD00",  0x001E1AA0, 0x00003190, 0x001D0000 },
-    { "PSGSFD_I",  0x001E4C40, 0x000001F0, 0x001D4000 },
-    { "PSGSFD_B",  0x001E4E40, 0x000006C0, 0x001D5000 },
-    { "PSGSFD_P",  0x001E5500, 0x00000430, 0x001D6000 },
-    { "XPP",       0x001E5940, 0x0000779C, 0x001D7000 },
-    /* Data sections past .data */
-    { "DOLBY",     0x00C27F60, 0x00006D84, 0x003B5000 },
-    { "$$XTIMAGE", 0x00C2ED00, 0x00002800, 0x003BC000 },
+    /* Every section other than .text/.rdata/.data, from xbe_layout.h */
+    DOA3_EXTRA_SECTIONS
 };
 #define NUM_EXTRA_SECTIONS (sizeof(g_extra_sections) / sizeof(g_extra_sections[0]))
 
@@ -431,8 +416,8 @@ BOOL xbox_MemoryLayoutInit(const void *xbe_data, size_t xbe_size)
          * The stack base was lowered to 0x00C40000 to give the low heap the
          * 768 KB it needs for the driver's real depth buffer, so these two
          * pages moved down with it and now sit immediately after the image. */
-        #define FAKE_TLS_VA     0x00C32000  /* Fake TLS structure */
-        #define FAKE_RWDATA_VA  0x00C36000  /* Scratch context data area */
+        #define FAKE_TLS_VA     DOA3_FAKE_TLS_VA     /* Fake TLS structure (0x00C32000 for 3.0) */
+        #define FAKE_RWDATA_VA  DOA3_FAKE_RWDATA_VA  /* Scratch context data area (0x00C36000 for 3.0) */
 
         MEM32_INIT(0x28, FAKE_TLS_VA);
         /* TLS[0x28] = pointer to RW data area */

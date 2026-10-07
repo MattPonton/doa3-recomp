@@ -1,12 +1,12 @@
 {
-  "total_functions": 10068,
+  "total_functions": 10137,
   "classification": {
     "renderware": 0,
     "crt": 10,
     "data_init": 0,
-    "game_classified": 743,
-    "vtable_methods": 3,
-    "unknown": 9315
+    "game_classified": 746,
+    "vtable_methods": 6,
+    "unknown": 9381
   },
   "percentages": {
     "renderware": 0.0,
@@ -22,13 +22,14 @@
     "game_input": 92,
     "game_io": 6,
     "game_render": 374,
-    "game_vtable": 3,
-    "unknown": 9315
+    "game_vtable": 6,
+    "unknown": 9381
   },
   "by_method": {
     "crt_signature": 10,
-    "none": 9315,
+    "none": 9381,
     "string_keyword": 30,
+    "vtable_ctor": 3,
     "vtable_scan": 3,
     "xdk_caller": 710
   },

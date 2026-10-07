@@ -44,18 +44,22 @@ extern "C" {
  * game code reads from addresses like 0x20 and 0x28 (Xbox kernel structures). */
 #define XBOX_MAP_START          0x00000000
 
-/* .text section (DOA3) */
-#define XBOX_TEXT_VA            0x00011000
-#define XBOX_TEXT_SIZE          0x0019FDE0  /* 1,703,392 bytes */
+/* Section layout comes from the XBE the code was generated from
+ * (xbe_layout.h, written by tools/xbe_layout.py). */
+#include "xbe_layout.h"
 
-/* .rdata section (DOA3) */
-#define XBOX_RDATA_VA           0x001ED0E0
-#define XBOX_RDATA_SIZE         0x0002C53C  /* 181,564 bytes (raw) */
+/* .text section */
+#define XBOX_TEXT_VA            DOA3_TEXT_VA
+#define XBOX_TEXT_SIZE          DOA3_TEXT_RAW_SIZE
 
-/* .data section (includes BSS) (DOA3) */
-#define XBOX_DATA_VA            0x00219640
-#define XBOX_DATA_SIZE          0x00A0E91C  /* virtual size, ~10.5 MB incl. BSS */
-#define XBOX_DATA_INIT_SIZE     0x001A8450  /* Initialized data in XBE file (raw) */
+/* .rdata section */
+#define XBOX_RDATA_VA           DOA3_RDATA_VA
+#define XBOX_RDATA_SIZE         DOA3_RDATA_RAW_SIZE
+
+/* .data section (includes BSS) */
+#define XBOX_DATA_VA            DOA3_DATA_VA
+#define XBOX_DATA_SIZE          DOA3_DATA_VSIZE     /* virtual size incl. BSS */
+#define XBOX_DATA_INIT_SIZE     DOA3_DATA_RAW_SIZE  /* Initialized data in XBE file (raw) */
 /* BSS starts at DATA_VA + DATA_INIT_SIZE, zero-initialized */
 
 /* Xbox physical memory */
@@ -134,7 +138,9 @@ ptrdiff_t xbox_GetMemoryOffset(void);
 /** Base VA for kernel data exports (XboxHardwareInfo, XboxKrnlVersion, etc.)
  *  These are kernel exports that are DATA, not functions. The game reads
  *  their thunk entries and dereferences them to access the data. */
-#define XBOX_KERNEL_DATA_BASE   0x00740000
+/* Upstream used 0x00740000, which lies inside .data's BSS for every DOA3
+ * build. It now sits in its own page above the image (xbe_layout.h). */
+#define XBOX_KERNEL_DATA_BASE   DOA3_KERNEL_DATA_VA
 #define XBOX_KERNEL_DATA_SIZE   4096   /* 4 KB - plenty for all data exports */
 
 /* Offsets within the kernel data area */
@@ -186,7 +192,9 @@ ptrdiff_t xbox_GetMemoryOffset(void);
  *  51.7 MB against a 51.4 MB heap and the asset loader died with
  *  "E9040828:'flid' is range outside". Dropping the base from 0x00D00000
  *  reclaims the 768 KB of dead gap between the image and the stack. */
-#define XBOX_STACK_BASE     0x00C40000
+/* Version-specific: first 64 KB boundary above the image, fake TLS/RW-data
+ * pages and kernel data page (xbe_layout.h). 0x00C40000 for 3.0. */
+#define XBOX_STACK_BASE     DOA3_STACK_BASE
 
 /** Initial ESP value (top of stack, 16-byte aligned). */
 #define XBOX_STACK_TOP      (XBOX_STACK_BASE + XBOX_STACK_SIZE - 16)

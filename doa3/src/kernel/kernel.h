@@ -434,8 +434,9 @@ typedef VOID (*PIO_APC_ROUTINE)(
  * DOA3: table at VA 0x001ED0E0 (= .rdata start), 112 imports.
  * (Resolution is by Xbox kernel ordinal, which is game-agnostic.)
  */
-#define XBOX_KERNEL_THUNK_TABLE_BASE  0x001ED0E0
-#define XBOX_KERNEL_THUNK_TABLE_SIZE  112
+#include "xbe_layout.h"
+#define XBOX_KERNEL_THUNK_TABLE_BASE  DOA3_KERNEL_THUNK_ADDR
+#define XBOX_KERNEL_THUNK_TABLE_SIZE  DOA3_KERNEL_THUNK_COUNT
 
 extern ULONG_PTR xbox_kernel_thunk_table[XBOX_KERNEL_THUNK_TABLE_SIZE];
 
