@@ -240,6 +240,11 @@ static DWORD WINAPI doa3_watchdog(LPVOID unused)
                 extern void doa3_ktrace_dump(const char *why);
                 doa3_ktrace_dump("watchdog stall");
             }
+            {   extern void doa3_kcount_dump(void);
+                extern void doa3_wdog_peek(void);
+                doa3_kcount_dump();
+                doa3_wdog_peek();
+            }
             {   /* the guest's last indirect calls (newest last) */
                 extern volatile uint32_t g_icall_trace[16];
                 extern volatile uint32_t g_icall_trace_idx;

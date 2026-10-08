@@ -467,6 +467,28 @@ void sub_001926B0(void)
     esp += 4;
 }
 
+/* CRI file server tick (0x191D60; 3.0: 0x170710): registered as ADXM user
+ * server group 2 when [0x25478C] == 1, then run by the vsync thread after
+ * each vertical blank. Counted for the watchdog. */
+extern int xbox_fiber_current(void);
+static unsigned s_crifs_ticks;
+void sub_00191D60_gen(void);
+void sub_00191D60(void)
+{
+    if (s_crifs_ticks++ == 0) { fprintf(stderr, "[CRI] file server first tick (fiber %d)\n", xbox_fiber_current()); fflush(stderr); }
+    sub_00191D60_gen();
+}
+
+/* Watchdog peek: the state the 3.1 boot is waiting on. */
+void doa3_wdog_peek(void)
+{
+    uint32_t pt = MEM32(0x00C7E1A0u);
+    fprintf(stderr, "[PEEK] adxm_thread_mode[0x25478C]=%u grp2fn[0x40CDF0]=%08X fs_busy[0x40C5C4]=%u "
+            "fs_ticks=%u pt_state=%08X(stat %d) grp5fn[0x40CE30]=%08X\n",
+            MEM32(0x0025478Cu), MEM32(0x0040CDF0u), MEM32(0x0040C5C4u), s_crifs_ticks,
+            pt, pt ? (int)(int8_t)MEM8(pt + 1) : -99, MEM32(0x0040CE30u));
+}
+
 /* CRI middleware message sink (0x19A330, cdecl: formats into 0xC75500 and
  * hands it to the registered callback). The ADX/Sofdec error reporters
  * (0x1934D0 / 0x193510) end here, so log what the middleware says. */
@@ -489,6 +511,8 @@ void sub_0019A330(void)
     }
     sub_0019A330_gen();
 }
+#else
+void doa3_wdog_peek(void) { }
 #endif /* DOA3_XBE_ID_3_1 */
 
 /* ── Manual override table ──────────────────────────────────────────

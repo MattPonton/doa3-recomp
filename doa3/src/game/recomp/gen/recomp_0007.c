@@ -22616,7 +22616,7 @@ loc_00191D50: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00191D60(void)
+void sub_00191D60_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 

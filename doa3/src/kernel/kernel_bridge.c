@@ -1719,6 +1719,15 @@ static void bridge_NtReadFile(void)
     }
 
     if (g_kernel_ptinfo_hook) g_kernel_ptinfo_hook("ntread");
+    {   static int s_rd;
+        if (s_rd < 40) {
+            s_rd++;
+            fprintf(stderr, "[READ] #%d h=%08X len=%u off=%08X%s apc=%08X fiber=%d -> %s %lu bytes\n",
+                    s_rd, STACK_ARG(0), length, offset_va ? BRIDGE_MEM32(offset_va) : 0,
+                    offset_va ? "" : "(cur)", apc_ctx, xbox_fiber_current(),
+                    result ? "ok" : "FAIL", (unsigned long)bytes_read);
+        }
+    }
     {
         /* DOA3 DIAG: the first 16 reads cover boot; g_kernel_trace_reads is
          * raised by the game once the intro movie is over so the post-movie
@@ -2875,6 +2884,18 @@ static volatile unsigned g_ktrace_pos;
 
 unsigned long long xbox_kernel_call_count(void) { return g_kernel_call_count; }
 
+/* Per-ordinal call counts (watchdog report: which kernel calls a stalled
+ * loop is still making, long after the [KCALL] trace has stopped). */
+static unsigned g_kcount[400];
+void doa3_kcount_dump(void)
+{
+    int i, shown = 0;
+    fprintf(stderr, "[KCOUNT] calls by ordinal:");
+    for (i = 0; i < 400; i++)
+        if (g_kcount[i]) { fprintf(stderr, " %d:%u", i, g_kcount[i]); shown++; }
+    fprintf(stderr, "\n");
+}
+
 /* Print the last 32 kernel calls (oldest first). Safe to call from handlers. */
 void doa3_ktrace_dump(const char *why)
 {
@@ -2905,6 +2926,7 @@ static void kernel_thunk_dispatch(void)
     bridge = g_slot_bridges[slot];
 
     g_kernel_call_count++;
+    if (ordinal < 400) g_kcount[ordinal]++;
     xbox_det_on_kernel_call(ordinal);
     {   /* worker-thread scheduling point (see xbox_fiber_timeslice). Only
          * once the movie is over (its verified timing is left alone), and
