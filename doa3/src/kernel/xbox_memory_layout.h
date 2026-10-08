@@ -153,6 +153,8 @@ ptrdiff_t xbox_GetMemoryOffset(void);
 #define KDATA_XE_IMAGE_FILENAME 0x060  /* XeImageFileName (ANSI_STRING) */
 #define KDATA_IO_COMPLETION_TYPE 0x070 /* IoCompletionObjectType (4 bytes) */
 #define KDATA_IO_DEVICE_TYPE    0x080  /* IoDeviceObjectType (4 bytes) */
+#define KDATA_HAL_DISK_CACHE_PARTITIONS 0x090 /* HalDiskCachePartitionCount (4 bytes) */
+#define KDATA_HAL_BOOT_SMC_VIDEO_MODE   0x0A0 /* HalBootSMCVideoMode (4 bytes) */
 #define KDATA_HD_KEY            0x100  /* XboxHDKey (16 bytes) */
 #define KDATA_SIGNATURE_KEY     0x110  /* XboxSignatureKey (16 bytes) */
 #define KDATA_LAN_KEY           0x120  /* XboxLANKey (16 bytes) */

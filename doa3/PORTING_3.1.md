@@ -84,6 +84,33 @@ The fifth 3.1 run still died with nothing logged after CRT init. Added:
   keeps its own, and new fibers start with none).
 - Release builds now write `DOA3.map` and a PDB, to map crash offsets.
 
+## Kernel ordinals (XDK 4134 table)
+
+The bridge's ordinal tables came from another title and were tuned against
+3.0 by hand; several entries carry a neighbouring export's name, argument
+count or data/function kind (14 ExAllocatePool was DbgPrint, 17 ExFreePool
+and 65 IoCreateDevice were data, 16/40/354 data exports were functions, 46
+HalReadWritePCISpace popped 8 bytes of 24, 67 was IoCreateFile, 87 is a
+fastcall, 335-337 are XcSHA*, 305 RtlTimeToTimeFields had no bridge). The
+sixth 3.1 run's last kernel calls were D3D's miniport init: two
+HalReadWritePCISpace calls 16 bytes apart in guest esp, then
+RtlTimeToTimeFields, whose unfilled month drives a loop at 0x1E551F.
+
+Builds other than 3.0 now resolve every import through `g_kx_ords` in
+`kernel_bridge.c` (names, conventions and argument sizes from the retail
+kernel, checked against Cxbx-Reloaded's export definitions and the push
+counts at the XBE's own call sites). 3.0 keeps the old tables. New bridges:
+pool alloc/free/size, ExQueryNonVolatileSetting (language, video, AV and
+game region per release), PCI config space, HalReturnToFirmware/KeBugCheck/
+HalInitiateShutdown (logged as `[HALT]`), IoCreateDevice,
+KeQueryInterruptTime, MmCreateKernelStack, NtQueryVirtualMemory, the Rtl
+time conversions, RtlCompareMemoryUlong, RtlEqualString, XcSHA*,
+NtUserIoApcDispatcher.
+
+The watchdog now also arms before the first present: 6 s without a kernel
+call logs `[WDOG] STALLED` with the host RIP, return addresses into
+DOA3.exe (look them up in DOA3.map) and the kernel-call ring.
+
 ## Generated-code fix-ups (`tools.recomp.postprocess`)
 
 Runs upstream's fixers for the lifter defect classes in NOTES.md, in order.

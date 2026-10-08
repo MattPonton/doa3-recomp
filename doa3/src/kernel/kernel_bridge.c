@@ -127,6 +127,8 @@ static DWORD WINAPI xbox_tick_count_thread(LPVOID arg)
 
 static void kernel_data_init(void)
 {
+    BRIDGE_MEM32(XBOX_KERNEL_DATA_BASE + KDATA_HAL_DISK_CACHE_PARTITIONS) = 3;
+    BRIDGE_MEM32(XBOX_KERNEL_DATA_BASE + KDATA_HAL_BOOT_SMC_VIDEO_MODE) = 0;
     /* XboxHardwareInfo (ordinal 322) - XBOX_HARDWARE_INFO
      *   +0: ULONG Flags (0 = retail, 0x20 = devkit)
      *   +4: UCHAR GpuRevision
@@ -2855,6 +2857,8 @@ static struct { unsigned long long n; uint32_t esp, arg0; uint16_t ordinal; int1
     g_ktrace_ring[32];
 static volatile unsigned g_ktrace_pos;
 
+unsigned long long xbox_kernel_call_count(void) { return g_kernel_call_count; }
+
 /* Print the last 32 kernel calls (oldest first). Safe to call from handlers. */
 void doa3_ktrace_dump(const char *why)
 {
@@ -2973,6 +2977,394 @@ recomp_func_t recomp_lookup_kernel(uint32_t xbox_va)
 
 /* ── Initialization ─────────────────────────────────────── */
 
+/* ══ Kernel ordinals for XDK 4134 builds (3.1, 3.2, 3++) ═══════════════════
+ *
+ * The tables above came to this project from another title and were tuned
+ * against 3.0 by hand: several ordinals carry the name, argument count or
+ * data/function kind of a neighbouring export. 3.0 survives that because the
+ * affected calls are rare, overridden, or sit in frame-pointer functions that
+ * restore esp on exit. 3.1's D3D/XAPI (XDK 4134) call more of them, and each
+ * wrong argument count shifts the guest stack. First casualty:
+ * HalReadWritePCISpace (46, 6 args) popped as 2, 16 bytes per call during
+ * D3D's miniport init, followed by a silent death.
+ *
+ * Names, calling conventions and argument counts below are the retail
+ * kernel's (cross-checked against Cxbx-Reloaded's export definitions and the
+ * push counts at the XBE's own call sites). 3.0 keeps the old tables so its
+ * verified behaviour does not move. */
+#ifndef DOA3_XBE_ID_3_0
+
+/* ExAllocatePool / WithTag keep the block size in a 16-byte header so that
+ * ExQueryPoolBlockSize can answer; freeing is a no-op (bump heap). */
+static uint32_t kx_pool_alloc(uint32_t size)
+{
+    uint32_t va = xbox_HeapAlloc(size + 16, 16);
+    if (!va) return 0;
+    BRIDGE_MEM32(va) = size;
+    BRIDGE_MEM32(va + 4) = 0x6C6F6F50u;   /* 'Pool' */
+    return va + 16;
+}
+static void kx_ExAllocatePool(void)        { g_eax = kx_pool_alloc(STACK_ARG(0)); }
+static void kx_ExAllocatePoolWithTag(void) { g_eax = kx_pool_alloc(STACK_ARG(0)); }
+static void kx_ExFreePool(void)            { g_eax = 0; }
+static void kx_ExQueryPoolBlockSize(void)
+{
+    uint32_t p = STACK_ARG(0);
+    g_eax = (p >= 16 && BRIDGE_MEM32(p - 12) == 0x6C6F6F50u) ? BRIDGE_MEM32(p - 16) : 0;
+}
+
+/* ExQueryNonVolatileSetting(ValueIndex, &Type, Value, ValueLength, &ResultLength) */
+static void kx_ExQueryNonVolatileSetting(void)
+{
+    uint32_t index = STACK_ARG(0), type_p = STACK_ARG(1), val_p = STACK_ARG(2);
+    uint32_t len = STACK_ARG(3), res_p = STACK_ARG(4);
+    uint32_t v;
+    switch (index) {
+    case 7:     v = 1; break;                           /* XC_LANGUAGE: English */
+    case 8:     v = video_xc_video_value(); break;      /* XC_VIDEO */
+    case 9:     v = 0; break;                           /* XC_AUDIO: stereo */
+    case 0x103:                                         /* XC_FACTORY_AV_REGION */
+#if defined(DOA3_XBE_ID_3_2)
+        v = 0x00800300u; break;                         /* PAL-I, 50 Hz */
+#elif defined(DOA3_XBE_ID_3_0)
+        v = 0x00400100u; break;                         /* NTSC-M, 60 Hz */
+#else
+        v = 0x00400200u; break;                         /* NTSC-J, 60 Hz */
+#endif
+    case 0x104:                                         /* XC_FACTORY_GAME_REGION */
+#if defined(DOA3_XBE_ID_3_2)
+        v = 4; break;                                   /* rest of world */
+#else
+        v = 2; break;                                   /* Japan */
+#endif
+    default:    v = 0; break;                           /* parental controls etc. */
+    }
+    if (val_p && len >= 4) BRIDGE_MEM32(val_p) = v;
+    if (type_p) BRIDGE_MEM32(type_p) = 4;               /* REG_DWORD */
+    if (res_p)  BRIDGE_MEM32(res_p) = 4;
+    g_eax = 0;
+}
+
+/* HalReadWritePCISpace(Bus, Slot, Register, Buffer, Length, Write): a small
+ * config space with the IDs D3D's miniport looks for; writes are dropped. */
+static void kx_HalReadWritePCISpace(void)
+{
+    uint32_t bus = STACK_ARG(0), slot = STACK_ARG(1), reg = STACK_ARG(2);
+    uint32_t buf = STACK_ARG(3), len = STACK_ARG(4), wr = STACK_ARG(5) & 0xFF;
+    static int s_log;
+    uint8_t cfg[256];
+    memset(cfg, 0, sizeof cfg);
+    if (bus == 1 && (slot & 0x1F) == 0) {               /* NV2A */
+        cfg[0] = 0xDE; cfg[1] = 0x10; cfg[2] = 0xA0; cfg[3] = 0x02;
+        cfg[8] = 0xA1; cfg[0x0B] = 0x03;                /* rev A1, display controller */
+    } else if (bus == 0 && (slot & 0x1F) == 0) {        /* host bridge */
+        cfg[0] = 0xDE; cfg[1] = 0x10; cfg[2] = 0xA5; cfg[3] = 0x02;
+        cfg[8] = 0xB1; cfg[0x0B] = 0x06;
+    }
+    if (s_log < 16) {
+        s_log++;
+        fprintf(stderr, "[PCI] %s bus=%u slot=0x%X reg=0x%X len=%u\n",
+                wr ? "write" : "read", bus, slot, reg, len);
+    }
+    if (!wr && buf)
+        for (uint32_t i = 0; i < len; i++)
+            BRIDGE_MEM8(buf + i) = (reg + i < 256) ? cfg[reg + i] : 0;
+    g_eax = 0;
+}
+
+static void kx_HalReturnToFirmware(void)
+{
+    extern void doa3_ktrace_dump(const char *why);
+    fprintf(stderr, "[HALT] HalReturnToFirmware(%u) called by the game (reboot/dashboard request)\n",
+            STACK_ARG(0));
+    doa3_ktrace_dump("HalReturnToFirmware");
+    g_eax = 0;
+}
+static void kx_HalInitiateShutdown(void)
+{
+    extern void doa3_ktrace_dump(const char *why);
+    fprintf(stderr, "[HALT] HalInitiateShutdown called by the game\n");
+    doa3_ktrace_dump("HalInitiateShutdown");
+    g_eax = 0;
+}
+static void kx_KeBugCheck(void)
+{
+    extern void doa3_ktrace_dump(const char *why);
+    fprintf(stderr, "[HALT] KeBugCheck(0x%08X) called by the game\n", STACK_ARG(0));
+    doa3_ktrace_dump("KeBugCheck");
+    g_eax = 0;
+}
+
+/* IoCreateDevice(Driver, ExtSize, Name, Type, Exclusive, &DeviceObject) */
+static void kx_IoCreateDevice(void)
+{
+    uint32_t ext = STACK_ARG(1), out = STACK_ARG(5);
+    uint32_t dev = xbox_HeapAlloc(0x60 + ext, 16);
+    if (dev) {
+        memset(XBOX_TO_NATIVE(dev), 0, 0x60 + ext);
+        BRIDGE_MEM16(dev) = 3;                          /* IO_TYPE_DEVICE */
+        BRIDGE_MEM16(dev + 2) = 0x60;
+        BRIDGE_MEM32(dev + 0x14) = ext ? dev + 0x60 : 0; /* DeviceExtension */
+    }
+    if (out) BRIDGE_MEM32(out) = dev;
+    g_eax = dev ? 0 : 0xC000009Au;                      /* STATUS_INSUFFICIENT_RESOURCES */
+}
+static void kx_IoInvalidDeviceRequest(void) { g_eax = 0xC0000010u; }
+
+static void kx_KeQueryInterruptTime(void)
+{
+    LARGE_INTEGER c, f;
+    static LONGLONG s_t0;
+    QueryPerformanceCounter(&c); QueryPerformanceFrequency(&f);
+    if (!s_t0) s_t0 = c.QuadPart;
+    uint64_t t = (uint64_t)((double)(c.QuadPart - s_t0) * 1e7 / (double)f.QuadPart);
+    g_eax = (uint32_t)t; g_edx = (uint32_t)(t >> 32);
+}
+
+/* MmCreateKernelStack(Size, Debugger): returns the top of a fresh stack. */
+static void kx_MmCreateKernelStack(void)
+{
+    uint32_t size = (STACK_ARG(0) + 0xFFF) & ~0xFFFu;
+    uint32_t base = xbox_HeapAlloc(size + 0x1000, 0x1000);
+    g_eax = base ? base + size + 0x1000 : 0;
+}
+static void kx_MmQueryAddressProtect(void) { g_eax = 0x04; }   /* PAGE_READWRITE */
+
+/* NtQueryVirtualMemory(BaseAddress, MEMORY_BASIC_INFORMATION *) */
+static void kx_NtQueryVirtualMemory(void)
+{
+    uint32_t a = STACK_ARG(0) & ~0xFFFu, mbi = STACK_ARG(1);
+    if (mbi) {
+        BRIDGE_MEM32(mbi + 0)  = a;
+        BRIDGE_MEM32(mbi + 4)  = a;
+        BRIDGE_MEM32(mbi + 8)  = 0x04;
+        BRIDGE_MEM32(mbi + 12) = 0x1000;
+        BRIDGE_MEM32(mbi + 16) = 0x1000;                /* MEM_COMMIT */
+        BRIDGE_MEM32(mbi + 20) = 0x04;
+        BRIDGE_MEM32(mbi + 24) = 0x20000;               /* MEM_PRIVATE */
+    }
+    g_eax = 0;
+}
+
+static void kx_RtlTimeToTimeFields(void)
+{
+    uint32_t t = STACK_ARG(0), tf = STACK_ARG(1);
+    if (t && tf) xbox_RtlTimeToTimeFields(XBOX_TO_NATIVE(t), XBOX_TO_NATIVE(tf));
+    g_eax = 0;
+}
+static void kx_RtlTimeFieldsToTime(void)
+{
+    uint32_t tf = STACK_ARG(0), t = STACK_ARG(1);
+    g_eax = (tf && t) ? (uint32_t)xbox_RtlTimeFieldsToTime(XBOX_TO_NATIVE(tf), XBOX_TO_NATIVE(t)) : 0;
+}
+static void kx_RtlCompareMemoryUlong(void)
+{
+    uint32_t src = STACK_ARG(0), len = STACK_ARG(1) & ~3u, pat = STACK_ARG(2), n = 0;
+    while (n < len && BRIDGE_MEM32(src + n) == pat) n += 4;
+    g_eax = n;
+}
+static void kx_RtlEqualString(void)
+{
+    uint32_t a = STACK_ARG(0), b = STACK_ARG(1), ci = STACK_ARG(2) & 0xFF;
+    uint16_t la = BRIDGE_MEM16(a), lb = BRIDGE_MEM16(b);
+    uint32_t pa = BRIDGE_MEM32(a + 4), pb = BRIDGE_MEM32(b + 4);
+    int eq = (la == lb);
+    for (uint16_t i = 0; eq && i < la; i++) {
+        int x = BRIDGE_MEM8(pa + i), y = BRIDGE_MEM8(pb + i);
+        if (ci) { if (x >= 'a' && x <= 'z') x -= 32; if (y >= 'a' && y <= 'z') y -= 32; }
+        eq = (x == y);
+    }
+    g_eax = eq;
+}
+
+static void kx_XcSHAInit(void)   { xbox_XcSHAInit(XBOX_TO_NATIVE(STACK_ARG(0))); g_eax = 0; }
+static void kx_XcSHAUpdate(void)
+{
+    xbox_XcSHAUpdate(XBOX_TO_NATIVE(STACK_ARG(0)), XBOX_TO_NATIVE(STACK_ARG(1)), STACK_ARG(2));
+    g_eax = 0;
+}
+static void kx_XcSHAFinal(void)
+{
+    xbox_XcSHAFinal(XBOX_TO_NATIVE(STACK_ARG(0)), XBOX_TO_NATIVE(STACK_ARG(1)));
+    g_eax = 0;
+}
+
+/* NtUserIoApcDispatcher(ApcContext, IoStatusBlock, Reserved): XAPI's I/O
+ * completion APC. ApcContext is the caller's completion routine and the
+ * IO_STATUS_BLOCK is the head of its OVERLAPPED. */
+static void kx_NtUserIoApcDispatcher(void)
+{
+    uint32_t routine = STACK_ARG(0), iosb = STACK_ARG(1);
+    uint32_t status = iosb ? BRIDGE_MEM32(iosb) : 0, info = iosb ? BRIDGE_MEM32(iosb + 4) : 0;
+    uint32_t err = 0, xfer = 0;
+    recomp_func_t fn;
+    if ((int32_t)status >= 0) xfer = info;
+    else { uint32_t s = g_esp; g_esp -= 4; BRIDGE_MEM32(g_esp) = status;
+           bridge_RtlNtStatusToDosError(); err = g_eax; g_esp = s; }
+    fn = routine ? recomp_lookup_manual(routine) : NULL;
+    if (routine && !fn) fn = recomp_lookup(routine);
+    if (fn) {
+        uint32_t saved = g_esp;
+        g_esp -= 4; BRIDGE_MEM32(g_esp) = iosb;         /* lpOverlapped */
+        g_esp -= 4; BRIDGE_MEM32(g_esp) = xfer;
+        g_esp -= 4; BRIDGE_MEM32(g_esp) = err;
+        g_esp -= 4; BRIDGE_MEM32(g_esp) = 0;            /* return address */
+        fn();
+        g_esp = saved;
+    }
+    g_eax = 0;
+}
+
+typedef struct { uint16_t ord; uint8_t args; uint8_t kind; bridge_func_t fn; uint32_t data_ofs; } KxOrd;
+enum { KX_FUNC = 0, KX_DATA = 1 };
+#define KF(o, bytes, f) { o, bytes, KX_FUNC, f, 0 }
+#define KD(o, ofs)      { o, 0, KX_DATA, NULL, ofs }
+static const KxOrd g_kx_ords[] = {
+    KF(  1,  0, NULL),                          /* AvGetSavedDataAddress */
+    KF(  2, 16, NULL),                          /* AvSendTVEncoderOption */
+    KF(  3, 24, bridge_AvSetDisplayMode),
+    KF(  4,  4, NULL),                          /* AvSetSavedDataAddress */
+    KF(  5,  0, NULL),                          /* DbgBreakPoint */
+    KF(  8,  0, bridge_DbgPrint),               /* cdecl */
+    KF( 14,  4, kx_ExAllocatePool),
+    KF( 15,  8, kx_ExAllocatePoolWithTag),
+    KD( 16, KDATA_EVENT_OBJ_TYPE),              /* ExEventObjectType */
+    KF( 17,  4, kx_ExFreePool),
+    KF( 23,  4, kx_ExQueryPoolBlockSize),
+    KF( 24, 20, kx_ExQueryNonVolatileSetting),
+    KD( 40, KDATA_HAL_DISK_CACHE_PARTITIONS),   /* HalDiskCachePartitionCount */
+    KF( 44,  8, bridge_HalGetInterruptVector_44),
+    KF( 46, 24, kx_HalReadWritePCISpace),
+    KF( 47,  8, bridge_HalRegisterShutdownNotification),
+    KF( 49,  4, kx_HalReturnToFirmware),
+    KF( 65, 24, kx_IoCreateDevice),
+    KF( 67,  8, bridge_IoCreateSymbolicLink),
+    KF( 74,  8, kx_IoInvalidDeviceRequest),
+    KF( 81,  4, NULL),                          /* IoStartNextPacket */
+    KF( 83, 12, NULL),                          /* IoStartPacket */
+    KF( 87,  0, NULL),                          /* IofCompleteRequest (fastcall) */
+    KF( 95,  4, kx_KeBugCheck),
+    KF( 97,  4, NULL),                          /* KeCancelTimer: timers are not armed (KeSetTimer) */
+    KF( 98,  4, bridge_KeConnectInterrupt_98),
+    KF( 99, 12, bridge_KeDelayExecutionThread),
+    KF(100,  4, NULL),                          /* KeDisconnectInterrupt */
+    KF(107, 12, bridge_KeInitializeDpc),
+    KF(109, 28, bridge_KeInitializeInterrupt),
+    KF(113,  8, bridge_KeInitializeTimerEx),
+    KF(119, 12, bridge_KeInsertQueueDpc),
+    KF(124,  4, NULL),                          /* KeQueryBasePriorityThread */
+    KF(125,  0, kx_KeQueryInterruptTime),
+    KF(126,  0, bridge_KeQueryPerformanceCounter),
+    KF(127,  0, bridge_KeQueryPerformanceFrequency),
+    KF(128,  4, bridge_KeQuerySystemTime),
+    KF(129,  0, bridge_KeRaiseIrqlToDpcLevel),
+    KF(137,  4, NULL),                          /* KeRemoveQueueDpc */
+    KF(139,  4, NULL),                          /* KeRestoreFloatingPointState */
+    KF(142,  4, NULL),                          /* KeSaveFloatingPointState */
+    KF(143,  8, NULL),                          /* KeSetBasePriorityThread */
+    KF(144,  8, NULL),                          /* KeSetDisableBoostThread */
+    KF(145, 12, bridge_KeSetEvent),
+    KF(149, 16, bridge_KeSetTimer),
+    KF(150, 20, bridge_KeSetTimer),             /* KeSetTimerEx */
+    KF(151,  4, NULL),                          /* KeStallExecutionProcessor */
+    KF(153, 12, bridge_KeSynchronizeExecution),
+    KD(156, KDATA_TICK_COUNT),
+    KF(159, 20, bridge_KeWaitForSingleObject),
+    KF(160,  0, bridge_KfRaiseIrql),            /* fastcall */
+    KF(161,  0, bridge_KfLowerIrql),            /* fastcall */
+    KD(164, KDATA_LAUNCH_DATA_PAGE),
+    KF(165,  4, bridge_MmAllocateContiguousMemory),
+    KF(166, 20, bridge_MmAllocateContiguousMemoryEx),
+    KF(168,  8, NULL),                          /* MmClaimGpuInstanceMemory: 0, as on 3.0 */
+    KF(169,  8, kx_MmCreateKernelStack),
+    KF(170,  8, NULL),                          /* MmDeleteKernelStack */
+    KF(171,  4, bridge_MmFreeContiguousMemory),
+    KF(173,  4, bridge_MmGetPhysicalAddress),
+    KF(175, 12, NULL),                          /* MmLockUnlockBufferPages */
+    KF(176,  8, NULL),                          /* MmLockUnlockPhysicalPage */
+    KF(178, 12, bridge_MmPersistContiguousMemory),
+    KF(179,  4, kx_MmQueryAddressProtect),
+    KF(180,  4, NULL),                          /* MmQueryAllocationSize */
+    KF(181,  4, bridge_MmQueryStatistics),
+    KF(182, 12, bridge_MmSetAddressProtect),
+    KF(184, 20, bridge_NtAllocateVirtualMemory),
+    KF(187,  4, bridge_NtClose),
+    KF(189, 16, bridge_NtCreateEvent),
+    KF(190, 36, bridge_NtCreateFile),
+    KF(195,  4, bridge_NtDeleteFile),
+    KF(196, 40, bridge_NtDeviceIoControlFile),
+    KF(198,  8, bridge_NtFlushBuffersFile),
+    KF(199, 12, bridge_NtFreeVirtualMemory),
+    KF(200, 40, bridge_NtFsControlFile),
+    KF(202, 24, bridge_NtOpenFile),
+    KF(203,  8, bridge_NtOpenSymbolicLinkObject),
+    KF(207, 40, bridge_NtQueryDirectoryFile),
+    KF(210,  8, bridge_NtQueryFullAttributesFile),
+    KF(211, 20, bridge_NtQueryInformationFile),
+    KF(215, 12, bridge_NtQuerySymbolicLinkObject),
+    KF(217,  8, kx_NtQueryVirtualMemory),
+    KF(218, 20, bridge_NtQueryVolumeInformationFile),
+    KF(219, 32, bridge_NtReadFile),
+    KF(224,  8, bridge_NtResumeThread),
+    KF(225,  8, NULL),                          /* NtSetEvent */
+    KF(226, 20, bridge_NtSetInformationFile),
+    KF(231,  8, bridge_NtSuspendThread),
+    KF(232, 12, kx_NtUserIoApcDispatcher),
+    KF(233, 12, bridge_NtWaitForSingleObject),  /* (Handle, Alertable, Timeout) */
+    KF(234, 16, bridge_NtWaitForSingleObject),  /* Ex: (Handle, Mode, Alertable, Timeout) */
+    KF(236, 32, bridge_NtWriteFile),
+    KF(238,  0, bridge_NtYieldExecution),
+    KF(246, 12, bridge_ObReferenceObjectByHandle),
+    KF(250,  0, bridge_ObfDereferenceObject),   /* fastcall */
+    KF(255, 40, bridge_PsCreateSystemThreadEx),
+    KF(258,  4, bridge_PsTerminateSystemThread),
+    KD(259, KDATA_THREAD_OBJ_TYPE),
+    KF(269, 12, kx_RtlCompareMemoryUlong),
+    KF(277,  4, bridge_RtlEnterCriticalSection),
+    KF(279, 12, kx_RtlEqualString),
+    KF(289,  8, bridge_RtlInitAnsiString),
+    KF(291,  4, bridge_RtlInitializeCriticalSection),
+    KF(294,  4, bridge_RtlLeaveCriticalSection),
+    KF(301,  4, bridge_RtlNtStatusToDosError),
+    KF(302,  4, bridge_RtlRaiseException),
+    KF(304,  8, kx_RtlTimeFieldsToTime),
+    KF(305,  8, kx_RtlTimeToTimeFields),
+    KF(312, 16, NULL),                          /* RtlUnwind */
+    KD(322, KDATA_HARDWARE_INFO),
+    KD(323, KDATA_HD_KEY),
+    KD(324, KDATA_KRNL_VERSION),
+    KD(325, KDATA_SIGNATURE_KEY),
+    KF(327,  4, NULL),                          /* XeLoadSection: every section is already mapped */
+    KF(328,  4, NULL),                          /* XeUnloadSection */
+    KF(335,  4, kx_XcSHAInit),
+    KF(336, 12, kx_XcSHAUpdate),
+    KF(337,  8, kx_XcSHAFinal),
+    KD(354, KDATA_ALT_SIGNATURE_KEYS),          /* XboxAlternateSignatureKeys */
+    KD(355, KDATA_LAN_KEY),
+    KD(356, KDATA_HAL_BOOT_SMC_VIDEO_MODE),     /* HalBootSMCVideoMode */
+    KD(357, KDATA_XE_PUBLIC_KEY),
+    KF(358,  0, NULL),                          /* HalIsResetOrShutdownPending: FALSE */
+    KF(359,  4, NULL),                          /* IoMarkIrpMustComplete */
+    KF(360,  0, kx_HalInitiateShutdown),
+};
+#undef KF
+#undef KD
+
+/* 1 when the ordinal is in the table; fills the data VA (data export) or the
+ * bridge and stdcall argument bytes (function). */
+static int kx_resolve(ULONG ordinal, uint32_t *data_va, bridge_func_t *fn, int *arg_bytes)
+{
+    for (size_t i = 0; i < sizeof g_kx_ords / sizeof g_kx_ords[0]; i++) {
+        const KxOrd *k = &g_kx_ords[i];
+        if (k->ord != ordinal) continue;
+        if (k->kind == KX_DATA) { *data_va = XBOX_KERNEL_DATA_BASE + k->data_ofs; return 1; }
+        *data_va = 0; *fn = k->fn ? k->fn : bridge_generic_stub; *arg_bytes = k->args;
+        return 1;
+    }
+    return 0;
+}
+#endif /* !DOA3_XBE_ID_3_0 */
+
 /**
  * Resolve the kernel thunk table in Xbox memory.
  *
@@ -3012,6 +3404,24 @@ void xbox_kernel_bridge_init(void)
             ULONG ordinal = current & 0x7FFFFFFF;
             g_slot_ordinals[i] = ordinal;
 
+#ifndef DOA3_XBE_ID_3_0
+            {   /* XDK 4134 builds: the corrected table (see g_kx_ords) */
+                uint32_t kva = 0; bridge_func_t kfn = NULL; int kargs = 0;
+                if (kx_resolve(ordinal, &kva, &kfn, &kargs)) {
+                    if (kva) {
+                        BRIDGE_MEM32(va) = kva;
+                    } else {
+                        g_slot_bridges[i] = kfn;
+                        g_slot_arg_bytes[i] = kargs;
+                        BRIDGE_MEM32(va) = KERNEL_VA_BASE + i * 4;
+                    }
+                    resolved++; bridged++;
+                    continue;
+                }
+                fprintf(stderr, "[KERNEL] ordinal %lu not in the 4134 table (old mapping used)\n",
+                        (unsigned long)ordinal);
+            }
+#endif
             /* Check if this is a data export */
             uint32_t data_va = kernel_data_va_for_ordinal(ordinal);
             if (data_va) {

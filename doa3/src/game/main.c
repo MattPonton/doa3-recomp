@@ -165,6 +165,8 @@ static HANDLE g_doa3_guest_thread;
 static DWORD WINAPI doa3_watchdog(LPVOID unused)
 {
     LONG last = -1; int stalled = 0, reports = 0;
+    unsigned long long last_kc = ~0ull;
+    extern unsigned long long xbox_kernel_call_count(void);
     (void)unused;
     for (;;) {
         LONG now;
@@ -172,9 +174,15 @@ static DWORD WINAPI doa3_watchdog(LPVOID unused)
         now = g_doa3_heartbeat;
 
         if (now != last) { last = now; stalled = 0; continue; }
-        /* Never arm before the first present: the heartbeat is legitimately 0
-         * through boot, and a "stall" there is meaningless. */
-        if (now == 0) continue;
+        /* Before the first present the heartbeat is legitimately 0, so boot
+         * progress is measured by kernel calls instead: 6 s without one means
+         * the guest is spinning in its own code (a hang that Windows reports
+         * as "Not Responding"). */
+        if (now == 0) {
+            unsigned long long kc = xbox_kernel_call_count();
+            if (kc == 0) continue;                  /* guest not started (setup screen) */
+            if (kc != last_kc) { last_kc = kc; stalled = 0; continue; }
+        }
         if (++stalled < 3 || reports >= 10) continue;   /* ~6s of no progress */
         reports++;
         {
@@ -186,8 +194,16 @@ static DWORD WINAPI doa3_watchdog(LPVOID unused)
              * The guest is very often inside fprintf holding the CRT stream
              * lock; printing from here while it is suspended deadlocks the
              * process (it froze boot exactly once and cost a run to find). */
+            static uintptr_t s_stk[2048];
+            size_t nstk = 0;
             if (SuspendThread(g_doa3_guest_thread) != (DWORD)-1) {
                 got = GetThreadContext(g_doa3_guest_thread, &ctx);
+                if (got) {   /* raw copy of the top of the stack, no locks taken */
+                    SIZE_T rd = 0;
+                    ReadProcessMemory(GetCurrentProcess(), (LPCVOID)ctx.Rsp, s_stk,
+                                      sizeof s_stk, &rd);
+                    nstk = rd / sizeof(uintptr_t);
+                }
                 ResumeThread(g_doa3_guest_thread);
             }
             if (got)
@@ -199,8 +215,23 @@ static DWORD WINAPI doa3_watchdog(LPVOID unused)
                         g_eax, g_ecx, g_edx, g_ebx, g_esp, g_esi, g_edi, g_seh_ebp);
             else
                 fprintf(stderr, "[WDOG] STALLED but could not read guest context\n");
+            if (got) {   /* return addresses into DOA3.exe (look them up in DOA3.map) */
+                uintptr_t lo = (uintptr_t)GetModuleHandleW(NULL), hi = lo + 0x4000000;
+                int shown = 0;
+                fprintf(stderr, "[WDOG] stack:");
+                for (size_t k = 0; k < nstk && shown < 24; k++)
+                    if (s_stk[k] > lo && s_stk[k] < hi) {
+                        fprintf(stderr, " 0x%llX", (unsigned long long)s_stk[k]);
+                        shown++;
+                    }
+                fprintf(stderr, "\n");
+            }
             /* Fiber states: read after resuming, so this never contends with
              * the guest for the stdio lock while it cannot run. */
+            if (reports == 1) {
+                extern void doa3_ktrace_dump(const char *why);
+                doa3_ktrace_dump("watchdog stall");
+            }
             if (reports <= 2) {
                 extern void xbox_fiber_dump(void);
                 xbox_fiber_dump();
@@ -913,6 +944,8 @@ static LONG WINAPI crash_veh(PEXCEPTION_POINTERS info)
         }
         return EXCEPTION_CONTINUE_EXECUTION;
     }
+    if (code == 0x406D1388UL)          /* MSVC thread-naming exception: harmless */
+        return EXCEPTION_CONTINUE_SEARCH;
     if (code != EXCEPTION_ACCESS_VIOLATION) {
         /* Surface non-AV crashes (stack overflow, illegal instr, etc.) that would
          * otherwise terminate the process silently. */
