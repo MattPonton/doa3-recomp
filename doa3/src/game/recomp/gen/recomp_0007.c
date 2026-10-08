@@ -24602,7 +24602,7 @@ loc_001926A8: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_001926B0(void)
+void sub_001926B0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 

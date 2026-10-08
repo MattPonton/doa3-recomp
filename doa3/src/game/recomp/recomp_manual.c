@@ -448,6 +448,23 @@ static void crt4134_memmove(void)
 void sub_001B73D0(void) { crt4134_memmove(); }
 void sub_001B7CB0(void) { crt4134_memmove(); }
 
+/* CRI idle/watchdog thread (0x1926B0; 3.0: 0x16A530). The original spins
+ * incrementing the liveness counter [0x40C700] until the shutdown flag
+ * [0x40C718] is set; on hardware it runs at idle priority and is preempted.
+ * With cooperative fibers the spin starved everything else (the thirteenth
+ * run: CRI started its four threads and this one never let go). Yield every
+ * lap, as 3.0 does. */
+extern void xbox_fiber_yield(void);
+void sub_001926B0(void)
+{
+    while (MEM32(0x0040C718u) == 0) {
+        MEM32(0x0040C700u) = MEM32(0x0040C700u) + 1;
+        xbox_fiber_yield();
+    }
+    MEM32(0x0040C71Cu) = 1;
+    esp += 4;
+}
+
 /* CRI middleware message sink (0x19A330, cdecl: formats into 0xC75500 and
  * hands it to the registered callback). The ADX/Sofdec error reporters
  * (0x1934D0 / 0x193510) end here, so log what the middleware says. */

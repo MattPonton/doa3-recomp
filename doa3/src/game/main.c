@@ -1495,6 +1495,18 @@ int main(int argc, char **argv)
          * one); DOA3_CRTMAX=0 disables them entirely. */
         int limit = -1;
         { const char *e = getenv("DOA3_CRTMAX"); if (e) limit = atoi(e); }
+#if !defined(DOA3_XBE_ID_3_0)
+        /* XDK 4134 builds: XAPI's main-thread routine (3.1: 0x18CB1A) walks
+         * these same tables itself (0x18FDF5 = __xi, 0x18FD9D = __xc), so
+         * running them here as well initialised everything twice. The visible
+         * casualty was the CRT's thread-notification entry, registered twice
+         * into XAPI's circular list at 0x2521CC: the list then looped on
+         * itself and the first thread CRI started spun forever calling the
+         * same notify routine (thirteenth 3.1 run). 3.0 enters past that
+         * code, so it still needs them run here. */
+        limit = 0;
+        fprintf(stderr, "  CRT init: left to XAPI's thread startup on this build\n");
+#endif
         int done = 0;
         for (int t = 0; t < 2; t++) {
             unsigned ran = 0, miss = 0;

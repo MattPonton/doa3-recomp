@@ -184,6 +184,19 @@ task spun forever re-opening an AFS file, `[CRI] 'ptid' is range outside`):
 - `0x1B73D0` / `0x1B7CB0` CRT memmove, native (3.0: 0x18DF40 / 0x18EE90).
 - `0x19A330` CRI message sink, logs `[CRI]` lines.
 
+Thirteenth run: the CRI setup ran (files opened, four CRI threads spawned
+as fibers), then the first CRI thread spun forever in XAPI's thread
+notification walk (0x18C3E1). Two fixes:
+
+- main.c no longer runs the `__xi`/`__xc` initializer tables on 3.1: XAPI's
+  main-thread routine (0x18CB1A) runs them itself (0x18FDF5, 0x18FD9D), so
+  everything was initialised twice, and the CRT's thread-notification entry
+  went into XAPI's circular list at 0x2521CC twice, which made the list
+  loop on itself. (3.0 enters past that code and still needs them.)
+- `0x1926B0` CRI idle/watchdog thread yields every lap, as 3.0's override
+  of 0x16A530 does; xbox_fiber.c's "not a real worker" exclusion now knows
+  the 3.1 address too.
+
 Diagnostics added on the way: `[KCALL]` lines now end with the bridge's
 return value; `DOA3_TRACE_FN=addr,addr,...` logs returns of probed functions
 (`[FN]` lines, with stack and register arguments). The NtQueryInformationFile

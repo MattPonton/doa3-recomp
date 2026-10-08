@@ -8,3 +8,4 @@
 0x000A5C60  DSOUND effects-image download -> success (3.0: 0x9F640); its failure skipped the CRI setup
 0x001B73D0  CRT memmove -> native (jump-table tail the lifter cannot follow)
 0x001B7CB0  CRT memmove (second copy) -> native
+0x001926B0  CRI idle/watchdog thread: yield each lap (3.0: 0x16A530)
