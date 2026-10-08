@@ -41,9 +41,13 @@ static const uint64_t k_partitions[] = { 0, 0x18300000ull, 0xFD90000ull, 0x20800
 
 /* The release this port was recompiled from: the recompiled code is tied to
  * this exact default.xbe, so any other build of the game cannot run. */
-#define DOA3_TITLE_ID   0x54430001u
-#define DOA3_XBE_SIZE   3928064u
-#define DOA3_XBE_FNV64  0xA2F3BDCB2A5B02D4ull
+#include "xbe_layout.h"   /* DOA3_TITLE_ID, DOA3_XBE_FILE_SIZE, DOA3_XBE_FNV64 */
+#define DOA3_XBE_SIZE   DOA3_XBE_FILE_SIZE
+
+/* The sizes below are the USA release's (3.0). Other releases are checked
+ * for presence only (size 0 = any), except default.xbe, which must be the
+ * exact executable the code was generated from. TODO(3.1): add this
+ * release's disc listing. */
 
 /* Every file on the disc, with its size. The game reads all of them
  * (the mv_*.sfd are the story endings), so a missing one is fatal later. */
@@ -62,6 +66,15 @@ static const struct { const char *name; uint32_t size; } k_required[] = {
     { "mv_su.sfd",    244328448u }, { "mv_tn.sfd",    211617792u },
 };
 #define N_REQUIRED (sizeof k_required / sizeof k_required[0])
+
+static uint32_t required_size(size_t i)
+{
+#ifdef DOA3_XBE_ID_3_0
+    return k_required[i].size;
+#else
+    return strcmp(k_required[i].name, "default.xbe") == 0 ? DOA3_XBE_SIZE : 0u;
+#endif
+}
 
 typedef struct {
     WCHAR    rel[MAX_PATH];   /* path relative to the image root */
@@ -258,8 +271,8 @@ static int check_xbe(Xiso *x)
         h = (h ^ d[i]) * 0x100000001B3ull;
     free(d);
     if (xbe->size != DOA3_XBE_SIZE || h != DOA3_XBE_FNV64)
-        return fail(x, "This is a different release of Dead or Alive 3. The port is built "
-                       "from the USA release (Dead or Alive 3 (USA) (En,Ja)) and cannot run "
+        return fail(x, "This is a different release of Dead or Alive 3. This build is "
+                       "generated from DOA3 " DOA3_XBE_VERSION " and cannot run "
                        "any other version.");
     return 1;
 }
@@ -350,6 +363,7 @@ static int file_size_is(const WCHAR *path, uint32_t size)
     WIN32_FILE_ATTRIBUTE_DATA fa;
     if (!GetFileAttributesExW(path, GetFileExInfoStandard, &fa)) return 0;
     if (fa.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) return 0;
+    if (size == 0) return 1;   /* presence only */
     return fa.nFileSizeHigh == 0 && fa.nFileSizeLow == size;
 }
 
@@ -361,7 +375,7 @@ int xiso_assets_ready(const WCHAR *assets_dir)
     for (size_t i = 0; i < N_REQUIRED; i++) {
         MultiByteToWideChar(CP_ACP, 0, k_required[i].name, -1, wn, 64);
         swprintf_s(p, MAX_PATH, L"%s\\%s", assets_dir, wn);
-        if (!file_size_is(p, k_required[i].size)) return 0;
+        if (!file_size_is(p, required_size(i))) return 0;
     }
     return 1;
 }
@@ -411,7 +425,7 @@ int xiso_install(const WCHAR *image, const WCHAR *assets_dir,
     if (!check_xbe(&x)) goto done;
     for (size_t i = 0; i < N_REQUIRED; i++) {
         const XisoEntry *e = find_root_file(&x, k_required[i].name);
-        if (!e || e->size != k_required[i].size) {
+        if (!e || (required_size(i) && e->size != required_size(i))) {
             fail(&x, "The disc image is damaged: %s is %s.", k_required[i].name,
                  e ? "the wrong size" : "missing");
             goto done;

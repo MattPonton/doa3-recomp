@@ -6,6 +6,9 @@
 #define DOA3_XBE_VERSION        "3.1"
 #define DOA3_XBE_MD5            "4d1a10a16b8ad2065ad9dee65e951f08"
 #define DOA3_XBE_ID_3_1 1  /* for #ifdef on version-bound code */
+#define DOA3_TITLE_ID           0x54430001u
+#define DOA3_XBE_FILE_SIZE      4218880u
+#define DOA3_XBE_FNV64          0x8219CF3EC3C08681ull  /* FNV-1a 64, as xiso_extract.c checks it */
 #define DOA3_ENTRY_POINT        0x0018CB89u
 #define DOA3_IMAGE_BASE         0x00010000u
 #define DOA3_IMAGE_END          0x00CABB00u

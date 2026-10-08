@@ -246,6 +246,14 @@ def write_header(path):
     a(f'#define DOA3_XBE_VERSION        "{VERSION}"')
     a(f'#define DOA3_XBE_MD5            "{LAYOUT["md5"]}"')
     a(f"#define DOA3_XBE_ID_{re.sub(r'[^A-Za-z0-9]', '_', VERSION).upper()} 1  /* for #ifdef on version-bound code */")
+    cert = struct.unpack_from("<I", data, 0x118)[0] - XBE_BASE_ADDRESS
+    title_id = struct.unpack_from("<I", data, cert + 8)[0]
+    fnv = 0xCBF29CE484222325
+    for byte in data:
+        fnv = ((fnv ^ byte) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+    a(f"#define DOA3_TITLE_ID           0x{title_id:08X}u")
+    a(f"#define DOA3_XBE_FILE_SIZE      {len(data)}u")
+    a(f"#define DOA3_XBE_FNV64          0x{fnv:016X}ull  /* FNV-1a 64, as xiso_extract.c checks it */")
     a(f"#define DOA3_ENTRY_POINT        0x{ENTRY_POINT:08X}u")
     a(f"#define DOA3_IMAGE_BASE         0x{XBE_BASE_ADDRESS:08X}u")
     a(f"#define DOA3_IMAGE_END          0x{image_end:08X}u")

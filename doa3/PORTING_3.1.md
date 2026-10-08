@@ -89,6 +89,15 @@ The override table is empty. Add 3.1 overrides there as defects are found.
   arming a session or loading a replay is refused with a message, so none
   of it touches guest memory.
 
+## First-run setup (`xiso_extract.c`)
+
+The disc-image installer accepted only the USA `default.xbe` (title ID, size
+and FNV-1a hash) and checked every disc file against the USA sizes. Those
+now come from `xbe_layout.h` (`DOA3_TITLE_ID`, `DOA3_XBE_FILE_SIZE`,
+`DOA3_XBE_FNV64`; for 3.0 they equal upstream's constants). For other
+releases `default.xbe` must still match exactly, and the other disc files
+are checked for presence only. TODO(3.1): add the 3.1 disc's file sizes.
+
 ## Compile check (without Windows)
 
 Every runtime C file and all 12 generated units compile with clang against
