@@ -10,3 +10,4 @@
 0x001B7CB0  CRT memmove (second copy) -> native
 0x001926B0  CRI idle/watchdog thread: yield each lap (3.0: 0x16A530)
 0x00191D60  CRI file server tick: counted for the watchdog
+0x0019DC30  ADX stereo decoder: argument trace (writes past guest RAM)

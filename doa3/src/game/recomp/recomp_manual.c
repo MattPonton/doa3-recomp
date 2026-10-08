@@ -284,6 +284,8 @@ recomp_func_t doa3_crt_lookup(uint32_t va)
 
 /* (none yet) */
 
+int g_fn_trace_on = -1;   /* DOA3_TRACE_FN, see doa3_fn_trace */
+
 /* ── D3D 4134 push buffer (3.1) ─────────────────────────────────────
  * There is no GPU: the push buffer is translated to D3D11 synchronously
  * when the driver kicks it off, so by the time the driver looks, the "GPU"
@@ -479,6 +481,19 @@ void sub_00191D60(void)
     sub_00191D60_gen();
 }
 
+/* ADX stereo decoder (0x19DC30, reached through a pointer). It wrote PCM
+ * through guest 0x0825xxxx, past the end of guest RAM, which wraps onto the
+ * game's .data. Log its arguments: the first 8 calls, then every call with an
+ * argument past guest RAM. */
+void doa3_fn_trace(uint32_t va, uint32_t esp_in);
+void sub_0019DC30_gen(void);
+void sub_0019DC30(void)
+{
+    /* traced on entry: the decoder reuses its argument slots as locals */
+    if (g_fn_trace_on) doa3_fn_trace(0x0019DC30u, esp);
+    sub_0019DC30_gen();
+}
+
 /* Watchdog peek: the state the 3.1 boot is waiting on. */
 void doa3_wdog_peek(void)
 {
@@ -566,7 +581,7 @@ void esp_probe_report(uint32_t va, uint32_t esp_in, uint32_t esp_out, uint32_t e
  * (probed ones only: real entries whose rets agree) with their first four
  * stack arguments, eax, and the register arguments ecx/edx. Up to 64 lines
  * per function. */
-int g_fn_trace_on = -1;
+extern int xbox_fiber_current(void);
 static uint32_t s_fn_trace_va[32];
 static int      s_fn_trace_n[32], s_fn_trace_cnt;
 void doa3_fn_trace(uint32_t va, uint32_t esp_in)
@@ -577,7 +592,9 @@ void doa3_fn_trace(uint32_t va, uint32_t esp_in)
 #if defined(DOA3_XBE_ID_3_1)
         /* Default while bringing 3.1 up: the audio/CRI init path that decides
          * whether the CRI middleware is set up at all (sub_000A5DC0). */
-        if (!e) e = "a5dc0,1f2e65,a5c60,181460,18aba2,181640,1f1d62,1c79f0";
+        /* ADX stereo decoder: it wrote PCM through guest 0x0825xxxx, which
+         * wraps onto .data (the 128 MB view repeats). Whose pointer is it? */
+        if (!e) e = "19dc30";
 #endif
         g_fn_trace_on = 0;
         while (e && *e && s_fn_trace_cnt < 32) {
@@ -591,11 +608,19 @@ void doa3_fn_trace(uint32_t va, uint32_t esp_in)
         if (!g_fn_trace_on) return;
     }
     for (i = 0; i < s_fn_trace_cnt; i++) {
+        uint32_t a[8]; int k, odd = 0;
         if (s_fn_trace_va[i] != va) continue;
-        if (s_fn_trace_n[i]++ >= 64) return;
-        fprintf(stderr, "[FN] sub_%08X(%08X, %08X, %08X, %08X) ecx=%08X edx=%08X -> eax=%08X\n",
-                va, MEM32(esp_in + 4), MEM32(esp_in + 8), MEM32(esp_in + 12), MEM32(esp_in + 16),
-                ecx, edx, eax);
+        for (k = 0; k < 8; k++) {
+            a[k] = MEM32(esp_in + 4 + 4 * k);
+            if (a[k] >= 0x08000000u && a[k] < 0x10000000u) odd = 1;   /* past guest RAM */
+        }
+        /* the first 8 calls, then only calls with an argument past the end of
+         * guest RAM (up to 64 lines in all) */
+        if (s_fn_trace_n[i] >= 64 || (s_fn_trace_n[i] >= 8 && !odd)) return;
+        s_fn_trace_n[i]++;
+        fprintf(stderr, "[FN]%s sub_%08X(%08X, %08X, %08X, %08X, %08X, %08X, %08X, %08X) ecx=%08X edx=%08X -> eax=%08X fiber=%d\n",
+                odd ? "[PAST-RAM]" : "", va, a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7],
+                ecx, edx, eax, xbox_fiber_current());
         fflush(stderr);
         return;
     }

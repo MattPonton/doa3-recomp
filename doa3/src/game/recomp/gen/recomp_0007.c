@@ -60570,7 +60570,7 @@ loc_0019DC23: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0019DC30(void)
+void sub_0019DC30_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
