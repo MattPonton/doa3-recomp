@@ -1,11 +1,11 @@
 [
   {
-    "address": "0x00059DB4",
+    "address": "0x000F17B6",
     "name": "_ftol",
     "confidence": 0.9
   },
   {
-    "address": "0x00160410",
+    "address": "0x0015BFF0",
     "name": "fmod",
     "confidence": 0.9
   },

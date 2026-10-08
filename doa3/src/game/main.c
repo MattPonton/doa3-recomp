@@ -1208,6 +1208,12 @@ int main(int argc, char **argv)
 
     atexit(doa3_atexit);
     SetUnhandledExceptionFilter(doa3_unhandled);
+    {   /* Keep 64 KB in reserve for the exception handlers, so a host stack
+         * overflow (e.g. recursion between lifted fragments) is logged as
+         * [CRASH-NONAV] code=0xC00000FD instead of killing the process silently. */
+        ULONG guarantee = 64 * 1024;
+        SetThreadStackGuarantee(&guarantee);
+    }
 
     {   /* Pad mapping saved from the Esc menu (doa3_input.ini next to the
          * exe). Without this the file was written but never read back, so

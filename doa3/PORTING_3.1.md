@@ -20,11 +20,13 @@ py -3 -m tools.xbe_layout --crt-initializers > crt_ctors.txt
 py -3 -m tools.recomp.seed_missing_functions crt_ctors.txt
 py -3 -m tools.recomp.find_pointer_targets > ptr_seeds.txt
 py -3 -m tools.recomp.seed_missing_functions ptr_seeds.txt
+py -3 -m tools.recomp.extend_functions ptr_seeds.txt
 # repeat until find_unresolved prints nothing:
 py -3 -m tools.func_id $env:DOA3_XBE
 py -3 -m tools.recomp $env:DOA3_XBE --all --split 1000
 py -3 -m tools.recomp.find_unresolved > unresolved.txt
 py -3 -m tools.recomp.seed_missing_functions unresolved.txt
+py -3 -m tools.recomp.extend_functions ptr_seeds.txt
 # then the generated-code fix-ups, and the runtime layout header:
 py -3 -m tools.recomp.postprocess
 py -3 -m tools.xbe_layout --header src/game/recomp/gen/xbe_layout.h
@@ -47,6 +49,24 @@ Current result: 10,757 entries (5,632 detected, the rest seeds: call targets,
 64 initializer-table entries, 554 pointer targets), 0 unresolved. Seven are
 empty "translation failed" stubs for wild targets decoded from inline data,
 as in the first pass.
+
+## Function extents (`tools.recomp.extend_functions`)
+
+The detector often ends a function early, and seeding then turns the rest of
+it into separate fragments; the translator emits a jump between fragments as
+a C call, so a loop spanning fragments recursed natively once per iteration.
+The fourth 3.1 run died silently (no handler output) right after CRT init;
+the tree had 267 such call cycles (750 fragments), the CRT heap allocator
+among them. `extend_functions` grows each function over the code reachable
+from its entry by fall-through and jumps (not calls), stopping at other real
+entries and at anything that is not reachable code or padding. On 3.1:
+3,676 functions extended (+745 KB), cycles 267 -> 59, and the remaining ones
+are mostly branch-target fragments whose code is now also covered by the real
+function (e.g. the allocator at 0x1BA53A spans to 0x1BB0D4). Restored
+fall-throughs dropped from 1,096 to 74.
+
+`main.c` now reserves 64 KB of stack for the exception handlers
+(`SetThreadStackGuarantee`), so a host stack overflow gets logged.
 
 ## Generated-code fix-ups (`tools.recomp.postprocess`)
 
