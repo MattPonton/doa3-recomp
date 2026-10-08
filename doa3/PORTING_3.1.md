@@ -239,6 +239,20 @@ return value; `DOA3_TRACE_FN=addr,addr,...` logs returns of probed functions
 FileNetworkOpenInformation reply had AllocationSize and EndOfFile swapped,
 so GetFileSize returned sizes rounded up to 4 KB.
 
+Twenty-fifth run: hung after ~2,900 frames with the game task spinning in
+0x192640 (ADXM "run the group-5 thread now": raise its priority, resume
+it, wait for it to clear [0x40C6FC]). The group-5 thread (0x1927D0, handle
+in [0xC80078]) had started before ADXM_SetupThrd stored its handle --
+our worker fibers start READY, XAPI creates them suspended -- so its first
+SuspendThread named handle 0 and it parked on a key no resume ever wakes.
+`bridge_NtSuspendThread` now treats a zero / current-thread handle as the
+caller's own (shared) thread handle. The ADXM threads (0x192870):
+[0xC80070] idle 0x1926B0 (resumed by the ADXM lock so it out-prioritises
+the servers while the lock is held), [0xC8008C] vsync 0x1926F0, [0xC80094]
+mwPly 0x192760, [0xC80078] group 5 0x1927D0. Lock 0x1925D0 / unlock
+0x192610 (via 0x19A2F0 / 0x19A310); XAPI ResumeThread 0x18C548,
+SuspendThread 0x18C522.
+
 ## Generated-code fix-ups (`tools.recomp.postprocess`)
 
 Runs upstream's fixers for the lifter defect classes in NOTES.md, in order.

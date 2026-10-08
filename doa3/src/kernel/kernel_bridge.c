@@ -1049,8 +1049,24 @@ static void bridge_NtSuspendThread(void)
      * someone else and no-op). */
     {
         extern int xbox_fiber_is_coroutine(void);
-        if (xbox_fiber_active() && !xbox_fiber_is_primary() && !xbox_fiber_is_coroutine())
-            xbox_fiber_block(handle ? handle : 0xFFFFFFFFu);
+        if (xbox_fiber_active() && !xbox_fiber_is_primary() && !xbox_fiber_is_coroutine()) {
+            /* A thread can run before its creator has stored its handle: our
+             * workers start READY, while on hardware XAPI creates them
+             * suspended. 3.1's ADXM group-5 thread (0x1927D0) then suspends
+             * itself through the still-zero [0xC80078]; parked on a handle no
+             * resume names, it never ran again and the game task spun in
+             * 0x192640 waiting for it (twenty-fifth run). Treat a zero or
+             * current-thread handle as the caller's own thread handle (the
+             * shared 0xBEEF0001, see PsCreateSystemThreadEx). */
+            if (handle == 0 || handle == 0xFFFFFFFEu) {
+                static int s_logged;
+                if (s_logged < 4) { s_logged++;
+                    fprintf(stderr, "[FIBER] fiber %d self-suspends through handle %08X; parked on its own thread handle\n",
+                            xbox_fiber_current(), handle); fflush(stderr); }
+                handle = 0xBEEF0001u;
+            }
+            xbox_fiber_block(handle);
+        }
     }
     g_eax = 0;
 }
