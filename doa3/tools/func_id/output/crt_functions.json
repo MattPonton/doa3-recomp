@@ -20,6 +20,11 @@
     "confidence": 0.9
   },
   {
+    "address": "0x001B7C32",
+    "name": "_purecall",
+    "confidence": 0.9
+  },
+  {
     "address": "0x001B8470",
     "name": "_allmul",
     "confidence": 0.9

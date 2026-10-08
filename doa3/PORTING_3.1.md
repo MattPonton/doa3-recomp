@@ -18,6 +18,8 @@ py -3 tools/xbe_parser/xbe_parser.py $env:DOA3_XBE --json tools/xbe_parser/doa3_
 py -3 -m tools.disasm $env:DOA3_XBE --force
 py -3 -m tools.xbe_layout --crt-initializers > crt_ctors.txt
 py -3 -m tools.recomp.seed_missing_functions crt_ctors.txt
+py -3 -m tools.recomp.find_pointer_targets > ptr_seeds.txt
+py -3 -m tools.recomp.seed_missing_functions ptr_seeds.txt
 # repeat until find_unresolved prints nothing:
 py -3 -m tools.func_id $env:DOA3_XBE
 py -3 -m tools.recomp $env:DOA3_XBE --all --split 1000
@@ -30,8 +32,20 @@ py -3 -m tools.xbe_layout --header src/game/recomp/gen/xbe_layout.h
 `find_unresolved` lists symbols referenced but not defined in the generated
 code, standing in for MSVC's "unresolved external symbol" errors.
 
-Current result: 5,632 detected functions + 4,505 seeds (incl. the 64
-initializer-table entries) = 10,137 entries, 0 unresolved call targets.
+`find_pointer_targets` seeds code reached only through pointers: immediates
+(`push`/`mov` of a code address: thread starts, callbacks) and pointer tables
+in `.rdata`/`.data` (vtables, handler tables), kept when the target is an
+instruction boundary that looks like a function entry. Run on 3.0 against
+upstream's function list it rediscovers all nine pointer-only entries upstream
+seeded by hand (the eight attract-flow handlers and `0x000E5590`). On 3.1 it
+added 554 entries, including XAPI's thread trampoline (`0x0018C690`) and the
+game's main-thread routine (`0x0018CB1A`): without them the first
+`CreateThread` resolved to nothing and the entry point returned at once.
+
+Current result: 10,757 entries (5,632 detected, the rest seeds: call targets,
+64 initializer-table entries, 554 pointer targets), 0 unresolved. Seven are
+empty "translation failed" stubs for wild targets decoded from inline data,
+as in the first pass.
 
 ## Version-driven now
 
