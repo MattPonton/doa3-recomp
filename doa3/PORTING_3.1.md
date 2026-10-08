@@ -288,6 +288,22 @@ memory they read and a consumer can still follow, for every integer
 flag-setter. 34,401 snapshots on 3.1; the regenerated code differs from the
 previous output only in those lines.
 
+`cmpxchg` was never lifted (a `TODO` comment). Its one real use on 3.1 is
+DirectSound's DPC (0x1F3FFA, run under KeSynchronizeExecution from the DPC
+loop 0x1F4496): it swaps the ISR's pending bits out with `cmpxchg`, so with
+no store the bits never cleared and the DPC looped forever once the intro
+movie's voice finished (twenty-seventh run). Now lifted, with ZF in `_flags`.
+
+Intro movie (twenty-seventh run: ninja.sfd's audio played on a black
+screen). Two causes: `doa3_movie_host_owns_screen` reported 3.0's host
+presenter as owning the screen from boot until its movie ended, so on 3.1
+(no host presenter) every guest draw, clear and flip was dropped for good;
+and nothing showed the movie, which Sofdec writes straight to the display.
+On builds other than 3.0 the screen is now "owned" only while guest movie
+frames arrive, and the Sofdec frame copy + colour conversion (0x19EA30, the
+same code as 3.0's 0x1762B0) is wrapped to show each converted frame
+(`doa3_present_movie_guest`, guest-decoded, no host decoder).
+
 ## Version-driven now
 
 | Piece | Source |

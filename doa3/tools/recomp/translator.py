@@ -331,6 +331,7 @@ class FunctionTranslator:
         has_conditionals = any(
             insn.is_cond_jump or insn.mnemonic.startswith("set")
             or insn.mnemonic.startswith("cmov")
+            or insn.mnemonic == "cmpxchg"
             for insn in instructions)
         if has_conditionals:
             lines.append(f"    int _flags = 0; /* fallback flag var */")

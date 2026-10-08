@@ -24,6 +24,7 @@
 #include <limits.h>
 
 #include "../apu/apu_xaudio2.h"
+#include "recomp/gen/xbe_layout.h"   /* DOA3_XBE_ID_* */
 
 #define PL_MPEG_IMPLEMENTATION
 #include "pl_mpeg.h"
@@ -633,9 +634,53 @@ static void movie_upload(ID3D11DeviceContext *ctx, const void *src, int pitch)
 /* True while the host presenter still owns the screen (the intro movie is
  * being played by this module, not by the guest's own draws). Guest geometry
  * submitted in that window must not be composited over the movie. */
+static void movie_draw_to_guest(ID3D11DeviceContext *ctx);
+static void movie_restore_guest_viewport(ID3D11DeviceContext *ctx);
+static DWORD    s_guest_movie_tick;   /* last guest-decoded frame shown (non-3.0) */
+static unsigned s_guest_movie_frames;
+
 int doa3_movie_host_owns_screen(void)
 {
+#if defined(DOA3_XBE_ID_3_0)
     return !s_host_stopped;
+#else
+    /* Other builds show the guest's own decoded frames (see
+     * doa3_present_movie_guest) and have no host presenter: owning the screen
+     * from boot, as 3.0's presenter does until its movie ends, dropped every
+     * guest draw and flip forever -- the black screen. Own it only while
+     * movie frames are arriving. */
+    return s_guest_movie_tick && GetTickCount() - s_guest_movie_tick < 250;
+#endif
+}
+
+/* Show a frame the guest's Sofdec decoder has just colour-converted (32bpp,
+ * from the frame-copy wrapper in recomp_manual.c). No host decoding. */
+void doa3_present_movie_guest(const void *src, int w, int h, int pitch)
+{
+    ID3D11Device *dev = d3d8_GetD3D11Device();
+    ID3D11DeviceContext *ctx = d3d8_GetD3D11Context();
+    if (!dev || !ctx || !src || s_failed)
+        return;
+    if (!s_tex) {
+        if (!movie_present_init(dev, w, h)) {
+            s_failed = 1;
+            fprintf(stderr, "[MVPRES] init FAILED -- movie present disabled\n");
+            fflush(stderr);
+            return;
+        }
+    }
+    if (w != s_w || h != s_h)
+        return;
+    movie_upload(ctx, src, pitch);
+    movie_draw_to_guest(ctx);
+    d3d8_PresentFrame();
+    movie_restore_guest_viewport(ctx);
+    d3d8_RestoreDefaultTarget();
+    s_guest_movie_tick = GetTickCount();
+    if (s_guest_movie_frames++ % 300 == 0) {
+        fprintf(stderr, "[MVPRES] guest movie frame %u shown\n", s_guest_movie_frames);
+        fflush(stderr);
+    }
 }
 
 /* Draw the uploaded movie frame into the guest frame buffer, inside a centred

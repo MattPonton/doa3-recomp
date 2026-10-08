@@ -12468,8 +12468,8 @@ loc_001F3FFA: ;
     eax = MEM32(ecx);
 
 loc_001F4014: ;
-    /* TODO: cmpxchg dword ptr [ecx], edx */
-    if ((MEM32(ecx) != eax)) goto loc_001F4014; /* jne: not equal / not zero */
+    { uint32_t _cx = MEM32(ecx); _flags = (_cx == eax); if (_flags) { MEM32(ecx) = edx; } else { eax = _cx; } } /* cmpxchg */
+    if ((!_flags)) goto loc_001F4014; /* jne: not equal / not zero */
 
 loc_001F4019: ;
     MEM32(esi + 0x6FC) = MEM32(esi + 0x6FC) | eax;

@@ -494,6 +494,32 @@ void sub_0019DC30(void)
     sub_0019DC30_gen();
 }
 
+/* Sofdec frame copy + colour conversion (0x19EA30; 3.0's 0x1762B0, same
+ * code). Args: decoded picture, destination surface, width, height, ...
+ * On Xbox the converted frame goes straight to the display and the game does
+ * not Present while a movie plays, so show it from here
+ * (doa3_present_movie_guest, movie_present.c). */
+void sub_0019EA30_gen(void);
+void sub_0019EA30(void)
+{
+    extern void doa3_present_movie_guest(const void *src, int w, int h, int pitch);
+    static int s_n;
+    uint32_t a[6]; int k;
+    for (k = 0; k < 6; k++) a[k] = MEM32(esp + 4 + 4u * k);
+    sub_0019EA30_gen();
+    if (s_n < 6) {
+        s_n++;
+        fprintf(stderr, "[MOVIE] frame copy(%08X, %08X, %u, %u, %08X, %08X)\n",
+                a[0], a[1], a[2], a[3], a[4], a[5]);
+        fflush(stderr);
+    }
+    {
+        uint32_t dst = a[1] & 0x07FFFFFFu;
+        if (dst >= 0x1000u && dst + 2880u * 480u < 0x08000000u)
+            doa3_present_movie_guest((const void *)XBOX_PTR(dst), 720, 480, 2880);
+    }
+}
+
 /* Watchdog peek: the state the 3.1 boot is waiting on. */
 void doa3_wdog_peek(void)
 {

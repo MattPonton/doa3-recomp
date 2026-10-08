@@ -671,9 +671,9 @@ def _make_condition(jcc, flag_setter, flag_ops):
     # ── cmpxchg: compares accumulator with dest, sets ZF on match ──
     if flag_setter == "cmpxchg":
         if jcc in ("je", "jz"):
-            return f"({lhs} == eax)", desc
+            return "(_flags)", desc
         if jcc in ("jne", "jnz"):
-            return f"({lhs} != eax)", desc
+            return "(!_flags)", desc
         return None
 
     # ── xadd: exchange and add, flags from addition ──
@@ -865,6 +865,19 @@ class Lifter:
             return self._lift_lea(insn, ops)
         if m == "xchg":
             return self._lift_xchg(insn, ops)
+        if m == "cmpxchg" and nops == 2:
+            # DOA3 3.1: was a TODO comment, so DirectSound's DPC never cleared
+            # the ISR's pending bits (0x1F4014: mov eax,[ecx] / cmpxchg [ecx],edx
+            # / jne) and re-ran its service loop forever after the intro movie.
+            # ZF goes to _flags (declared by the translator for cmpxchg).
+            size = ops[0].mem_size if ops[0].type == "mem" else 4
+            acc = {1: "LO8(eax)", 2: "LO16(eax)"}.get(size, "eax")
+            dst = _fmt_operand_read(ops[0])
+            src = _fmt_operand_read(ops[1])
+            acc_set = _fmt_set_reg({1: "al", 2: "ax"}.get(size, "eax"), "_cx")
+            return [f"{{ uint32_t _cx = {dst}; _flags = (_cx == {acc}); "
+                    f"if (_flags) {{ {_fmt_operand_write(ops[0], src)} }} "
+                    f"else {{ {acc_set} }} }} /* cmpxchg */"]
 
         # ── Stack ──
         if m == "push":
