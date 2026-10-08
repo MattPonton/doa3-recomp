@@ -210,6 +210,16 @@ On hardware the scheduler preempts that loop. Two changes:
 - `doa3_workers_may_run` lets slices run from the start; 3.0 waits for its
   intro movie and two CRI lock words. TODO(3.1): the lock check.
 
+Fifteenth run: the game loop ran (2,400+ frames presented) and the first
+-boot HDD cache install started (installer thread, start context 0x1C67C0,
+copies each AFS from d:\ to z:\), but the boot's join on it was answered
+"finished" at once, so it opened `z:\loadfile.afs` before the copy existed
+and ADXF parked partition 2 in error. 3.0 hit exactly this; the thread-join
+logic in `bridge_NtWaitForSingleObject` (poll -> STATUS_TIMEOUT while the
+installer fiber is alive, block -> yield until it exits, pulsing the vblank
+event for the CRI workers) now covers 3.1 too. Drives: d:\ is the assets
+folder, z:\ is `%LOCALAPPDATA%\DeadOrAlive3\Cache` (kernel_path.c).
+
 Diagnostics added on the way: `[KCALL]` lines now end with the bridge's
 return value; `DOA3_TRACE_FN=addr,addr,...` logs returns of probed functions
 (`[FN]` lines, with stack and register arguments). The NtQueryInformationFile

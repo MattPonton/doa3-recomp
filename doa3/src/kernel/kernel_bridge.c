@@ -332,32 +332,45 @@ static void bridge_PsCreateSystemThreadEx(void)
  * state: STATUS_TIMEOUT while its fiber is alive (a zero timeout is a poll),
  * or block by yielding to it until it exits. Everything else keeps the old
  * behaviour (satisfied immediately). */
+static uint32_t doa3_vblank_event_va(void);
 static void bridge_NtWaitForSingleObject(void)
 {
     uint32_t h = STACK_ARG(0);
     uint32_t timeout_va = STACK_ARG(2);
     if ((h & 0xFFFF0000u) == 0xBEEF0000u) {
-#ifdef DOA3_XBE_ID_3_0
-        /* 3.0 addresses: the installer thread's start context and the CRI
-         * workers' vblank event. TODO(3.1): find this build's equivalents;
-         * until then other XBEs keep the old "satisfied at once" result. */
+#if defined(DOA3_XBE_ID_3_0) || defined(DOA3_XBE_ID_3_1)
+        /* The installer thread's start routine (the XAPI start context the
+         * fiber was spawned with): 3.0 0x9D440; 3.1 0x1C67C0, which opens each
+         * AFS through ADXF and CreateFile()s its z:\ copy. While it is copying,
+         * pulse the vblank event the CRI workers wait on, so streaming keeps
+         * moving, and yield to it. */
+#if defined(DOA3_XBE_ID_3_0)
         const uint32_t install_ctx = 0x0009D440u;
+#else
+        const uint32_t install_ctx = 0x001C67C0u;
+#endif
+        uint32_t vbl = doa3_vblank_event_va();
         int zero_timeout = timeout_va &&
                            BRIDGE_MEM32(timeout_va) == 0 && BRIDGE_MEM32(timeout_va + 4) == 0;
         if (xbox_fiber_thread_alive(install_ctx)) {
+            static int s_logged;
+            if (!s_logged) {
+                s_logged = 1;
+                fprintf(stderr, "[INSTALL] waiting for the HDD cache copy (installer thread 0x%08X)\n",
+                        install_ctx);
+            }
             if (xbox_fiber_active()) {
-                BRIDGE_MEM32(0x001C2CF0u + 4) = 1;   /* vblank pulse for the CRI workers */
-                xbox_fiber_wake(0x001C2CF0u);
+                if (vbl) { BRIDGE_MEM32(vbl + 4) = 1; xbox_fiber_wake(vbl); }
                 xbox_fiber_yield();
             }
             if (zero_timeout) { g_eax = 0x00000102u; return; }   /* STATUS_TIMEOUT */
             while (xbox_fiber_thread_alive(install_ctx) && xbox_fiber_active()) {
-                BRIDGE_MEM32(0x001C2CF0u + 4) = 1;
-                xbox_fiber_wake(0x001C2CF0u);
+                if (vbl) { BRIDGE_MEM32(vbl + 4) = 1; xbox_fiber_wake(vbl); }
                 xbox_fiber_yield();
             }
+            fprintf(stderr, "[INSTALL] installer thread finished\n");
         }
-#endif /* DOA3_XBE_ID_3_0 */
+#endif
         g_eax = 0;   /* STATUS_WAIT_0 */
         return;
     }
