@@ -717,7 +717,7 @@ loc_0004C858: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004C58C(void)
+void sub_0004C58C_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -1116,7 +1116,7 @@ loc_0004C90A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004C870(void)
+void sub_0004C870_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -1182,7 +1182,7 @@ loc_0004C90A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004C910(void)
+void sub_0004C910_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -1524,7 +1524,7 @@ loc_0004CBB5: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004C93F(void)
+void sub_0004C93F_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -1838,7 +1838,7 @@ loc_0004CBB5: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004C960(void)
+void sub_0004C960_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -4483,7 +4483,7 @@ loc_0004E394: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004CBC0(void)
+void sub_0004CBC0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -4617,7 +4617,7 @@ loc_0004CCE3: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004CD00(void)
+void sub_0004CD00_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -5068,7 +5068,7 @@ loc_0004D0E1: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004D0F0(void)
+void sub_0004D0F0_gen(void)
 {
 
 loc_0004D0F0: ;
@@ -5086,7 +5086,7 @@ loc_0004D0F0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004D110(void)
+void sub_0004D110_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -5179,7 +5179,7 @@ loc_0004D1E2: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004D1F0(void)
+void sub_0004D1F0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -5267,7 +5267,7 @@ loc_0004D274: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004D290(void)
+void sub_0004D290_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -5387,7 +5387,7 @@ loc_0004D37E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004D3A0(void)
+void sub_0004D3A0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -5834,7 +5834,7 @@ loc_0004D771: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004D780(void)
+void sub_0004D780_gen(void)
 {
 
 loc_0004D780: ;
@@ -5852,7 +5852,7 @@ loc_0004D780: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004D7A0(void)
+void sub_0004D7A0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -5947,7 +5947,7 @@ loc_0004D878: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004D880(void)
+void sub_0004D880_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -6035,7 +6035,7 @@ loc_0004D904: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004D920(void)
+void sub_0004D920_gen(void)
 {
 
 loc_0004D920: ;
@@ -6056,7 +6056,7 @@ loc_0004D931: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004D940(void)
+void sub_0004D940_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -6246,7 +6246,7 @@ loc_0004DAA0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004DAB0(void)
+void sub_0004DAB0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -6301,7 +6301,7 @@ loc_0004DB2C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004DB40(void)
+void sub_0004DB40_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -6389,7 +6389,7 @@ loc_0004DBCE: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004DBE0(void)
+void sub_0004DBE0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -6617,7 +6617,7 @@ loc_0004DDFC: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004DE10(void)
+void sub_0004DE10_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -6845,7 +6845,7 @@ loc_0004E02C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004E040(void)
+void sub_0004E040_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -7065,7 +7065,7 @@ loc_0004E1D2: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004E1F0(void)
+void sub_0004E1F0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -7293,7 +7293,7 @@ loc_0004E394: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004E3B0(void)
+void sub_0004E3B0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -7481,7 +7481,7 @@ loc_0004E53B: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004E464(void)
+void sub_0004E464_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -7514,7 +7514,7 @@ loc_0004E485: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004E485(void)
+void sub_0004E485_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -7575,7 +7575,7 @@ loc_0004E4F3: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004E4FB(void)
+void sub_0004E4FB_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -8241,7 +8241,7 @@ loc_0004EC83: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004E550(void)
+void sub_0004E550_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -8329,7 +8329,7 @@ loc_0004E5E3: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004E5F0(void)
+void sub_0004E5F0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -8583,7 +8583,7 @@ loc_0004E81B: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004E690(void)
+void sub_0004E690_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -8835,7 +8835,7 @@ loc_0004E860: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004E890(void)
+void sub_0004E890_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -9019,7 +9019,7 @@ loc_0004EA6A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004EA80(void)
+void sub_0004EA80_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -9203,7 +9203,7 @@ loc_0004EC5A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004EC70(void)
+void sub_0004EC70_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -9225,7 +9225,7 @@ loc_0004EC83: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004EC90(void)
+void sub_0004EC90_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -9299,7 +9299,7 @@ loc_0004ECE6: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004ECB2(void)
+void sub_0004ECB2_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -9351,7 +9351,7 @@ loc_0004ECE6: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004ECC5(void)
+void sub_0004ECC5_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -9399,7 +9399,7 @@ loc_0004ECE6: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004ED10(void)
+void sub_0004ED10_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -9922,7 +9922,7 @@ loc_0004EF68: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004EDD1(void)
+void sub_0004EDD1_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -10328,7 +10328,7 @@ loc_0004F1A0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004EFA0(void)
+void sub_0004EFA0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -10554,7 +10554,7 @@ loc_0004F1A0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004F006(void)
+void sub_0004F006_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -10743,7 +10743,7 @@ loc_0004F1A0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004F0D4(void)
+void sub_0004F0D4_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -10845,7 +10845,7 @@ loc_0004F1A0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004F1B0(void)
+void sub_0004F1B0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -11020,7 +11020,7 @@ loc_0004F30E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004F20D(void)
+void sub_0004F20D_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -11150,7 +11150,7 @@ loc_0004F30E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004F224(void)
+void sub_0004F224_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -11275,7 +11275,7 @@ loc_0004F30E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004F320(void)
+void sub_0004F320_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -11464,7 +11464,7 @@ loc_0004F470: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004F344(void)
+void sub_0004F344_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -11631,7 +11631,7 @@ loc_0004F470: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004F357(void)
+void sub_0004F357_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -11794,7 +11794,7 @@ loc_0004F470: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004F480(void)
+void sub_0004F480_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -11846,7 +11846,7 @@ loc_0004F4C9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004F4B6(void)
+void sub_0004F4B6_gen(void)
 {
 
 loc_0004F4B6: ;
@@ -11870,7 +11870,7 @@ loc_0004F4B6: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004F4C9(void)
+void sub_0004F4C9_gen(void)
 {
 
 loc_0004F4C9: ;
@@ -11891,7 +11891,7 @@ loc_0004F4C9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004F4F0(void)
+void sub_0004F4F0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -11919,7 +11919,7 @@ loc_0004F50B: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004F520(void)
+void sub_0004F520_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -11984,7 +11984,7 @@ loc_0004F58C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004F590(void)
+void sub_0004F590_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -12192,7 +12192,7 @@ loc_0004F73C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004F5F1(void)
+void sub_0004F5F1_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -12367,7 +12367,7 @@ loc_0004F73C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004F62A(void)
+void sub_0004F62A_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -12532,7 +12532,7 @@ loc_0004F73C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004F770(void)
+void sub_0004F770_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -12679,7 +12679,7 @@ loc_0004F86A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004F783(void)
+void sub_0004F783_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -12815,7 +12815,7 @@ loc_0004F86A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004F78A(void)
+void sub_0004F78A_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -12968,7 +12968,7 @@ loc_0004F86A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004F890(void)
+void sub_0004F890_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -13260,7 +13260,7 @@ loc_0004FB47: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004F8F5(void)
+void sub_0004F8F5_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -13509,7 +13509,7 @@ loc_0004FB47: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004F93B(void)
+void sub_0004F93B_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -13736,7 +13736,7 @@ loc_0004FB47: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004FB50(void)
+void sub_0004FB50_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -13935,7 +13935,7 @@ loc_0004FCF9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004FBAF(void)
+void sub_0004FBAF_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -14090,7 +14090,7 @@ loc_0004FCF9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004FBCF(void)
+void sub_0004FBCF_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -14236,7 +14236,7 @@ loc_0004FCF9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004FD00(void)
+void sub_0004FD00_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -14503,7 +14503,7 @@ loc_0004FFE5: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004FFE5(void)
+void sub_0004FFE5_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -14532,7 +14532,7 @@ loc_0004FFE5: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0004FFF0(void)
+void sub_0004FFF0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -15006,7 +15006,7 @@ loc_000503E4: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00050140(void)
+void sub_00050140_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -15311,7 +15311,7 @@ loc_000503E4: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00050410(void)
+void sub_00050410_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -15639,7 +15639,7 @@ loc_00050785: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00050790(void)
+void sub_00050790_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -16807,7 +16807,7 @@ loc_00050E76: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00050B36(void)
+void sub_00050B36_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -17192,7 +17192,7 @@ loc_00050E76: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00050B38(void)
+void sub_00050B38_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -17576,7 +17576,7 @@ loc_00050E76: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00050EA0(void)
+void sub_00050EA0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -17608,7 +17608,7 @@ loc_00050EBA: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00050EC0(void)
+void sub_00050EC0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -17670,7 +17670,7 @@ loc_00050F20: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00050ED6(void)
+void sub_00050ED6_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -17720,7 +17720,7 @@ loc_00050F20: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00050EE7(void)
+void sub_00050EE7_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -17843,7 +17843,7 @@ loc_00050F92: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00050FA0(void)
+void sub_00050FA0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -17913,7 +17913,7 @@ loc_00051015: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005100B(void)
+void sub_0005100B_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -17937,7 +17937,7 @@ loc_00051015: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00051030(void)
+void sub_00051030_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -17982,7 +17982,7 @@ loc_0005107C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005107C(void)
+void sub_0005107C_gen(void)
 {
 
 loc_0005107C: ;
@@ -18243,7 +18243,7 @@ loc_0005111F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00051150(void)
+void sub_00051150_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -18447,7 +18447,7 @@ loc_000512B2: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000512BD(void)
+void sub_000512BD_gen(void)
 {
     int _cf = 0; /* carry flag */
 
@@ -18468,7 +18468,7 @@ loc_000512BD: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00051330(void)
+void sub_00051330_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -18537,7 +18537,7 @@ loc_0005138E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000513A0(void)
+void sub_000513A0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -18968,7 +18968,7 @@ loc_0005177E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00051790(void)
+void sub_00051790_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -19007,7 +19007,7 @@ loc_00051790: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000517D0(void)
+void sub_000517D0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -19072,7 +19072,7 @@ loc_0005182A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00051830(void)
+void sub_00051830_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -19137,7 +19137,7 @@ loc_0005188A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00051890(void)
+void sub_00051890_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -19227,7 +19227,7 @@ loc_0005195F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005194B(void)
+void sub_0005194B_gen(void)
 {
     uint32_t ebp;
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -19264,7 +19264,7 @@ loc_0005195F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005194D(void)
+void sub_0005194D_gen(void)
 {
     uint32_t ebp;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
@@ -19368,7 +19368,7 @@ loc_00051A29: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00051A40(void)
+void sub_00051A40_gen(void)
 {
 
 loc_00051A40: ;
@@ -19468,7 +19468,7 @@ loc_00051B55: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00051B90(void)
+void sub_00051B90_gen(void)
 {
 
 loc_00051B90: ;
@@ -19531,7 +19531,7 @@ loc_00051C15: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00051C70(void)
+void sub_00051C70_gen(void)
 {
 
 loc_00051C70: ;
@@ -19579,7 +19579,7 @@ loc_00051CDB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00051CF0(void)
+void sub_00051CF0_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -19703,7 +19703,7 @@ loc_00051E1D: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00051E30(void)
+void sub_00051E30_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -19782,7 +19782,7 @@ loc_00051EF6: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00051F00(void)
+void sub_00051F00_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -19910,7 +19910,7 @@ loc_00051FF8: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00051F1B(void)
+void sub_00051F1B_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -20024,7 +20024,7 @@ loc_00051FEB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00051FF8(void)
+void sub_00051FF8_gen(void)
 {
     uint32_t ebp;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
@@ -20043,7 +20043,7 @@ loc_00051FF8: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00051FFB(void)
+void sub_00051FFB_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -20099,7 +20099,7 @@ loc_00052044: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00052046(void)
+void sub_00052046_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -20519,7 +20519,7 @@ loc_00052381: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000520E9(void)
+void sub_000520E9_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -20846,7 +20846,7 @@ loc_00052381: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000520EC(void)
+void sub_000520EC_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -21171,7 +21171,7 @@ loc_00052381: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00052386(void)
+void sub_00052386_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -21403,7 +21403,7 @@ loc_000524CA: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000524F0(void)
+void sub_000524F0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -21484,7 +21484,7 @@ loc_0005259D: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000525C0(void)
+void sub_000525C0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -21564,7 +21564,7 @@ loc_00052657: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005261A(void)
+void sub_0005261A_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -21613,7 +21613,7 @@ loc_00052657: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00052660(void)
+void sub_00052660_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -22695,7 +22695,7 @@ loc_000528A4: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000528E0(void)
+void sub_000528E0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -22771,7 +22771,7 @@ loc_00052990: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005293A(void)
+void sub_0005293A_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -22817,7 +22817,7 @@ loc_00052990: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000529A0(void)
+void sub_000529A0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -22882,7 +22882,7 @@ loc_00052A1F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000529C4(void)
+void sub_000529C4_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -22933,7 +22933,7 @@ loc_00052A1F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00052A20(void)
+void sub_00052A20_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -23026,7 +23026,7 @@ loc_00052ACC: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00052AE0(void)
+void sub_00052AE0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -23178,7 +23178,7 @@ loc_00052C25: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00052C30(void)
+void sub_00052C30_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -23241,7 +23241,7 @@ loc_00052CB9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00052CD0(void)
+void sub_00052CD0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -23351,7 +23351,7 @@ loc_00052D9A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00052DA0(void)
+void sub_00052DA0_gen(void)
 {
 
 loc_00052DA0: ;
@@ -23482,7 +23482,7 @@ loc_00052E84: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00052EB0(void)
+void sub_00052EB0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -23618,7 +23618,7 @@ loc_00052FB6: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00052FC0(void)
+void sub_00052FC0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -23763,7 +23763,7 @@ loc_000530D6: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000530E0(void)
+void sub_000530E0_gen(void)
 {
 
 loc_000530E0: ;
@@ -23787,7 +23787,7 @@ loc_000530E0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00053110(void)
+void sub_00053110_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -23945,7 +23945,7 @@ loc_00053281: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005313A(void)
+void sub_0005313A_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -24082,7 +24082,7 @@ loc_00053281: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00053193(void)
+void sub_00053193_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -24175,7 +24175,7 @@ loc_00053281: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000532A0(void)
+void sub_000532A0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -24316,7 +24316,7 @@ loc_000533C9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005331E(void)
+void sub_0005331E_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -24407,7 +24407,7 @@ loc_000533C9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000533AC(void)
+void sub_000533AC_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -24432,7 +24432,7 @@ loc_000533C9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000533D0(void)
+void sub_000533D0_gen(void)
 {
 
 loc_000533D0: ;
@@ -24467,7 +24467,7 @@ loc_000533F8: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00053400(void)
+void sub_00053400_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -24535,7 +24535,7 @@ loc_00053483: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00053490(void)
+void sub_00053490_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -24615,7 +24615,7 @@ loc_00053512: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00053520(void)
+void sub_00053520_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -24683,7 +24683,7 @@ loc_00053573: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00053573(void)
+void sub_00053573_gen(void)
 {
 
 loc_00053573: ;
@@ -24698,7 +24698,7 @@ loc_00053573: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00053580(void)
+void sub_00053580_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -24811,7 +24811,7 @@ loc_0005366F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000535B3(void)
+void sub_000535B3_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -24896,7 +24896,7 @@ loc_0005366F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000535D5(void)
+void sub_000535D5_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -24961,7 +24961,7 @@ loc_0005366F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00053680(void)
+void sub_00053680_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -25082,7 +25082,7 @@ loc_0005371F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00053730(void)
+void sub_00053730_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -25149,7 +25149,7 @@ loc_00053798: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000537A0(void)
+void sub_000537A0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -25606,7 +25606,7 @@ loc_00053C04: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00053C20(void)
+void sub_00053C20_gen(void)
 {
 
 loc_00053C20: ;
@@ -25630,7 +25630,7 @@ loc_00053C40: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00053C50(void)
+void sub_00053C50_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -25730,7 +25730,7 @@ loc_00053CEA: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00053CF0(void)
+void sub_00053CF0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -25871,7 +25871,7 @@ loc_00053E5C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00053E5C(void)
+void sub_00053E5C_gen(void)
 {
 
 loc_00053E5C: ;
@@ -25886,7 +25886,7 @@ loc_00053E5C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00053E60(void)
+void sub_00053E60_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -25934,7 +25934,7 @@ loc_00053EA4: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00053EA4(void)
+void sub_00053EA4_gen(void)
 {
 
 loc_00053EA4: ;
@@ -25949,7 +25949,7 @@ loc_00053EA4: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00053EB0(void)
+void sub_00053EB0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -26002,7 +26002,7 @@ loc_00053F1E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00053F20(void)
+void sub_00053F20_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -26034,7 +26034,7 @@ loc_00053F4E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00053F50(void)
+void sub_00053F50_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -26083,7 +26083,7 @@ loc_00053F91: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00053FA0(void)
+void sub_00053FA0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -26110,7 +26110,7 @@ loc_00053FC4: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00053FD0(void)
+void sub_00053FD0_gen(void)
 {
     uint32_t ebp;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
@@ -26154,7 +26154,7 @@ loc_00054009: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00054014(void)
+void sub_00054014_gen(void)
 {
 
 loc_00054014: ;
@@ -26170,7 +26170,7 @@ loc_00054014: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00054020(void)
+void sub_00054020_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -26204,7 +26204,7 @@ loc_00054054: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00054054(void)
+void sub_00054054_gen(void)
 {
 
 loc_00054054: ;
@@ -26219,7 +26219,7 @@ loc_00054054: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00054060(void)
+void sub_00054060_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -26253,7 +26253,7 @@ loc_00054094: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00054094(void)
+void sub_00054094_gen(void)
 {
 
 loc_00054094: ;
@@ -26268,7 +26268,7 @@ loc_00054094: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000540A0(void)
+void sub_000540A0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -26391,7 +26391,7 @@ loc_00054175: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00054180(void)
+void sub_00054180_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -26464,7 +26464,7 @@ loc_000541FA: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00054210(void)
+void sub_00054210_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -26672,7 +26672,7 @@ loc_000543C5: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000543D0(void)
+void sub_000543D0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -26904,7 +26904,7 @@ loc_0005458C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000543EA(void)
+void sub_000543EA_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -27136,7 +27136,7 @@ loc_000545BB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000545A0(void)
+void sub_000545A0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -27174,7 +27174,7 @@ loc_000545BB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000545E0(void)
+void sub_000545E0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -27292,7 +27292,7 @@ loc_00054691: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000545FA(void)
+void sub_000545FA_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -27430,7 +27430,7 @@ loc_000546F6: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000546A0(void)
+void sub_000546A0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -27485,7 +27485,7 @@ loc_000546F6: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00054700(void)
+void sub_00054700_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -27543,7 +27543,7 @@ loc_00054700: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000547A0(void)
+void sub_000547A0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -27698,7 +27698,7 @@ loc_00054939: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00054940(void)
+void sub_00054940_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -27790,7 +27790,7 @@ loc_000549B9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00054A50(void)
+void sub_00054A50_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -27870,7 +27870,7 @@ loc_00054AC6: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00054AD0(void)
+void sub_00054AD0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -27899,7 +27899,7 @@ loc_00054AEF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00054B00(void)
+void sub_00054B00_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -28032,7 +28032,7 @@ loc_00054C4A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00054C70(void)
+void sub_00054C70_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -28111,7 +28111,7 @@ loc_00054CE9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00054CC2(void)
+void sub_00054CC2_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -28148,7 +28148,7 @@ loc_00054CE9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00054CC8(void)
+void sub_00054CC8_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -28183,7 +28183,7 @@ loc_00054CE9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00054CF0(void)
+void sub_00054CF0_gen(void)
 {
 
 loc_00054CF0: ;
@@ -28213,7 +28213,7 @@ loc_00054D20: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00054D30(void)
+void sub_00054D30_gen(void)
 {
 
 loc_00054D30: ;
@@ -28237,7 +28237,7 @@ loc_00054D30: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00054D60(void)
+void sub_00054D60_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -28576,7 +28576,7 @@ loc_00054FAE: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00054FC0(void)
+void sub_00054FC0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -29210,7 +29210,7 @@ loc_00055200: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00055210(void)
+void sub_00055210_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -29472,7 +29472,7 @@ loc_0005547E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005526F(void)
+void sub_0005526F_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -29689,7 +29689,7 @@ loc_0005547E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00055276(void)
+void sub_00055276_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -29905,7 +29905,7 @@ loc_0005547E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00055490(void)
+void sub_00055490_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -29938,7 +29938,7 @@ loc_000554B0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000554E0(void)
+void sub_000554E0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -30154,7 +30154,7 @@ loc_000556C8: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000556F0(void)
+void sub_000556F0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -30222,7 +30222,7 @@ loc_0005571F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000557E0(void)
+void sub_000557E0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -30364,7 +30364,7 @@ loc_00055946: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00055950(void)
+void sub_00055950_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -30418,7 +30418,7 @@ loc_00055983: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00055983(void)
+void sub_00055983_gen(void)
 {
 
 loc_00055983: ;
@@ -30436,7 +30436,7 @@ loc_00055983: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000559A0(void)
+void sub_000559A0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -30740,7 +30740,7 @@ loc_00055C84: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000559D0(void)
+void sub_000559D0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -31028,7 +31028,7 @@ loc_00055C84: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00055C56(void)
+void sub_00055C56_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -31066,7 +31066,7 @@ loc_00055C84: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00055C58(void)
+void sub_00055C58_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -31103,7 +31103,7 @@ loc_00055C84: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00055C90(void)
+void sub_00055C90_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -31190,7 +31190,7 @@ loc_00055CF4: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00055CE7(void)
+void sub_00055CE7_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -31237,7 +31237,7 @@ loc_00055CF4: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00055CF4(void)
+void sub_00055CF4_gen(void)
 {
 
 loc_00055CF4: ;
@@ -31277,7 +31277,7 @@ loc_00055CF4: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00055DC0(void)
+void sub_00055DC0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -31317,7 +31317,7 @@ loc_00055DF5: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00055E00(void)
+void sub_00055E00_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -32150,7 +32150,7 @@ loc_000565EB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000565FE(void)
+void sub_000565FE_gen(void)
 {
     uint32_t ebp;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
@@ -32173,7 +32173,7 @@ loc_000565FE: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000566E0(void)
+void sub_000566E0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -32487,7 +32487,7 @@ loc_00056A05: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00056A10(void)
+void sub_00056A10_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -32546,7 +32546,7 @@ loc_00056AB2: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00056AB2(void)
+void sub_00056AB2_gen(void)
 {
 
 loc_00056AB2: ;
@@ -32561,7 +32561,7 @@ loc_00056AB2: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00056AC0(void)
+void sub_00056AC0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -32728,7 +32728,7 @@ loc_00056C2A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00056C30(void)
+void sub_00056C30_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -32978,7 +32978,7 @@ loc_00056E6F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00056E90(void)
+void sub_00056E90_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -33069,7 +33069,7 @@ loc_00056F4A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00056F50(void)
+void sub_00056F50_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -33224,7 +33224,7 @@ loc_0005709F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000570B0(void)
+void sub_000570B0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -33300,7 +33300,7 @@ loc_00057156: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00057160(void)
+void sub_00057160_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -33455,7 +33455,7 @@ loc_000572AF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000572C0(void)
+void sub_000572C0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -33572,7 +33572,7 @@ loc_0005738C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000573C0(void)
+void sub_000573C0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -33934,7 +33934,7 @@ loc_00057788: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00057740(void)
+void sub_00057740_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -34167,7 +34167,7 @@ loc_000579E8: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000577A4(void)
+void sub_000577A4_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -34366,7 +34366,7 @@ loc_000579E8: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000577B8(void)
+void sub_000577B8_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -34654,7 +34654,7 @@ loc_00057B87: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00057A10(void)
+void sub_00057A10_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -34761,7 +34761,7 @@ loc_00057B87: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00057BA0(void)
+void sub_00057BA0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -34925,7 +34925,7 @@ loc_00057D72: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00057BBB(void)
+void sub_00057BBB_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -35068,7 +35068,7 @@ loc_00057D72: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00057BC0(void)
+void sub_00057BC0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -35209,7 +35209,7 @@ loc_00057D72: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00057D80(void)
+void sub_00057D80_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -35428,7 +35428,7 @@ loc_00058057: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00057EEB(void)
+void sub_00057EEB_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -35548,7 +35548,7 @@ loc_00058057: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00057EEF(void)
+void sub_00057EEF_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -35667,7 +35667,7 @@ loc_00058057: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00058070(void)
+void sub_00058070_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -35694,7 +35694,7 @@ loc_0005807C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000580A0(void)
+void sub_000580A0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -35774,7 +35774,7 @@ loc_00058151: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00058160(void)
+void sub_00058160_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -35912,7 +35912,7 @@ loc_000582B2: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000581C7(void)
+void sub_000581C7_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -36009,7 +36009,7 @@ loc_000582B2: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000581DF(void)
+void sub_000581DF_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -36099,7 +36099,7 @@ loc_000582B2: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000582D0(void)
+void sub_000582D0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -36189,7 +36189,7 @@ loc_000583C7: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000583C7(void)
+void sub_000583C7_gen(void)
 {
 
 loc_000583C7: ;
@@ -36204,7 +36204,7 @@ loc_000583C7: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000583E0(void)
+void sub_000583E0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -36367,7 +36367,7 @@ loc_00058503: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00058510(void)
+void sub_00058510_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -36445,7 +36445,7 @@ loc_00058547: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00058547(void)
+void sub_00058547_gen(void)
 {
     uint32_t ebp;
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -36497,7 +36497,7 @@ loc_00058547: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000585C0(void)
+void sub_000585C0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -36974,7 +36974,7 @@ loc_00058A57: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00058A60(void)
+void sub_00058A60_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -37052,7 +37052,7 @@ loc_00058AC3: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00058A87(void)
+void sub_00058A87_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -37107,7 +37107,7 @@ loc_00058AC3: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00058AE0(void)
+void sub_00058AE0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -37195,7 +37195,7 @@ loc_00058BA2: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00058BB0(void)
+void sub_00058BB0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -37237,7 +37237,7 @@ loc_00058BB0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00058C50(void)
+void sub_00058C50_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -37428,7 +37428,7 @@ loc_00058E3B: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00058E40(void)
+void sub_00058E40_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -37460,7 +37460,7 @@ loc_00058E5A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00058E5A(void)
+void sub_00058E5A_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -37508,7 +37508,7 @@ loc_00058EF1: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00058E60(void)
+void sub_00058E60_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -37558,7 +37558,7 @@ loc_00058EF1: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00058F00(void)
+void sub_00058F00_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -37621,7 +37621,7 @@ loc_00058F5D: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00058F5D(void)
+void sub_00058F5D_gen(void)
 {
 
 loc_00058F5D: ;
@@ -37635,7 +37635,7 @@ loc_00058F5D: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00058F60(void)
+void sub_00058F60_gen(void)
 {
     int _cf = 0; /* carry flag */
 
@@ -37665,7 +37665,7 @@ loc_00058F60: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00058FA0(void)
+void sub_00058FA0_gen(void)
 {
     int _cf = 0; /* carry flag */
 
@@ -37688,7 +37688,7 @@ loc_00058FA0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00058FC0(void)
+void sub_00058FC0_gen(void)
 {
     uint32_t ebp;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
@@ -37756,7 +37756,7 @@ loc_00059003: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00059045(void)
+void sub_00059045_gen(void)
 {
 
 loc_00059045: ;
@@ -37770,7 +37770,7 @@ loc_00059045: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00059046(void)
+void sub_00059046_gen(void)
 {
     uint32_t ebp;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
@@ -37864,7 +37864,7 @@ loc_000590F6: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00059110(void)
+void sub_00059110_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -37911,7 +37911,7 @@ loc_00059161: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00059170(void)
+void sub_00059170_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -38103,7 +38103,7 @@ loc_0005937A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00059380(void)
+void sub_00059380_gen(void)
 {
     int _cf = 0; /* carry flag */
 
@@ -38131,7 +38131,7 @@ loc_00059380: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000593C0(void)
+void sub_000593C0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -38223,7 +38223,7 @@ loc_00059471: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000593EC(void)
+void sub_000593EC_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -38287,7 +38287,7 @@ loc_00059471: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000593F6(void)
+void sub_000593F6_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -38348,7 +38348,7 @@ loc_00059471: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00059480(void)
+void sub_00059480_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -38525,7 +38525,7 @@ loc_0005964E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00059660(void)
+void sub_00059660_gen(void)
 {
 
 loc_00059660: ;
@@ -38546,7 +38546,7 @@ loc_00059660: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00059690(void)
+void sub_00059690_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -38663,7 +38663,7 @@ loc_00059787: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005971E(void)
+void sub_0005971E_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -38737,7 +38737,7 @@ loc_00059787: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000597A0(void)
+void sub_000597A0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -38898,7 +38898,7 @@ loc_0005995F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00059970(void)
+void sub_00059970_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -39258,7 +39258,7 @@ loc_00059CC7: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000599D5(void)
+void sub_000599D5_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -39582,7 +39582,7 @@ loc_00059CC7: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000599DE(void)
+void sub_000599DE_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -39904,7 +39904,7 @@ loc_00059CC7: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00059CE0(void)
+void sub_00059CE0_gen(void)
 {
 
 loc_00059CE0: ;
@@ -39926,7 +39926,7 @@ loc_00059CF0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00059D00(void)
+void sub_00059D00_gen(void)
 {
 
 loc_00059D00: ;
@@ -39951,7 +39951,7 @@ loc_00059D00: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00059D50(void)
+void sub_00059D50_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -40018,7 +40018,7 @@ loc_00059DB8: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00059DB4(void)
+void sub_00059DB4_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -40048,7 +40048,7 @@ loc_00059DB4: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00059DB8(void)
+void sub_00059DB8_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -40077,7 +40077,7 @@ loc_00059DB8: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00059DD0(void)
+void sub_00059DD0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -40210,7 +40210,7 @@ loc_00059E97: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00059EA0(void)
+void sub_00059EA0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -40421,7 +40421,7 @@ loc_0005A050: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00059ED8(void)
+void sub_00059ED8_gen(void)
 {
     uint32_t ebp;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
@@ -40454,7 +40454,7 @@ loc_00059ED8: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00059EE1(void)
+void sub_00059EE1_gen(void)
 {
     uint32_t ebp;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
@@ -40794,7 +40794,7 @@ loc_0005A050: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005A060(void)
+void sub_0005A060_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -40923,7 +40923,7 @@ loc_0005A1C4: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005A1D0(void)
+void sub_0005A1D0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -41030,7 +41030,7 @@ loc_0005A28A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005A290(void)
+void sub_0005A290_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -41198,7 +41198,7 @@ loc_0005A36D: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005A2C8(void)
+void sub_0005A2C8_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -41329,7 +41329,7 @@ loc_0005A36D: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005A380(void)
+void sub_0005A380_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -41789,7 +41789,7 @@ loc_0005A760: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005A770(void)
+void sub_0005A770_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -41962,7 +41962,7 @@ loc_0005A979: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005A79E(void)
+void sub_0005A79E_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -42306,7 +42306,7 @@ loc_0005AB84: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005AB90(void)
+void sub_0005AB90_gen(void)
 {
 
 loc_0005AB90: ;
@@ -42329,7 +42329,7 @@ loc_0005AB90: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005ABC0(void)
+void sub_0005ABC0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -42365,7 +42365,7 @@ loc_0005ABE5: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005ABE0(void)
+void sub_0005ABE0_gen(void)
 {
 
 loc_0005ABE0: ;
@@ -42385,7 +42385,7 @@ loc_0005ABE0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005ABE5(void)
+void sub_0005ABE5_gen(void)
 {
 
 loc_0005ABE5: ;
@@ -42404,7 +42404,7 @@ loc_0005ABE5: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005AC00(void)
+void sub_0005AC00_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -42440,7 +42440,7 @@ loc_0005AC25: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005AC20(void)
+void sub_0005AC20_gen(void)
 {
 
 loc_0005AC20: ;
@@ -42460,7 +42460,7 @@ loc_0005AC20: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005AC25(void)
+void sub_0005AC25_gen(void)
 {
 
 loc_0005AC25: ;
@@ -42479,7 +42479,7 @@ loc_0005AC25: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005AC50(void)
+void sub_0005AC50_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -42673,7 +42673,7 @@ loc_0005AE6B: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005AC6F(void)
+void sub_0005AC6F_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -42849,7 +42849,7 @@ loc_0005AE6B: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005AC75(void)
+void sub_0005AC75_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -43024,7 +43024,7 @@ loc_0005AE6B: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005AE80(void)
+void sub_0005AE80_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -43081,7 +43081,7 @@ loc_0005AEC7: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005AEBD(void)
+void sub_0005AEBD_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -43108,7 +43108,7 @@ loc_0005AEC7: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005AEE0(void)
+void sub_0005AEE0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -43179,7 +43179,7 @@ loc_0005AF4E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005AF09(void)
+void sub_0005AF09_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -43266,7 +43266,7 @@ loc_0005AFA2: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005AF60(void)
+void sub_0005AF60_gen(void)
 {
 
 loc_0005AF60: ;
@@ -43282,7 +43282,7 @@ loc_0005AF60: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005AF70(void)
+void sub_0005AF70_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -43334,7 +43334,7 @@ loc_0005AFA2: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005AFC0(void)
+void sub_0005AFC0_gen(void)
 {
 
 loc_0005AFC0: ;
@@ -43350,7 +43350,7 @@ loc_0005AFC0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005AFD0(void)
+void sub_0005AFD0_gen(void)
 {
 
 loc_0005AFD0: ;
@@ -43366,7 +43366,7 @@ loc_0005AFD0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005AFE0(void)
+void sub_0005AFE0_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -43425,7 +43425,7 @@ loc_0005B057: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005B060(void)
+void sub_0005B060_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -43500,7 +43500,7 @@ loc_0005B0F9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005B110(void)
+void sub_0005B110_gen(void)
 {
 
 loc_0005B110: ;
@@ -43523,7 +43523,7 @@ loc_0005B110: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005B140(void)
+void sub_0005B140_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -43578,7 +43578,7 @@ loc_0005B17E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005B1C0(void)
+void sub_0005B1C0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -44109,7 +44109,7 @@ loc_0005B830: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005B1FD(void)
+void sub_0005B1FD_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -44607,7 +44607,7 @@ loc_0005B830: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005B212(void)
+void sub_0005B212_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -45101,7 +45101,7 @@ loc_0005B830: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005B850(void)
+void sub_0005B850_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -45305,7 +45305,7 @@ loc_0005BAB1: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005B89A(void)
+void sub_0005B89A_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -45479,7 +45479,7 @@ loc_0005BAB1: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005B8A0(void)
+void sub_0005B8A0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -45691,7 +45691,7 @@ loc_0005BAED: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005BB10(void)
+void sub_0005BB10_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -45843,7 +45843,7 @@ loc_0005BCED: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005BD00(void)
+void sub_0005BD00_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -45948,7 +45948,7 @@ loc_0005BD5B: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005BD70(void)
+void sub_0005BD70_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -46018,7 +46018,7 @@ loc_0005BDDF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005BD8D(void)
+void sub_0005BD8D_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -46075,7 +46075,7 @@ loc_0005BDDF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005BDA8(void)
+void sub_0005BDA8_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -47385,7 +47385,7 @@ loc_0005D067: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005BDC3(void)
+void sub_0005BDC3_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -47418,7 +47418,7 @@ loc_0005BDDF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005BDE0(void)
+void sub_0005BDE0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -48716,7 +48716,7 @@ loc_0005D067: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005D080(void)
+void sub_0005D080_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -49539,7 +49539,7 @@ loc_0005DB27: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005D6D0(void)
+void sub_0005D6D0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -50004,7 +50004,7 @@ loc_0005DB27: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005DB30(void)
+void sub_0005DB30_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -50187,7 +50187,7 @@ loc_0005DD2E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005DB59(void)
+void sub_0005DB59_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -50349,7 +50349,7 @@ loc_0005DD2E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005DB9B(void)
+void sub_0005DB9B_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -50886,7 +50886,7 @@ loc_0005E33C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005E34E(void)
+void sub_0005E34E_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -51360,7 +51360,7 @@ loc_0005E931: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005E358(void)
+void sub_0005E358_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -51832,7 +51832,7 @@ loc_0005E931: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005E940(void)
+void sub_0005E940_gen(void)
 {
 
 loc_0005E940: ;
@@ -51858,7 +51858,7 @@ loc_0005E940: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005E990(void)
+void sub_0005E990_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -51928,7 +51928,7 @@ loc_0005E9FF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005E9AD(void)
+void sub_0005E9AD_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -51985,7 +51985,7 @@ loc_0005E9FF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005E9C8(void)
+void sub_0005E9C8_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -52032,7 +52032,7 @@ loc_0005E9FF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005E9E3(void)
+void sub_0005E9E3_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -52065,7 +52065,7 @@ loc_0005E9FF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005EA00(void)
+void sub_0005EA00_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -53532,7 +53532,7 @@ loc_0005F418: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005EAEE(void)
+void sub_0005EAEE_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -54204,7 +54204,7 @@ loc_0005F418: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0005F440(void)
+void sub_0005F440_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -55181,7 +55181,7 @@ loc_0006007B: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000600A0(void)
+void sub_000600A0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -56558,7 +56558,7 @@ loc_00060F81: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00060DE7(void)
+void sub_00060DE7_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -56725,7 +56725,7 @@ loc_00060F81: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00060FC0(void)
+void sub_00060FC0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -56931,7 +56931,7 @@ loc_000611E9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006100C(void)
+void sub_0006100C_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -57109,7 +57109,7 @@ loc_000611E9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00061037(void)
+void sub_00061037_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -57493,7 +57493,7 @@ loc_000612EB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00061266(void)
+void sub_00061266_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -57728,7 +57728,7 @@ loc_00061366: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006136C(void)
+void sub_0006136C_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -57768,7 +57768,7 @@ loc_0006137F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006136E(void)
+void sub_0006136E_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -57797,7 +57797,7 @@ loc_0006137F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00061381(void)
+void sub_00061381_gen(void)
 {
     uint32_t ebp;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
@@ -57816,7 +57816,7 @@ loc_00061381: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00061390(void)
+void sub_00061390_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -57879,7 +57879,7 @@ loc_000613EB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000613E4(void)
+void sub_000613E4_gen(void)
 {
 
 loc_000613E4: ;
@@ -57906,7 +57906,7 @@ loc_000613EB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00061430(void)
+void sub_00061430_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -58007,7 +58007,7 @@ loc_00061526: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00061540(void)
+void sub_00061540_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -59803,7 +59803,7 @@ loc_0006231E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000615B9(void)
+void sub_000615B9_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -60655,7 +60655,7 @@ loc_0006231E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00062340(void)
+void sub_00062340_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -61296,7 +61296,7 @@ loc_00062BC7: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00062365(void)
+void sub_00062365_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -61920,7 +61920,7 @@ loc_00062BC7: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00062375(void)
+void sub_00062375_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -62633,7 +62633,7 @@ loc_00062C9E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00062CA8(void)
+void sub_00062CA8_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -63581,7 +63581,7 @@ loc_00063843: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00062CB2(void)
+void sub_00062CB2_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -64527,7 +64527,7 @@ loc_00063843: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00063860(void)
+void sub_00063860_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -65531,7 +65531,7 @@ loc_000644F9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00064520(void)
+void sub_00064520_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -65686,7 +65686,7 @@ loc_000645BD: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006452B(void)
+void sub_0006452B_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -65831,7 +65831,7 @@ loc_000645BD: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000645C0(void)
+void sub_000645C0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -65981,7 +65981,7 @@ loc_0006466D: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000645CB(void)
+void sub_000645CB_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -66464,7 +66464,7 @@ loc_00064ACC: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006498D(void)
+void sub_0006498D_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -67249,7 +67249,7 @@ loc_00064BCF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00064BAC(void)
+void sub_00064BAC_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -67982,7 +67982,7 @@ loc_00064DDF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00064CAB(void)
+void sub_00064CAB_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -68455,7 +68455,7 @@ loc_000653C4: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00064DF0(void)
+void sub_00064DF0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -68823,7 +68823,7 @@ loc_000653C4: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00064EBB(void)
+void sub_00064EBB_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -69133,7 +69133,7 @@ loc_000653C4: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000653E0(void)
+void sub_000653E0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -70049,7 +70049,7 @@ loc_00065E9E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00065EC0(void)
+void sub_00065EC0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -70925,7 +70925,7 @@ loc_00066971: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00066990(void)
+void sub_00066990_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -71758,7 +71758,7 @@ loc_0006764A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00067670(void)
+void sub_00067670_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -72587,7 +72587,7 @@ loc_000680B7: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000680D0(void)
+void sub_000680D0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -72971,7 +72971,7 @@ loc_000685EE: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000682A9(void)
+void sub_000682A9_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -73242,7 +73242,7 @@ loc_000685EE: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000682BA(void)
+void sub_000682BA_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -73509,7 +73509,7 @@ loc_000685EE: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00068600(void)
+void sub_00068600_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -73730,7 +73730,7 @@ loc_0006884B: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00068698(void)
+void sub_00068698_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -73904,7 +73904,7 @@ loc_0006884B: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000687AB(void)
+void sub_000687AB_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -73973,7 +73973,7 @@ loc_0006884B: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00068860(void)
+void sub_00068860_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -74024,7 +74024,7 @@ loc_00068860: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000688C0(void)
+void sub_000688C0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -74066,7 +74066,7 @@ loc_00068904: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00068910(void)
+void sub_00068910_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -74184,7 +74184,7 @@ loc_00068A51: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006899C(void)
+void sub_0006899C_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -74264,7 +74264,7 @@ loc_00068A51: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000689BE(void)
+void sub_000689BE_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -74338,7 +74338,7 @@ loc_00068A51: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00068A60(void)
+void sub_00068A60_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -74457,7 +74457,7 @@ loc_00068BAF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00068AEF(void)
+void sub_00068AEF_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -74541,7 +74541,7 @@ loc_00068BAF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00068B14(void)
+void sub_00068B14_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -74619,7 +74619,7 @@ loc_00068BAF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00068BC0(void)
+void sub_00068BC0_gen(void)
 {
 
 loc_00068BC0: ;
@@ -74684,7 +74684,7 @@ loc_00068D09: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00068D10(void)
+void sub_00068D10_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -74741,7 +74741,7 @@ loc_00068D10: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00068DA0(void)
+void sub_00068DA0_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -74799,7 +74799,7 @@ loc_00068DA0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00068E30(void)
+void sub_00068E30_gen(void)
 {
 
 loc_00068E30: ;
@@ -74820,7 +74820,7 @@ loc_00068E30: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00068E70(void)
+void sub_00068E70_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -74856,7 +74856,7 @@ loc_00068E98: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00068ED0(void)
+void sub_00068ED0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -74938,7 +74938,7 @@ loc_00068F58: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00068F60(void)
+void sub_00068F60_gen(void)
 {
 
 loc_00068F60: ;
@@ -74958,7 +74958,7 @@ loc_00068F60: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00068F90(void)
+void sub_00068F90_gen(void)
 {
 
 loc_00068F90: ;
@@ -74978,7 +74978,7 @@ loc_00068F90: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00068FC0(void)
+void sub_00068FC0_gen(void)
 {
 
 loc_00068FC0: ;
@@ -75008,7 +75008,7 @@ loc_00068FC0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00069000(void)
+void sub_00069000_gen(void)
 {
 
 loc_00069000: ;
@@ -75038,7 +75038,7 @@ loc_00069000: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000691B0(void)
+void sub_000691B0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -75085,7 +75085,7 @@ loc_000691EA: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000691D3(void)
+void sub_000691D3_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -75383,7 +75383,7 @@ loc_00069325: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00069330(void)
+void sub_00069330_gen(void)
 {
 
 loc_00069330: ;
@@ -75471,7 +75471,7 @@ loc_000693D8: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000693F0(void)
+void sub_000693F0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -75554,7 +75554,7 @@ loc_000694A4: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000694B0(void)
+void sub_000694B0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -75664,7 +75664,7 @@ loc_00069554: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00069560(void)
+void sub_00069560_gen(void)
 {
 
 loc_00069560: ;
@@ -75720,7 +75720,7 @@ loc_000695EF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00069600(void)
+void sub_00069600_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -75772,7 +75772,7 @@ loc_0006963E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00069680(void)
+void sub_00069680_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -75821,7 +75821,7 @@ loc_000696D3: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000696D3(void)
+void sub_000696D3_gen(void)
 {
 
 loc_000696D3: ;
@@ -75857,7 +75857,7 @@ loc_000696E0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000696F0(void)
+void sub_000696F0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -75942,7 +75942,7 @@ loc_00069750: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00069760(void)
+void sub_00069760_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -76307,7 +76307,7 @@ loc_00069A8F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00069797(void)
+void sub_00069797_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -76651,7 +76651,7 @@ loc_00069A8F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000697A0(void)
+void sub_000697A0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -76992,7 +76992,7 @@ loc_00069A8F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00069AA0(void)
+void sub_00069AA0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -77140,7 +77140,7 @@ loc_00069BA6: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00069BB0(void)
+void sub_00069BB0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -77379,7 +77379,7 @@ loc_00069E1B: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00069BC6(void)
+void sub_00069BC6_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -77605,7 +77605,7 @@ loc_00069E1B: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00069E30(void)
+void sub_00069E30_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -77856,7 +77856,7 @@ loc_0006A093: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006A0A0(void)
+void sub_0006A0A0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -77947,7 +77947,7 @@ loc_0006A113: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006A120(void)
+void sub_0006A120_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -78003,7 +78003,7 @@ loc_0006A166: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006A12F(void)
+void sub_0006A12F_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -78094,7 +78094,7 @@ loc_0006A19E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006A1A5(void)
+void sub_0006A1A5_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -78473,7 +78473,7 @@ loc_0006A3AC: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006A3C0(void)
+void sub_0006A3C0_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -78523,7 +78523,7 @@ loc_0006A3C0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006A430(void)
+void sub_0006A430_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -78642,7 +78642,7 @@ loc_0006A555: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006A560(void)
+void sub_0006A560_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -78712,7 +78712,7 @@ loc_0006A607: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006A580(void)
+void sub_0006A580_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -78769,7 +78769,7 @@ loc_0006A607: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006A5A8(void)
+void sub_0006A5A8_gen(void)
 {
     uint32_t ebp;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
@@ -78812,7 +78812,7 @@ loc_0006A607: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006A5AE(void)
+void sub_0006A5AE_gen(void)
 {
     uint32_t ebp;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
@@ -78853,7 +78853,7 @@ loc_0006A607: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006A610(void)
+void sub_0006A610_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -79080,7 +79080,7 @@ loc_0006A865: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006A870(void)
+void sub_0006A870_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -79757,7 +79757,7 @@ loc_0006B066: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006A8EB(void)
+void sub_0006A8EB_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -80402,7 +80402,7 @@ loc_0006B066: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006A8F1(void)
+void sub_0006A8F1_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -81046,7 +81046,7 @@ loc_0006B066: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006B070(void)
+void sub_0006B070_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -81179,7 +81179,7 @@ loc_0006B178: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006B200(void)
+void sub_0006B200_gen(void)
 {
 
 loc_0006B200: ;
@@ -81251,7 +81251,7 @@ loc_0006B2DA: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006B2E0(void)
+void sub_0006B2E0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -81373,7 +81373,7 @@ loc_0006B414: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006B420(void)
+void sub_0006B420_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -81548,7 +81548,7 @@ loc_0006B560: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006B4EA(void)
+void sub_0006B4EA_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -81630,7 +81630,7 @@ loc_0006B560: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006B4EC(void)
+void sub_0006B4EC_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -81712,7 +81712,7 @@ loc_0006B560: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006B570(void)
+void sub_0006B570_gen(void)
 {
 
 loc_0006B570: ;
@@ -81816,7 +81816,7 @@ loc_0006B6A5: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006B6B0(void)
+void sub_0006B6B0_gen(void)
 {
 
 loc_0006B6B0: ;
@@ -81856,7 +81856,7 @@ loc_0006B6EE: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006B750(void)
+void sub_0006B750_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -81904,7 +81904,7 @@ loc_0006B750: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006B7C0(void)
+void sub_0006B7C0_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -81956,7 +81956,7 @@ loc_0006B7C0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006B840(void)
+void sub_0006B840_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -82021,7 +82021,7 @@ loc_0006B840: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006B8D0(void)
+void sub_0006B8D0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -82104,7 +82104,7 @@ loc_0006B9A7: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006B9B0(void)
+void sub_0006B9B0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -82240,7 +82240,7 @@ loc_0006BBC6: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006BD10(void)
+void sub_0006BD10_gen(void)
 {
 
 loc_0006BD10: ;
@@ -82283,7 +82283,7 @@ loc_0006BD10: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006BDD0(void)
+void sub_0006BDD0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -82429,7 +82429,7 @@ loc_0006BF00: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006BF10(void)
+void sub_0006BF10_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -82461,7 +82461,7 @@ loc_0006BF45: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006BF50(void)
+void sub_0006BF50_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -82682,7 +82682,7 @@ loc_0006C161: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006C190(void)
+void sub_0006C190_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -82718,7 +82718,7 @@ loc_0006C1BA: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006C1BA(void)
+void sub_0006C1BA_gen(void)
 {
 
 loc_0006C1BA: ;
@@ -82736,7 +82736,7 @@ loc_0006C1BA: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006C1D0(void)
+void sub_0006C1D0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -82804,7 +82804,7 @@ loc_0006C24D: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006C2B0(void)
+void sub_0006C2B0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -82845,7 +82845,7 @@ loc_0006C2FA: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006C2FA(void)
+void sub_0006C2FA_gen(void)
 {
 
 loc_0006C2FA: ;
@@ -82861,7 +82861,7 @@ loc_0006C2FA: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006C300(void)
+void sub_0006C300_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -83003,7 +83003,7 @@ loc_0006C40C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006C430(void)
+void sub_0006C430_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -83041,7 +83041,7 @@ loc_0006C464: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006C464(void)
+void sub_0006C464_gen(void)
 {
 
 loc_0006C464: ;
@@ -83056,7 +83056,7 @@ loc_0006C464: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006C470(void)
+void sub_0006C470_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -83122,7 +83122,7 @@ loc_0006C4E3: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006C4F0(void)
+void sub_0006C4F0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -83157,7 +83157,7 @@ loc_0006C519: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006C520(void)
+void sub_0006C520_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -83226,7 +83226,7 @@ loc_0006C596: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006C5A0(void)
+void sub_0006C5A0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -83475,7 +83475,7 @@ loc_0006C7E1: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006C7F0(void)
+void sub_0006C7F0_gen(void)
 {
 
 loc_0006C7F0: ;
@@ -83510,7 +83510,7 @@ loc_0006C7F0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006C880(void)
+void sub_0006C880_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -83573,7 +83573,7 @@ loc_0006C8CE: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006C8A0(void)
+void sub_0006C8A0_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -83620,7 +83620,7 @@ loc_0006C8CE: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006C8A6(void)
+void sub_0006C8A6_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -83666,7 +83666,7 @@ loc_0006C8CE: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006C900(void)
+void sub_0006C900_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -83859,7 +83859,7 @@ loc_0006CAB9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006CAC0(void)
+void sub_0006CAC0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -83932,7 +83932,7 @@ loc_0006CB3E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006CB40(void)
+void sub_0006CB40_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -84064,7 +84064,7 @@ loc_0006CC5A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006CC70(void)
+void sub_0006CC70_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -84151,7 +84151,7 @@ loc_0006CD3D: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006CCF4(void)
+void sub_0006CCF4_gen(void)
 {
 
 loc_0006CCF4: ;
@@ -84193,7 +84193,7 @@ loc_0006CD3D: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006CD10(void)
+void sub_0006CD10_gen(void)
 {
 
 loc_0006CD10: ;
@@ -84225,7 +84225,7 @@ loc_0006CD3D: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006CD50(void)
+void sub_0006CD50_gen(void)
 {
 
 loc_0006CD50: ;
@@ -84339,7 +84339,7 @@ loc_0006CF73: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006CF80(void)
+void sub_0006CF80_gen(void)
 {
     uint32_t ebp;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
@@ -84436,7 +84436,7 @@ loc_0006CFE1: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006D070(void)
+void sub_0006D070_gen(void)
 {
 
 loc_0006D070: ;
@@ -84467,7 +84467,7 @@ loc_0006D070: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006D0C0(void)
+void sub_0006D0C0_gen(void)
 {
 
 loc_0006D0C0: ;
@@ -84512,7 +84512,7 @@ loc_0006D10B: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006D120(void)
+void sub_0006D120_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -84572,7 +84572,7 @@ loc_0006D14B: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006D170(void)
+void sub_0006D170_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -84609,7 +84609,7 @@ loc_0006D188: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006D1B0(void)
+void sub_0006D1B0_gen(void)
 {
 
 loc_0006D1B0: ;
@@ -84658,7 +84658,7 @@ loc_0006D200: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006D220(void)
+void sub_0006D220_gen(void)
 {
 
 loc_0006D220: ;
@@ -84729,7 +84729,7 @@ loc_0006D220: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006D2D0(void)
+void sub_0006D2D0_gen(void)
 {
 
 loc_0006D2D0: ;
@@ -84760,7 +84760,7 @@ loc_0006D2FA: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006D310(void)
+void sub_0006D310_gen(void)
 {
 
 loc_0006D310: ;
@@ -84860,7 +84860,7 @@ loc_0006D454: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006D470(void)
+void sub_0006D470_gen(void)
 {
 
 loc_0006D470: ;
@@ -84885,7 +84885,7 @@ loc_0006D492: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006D4A0(void)
+void sub_0006D4A0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -84933,7 +84933,7 @@ loc_0006D4E9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006D4F0(void)
+void sub_0006D4F0_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -84990,7 +84990,7 @@ loc_0006D55F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006D570(void)
+void sub_0006D570_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -85031,7 +85031,7 @@ loc_0006D5AF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006D5B0(void)
+void sub_0006D5B0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -85086,7 +85086,7 @@ loc_0006D5FF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006D5FF(void)
+void sub_0006D5FF_gen(void)
 {
 
 loc_0006D5FF: ;
@@ -85104,7 +85104,7 @@ loc_0006D5FF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006D610(void)
+void sub_0006D610_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -85214,7 +85214,7 @@ loc_0006D6DC: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006D710(void)
+void sub_0006D710_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -85283,7 +85283,7 @@ loc_0006D766: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006D790(void)
+void sub_0006D790_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -85353,7 +85353,7 @@ loc_0006D7FF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006D810(void)
+void sub_0006D810_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -85426,7 +85426,7 @@ loc_0006D88E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006D85C(void)
+void sub_0006D85C_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -85463,7 +85463,7 @@ loc_0006D88E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006D8A0(void)
+void sub_0006D8A0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -85503,7 +85503,7 @@ loc_0006D8DB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006D8E0(void)
+void sub_0006D8E0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -85561,7 +85561,7 @@ loc_0006D95A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006D960(void)
+void sub_0006D960_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -85623,7 +85623,7 @@ loc_0006D9CB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006D990(void)
+void sub_0006D990_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -85659,7 +85659,7 @@ loc_0006D9CB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006D9E0(void)
+void sub_0006D9E0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -85746,7 +85746,7 @@ loc_0006DA6D: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006DA18(void)
+void sub_0006DA18_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -85799,7 +85799,7 @@ loc_0006DA6D: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006DA80(void)
+void sub_0006DA80_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -85918,7 +85918,7 @@ loc_0006DBA4: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006DB23(void)
+void sub_0006DB23_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -85996,7 +85996,7 @@ loc_0006DBB0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006DBC0(void)
+void sub_0006DBC0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -86048,7 +86048,7 @@ loc_0006DC03: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006DC10(void)
+void sub_0006DC10_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -86150,7 +86150,7 @@ loc_0006DD68: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006DD70(void)
+void sub_0006DD70_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -86202,7 +86202,7 @@ loc_0006DDDF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006DDF0(void)
+void sub_0006DDF0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -86244,7 +86244,7 @@ loc_0006DE25: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006DE25(void)
+void sub_0006DE25_gen(void)
 {
 
 loc_0006DE25: ;
@@ -86261,7 +86261,7 @@ loc_0006DE25: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006DE30(void)
+void sub_0006DE30_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -86329,7 +86329,7 @@ loc_0006DE93: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006DE5A(void)
+void sub_0006DE5A_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -86374,7 +86374,7 @@ loc_0006DE93: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006DEB0(void)
+void sub_0006DEB0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -86414,7 +86414,7 @@ loc_0006DEE6: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006DF00(void)
+void sub_0006DF00_gen(void)
 {
 
 loc_0006DF00: ;
@@ -86458,7 +86458,7 @@ loc_0006DF6E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006DF70(void)
+void sub_0006DF70_gen(void)
 {
 
 loc_0006DF70: ;
@@ -86501,7 +86501,7 @@ loc_0006DFDE: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006DFE0(void)
+void sub_0006DFE0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -86594,7 +86594,7 @@ loc_0006E0D9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006E0D9(void)
+void sub_0006E0D9_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -86623,7 +86623,7 @@ loc_0006E0D9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006E0F0(void)
+void sub_0006E0F0_gen(void)
 {
 
 loc_0006E0F0: ;
@@ -86670,7 +86670,7 @@ loc_0006E18F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006E1A0(void)
+void sub_0006E1A0_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -86733,7 +86733,7 @@ loc_0006E23F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006E250(void)
+void sub_0006E250_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -86788,7 +86788,7 @@ loc_0006E296: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006E2A0(void)
+void sub_0006E2A0_gen(void)
 {
 
 loc_0006E2A0: ;
@@ -86823,7 +86823,7 @@ loc_0006E2A0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006E330(void)
+void sub_0006E330_gen(void)
 {
 
 loc_0006E330: ;
@@ -86873,7 +86873,7 @@ loc_0006E3C7: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006E3D0(void)
+void sub_0006E3D0_gen(void)
 {
 
 loc_0006E3D0: ;
@@ -86925,7 +86925,7 @@ loc_0006E453: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006E460(void)
+void sub_0006E460_gen(void)
 {
 
 loc_0006E460: ;
@@ -86977,7 +86977,7 @@ loc_0006E4F0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006E500(void)
+void sub_0006E500_gen(void)
 {
 
 loc_0006E500: ;
@@ -87026,7 +87026,7 @@ loc_0006E58D: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006E5A0(void)
+void sub_0006E5A0_gen(void)
 {
     uint32_t ebp;
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -87137,7 +87137,7 @@ loc_0006E6B0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006E6C0(void)
+void sub_0006E6C0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -87314,7 +87314,7 @@ loc_0006E860: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006E71C(void)
+void sub_0006E71C_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -87454,7 +87454,7 @@ loc_0006E860: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006E73A(void)
+void sub_0006E73A_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -87586,7 +87586,7 @@ loc_0006E860: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006E870(void)
+void sub_0006E870_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -87729,7 +87729,7 @@ loc_0006E9BB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006E8CD(void)
+void sub_0006E8CD_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -87831,7 +87831,7 @@ loc_0006E9BB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006E8ED(void)
+void sub_0006E8ED_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -87925,7 +87925,7 @@ loc_0006E9BB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006E9D0(void)
+void sub_0006E9D0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -88044,7 +88044,7 @@ loc_0006EAC7: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006EA23(void)
+void sub_0006EA23_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -88127,7 +88127,7 @@ loc_0006EAC7: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006EA3D(void)
+void sub_0006EA3D_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -88204,7 +88204,7 @@ loc_0006EAC7: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006EAD0(void)
+void sub_0006EAD0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -88360,7 +88360,7 @@ loc_0006EC2E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006EB22(void)
+void sub_0006EB22_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -88482,7 +88482,7 @@ loc_0006EC2E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006EB40(void)
+void sub_0006EB40_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -88596,7 +88596,7 @@ loc_0006EC2E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006EC40(void)
+void sub_0006EC40_gen(void)
 {
     uint32_t ebp;
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -88770,7 +88770,7 @@ loc_0006EDCC: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006EDE0(void)
+void sub_0006EDE0_gen(void)
 {
 
 loc_0006EDE0: ;
@@ -88792,7 +88792,7 @@ loc_0006EDEF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006EE00(void)
+void sub_0006EE00_gen(void)
 {
 
 loc_0006EE00: ;
@@ -88826,7 +88826,7 @@ loc_0006EE38: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006EE40(void)
+void sub_0006EE40_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -88898,7 +88898,7 @@ loc_0006EEAE: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006EE53(void)
+void sub_0006EE53_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -88958,7 +88958,7 @@ loc_0006EEAE: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006EEC0(void)
+void sub_0006EEC0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -89404,7 +89404,7 @@ loc_0006F294: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006EEF2(void)
+void sub_0006EEF2_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -89830,7 +89830,7 @@ loc_0006F294: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006F310(void)
+void sub_0006F310_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -90305,7 +90305,7 @@ loc_0006F677: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006F6D0(void)
+void sub_0006F6D0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -90374,7 +90374,7 @@ loc_0006F742: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006F6DC(void)
+void sub_0006F6DC_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -90557,7 +90557,7 @@ loc_0006F873: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006F889(void)
+void sub_0006F889_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -90627,7 +90627,7 @@ loc_0006F913: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006F8D4(void)
+void sub_0006F8D4_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -90740,7 +90740,7 @@ loc_0006F9A6: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006F930(void)
+void sub_0006F930_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -90820,7 +90820,7 @@ loc_0006F9A6: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006F9B0(void)
+void sub_0006F9B0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -91308,7 +91308,7 @@ loc_0006FE47: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006FA33(void)
+void sub_0006FA33_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -91755,7 +91755,7 @@ loc_0006FE47: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006FA50(void)
+void sub_0006FA50_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -92191,7 +92191,7 @@ loc_0006FE47: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006FE60(void)
+void sub_0006FE60_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -92266,7 +92266,7 @@ loc_0006FED9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006FE79(void)
+void sub_0006FE79_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -92325,7 +92325,7 @@ loc_0006FED9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006FEF0(void)
+void sub_0006FEF0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -92400,7 +92400,7 @@ loc_0006FF85: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006FF01(void)
+void sub_0006FF01_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -92464,7 +92464,7 @@ loc_0006FF85: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006FFA0(void)
+void sub_0006FFA0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -92626,7 +92626,7 @@ loc_000700CE: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0006FFB3(void)
+void sub_0006FFB3_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -92777,7 +92777,7 @@ loc_000700CE: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000700E0(void)
+void sub_000700E0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -92869,7 +92869,7 @@ loc_00070148: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000700F7(void)
+void sub_000700F7_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -92948,7 +92948,7 @@ loc_00070148: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00070160(void)
+void sub_00070160_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -93031,7 +93031,7 @@ loc_000701BF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000701E0(void)
+void sub_000701E0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -93113,7 +93113,7 @@ loc_0007024F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00070270(void)
+void sub_00070270_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -93377,7 +93377,7 @@ loc_0007042F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000702AE(void)
+void sub_000702AE_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -93612,7 +93612,7 @@ loc_0007042F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000702B0(void)
+void sub_000702B0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -93846,7 +93846,7 @@ loc_0007042F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00070450(void)
+void sub_00070450_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -93921,7 +93921,7 @@ loc_000704B5: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000704C0(void)
+void sub_000704C0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -94268,7 +94268,7 @@ loc_00070798: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000704E8(void)
+void sub_000704E8_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -94597,7 +94597,7 @@ loc_00070798: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000704F2(void)
+void sub_000704F2_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -94921,7 +94921,7 @@ loc_00070795: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00070798(void)
+void sub_00070798_gen(void)
 {
 
 loc_00070798: ;
@@ -94938,7 +94938,7 @@ loc_00070798: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000707A0(void)
+void sub_000707A0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -94980,7 +94980,7 @@ loc_000707D2: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000707E0(void)
+void sub_000707E0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -95013,7 +95013,7 @@ loc_000707F5: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00070810(void)
+void sub_00070810_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -95081,7 +95081,7 @@ loc_00070868: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007081D(void)
+void sub_0007081D_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -95137,7 +95137,7 @@ loc_00070868: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00070825(void)
+void sub_00070825_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -95190,7 +95190,7 @@ loc_00070868: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00070870(void)
+void sub_00070870_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -95317,7 +95317,7 @@ loc_0007090D: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000708BC(void)
+void sub_000708BC_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -95395,7 +95395,7 @@ loc_0007090D: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00070920(void)
+void sub_00070920_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -95517,7 +95517,7 @@ loc_000709B7: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00070935(void)
+void sub_00070935_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -95623,7 +95623,7 @@ loc_000709B7: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00070937(void)
+void sub_00070937_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -95728,7 +95728,7 @@ loc_000709B7: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000709C0(void)
+void sub_000709C0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -95865,7 +95865,7 @@ loc_00070A68: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00070A3E(void)
+void sub_00070A3E_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -95901,7 +95901,7 @@ loc_00070A50: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00070A59(void)
+void sub_00070A59_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -95935,7 +95935,7 @@ loc_00070A68: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00070A80(void)
+void sub_00070A80_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -96066,7 +96066,7 @@ loc_00070B34: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00070AD2(void)
+void sub_00070AD2_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -96144,7 +96144,7 @@ loc_00070B34: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00070B50(void)
+void sub_00070B50_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -96378,7 +96378,7 @@ loc_00070CBD: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00070B86(void)
+void sub_00070B86_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -96586,7 +96586,7 @@ loc_00070CBD: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00070B8E(void)
+void sub_00070B8E_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -96912,7 +96912,7 @@ loc_00070DD4: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00070CF6(void)
+void sub_00070CF6_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -97040,7 +97040,7 @@ loc_00070DD1: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00070DD4(void)
+void sub_00070DD4_gen(void)
 {
     uint32_t ebp;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
@@ -97173,7 +97173,7 @@ loc_00070EBB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00070EE5(void)
+void sub_00070EE5_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -97253,7 +97253,7 @@ loc_00070F46: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00070EEE(void)
+void sub_00070EEE_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -97350,7 +97350,7 @@ loc_00070F8D: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00070F90(void)
+void sub_00070F90_gen(void)
 {
 
 loc_00070F90: ;
@@ -97380,7 +97380,7 @@ loc_00070FB1: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00070FC0(void)
+void sub_00070FC0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -97413,7 +97413,7 @@ loc_00070FDC: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00070FE0(void)
+void sub_00070FE0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -97448,7 +97448,7 @@ loc_00071001: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00071010(void)
+void sub_00071010_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -97610,7 +97610,7 @@ loc_00071106: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000710B1(void)
+void sub_000710B1_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -97647,7 +97647,7 @@ loc_000710C8: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000710D0(void)
+void sub_000710D0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -97702,7 +97702,7 @@ loc_00071106: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00071120(void)
+void sub_00071120_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -97738,7 +97738,7 @@ loc_00071134: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00071140(void)
+void sub_00071140_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -97961,7 +97961,7 @@ loc_000712BF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000712BF(void)
+void sub_000712BF_gen(void)
 {
     uint32_t ebp;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
@@ -97986,7 +97986,7 @@ loc_000712BF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000712D0(void)
+void sub_000712D0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -98035,7 +98035,7 @@ loc_00071314: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00071320(void)
+void sub_00071320_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -98153,7 +98153,7 @@ loc_000713DA: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000713E0(void)
+void sub_000713E0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -98192,7 +98192,7 @@ loc_00071403: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00071410(void)
+void sub_00071410_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -98315,7 +98315,7 @@ loc_000714DF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000714C8(void)
+void sub_000714C8_gen(void)
 {
     uint32_t ebp;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
@@ -98348,7 +98348,7 @@ loc_000714DF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000714F0(void)
+void sub_000714F0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -98398,7 +98398,7 @@ loc_00071529: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00071530(void)
+void sub_00071530_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -98460,7 +98460,7 @@ loc_00071592: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000715A0(void)
+void sub_000715A0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -98524,7 +98524,7 @@ loc_000715F4: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00071600(void)
+void sub_00071600_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -98592,7 +98592,7 @@ loc_00071658: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00071658(void)
+void sub_00071658_gen(void)
 {
     uint32_t ebp;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
@@ -98613,7 +98613,7 @@ loc_00071658: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00071670(void)
+void sub_00071670_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -98731,7 +98731,7 @@ loc_0007171D: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00071730(void)
+void sub_00071730_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -98796,7 +98796,7 @@ loc_000717C1: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000717D0(void)
+void sub_000717D0_gen(void)
 {
 
 loc_000717D0: ;
@@ -98838,7 +98838,7 @@ loc_00071812: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00071820(void)
+void sub_00071820_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -98929,7 +98929,7 @@ loc_000718EA: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00071900(void)
+void sub_00071900_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -98994,7 +98994,7 @@ loc_00071965: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00071970(void)
+void sub_00071970_gen(void)
 {
 
 loc_00071970: ;
@@ -99062,7 +99062,7 @@ loc_00071A1E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00071A20(void)
+void sub_00071A20_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -99576,7 +99576,7 @@ loc_00071E9C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00071EB0(void)
+void sub_00071EB0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -99631,7 +99631,7 @@ loc_00071F18: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00071F20(void)
+void sub_00071F20_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -99672,7 +99672,7 @@ loc_00071F52: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00071F33(void)
+void sub_00071F33_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -99976,7 +99976,7 @@ loc_00071FF9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00072009(void)
+void sub_00072009_gen(void)
 {
     uint32_t ebp;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
@@ -100000,7 +100000,7 @@ loc_00072009: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00072024(void)
+void sub_00072024_gen(void)
 {
     uint32_t ebp;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
@@ -100081,7 +100081,7 @@ loc_0007209F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000720B0(void)
+void sub_000720B0_gen(void)
 {
     int _cf = 0; /* carry flag */
 
@@ -100158,7 +100158,7 @@ loc_00072107: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000721B0(void)
+void sub_000721B0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -100638,7 +100638,7 @@ loc_0007286A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000728B0(void)
+void sub_000728B0_gen(void)
 {
 
 loc_000728B0: ;
@@ -100704,7 +100704,7 @@ loc_0007292B: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00072930(void)
+void sub_00072930_gen(void)
 {
 
 loc_00072930: ;
@@ -100759,7 +100759,7 @@ loc_00072976: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00072980(void)
+void sub_00072980_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -101020,7 +101020,7 @@ loc_00072BC1: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000729EB(void)
+void sub_000729EB_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -101226,7 +101226,7 @@ loc_00072BC1: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00072BD0(void)
+void sub_00072BD0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -101510,7 +101510,7 @@ loc_00072E8C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00072C1B(void)
+void sub_00072C1B_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -101767,7 +101767,7 @@ loc_00072E8C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00072C9B(void)
+void sub_00072C9B_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -101976,7 +101976,7 @@ loc_00072E8C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00072E90(void)
+void sub_00072E90_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -102209,7 +102209,7 @@ loc_00072FBD: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00072F6F(void)
+void sub_00072F6F_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -106331,7 +106331,7 @@ loc_00075A37: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00072F71(void)
+void sub_00072F71_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -110450,7 +110450,7 @@ loc_00075A37: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00072FE0(void)
+void sub_00072FE0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -110989,7 +110989,7 @@ loc_00073529: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00073540(void)
+void sub_00073540_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -111197,7 +111197,7 @@ loc_000736F3: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00073700(void)
+void sub_00073700_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -111366,7 +111366,7 @@ loc_0007386C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00073870(void)
+void sub_00073870_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -112129,7 +112129,7 @@ loc_000740B2: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000740D0(void)
+void sub_000740D0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -112981,7 +112981,7 @@ loc_00074A1F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00074A30(void)
+void sub_00074A30_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -115432,7 +115432,7 @@ loc_00076286: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007628B(void)
+void sub_0007628B_gen(void)
 {
 
 loc_0007628B: ;
@@ -115460,7 +115460,7 @@ loc_000762A2: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000762B0(void)
+void sub_000762B0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -115655,7 +115655,7 @@ loc_00076484: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00076356(void)
+void sub_00076356_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -115770,7 +115770,7 @@ loc_00076484: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007638A(void)
+void sub_0007638A_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -115860,7 +115860,7 @@ loc_00076484: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00076396(void)
+void sub_00076396_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -115944,7 +115944,7 @@ loc_00076484: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00076490(void)
+void sub_00076490_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -116040,7 +116040,7 @@ loc_00076562: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000765A0(void)
+void sub_000765A0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -116534,7 +116534,7 @@ loc_00076A87: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000765C5(void)
+void sub_000765C5_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -117007,7 +117007,7 @@ loc_00076A87: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000765DC(void)
+void sub_000765DC_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -117474,7 +117474,7 @@ loc_00076A87: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00076AC0(void)
+void sub_00076AC0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -117547,7 +117547,7 @@ loc_00076B24: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00076ACE(void)
+void sub_00076ACE_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -117621,7 +117621,7 @@ loc_00076B24: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00076B30(void)
+void sub_00076B30_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -117766,7 +117766,7 @@ loc_00076C54: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00076C60(void)
+void sub_00076C60_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -117812,7 +117812,7 @@ loc_00076C97: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00076C97(void)
+void sub_00076C97_gen(void)
 {
 
 loc_00076C97: ;
@@ -117828,7 +117828,7 @@ loc_00076C97: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00076CA0(void)
+void sub_00076CA0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -117925,7 +117925,7 @@ loc_00076D62: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00076D70(void)
+void sub_00076D70_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -117958,7 +117958,7 @@ loc_00076D99: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00076DA0(void)
+void sub_00076DA0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -118058,7 +118058,7 @@ loc_00076E49: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00076E50(void)
+void sub_00076E50_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -119138,7 +119138,7 @@ loc_00077857: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000772C0(void)
+void sub_000772C0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -119232,7 +119232,7 @@ loc_00077367: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00077390(void)
+void sub_00077390_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -119600,7 +119600,7 @@ loc_000776B5: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000776D0(void)
+void sub_000776D0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -119782,7 +119782,7 @@ loc_00077857: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00077870(void)
+void sub_00077870_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -119983,7 +119983,7 @@ loc_00077A5B: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00077975(void)
+void sub_00077975_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -120252,7 +120252,7 @@ loc_00077C03: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00077A70(void)
+void sub_00077A70_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -120418,7 +120418,7 @@ loc_00077C03: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00077C10(void)
+void sub_00077C10_gen(void)
 {
 
 loc_00077C10: ;
@@ -120454,7 +120454,7 @@ loc_00077C10: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00077C80(void)
+void sub_00077C80_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -120585,7 +120585,7 @@ loc_00077DB6: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00077DC0(void)
+void sub_00077DC0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -120884,7 +120884,7 @@ loc_00078053: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00078060(void)
+void sub_00078060_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -120935,7 +120935,7 @@ loc_00078118: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00078118(void)
+void sub_00078118_gen(void)
 {
 
 loc_00078118: ;
@@ -120949,7 +120949,7 @@ loc_00078118: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00078120(void)
+void sub_00078120_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -121068,7 +121068,7 @@ loc_000781F4: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000781F4(void)
+void sub_000781F4_gen(void)
 {
 
 loc_000781F4: ;
@@ -121085,7 +121085,7 @@ loc_000781F4: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00078200(void)
+void sub_00078200_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -121169,7 +121169,7 @@ loc_00078292: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000782A0(void)
+void sub_000782A0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -121214,7 +121214,7 @@ loc_000782DE: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000782E0(void)
+void sub_000782E0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -121562,7 +121562,7 @@ loc_000786C8: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000786E0(void)
+void sub_000786E0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -121869,7 +121869,7 @@ loc_00078A44: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00078A60(void)
+void sub_00078A60_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -121999,7 +121999,7 @@ loc_00078B4B: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00078B4B(void)
+void sub_00078B4B_gen(void)
 {
     uint32_t ebp;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
@@ -122018,7 +122018,7 @@ loc_00078B4B: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00078B50(void)
+void sub_00078B50_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -122258,7 +122258,7 @@ loc_00078D7E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00078D9C(void)
+void sub_00078D9C_gen(void)
 {
     uint32_t ebp;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
@@ -122733,7 +122733,7 @@ loc_000792AB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00078E7A(void)
+void sub_00078E7A_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -123414,7 +123414,7 @@ loc_00079596: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000792B0(void)
+void sub_000792B0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -123722,7 +123722,7 @@ loc_00079596: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000792D1(void)
+void sub_000792D1_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -124025,7 +124025,7 @@ loc_00079596: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000795B0(void)
+void sub_000795B0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -124644,7 +124644,7 @@ loc_00079BBC: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007967C(void)
+void sub_0007967C_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -125418,7 +125418,7 @@ loc_00079CAC: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00079CC0(void)
+void sub_00079CC0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -125789,7 +125789,7 @@ loc_0007A059: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007A09C(void)
+void sub_0007A09C_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -125872,7 +125872,7 @@ loc_0007A15E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007A180(void)
+void sub_0007A180_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -125993,7 +125993,7 @@ loc_0007A2BA: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007A2C0(void)
+void sub_0007A2C0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -126022,7 +126022,7 @@ loc_0007A2EB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007A2F0(void)
+void sub_0007A2F0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -126054,7 +126054,7 @@ loc_0007A320: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007A330(void)
+void sub_0007A330_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -126101,7 +126101,7 @@ loc_0007A36A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007A33A(void)
+void sub_0007A33A_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -126136,7 +126136,7 @@ loc_0007A36A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007A33E(void)
+void sub_0007A33E_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -126169,7 +126169,7 @@ loc_0007A36A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007A370(void)
+void sub_0007A370_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -126736,7 +126736,7 @@ loc_0007A8C0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007A636(void)
+void sub_0007A636_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -127034,7 +127034,7 @@ loc_0007A8C0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007A822(void)
+void sub_0007A822_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -127130,7 +127130,7 @@ loc_0007A8C0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007A827(void)
+void sub_0007A827_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -127225,7 +127225,7 @@ loc_0007A8C0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007A8D0(void)
+void sub_0007A8D0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -127316,7 +127316,7 @@ loc_0007A96D: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007A946(void)
+void sub_0007A946_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -127528,7 +127528,7 @@ loc_0007AB65: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007AB6E(void)
+void sub_0007AB6E_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -127824,7 +127824,7 @@ loc_0007AE16: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007AE20(void)
+void sub_0007AE20_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -128027,7 +128027,7 @@ loc_0007B04E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007AFD2(void)
+void sub_0007AFD2_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -128130,7 +128130,7 @@ loc_0007B073: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007B080(void)
+void sub_0007B080_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -128231,7 +128231,7 @@ loc_0007B148: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007B150(void)
+void sub_0007B150_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -128479,7 +128479,7 @@ loc_0007B373: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007B18E(void)
+void sub_0007B18E_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -128697,7 +128697,7 @@ loc_0007B373: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007B1A2(void)
+void sub_0007B1A2_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -128907,7 +128907,7 @@ loc_0007B373: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007B380(void)
+void sub_0007B380_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -128948,7 +128948,7 @@ loc_0007B3C0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007B3D0(void)
+void sub_0007B3D0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -129799,7 +129799,7 @@ loc_0007B6EB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007B700(void)
+void sub_0007B700_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -130050,7 +130050,7 @@ loc_0007B953: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007B7B9(void)
+void sub_0007B7B9_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -130231,7 +130231,7 @@ loc_0007B953: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007B7BE(void)
+void sub_0007B7BE_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -130411,7 +130411,7 @@ loc_0007B953: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007B960(void)
+void sub_0007B960_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -130640,7 +130640,7 @@ loc_0007BB61: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007B98F(void)
+void sub_0007B98F_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -130852,7 +130852,7 @@ loc_0007BB61: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007B9A3(void)
+void sub_0007B9A3_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -131056,7 +131056,7 @@ loc_0007BB61: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007BB70(void)
+void sub_0007BB70_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -131265,7 +131265,7 @@ loc_0007BD40: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007BD40(void)
+void sub_0007BD40_gen(void)
 {
 
 loc_0007BD40: ;
@@ -131630,7 +131630,7 @@ loc_0007BF03: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007BF30(void)
+void sub_0007BF30_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -131692,7 +131692,7 @@ loc_0007BF7D: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007BF59(void)
+void sub_0007BF59_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -131731,7 +131731,7 @@ loc_0007BF7D: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007BF90(void)
+void sub_0007BF90_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -131806,7 +131806,7 @@ loc_0007C00F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007BFBC(void)
+void sub_0007BFBC_gen(void)
 {
 
 loc_0007BFBC: ;
@@ -131823,7 +131823,7 @@ loc_0007BFBC: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007BFC1(void)
+void sub_0007BFC1_gen(void)
 {
     uint32_t ebp;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
@@ -131869,7 +131869,7 @@ loc_0007C00F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C020(void)
+void sub_0007C020_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -131933,7 +131933,7 @@ loc_0007C091: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C091(void)
+void sub_0007C091_gen(void)
 {
 
 loc_0007C091: ;
@@ -131950,7 +131950,7 @@ loc_0007C091: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C0A0(void)
+void sub_0007C0A0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -132046,7 +132046,7 @@ loc_0007C164: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C0CD(void)
+void sub_0007C0CD_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -132114,7 +132114,7 @@ loc_0007C164: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C170(void)
+void sub_0007C170_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -132158,7 +132158,7 @@ loc_0007C19A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C188(void)
+void sub_0007C188_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -132186,7 +132186,7 @@ loc_0007C19A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C1A0(void)
+void sub_0007C1A0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -132242,7 +132242,7 @@ loc_0007C1E1: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C1C5(void)
+void sub_0007C1C5_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -132278,7 +132278,7 @@ loc_0007C1E1: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C1F0(void)
+void sub_0007C1F0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -132373,7 +132373,7 @@ loc_0007C26F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C200(void)
+void sub_0007C200_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -132479,7 +132479,7 @@ loc_0007C29A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C280(void)
+void sub_0007C280_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -132508,7 +132508,7 @@ loc_0007C293: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C293(void)
+void sub_0007C293_gen(void)
 {
 
 loc_0007C293: ;
@@ -132524,7 +132524,7 @@ loc_0007C293: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C29A(void)
+void sub_0007C29A_gen(void)
 {
 
 loc_0007C29A: ;
@@ -132539,7 +132539,7 @@ loc_0007C29A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C2A0(void)
+void sub_0007C2A0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -132621,7 +132621,7 @@ loc_0007C315: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C340(void)
+void sub_0007C340_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -132752,7 +132752,7 @@ loc_0007C426: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C430(void)
+void sub_0007C430_gen(void)
 {
     uint32_t ebp;
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -132814,7 +132814,7 @@ loc_0007C489: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C4A0(void)
+void sub_0007C4A0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -133111,7 +133111,7 @@ loc_0007C565: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C580(void)
+void sub_0007C580_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -133161,7 +133161,7 @@ loc_0007C5BD: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C5E0(void)
+void sub_0007C5E0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -133214,7 +133214,7 @@ loc_0007C637: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C60C(void)
+void sub_0007C60C_gen(void)
 {
 
 loc_0007C60C: ;
@@ -133244,7 +133244,7 @@ loc_0007C637: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C61B(void)
+void sub_0007C61B_gen(void)
 {
 
 loc_0007C61B: ;
@@ -133270,7 +133270,7 @@ loc_0007C637: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C640(void)
+void sub_0007C640_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -133346,7 +133346,7 @@ loc_0007C703: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C661(void)
+void sub_0007C661_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -133406,7 +133406,7 @@ loc_0007C703: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C663(void)
+void sub_0007C663_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -133466,7 +133466,7 @@ loc_0007C703: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C710(void)
+void sub_0007C710_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -133615,7 +133615,7 @@ loc_0007C81F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C7F0(void)
+void sub_0007C7F0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -133655,7 +133655,7 @@ loc_0007C81F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C830(void)
+void sub_0007C830_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -133778,7 +133778,7 @@ loc_0007C8F9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C87C(void)
+void sub_0007C87C_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -133863,7 +133863,7 @@ loc_0007C8F9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007C900(void)
+void sub_0007C900_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -134029,7 +134029,7 @@ loc_0007CAB8: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007CAC0(void)
+void sub_0007CAC0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -134089,7 +134089,7 @@ loc_0007CB2C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007CB2C(void)
+void sub_0007CB2C_gen(void)
 {
 
 loc_0007CB2C: ;
@@ -134104,7 +134104,7 @@ loc_0007CB2C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007CB30(void)
+void sub_0007CB30_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -134163,7 +134163,7 @@ loc_0007CB6E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007CBA0(void)
+void sub_0007CBA0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -134271,7 +134271,7 @@ loc_0007CC5C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007CBF3(void)
+void sub_0007CBF3_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -134345,7 +134345,7 @@ loc_0007CC5C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007CC80(void)
+void sub_0007CC80_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -134433,7 +134433,7 @@ loc_0007CD02: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007CCAB(void)
+void sub_0007CCAB_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -134499,7 +134499,7 @@ loc_0007CD02: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007CCC9(void)
+void sub_0007CCC9_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -134544,7 +134544,7 @@ loc_0007CD02: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007CD10(void)
+void sub_0007CD10_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -134633,7 +134633,7 @@ loc_0007CDAA: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007CD60(void)
+void sub_0007CD60_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -135053,7 +135053,7 @@ loc_0007CE55: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007CE70(void)
+void sub_0007CE70_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -135243,7 +135243,7 @@ loc_0007D001: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007CEDD(void)
+void sub_0007CEDD_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -135398,7 +135398,7 @@ loc_0007D001: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007CEE4(void)
+void sub_0007CEE4_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -136017,7 +136017,7 @@ loc_0007D4E3: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007CEE8(void)
+void sub_0007CEE8_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -136165,7 +136165,7 @@ loc_0007D001: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007D010(void)
+void sub_0007D010_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -136310,7 +136310,7 @@ loc_0007D166: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007D170(void)
+void sub_0007D170_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -136679,7 +136679,7 @@ loc_0007D4E3: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007D4F0(void)
+void sub_0007D4F0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -136797,7 +136797,7 @@ loc_0007D5C0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007D5D0(void)
+void sub_0007D5D0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -136842,7 +136842,7 @@ loc_0007D603: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007D620(void)
+void sub_0007D620_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -136880,7 +136880,7 @@ loc_0007D643: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007D660(void)
+void sub_0007D660_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -136910,7 +136910,7 @@ loc_0007D690: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007D6A0(void)
+void sub_0007D6A0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -137039,7 +137039,7 @@ loc_0007D7AA: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007D7AA(void)
+void sub_0007D7AA_gen(void)
 {
 
 loc_0007D7AA: ;
@@ -137056,7 +137056,7 @@ loc_0007D7AA: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007D7B0(void)
+void sub_0007D7B0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -137471,7 +137471,7 @@ loc_0007DA4D: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007DA60(void)
+void sub_0007DA60_gen(void)
 {
 
 loc_0007DA60: ;
@@ -137526,7 +137526,7 @@ loc_0007DAA6: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007DAB0(void)
+void sub_0007DAB0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -137659,7 +137659,7 @@ loc_0007DBF9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007DBF9(void)
+void sub_0007DBF9_gen(void)
 {
     uint32_t ebp;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
@@ -137678,7 +137678,7 @@ loc_0007DBF9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007DC00(void)
+void sub_0007DC00_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -137725,7 +137725,7 @@ loc_0007DC47: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007DC50(void)
+void sub_0007DC50_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -137774,7 +137774,7 @@ loc_0007DCA1: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007DCB0(void)
+void sub_0007DCB0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -137897,7 +137897,7 @@ loc_0007DDB9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007DDE0(void)
+void sub_0007DDE0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -138038,7 +138038,7 @@ loc_0007DEDA: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007DEDA(void)
+void sub_0007DEDA_gen(void)
 {
 
 loc_0007DEDA: ;
@@ -138054,7 +138054,7 @@ loc_0007DEDA: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007DEE0(void)
+void sub_0007DEE0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -138218,7 +138218,7 @@ loc_0007E02C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007DF47(void)
+void sub_0007DF47_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -138349,7 +138349,7 @@ loc_0007E02C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007DFE2(void)
+void sub_0007DFE2_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -138412,7 +138412,7 @@ loc_0007E02C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007E019(void)
+void sub_0007E019_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -138440,7 +138440,7 @@ loc_0007E02C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007E040(void)
+void sub_0007E040_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -138529,7 +138529,7 @@ loc_0007E0DC: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007E0AD(void)
+void sub_0007E0AD_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -138576,7 +138576,7 @@ loc_0007E0DC: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007E0BB(void)
+void sub_0007E0BB_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -138620,7 +138620,7 @@ loc_0007E0DC: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007E0F0(void)
+void sub_0007E0F0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -138684,7 +138684,7 @@ loc_0007E135: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007E140(void)
+void sub_0007E140_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -138716,7 +138716,7 @@ loc_0007E18F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007E190(void)
+void sub_0007E190_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -138766,7 +138766,7 @@ loc_0007E1D3: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007E1E0(void)
+void sub_0007E1E0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -138816,7 +138816,7 @@ loc_0007E221: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007E230(void)
+void sub_0007E230_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -138881,7 +138881,7 @@ loc_0007E287: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007E290(void)
+void sub_0007E290_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -139007,7 +139007,7 @@ loc_0007E351: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007E360(void)
+void sub_0007E360_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -139122,7 +139122,7 @@ loc_0007E41E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007E430(void)
+void sub_0007E430_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -139317,7 +139317,7 @@ loc_0007E58C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007E590(void)
+void sub_0007E590_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -139687,7 +139687,7 @@ loc_0007E8AE: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007E603(void)
+void sub_0007E603_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -140008,7 +140008,7 @@ loc_0007E8AE: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007E605(void)
+void sub_0007E605_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -140328,7 +140328,7 @@ loc_0007E8AE: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007E8C0(void)
+void sub_0007E8C0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -140418,7 +140418,7 @@ loc_0007E96E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007E980(void)
+void sub_0007E980_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -140608,7 +140608,7 @@ loc_0007EB15: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007EB20(void)
+void sub_0007EB20_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -140703,7 +140703,7 @@ loc_0007EBDD: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007EBE0(void)
+void sub_0007EBE0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -140880,7 +140880,7 @@ loc_0007ED0E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007ED0E(void)
+void sub_0007ED0E_gen(void)
 {
 
 loc_0007ED0E: ;
@@ -140895,7 +140895,7 @@ loc_0007ED0E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007ED20(void)
+void sub_0007ED20_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -140926,7 +140926,7 @@ loc_0007ED44: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007ED50(void)
+void sub_0007ED50_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -140964,7 +140964,7 @@ loc_0007ED87: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007ED90(void)
+void sub_0007ED90_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -141025,7 +141025,7 @@ loc_0007EDD7: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007EDD7(void)
+void sub_0007EDD7_gen(void)
 {
 
 loc_0007EDD7: ;
@@ -141040,7 +141040,7 @@ loc_0007EDD7: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007EDE0(void)
+void sub_0007EDE0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -141155,7 +141155,7 @@ loc_0007EED2: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007EEE0(void)
+void sub_0007EEE0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     int _fpu_cmp = 0; /* FPU compare result: -1/0/1 */
@@ -141394,7 +141394,7 @@ loc_0007F191: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007F191(void)
+void sub_0007F191_gen(void)
 {
 
 loc_0007F191: ;
@@ -141410,7 +141410,7 @@ loc_0007F191: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007F1A0(void)
+void sub_0007F1A0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -141526,7 +141526,7 @@ loc_0007F220: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007F270(void)
+void sub_0007F270_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -142192,7 +142192,7 @@ loc_0007F802: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007F830(void)
+void sub_0007F830_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -142276,7 +142276,7 @@ loc_0007F952: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0007F960(void)
+void sub_0007F960_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -143099,7 +143099,7 @@ loc_0007FE66: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000800A0(void)
+void sub_000800A0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -143288,7 +143288,7 @@ loc_00080212: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00080220(void)
+void sub_00080220_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -143344,7 +143344,7 @@ loc_00080273: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0008025F(void)
+void sub_0008025F_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -143372,7 +143372,7 @@ loc_00080273: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00080263(void)
+void sub_00080263_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -143399,7 +143399,7 @@ loc_00080273: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00080280(void)
+void sub_00080280_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -143526,7 +143526,7 @@ loc_000803AF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000802F3(void)
+void sub_000802F3_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -143607,7 +143607,7 @@ loc_000803AF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000803C0(void)
+void sub_000803C0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -143670,7 +143670,7 @@ loc_00080415: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00080415(void)
+void sub_00080415_gen(void)
 {
 
 loc_00080415: ;
@@ -143691,7 +143691,7 @@ loc_00080415: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00080430(void)
+void sub_00080430_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -143724,7 +143724,7 @@ loc_0008045E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00080460(void)
+void sub_00080460_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -143845,7 +143845,7 @@ loc_00080537: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00080550(void)
+void sub_00080550_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -143903,7 +143903,7 @@ loc_00080593: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000805A0(void)
+void sub_000805A0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -143979,7 +143979,7 @@ loc_00080600: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00080620(void)
+void sub_00080620_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -144015,7 +144015,7 @@ loc_00080648: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00080648(void)
+void sub_00080648_gen(void)
 {
 
 loc_00080648: ;
@@ -144030,7 +144030,7 @@ loc_00080648: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00080650(void)
+void sub_00080650_gen(void)
 {
 
 loc_00080650: ;
@@ -144099,7 +144099,7 @@ loc_000806CB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000806E0(void)
+void sub_000806E0_gen(void)
 {
 
 loc_000806E0: ;
@@ -144157,7 +144157,7 @@ loc_00080726: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00080740(void)
+void sub_00080740_gen(void)
 {
 
 loc_00080740: ;
@@ -144215,7 +144215,7 @@ loc_00080786: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000807A0(void)
+void sub_000807A0_gen(void)
 {
 
 loc_000807A0: ;
@@ -144273,7 +144273,7 @@ loc_000807E6: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00080800(void)
+void sub_00080800_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -144346,7 +144346,7 @@ loc_00080867: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00080821(void)
+void sub_00080821_gen(void)
 {
 
 loc_00080821: ;
@@ -144532,7 +144532,7 @@ loc_0008092C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00080950(void)
+void sub_00080950_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -144613,7 +144613,7 @@ loc_000809D8: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000809D8(void)
+void sub_000809D8_gen(void)
 {
 
 loc_000809D8: ;
@@ -144631,7 +144631,7 @@ loc_000809D8: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000809F0(void)
+void sub_000809F0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -144726,7 +144726,7 @@ loc_00080A79: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00080A02(void)
+void sub_00080A02_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -144810,7 +144810,7 @@ loc_00080A79: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00080A80(void)
+void sub_00080A80_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -144939,7 +144939,7 @@ loc_00080B58: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00080AC3(void)
+void sub_00080AC3_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -145039,7 +145039,7 @@ loc_00080B58: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00080B70(void)
+void sub_00080B70_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -145114,7 +145114,7 @@ loc_00080BAD: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00080BC0(void)
+void sub_00080BC0_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -145379,7 +145379,7 @@ loc_00080E04: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00080E04(void)
+void sub_00080E04_gen(void)
 {
 
 loc_00080E04: ;
@@ -145396,7 +145396,7 @@ loc_00080E04: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00080E10(void)
+void sub_00080E10_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -146307,7 +146307,7 @@ loc_0008118E: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000811A0(void)
+void sub_000811A0_gen(void)
 {
 
 loc_000811A0: ;
@@ -146326,7 +146326,7 @@ loc_000811A9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000811C0(void)
+void sub_000811C0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -146357,7 +146357,7 @@ loc_000811DC: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000811E0(void)
+void sub_000811E0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -146487,7 +146487,7 @@ loc_000812DB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000812DB(void)
+void sub_000812DB_gen(void)
 {
 
 loc_000812DB: ;
@@ -146682,7 +146682,7 @@ loc_00081458: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00081470(void)
+void sub_00081470_gen(void)
 {
 
 loc_00081470: ;
@@ -146728,7 +146728,7 @@ loc_000814A7: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00081510(void)
+void sub_00081510_gen(void)
 {
 
 loc_00081510: ;
@@ -146767,7 +146767,7 @@ loc_0008155C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00081570(void)
+void sub_00081570_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -146830,7 +146830,7 @@ loc_000815C8: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00081600(void)
+void sub_00081600_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -147150,7 +147150,7 @@ loc_0008183D: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000817DC(void)
+void sub_000817DC_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -147386,7 +147386,7 @@ loc_000819CB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00081860(void)
+void sub_00081860_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -147569,7 +147569,7 @@ loc_000819CB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000819E0(void)
+void sub_000819E0_gen(void)
 {
 
 loc_000819E0: ;
@@ -147593,7 +147593,7 @@ loc_000819E0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00081A00(void)
+void sub_00081A00_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -147636,7 +147636,7 @@ loc_00081A3B: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00081A3B(void)
+void sub_00081A3B_gen(void)
 {
 
 loc_00081A3B: ;
@@ -147653,7 +147653,7 @@ loc_00081A3B: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00081A50(void)
+void sub_00081A50_gen(void)
 {
 
 loc_00081A50: ;
@@ -147684,7 +147684,7 @@ loc_00081A50: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00081A90(void)
+void sub_00081A90_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -147720,7 +147720,7 @@ loc_00081ABB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00081ABB(void)
+void sub_00081ABB_gen(void)
 {
 
 loc_00081ABB: ;
@@ -147736,7 +147736,7 @@ loc_00081ABB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00081AD0(void)
+void sub_00081AD0_gen(void)
 {
 
 loc_00081AD0: ;
@@ -147761,7 +147761,7 @@ loc_00081AD0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00081B00(void)
+void sub_00081B00_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -147789,7 +147789,7 @@ loc_00081B22: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00081B30(void)
+void sub_00081B30_gen(void)
 {
 
 loc_00081B30: ;
@@ -147812,7 +147812,7 @@ loc_00081B30: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00081B50(void)
+void sub_00081B50_gen(void)
 {
 
 loc_00081B50: ;
@@ -147838,7 +147838,7 @@ loc_00081B50: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00081B90(void)
+void sub_00081B90_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -147904,7 +147904,7 @@ loc_00081C01: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00081BCB(void)
+void sub_00081BCB_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -147946,7 +147946,7 @@ loc_00081C01: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00081C20(void)
+void sub_00081C20_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -148046,7 +148046,7 @@ loc_00081CD5: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00081CB8(void)
+void sub_00081CB8_gen(void)
 {
 
 loc_00081CB8: ;
@@ -148111,7 +148111,7 @@ loc_00081CD5: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00081D00(void)
+void sub_00081D00_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -148222,7 +148222,7 @@ loc_00081E20: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00081E20(void)
+void sub_00081E20_gen(void)
 {
 
 loc_00081E20: ;
@@ -148240,7 +148240,7 @@ loc_00081E20: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00081E30(void)
+void sub_00081E30_gen(void)
 {
 
 loc_00081E30: ;
@@ -148266,7 +148266,7 @@ loc_00081E30: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00081E60(void)
+void sub_00081E60_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -148410,7 +148410,7 @@ loc_00081F50: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00081F53(void)
+void sub_00081F53_gen(void)
 {
     uint32_t ebp;
     int _cf = 0; /* carry flag */
@@ -148431,7 +148431,7 @@ loc_00081F53: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00081F90(void)
+void sub_00081F90_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     uint32_t ebp;
@@ -148613,7 +148613,7 @@ loc_00082143: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00082150(void)
+void sub_00082150_gen(void)
 {
 
 loc_00082150: ;
@@ -148635,7 +148635,7 @@ loc_00082161: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00082170(void)
+void sub_00082170_gen(void)
 {
 
 loc_00082170: ;
@@ -148655,7 +148655,7 @@ loc_00082170: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00082190(void)
+void sub_00082190_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -148726,7 +148726,7 @@ loc_000821DF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000821D4(void)
+void sub_000821D4_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -148765,7 +148765,7 @@ loc_000821DF: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00082220(void)
+void sub_00082220_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -148946,7 +148946,7 @@ loc_000823BC: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00082400(void)
+void sub_00082400_gen(void)
 {
 
 loc_00082400: ;
@@ -148983,7 +148983,7 @@ loc_00082430: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00082440(void)
+void sub_00082440_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -149054,7 +149054,7 @@ loc_000824AA: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000824AA(void)
+void sub_000824AA_gen(void)
 {
     uint32_t ebp;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
@@ -149078,7 +149078,7 @@ loc_000824AA: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000824D0(void)
+void sub_000824D0_gen(void)
 {
 
 loc_000824D0: ;
@@ -149108,7 +149108,7 @@ loc_000824D0: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00082500(void)
+void sub_00082500_gen(void)
 {
 
 loc_00082500: ;
@@ -149141,7 +149141,7 @@ loc_00082500: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00082550(void)
+void sub_00082550_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -149192,7 +149192,7 @@ loc_00082597: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000825A0(void)
+void sub_000825A0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -149253,7 +149253,7 @@ loc_000825D9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000825D9(void)
+void sub_000825D9_gen(void)
 {
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
     #define fp_pop() (g_fp_top++)
@@ -149286,7 +149286,7 @@ loc_000825D9: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00082610(void)
+void sub_00082610_gen(void)
 {
 
 loc_00082610: ;
@@ -149323,7 +149323,7 @@ loc_00082640: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00082650(void)
+void sub_00082650_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -149374,7 +149374,7 @@ loc_0008269C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000826A0(void)
+void sub_000826A0_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -149414,7 +149414,7 @@ loc_000826D4: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000826C3(void)
+void sub_000826C3_gen(void)
 {
 
 loc_000826C3: ;
@@ -149435,7 +149435,7 @@ loc_000826D4: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000826E0(void)
+void sub_000826E0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -149492,7 +149492,7 @@ loc_00082725: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00082740(void)
+void sub_00082740_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -149517,7 +149517,7 @@ loc_00082762: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00082770(void)
+void sub_00082770_gen(void)
 {
 
 loc_00082770: ;
@@ -149553,7 +149553,7 @@ loc_00082770: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000827D0(void)
+void sub_000827D0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -149656,7 +149656,7 @@ loc_00082880: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0008282D(void)
+void sub_0008282D_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -149720,7 +149720,7 @@ loc_00082880: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00082890(void)
+void sub_00082890_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 
@@ -149757,7 +149757,7 @@ loc_000828CD: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000828D0(void)
+void sub_000828D0_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -149846,7 +149846,7 @@ loc_0008295F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0008290A(void)
+void sub_0008290A_gen(void)
 {
 
 loc_0008290A: ;
@@ -149862,7 +149862,7 @@ loc_0008290A: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_0008290D(void)
+void sub_0008290D_gen(void)
 {
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -149938,7 +149938,7 @@ loc_0008295F: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00082980(void)
+void sub_00082980_gen(void)
 {
 
 loc_00082980: ;
@@ -149984,7 +149984,7 @@ loc_000829BB: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_000829E0(void)
+void sub_000829E0_gen(void)
 {
 
 loc_000829E0: ;
@@ -150016,7 +150016,7 @@ loc_00082A04: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00082A10(void)
+void sub_00082A10_gen(void)
 {
     int _rccf = 0; /* DOA3: deferred condition evaluated at the compare */
     int _flags = 0; /* fallback flag var */
@@ -150065,7 +150065,7 @@ loc_00082A59: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00082A60(void)
+void sub_00082A60_gen(void)
 {
 
 loc_00082A60: ;
@@ -150093,7 +150093,7 @@ loc_00082A76: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_00082A90(void)
+void sub_00082A90_gen(void)
 {
     int _flags = 0; /* fallback flag var */
 

@@ -301,3 +301,29 @@ recomp_func_t recomp_lookup_manual(uint32_t xbox_va)
     }
     return NULL;
 }
+
+/* ── Guest-stack balance reports (gen/recomp_probes.c) ──────────────
+ * A wrapped function returned with esp somewhere other than 4 + N bytes
+ * above its entry esp. Logged in the order they happen, at most 2 per
+ * function and 400 in all, so the first one in the log is the earliest
+ * drift. DOA3_ESPPROBE=0 silences them. */
+void esp_probe_report(uint32_t va, uint32_t esp_in, uint32_t esp_out, uint32_t expect)
+{
+    static int s_on = -1, s_total;
+    static struct { uint32_t va; int n; } s_seen[512];
+    static int s_nseen;
+    extern unsigned long long xbox_kernel_call_count(void);
+    int i;
+    if (s_on < 0) { const char *e = getenv("DOA3_ESPPROBE"); s_on = !(e && *e == '0'); }
+    if (!s_on || s_total >= 400) return;
+    for (i = 0; i < s_nseen; i++) if (s_seen[i].va == va) break;
+    if (i == s_nseen) {
+        if (s_nseen == 512) return;
+        s_seen[s_nseen].va = va; s_seen[s_nseen].n = 0; s_nseen++;
+    }
+    if (s_seen[i].n >= 2) return;
+    s_seen[i].n++; s_total++;
+    fprintf(stderr, "[ESP] sub_%08X: esp %08X -> %08X, moved %+d, expected %+u (after kernel call #%llu)\n",
+            va, esp_in, esp_out, (int)(esp_out - esp_in), expect, xbox_kernel_call_count());
+    fflush(stderr);
+}

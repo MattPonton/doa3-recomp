@@ -111,6 +111,23 @@ The watchdog now also arms before the first present: 6 s without a kernel
 call logs `[WDOG] STALLED` with the host RIP, return addresses into
 DOA3.exe (look them up in DOA3.map) and the kernel-call ring.
 
+## Guest-stack probes (`tools.recomp.esp_probes`)
+
+The seventh run got past the kernel fixes into D3D's CreateDevice and died
+in `InitializeFrameBuffers` (0x1E30C0) copying a "BufferSurfaces" array
+with a garbage count: its presentation-parameters pointer, read from
+`[esp+0x174]` in the frame-pointer-less `CDevice::Init` (0x1E35B0), came
+from a guest esp 16 bytes below where it should have been. Something
+between the two leaves the stack unbalanced.
+
+`esp_probes` renames each generated function whose `ret`s agree on a size
+to `sub_X_gen` and adds a wrapper `sub_X` (gen/recomp_probes.c) that checks
+the function moved esp by exactly 4 + N; mismatches are logged as `[ESP]`
+lines (first two per function, 400 in all, `DOA3_ESPPROBE=0` to silence).
+On 3.1: 9,779 functions probed. `--remove` takes them out again. Run it
+after `postprocess`. The gen source glob now has CONFIGURE_DEPENDS so new
+generated files are picked up without a manual cmake re-run.
+
 ## Generated-code fix-ups (`tools.recomp.postprocess`)
 
 Runs upstream's fixers for the lifter defect classes in NOTES.md, in order.
