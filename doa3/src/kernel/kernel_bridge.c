@@ -1719,11 +1719,16 @@ static void bridge_NtReadFile(void)
     }
 
     if (g_kernel_ptinfo_hook) g_kernel_ptinfo_hook("ntread");
-    {   static int s_rd;
-        if (s_rd < 40) {
-            s_rd++;
-            fprintf(stderr, "[READ] #%d h=%08X len=%u off=%08X%s apc=%08X fiber=%d -> %s %lu bytes\n",
-                    s_rd, STACK_ARG(0), length, offset_va ? BRIDGE_MEM32(offset_va) : 0,
+    {   /* The first 40 reads, plus any later read that lands inside the XBE
+         * image / static data (below the heap at 0x00D00000): on the 3.1 boot
+         * something filled .data and BSS with what looks like audio data. */
+        static int s_rd, s_sus;
+        int suspect = buffer_va < 0x00D00000u && length >= 0x4000u;
+        if (s_rd < 40 || (suspect && s_sus < 60)) {
+            if (s_rd < 40) s_rd++; else s_sus++;
+            fprintf(stderr, "[READ]%s h=%08X buf=%08X len=%u off=%08X%s apc=%08X fiber=%d -> %s %lu bytes\n",
+                    suspect ? "[LOW-BUFFER]" : "", STACK_ARG(0), buffer_va, length,
+                    offset_va ? BRIDGE_MEM32(offset_va) : 0,
                     offset_va ? "" : "(cur)", apc_ctx, xbox_fiber_current(),
                     result ? "ok" : "FAIL", (unsigned long)bytes_read);
         }

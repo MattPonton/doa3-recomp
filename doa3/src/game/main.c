@@ -1402,6 +1402,13 @@ int main(int argc, char **argv)
              * decode timing enough to change what happens. */
             extern uint32_t g_watch_exact_va;
             const char *wv = getenv("DOA3_WATCHVA");
+#if defined(DOA3_XBE_ID_3_1)
+            /* 3.1 bring-up: CRI's thread-mode flag at 0x25478C (a cold .data
+             * page) ends up holding audio-like data; name whoever writes it.
+             * DOA3_WATCHVA=0 turns this off. */
+            if (!wv) { wv = "25478C"; _putenv("DOA3_WATCHVA_NOW=1"); }
+            if (wv && !strcmp(wv, "0")) wv = NULL;
+#endif
             if (wv) {
                 extern uint32_t g_watch_exact_len;
                 const char *wl = getenv("DOA3_WATCHLEN");
