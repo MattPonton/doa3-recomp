@@ -217,7 +217,7 @@ void Draw(bool *quit)
         _snprintf_s(overlay, sizeof overlay, _TRUNCATE, "%.2f / %.2f GB",
                     done / 1073741824.0, total / 1073741824.0);
 
-        ImGui::TextWrapped(total ? "Copying the game files into the assets folder..."
+        ImGui::TextWrapped(total ? "Copying the game files into HDD\\D..."
                                  : "Checking the disc image...");
         ImGui::Spacing();
         ImGui::ProgressBar(frac, ImVec2(-1, 0), total ? overlay : "");

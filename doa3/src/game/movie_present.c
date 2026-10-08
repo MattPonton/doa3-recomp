@@ -467,7 +467,7 @@ static DWORD WINAPI movie_prep_thread(LPVOID unused)
     uint8_t *audio = NULL;
     size_t audio_size = 0;
     (void)unused;
-    snprintf(paths[0], MAX_PATH, "assets\\%s", s_prep.name);
+    snprintf(paths[0], MAX_PATH, "HDD\\D\\%s", s_prep.name);
     for (int i = 0; i < 1 && !s_prep.ok; i++) {
         if (GetFileAttributesA(paths[i]) == INVALID_FILE_ATTRIBUTES) continue;
         snprintf(s_prep.asset, MAX_PATH, "%s", paths[i]);

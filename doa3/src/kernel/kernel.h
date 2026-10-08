@@ -464,10 +464,11 @@ void xbox_path_init(const char* game_dir, const char* save_dir);
  */
 BOOL xbox_translate_path(const char* xbox_path, WCHAR* win_path_buf, DWORD buf_size);
 
-/* Netplay sessions: while on, T:\ resolves to <save>\TitleData_netplay, a
+/* Netplay sessions: while on, T:\ resolves to HDD\E\TDATA\<id>_netplay, a
  * copy of TitleData taken when it is switched on, so nothing the game saves
  * during the session reaches the player's real save files. */
 void xbox_path_set_title_redirect(int on);
+const WCHAR *xbox_path_disc_dir(void);   /* host folder for D: (HDD\\D) */
 
 /* ============================================================================
  * Pool Allocator (kernel_pool.c)

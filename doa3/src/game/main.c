@@ -32,9 +32,9 @@
 #include "log_settings.h"
 
 #include "xbe_layout.h"  /* DOA3_ENTRY_POINT and the rest of the version layout */
-/* Game files live in an "assets" folder next to the exe; the working
+/* Game files live in HDD\\D next to the exe (kernel_path.c); the working
  * directory is set to the exe's folder at startup. */
-#define DOA3_XBE_PATH      "assets/default.xbe"
+#define DOA3_XBE_PATH      "HDD/D/default.xbe"
 
 /* Host window + D3D8->D3D11 device (mirrors burnout3's graphics init). The NV2A
  * pgraph->D3D11 translator renders through this device via xbox_GetD3DDevice(). */
@@ -1267,8 +1267,8 @@ int main(int argc, char **argv)
     }
     doa3_watchdog_start();   /* localise non-faulting hangs (see doa3_watchdog) */
     /* Run from the exe's folder, whatever the launcher's working directory:
-     * the assets folder, the log and the ini files all sit next to the exe. */
-    WCHAR assets_dir[MAX_PATH] = L"assets";
+     * the HDD folder, the log and the ini files all sit next to the exe. */
+    WCHAR assets_dir[MAX_PATH] = L"HDD\\D";
     {
         WCHAR exedir[MAX_PATH];
         DWORD n = GetModuleFileNameW(NULL, exedir, MAX_PATH);
@@ -1277,9 +1277,12 @@ int main(int argc, char **argv)
             if (slash) {
                 *slash = 0;
                 SetCurrentDirectoryW(exedir);
-                swprintf_s(assets_dir, MAX_PATH, L"%s\\assets", exedir);
             }
         }
+        /* The disc is HDD\D next to the exe (an old "assets" folder is moved
+         * there once, see kernel_path.c). */
+        xbox_path_init(NULL, NULL);
+        wcscpy_s(assets_dir, MAX_PATH, xbox_path_disc_dir());
     }
     setvbuf(stdout, NULL, _IONBF, 0);
     /* stderr -> doa3_log.txt when logging is on in the Esc menu, NUL when
@@ -1334,7 +1337,7 @@ int main(int argc, char **argv)
             char msg[512];
             snprintf(msg, sizeof(msg),
                      "Could not load %s\n(working directory: %s)\n\n"
-                     "Expected the game files in the assets folder next to DOA3.exe.",
+                     "Expected the game files in HDD\\D next to DOA3.exe.",
                      DOA3_XBE_PATH, cwd);
             fprintf(stderr, "FATAL: %s\n", msg);
             MessageBoxA(NULL, msg, "DOA3 recomp - startup error", 0x10);
@@ -1350,7 +1353,7 @@ int main(int argc, char **argv)
            (unsigned long long)(uintptr_t)xbox_GetMemoryOffset());
 
     xbox_kernel_init();
-    xbox_path_init(NULL, NULL);   /* D:\ -> <exe folder>\assets */
+    xbox_path_init(NULL, NULL);   /* D:\ -> <exe folder>\HDD\D (see kernel_path.c) */
     xbox_kernel_bridge_init();
 
     /* Pre-initialize CRT bootstrap locks (replicates _mtinitlocks @ 0x00191ACA).

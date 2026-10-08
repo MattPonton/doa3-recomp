@@ -17,7 +17,9 @@ import struct
 from pathlib import Path
 
 _DEFAULT_PATHS = [
+    "build/release/HDD/D/default.xbe",
     "build/release/assets/default.xbe",
+    "HDD/D/default.xbe",
     "assets/default.xbe",
 ]
 

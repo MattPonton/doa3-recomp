@@ -13,7 +13,7 @@ The tools take their layout from the XBE named by `DOA3_XBE` (see
 Run from `doa3/`:
 
 ```powershell
-$env:DOA3_XBE = "build/release/assets/default.xbe"   # the 3.1 XBE
+$env:DOA3_XBE = "build/release/HDD/D/default.xbe"   # the 3.1 XBE
 py -3 tools/xbe_parser/xbe_parser.py $env:DOA3_XBE --json tools/xbe_parser/doa3_analysis.json --quiet
 py -3 -m tools.disasm $env:DOA3_XBE --force
 py -3 -m tools.xbe_layout --crt-initializers > crt_ctors.txt
@@ -146,6 +146,20 @@ its fall-through dropped. Two causes, both fixed:
   every code section on non-3.0 builds (69 restored after the regeneration). The gen source glob now has CONFIGURE_DEPENDS so new
 generated files are picked up without a manual cmake re-run.
 
+## Drives (`kernel_path.c`)
+
+The console's drives are folders under `HDD\` next to the exe, one per
+partition, as Cxbx-Reloaded lays out its emulated disk: `HDD\D` is the
+ripped disc (D:, `\Device\CdRom0`; the first-run setup extracts the XISO
+there), `HDD\E\TDATA\<title id>` and `HDD\E\UDATA\<title id>` are T: and
+U: (3.1's title id is 54430001, so saves can move to and from a real console
+or Cxbx-R as they are), `HDD\X|Y|Z` are the cache partitions (the game's own
+first-boot install copies the AFS files to Z:), and C, F, G map the same way,
+along with their `\Device\Harddisk0\PartitionN` names (1 = E, 2 = C,
+3-5 = X-Z, 6-7 = F-G). An `assets` folder from before this layout is renamed
+to `HDD\D` once at startup. Nothing goes to AppData any more. The first use
+of each mapping is logged (`[PATH]` in xbox_kernel.log).
+
 ## Overrides (`tools.recomp.apply_overrides`)
 
 `tools/recomp/overrides_<version>.txt` lists guest functions replaced by
@@ -217,8 +231,7 @@ copies each AFS from d:\ to z:\), but the boot's join on it was answered
 and ADXF parked partition 2 in error. 3.0 hit exactly this; the thread-join
 logic in `bridge_NtWaitForSingleObject` (poll -> STATUS_TIMEOUT while the
 installer fiber is alive, block -> yield until it exits, pulsing the vblank
-event for the CRI workers) now covers 3.1 too. Drives: d:\ is the assets
-folder, z:\ is `%LOCALAPPDATA%\DeadOrAlive3\Cache` (kernel_path.c).
+event for the CRI workers) now covers 3.1 too. (Drive layout: see Drives above.)
 
 Diagnostics added on the way: `[KCALL]` lines now end with the bridge's
 return value; `DOA3_TRACE_FN=addr,addr,...` logs returns of probed functions
