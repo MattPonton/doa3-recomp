@@ -1,4 +1,6 @@
-import re, glob, os
+import re, glob, os, sys
+sys.path.insert(0, os.getcwd())
+from tools import xbe_layout as _L
 # addr -> emitted function name (prefer base name; gen may have _gen suffix)
 addr2name = {}
 for f in glob.glob('src/game/recomp/gen/*.c'):
@@ -9,7 +11,7 @@ for f in glob.glob('src/game/recomp/gen/*.c'):
             # base name (override or gen) is callable
             addr2name[a]=m.group(1)
 
-LO, HI = 0x11000, 0x1B0DE0   # game .text only. NOTE: XDK libs also have ~225
+LO, HI = _L.TEXT_VA_START, _L.TEXT_VA_END   # all of .text (3.0: 0x11000-0x1B0DE0, as upstream had it). NOTE: XDK libs also have ~225
 # dropped fall-throughs but blanket-fixing them BREAKS boot (some XDK 'ends'
 # are not real fall-throughs); apply targeted ones via KEEP_XDK below.
 # KEEP_XDK: XDK-range functions PROVEN to need their fall-through restored:
@@ -51,6 +53,8 @@ LO, HI = 0x11000, 0x1B0DE0   # game .text only. NOTE: XDK libs also have ~225
 #             swept memory with a 1.8M-iteration scan and the process died on
 #             the VEH fault-skip cap moments after the intro movie.
 KEEP_XDK = {0x1B4611, 0x1C3FDD, 0x1B1388, 0x1B18C9, 0x1BB96C, 0x1B60A3, 0x1E6774}
+if _L.VERSION != "3.0":
+    KEEP_XDK = set()   # 3.0 addresses; re-derive per build as they are proven
 # NOTE: 0x1C883B (DSOUND stream-service fragment) is NOT a real fall-through -
 # restoring it caused infinite recursion (native stack overflow). Its -4
 # esp/call is contained by an ESP_FIX wrapper in recomp_manual.c instead.
@@ -58,11 +62,62 @@ KEEP_XDK = {0x1B4611, 0x1C3FDD, 0x1B1388, 0x1B18C9, 0x1BB96C, 0x1B60A3, 0x1E6774
 # fragments are real split epilogues (Initialize leaked its 0xD8 frame per
 # call via sub_001C3ED7's dropped fall-through). The boot-breaking false
 # fall-throughs were in the D3D GPU-init code, which stays excluded.
-D3DX_LO, D3DX_HI = 0x1C35C0, 0x1C64A0
+_d3dx = _L.section("D3DX")
+D3DX_LO, D3DX_HI = _d3dx[1], _d3dx[1] + _d3dx[2]   # 3.0: 0x1C35C0-0x1C64A0
 # Was 0x1B0DE0 (.text only) - the XDK D3D/DSOUND libs had ~225 dropped
 # fall-throughs too; one (sub_001B4611, in D3D SetStateBlock-flags) leaked
 # 24 bytes of stack per call and made the D3DX state-block create loop run
 # forever (131K 512-byte allocations -> OOM). 2026-07-02.
+# Disassembly guard (every build but 3.0, which keeps upstream's behaviour).
+# Seeding splits functions at branch targets, so a fresh build has far more
+# fragments than upstream's hand-curated 3.0 tree; check each candidate
+# against the original code before restoring it.
+_skipped = {}
+def _real_fallthrough(start, end):
+    """True if the code in [start, end) really continues into `end`."""
+    if _L.VERSION == "3.0":
+        return True
+    if not hasattr(_real_fallthrough, "md"):
+        from capstone import Cs, CS_ARCH_X86, CS_MODE_32
+        import json
+        _real_fallthrough.md = Cs(CS_ARCH_X86, CS_MODE_32)
+        _real_fallthrough.data = open(_L.XBE_PATH, "rb").read()
+        fj = json.load(open(os.path.join("tools", "disasm", "output", "functions.json")))
+        _real_fallthrough.ends = {int(e["start"], 16): int(e["end"], 16) for e in fj}
+    md, data, ends = _real_fallthrough.md, _real_fallthrough.data, _real_fallthrough.ends
+    def raw(va):
+        for nm, sva, _vs, sraw, srs, _fl in _L.LAYOUT["sections"]:
+            if sva <= va < sva + srs:
+                return sraw + va - sva
+        return None
+    def why(reason):
+        _skipped[reason] = _skipped.get(reason, 0) + 1
+        return False
+    o = raw(start)
+    if o is None:
+        return why("outside image")
+    ins = list(md.disasm(data[o:o + (end - start) + 16], start))
+    body = [i for i in ins if i.address < end]
+    if not body:
+        return why("no decodable code")
+    last = body[-1]
+    if last.address + last.size != end:
+        return why("not contiguous (data decoded as code)")
+    if last.mnemonic in ("ret", "retn", "jmp", "int3", "hlt", "ud2"):
+        return why("ends in " + last.mnemonic)
+    nxt = [i for i in ins if i.address == end]
+    if nxt and (nxt[0].mnemonic in ("nop", "int3") or nxt[0].bytes == b"\x00\x00"):
+        return why("falls into padding")
+    if last.mnemonic == "call" and last.op_str.startswith("0x"):
+        tgt = int(last.op_str, 16)
+        te = ends.get(tgt)
+        to = raw(tgt)
+        if te and to is not None:
+            callee = list(md.disasm(data[to:to + (te - tgt)], tgt))
+            if not any(c.mnemonic in ("ret", "retn") for c in callee):
+                return why("ends in call to a function with no ret (noreturn)")
+    return True
+
 fixed = 0
 for f in glob.glob('src/game/recomp/gen/*.c'):
     lines = open(f, encoding='utf-8', errors='ignore').read().split('\n')
@@ -92,7 +147,7 @@ for f in glob.glob('src/game/recomp/gen/*.c'):
                 # the not-taken path still falls into the next function.
                 term = (('return' in last and not last.startswith('if ')) or
                         last.startswith('goto ') or 'int3' in last or last.endswith('break;'))
-                if (not last or not term) and end in addr2name and (LO<=cur<HI or cur in KEEP_XDK or D3DX_LO<=cur<D3DX_HI):
+                if (not last or not term) and end in addr2name and (LO<=cur<HI or cur in KEEP_XDK or D3DX_LO<=cur<D3DX_HI) and _real_fallthrough(cur, end):
                     tgt=addr2name[end]
                     if has_ebp:
                         ins='    g_seh_ebp = ebp; %s(); return; /* DOA3: restored dropped fall-through to %s */' % (tgt,tgt)
@@ -106,3 +161,5 @@ for f in glob.glob('src/game/recomp/gen/*.c'):
         out.append(line); i+=1
     if not os.environ.get('FIX_DRYRUN'): open(f,'w',encoding='utf-8').write('\n'.join(out))
 print("CRI-range fall-throughs fixed:", fixed)
+for k, v in sorted(_skipped.items(), key=lambda kv: -kv[1]):
+    print(f"  skipped {v}: {k}")

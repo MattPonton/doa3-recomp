@@ -25,7 +25,8 @@ py -3 -m tools.func_id $env:DOA3_XBE
 py -3 -m tools.recomp $env:DOA3_XBE --all --split 1000
 py -3 -m tools.recomp.find_unresolved > unresolved.txt
 py -3 -m tools.recomp.seed_missing_functions unresolved.txt
-# finally, the runtime layout header:
+# then the generated-code fix-ups, and the runtime layout header:
+py -3 -m tools.recomp.postprocess
 py -3 -m tools.xbe_layout --header src/game/recomp/gen/xbe_layout.h
 ```
 
@@ -46,6 +47,26 @@ Current result: 10,757 entries (5,632 detected, the rest seeds: call targets,
 64 initializer-table entries, 554 pointer targets), 0 unresolved. Seven are
 empty "translation failed" stubs for wild targets decoded from inline data,
 as in the first pass.
+
+## Generated-code fix-ups (`tools.recomp.postprocess`)
+
+Runs upstream's fixers for the lifter defect classes in NOTES.md, in order.
+Counts on 3.1:
+
+| Fixer | 3.1 | Notes |
+|---|---|---|
+| `fix_fallthroughs` | 1,096 restored | range = the XBE's `.text` + D3DX (3.0: 0x11000-0x1B0DE0, as upstream). For builds other than 3.0 each candidate is checked against the original code first; 32 skipped (19 data decoded as code, 11 calls to no-return functions, 2 into padding). 3.0's hand-proven XDK exceptions are 3.0-only. |
+| `fix_ftol_inline` | 1,541 | `__ftol2` address from the layout; the inline form now uses `g_fp_stack`/`g_fp_top` directly, since the `fp_*` macros only exist in functions that touch the x87 stack |
+| `fix_cond_tailcall_ebp` | 9 | |
+| `fix_fpu_global` | 0 | the lifter already emits the global stack |
+| `fix_deferred_cmp` | 573 rewritten, 1 skipped | upstream: 271 on 3.0 |
+| `fix_selfspins` | 11 | selects XDK functions by section address instead of upstream's `recomp_0010/0011.c` |
+
+The third 3.1 run hung after CRT init with 264 bytes of guest-stack drift in
+two constructors: `_getptd` (0x1BB573) had been split at a seeded branch
+target (0x1BB5AC) whose fall-through was dropped, so every call leaked 12
+bytes and returned garbage instead of the per-thread data pointer. That is
+one of the 1,096.
 
 ## Version-driven now
 

@@ -7,6 +7,9 @@
 # body was fragmented (sub_0018DB53/sub_0018DB8F) and its `mov esp, ebp`
 # epilogue ran with a mismatched frame, wrecking g_esp (0xEFFFFFxx storms).
 #
+# Uses g_fp_stack/g_fp_top directly (not the fp_top()/fp_popp() macros,
+# which the lifter only defines in functions that touch the x87 stack).
+#
 # Correct semantics = do the conversion inline in the CALLER, popping the
 # value from the CALLER's local FPU stack. _ftol2 truncates toward zero and
 # returns the int64 in edx:eax.
@@ -15,7 +18,7 @@ sys.path.insert(0, os.getcwd())
 from tools.xbe_layout import FTOL2
 
 CALL = f"PUSH32(esp, 0); sub_{FTOL2:08X}(); /* call 0x{FTOL2:08X} */"
-INLINE = ("{ int64_t _ft = (int64_t)fp_top(); fp_popp(); "
+INLINE = ("{ int64_t _ft = (int64_t)g_fp_stack[g_fp_top & 7]; g_fp_top++; "
           "eax = (uint32_t)_ft; edx = (uint32_t)((uint64_t)_ft >> 32); } "
           "/* inline _ftol2 (bug #8) */")
 
