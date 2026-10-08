@@ -175,6 +175,21 @@ generated bodies to `sub_X_gen` (run after `postprocess`, before
   3.0. The lifted SwitchToFiber moved esp onto the other fiber's stack and
   then returned to its caller (`[ESP] sub_0018C9D3 ... moved +22077656`).
 
+More 3.1 overrides (twelfth run: one frame presented, then the first game
+task spun forever re-opening an AFS file, `[CRI] 'ptid' is range outside`):
+
+- `0xA5C60` DirectSound effects-image download (dsstdfx.bin) returns success,
+  as 3.0's `0x9F640` stub does. The audio init `0xA5DC0` skips the whole CRI
+  setup (`0x1C79F0`: ADX server threads, AFS partitions) when it fails.
+- `0x1B73D0` / `0x1B7CB0` CRT memmove, native (3.0: 0x18DF40 / 0x18EE90).
+- `0x19A330` CRI message sink, logs `[CRI]` lines.
+
+Diagnostics added on the way: `[KCALL]` lines now end with the bridge's
+return value; `DOA3_TRACE_FN=addr,addr,...` logs returns of probed functions
+(`[FN]` lines, with stack and register arguments). The NtQueryInformationFile
+FileNetworkOpenInformation reply had AllocationSize and EndOfFile swapped,
+so GetFileSize returned sizes rounded up to 4 KB.
+
 ## Generated-code fix-ups (`tools.recomp.postprocess`)
 
 Runs upstream's fixers for the lifter defect classes in NOTES.md, in order.

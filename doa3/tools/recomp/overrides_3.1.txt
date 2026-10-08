@@ -5,3 +5,6 @@
 0x0018C9C0  XAPI DeleteFiber
 0x0018C9D3  XAPI SwitchToFiber
 0x0019A330  CRI message sink: log the text
+0x000A5C60  DSOUND effects-image download -> success (3.0: 0x9F640); its failure skipped the CRI setup
+0x001B73D0  CRT memmove -> native (jump-table tail the lifter cannot follow)
+0x001B7CB0  CRT memmove (second copy) -> native

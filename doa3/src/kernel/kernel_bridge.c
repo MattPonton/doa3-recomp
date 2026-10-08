@@ -1890,10 +1890,13 @@ static void bridge_NtQueryInformationFile(void)
         BRIDGE_MEM32(info_va + 20) = fi.ftLastWriteTime.dwHighDateTime;
         BRIDGE_MEM32(info_va + 24) = fi.ftLastWriteTime.dwLowDateTime;
         BRIDGE_MEM32(info_va + 28) = fi.ftLastWriteTime.dwHighDateTime;
-        BRIDGE_MEM32(info_va + 32) = fi.nFileSizeLow;
-        BRIDGE_MEM32(info_va + 36) = fi.nFileSizeHigh;
-        BRIDGE_MEM32(info_va + 40) = (uint32_t)((size + 4095) & ~4095LL);
-        BRIDGE_MEM32(info_va + 44) = (uint32_t)(((size + 4095) & ~4095LL) >> 32);
+        /* AllocationSize at +32, EndOfFile at +40 (XAPI's GetFileSize reads
+         * +40; the two used to be swapped, so every size came back rounded
+         * up to the next 4 KB). */
+        BRIDGE_MEM32(info_va + 32) = (uint32_t)((size + 4095) & ~4095LL);
+        BRIDGE_MEM32(info_va + 36) = (uint32_t)(((size + 4095) & ~4095LL) >> 32);
+        BRIDGE_MEM32(info_va + 40) = fi.nFileSizeLow;
+        BRIDGE_MEM32(info_va + 44) = fi.nFileSizeHigh;
         BRIDGE_MEM32(info_va + 48) = fi.dwFileAttributes;
         bridge_write_iostatus(ios_va, STATUS_SUCCESS, 56);
         g_eax = STATUS_SUCCESS;
@@ -2874,6 +2877,7 @@ void doa3_ktrace_dump(const char *why)
 
 static void kernel_thunk_dispatch(void)
 {
+    int log_result = 0;
     int slot = g_kernel_dispatch_slot;
     bridge_func_t bridge;
     ULONG ordinal;
@@ -2913,10 +2917,10 @@ static void kernel_thunk_dispatch(void)
         g_ktrace_ring[g_ktrace_pos & 31].n = g_kernel_call_count;
         g_ktrace_pos++;
         if ((long long)g_kernel_call_count <= s_trace_n) {
-            fprintf(stderr, "[KCALL] #%llu ord=%lu fiber=%d esp=%08X a0=%08X a1=%08X\n",
+            fprintf(stderr, "[KCALL] #%llu ord=%lu fiber=%d esp=%08X a0=%08X a1=%08X a2=%08X",
                     g_kernel_call_count, (unsigned long)ordinal, fib, g_esp,
-                    BRIDGE_MEM32(g_esp + 4), BRIDGE_MEM32(g_esp + 8));
-            fflush(stderr);
+                    BRIDGE_MEM32(g_esp + 4), BRIDGE_MEM32(g_esp + 8), BRIDGE_MEM32(g_esp + 12));
+            log_result = 1;
         }
     }
 
@@ -2952,6 +2956,10 @@ static void kernel_thunk_dispatch(void)
      * and N bytes of arguments. We already popped the dummy return address
      * above; now pop the args. */
     g_esp += g_slot_arg_bytes[slot];
+    if (log_result) {
+        fprintf(stderr, " -> %08X\n", g_eax);
+        fflush(stderr);
+    }
 
     if (g_kernel_call_count <= 200) {
     }

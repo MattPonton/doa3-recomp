@@ -3,8 +3,11 @@
  * 4 + N bytes above where it started (N from the function's `ret N`). */
 #include "recomp_types.h"
 void esp_probe_report(uint32_t va, uint32_t esp_in, uint32_t esp_out, uint32_t expect);
+void doa3_fn_trace(uint32_t va, uint32_t esp_in);   /* DOA3_TRACE_FN, recomp_manual.c */
+extern int g_fn_trace_on;
 #define P(va, n) void sub_##va##_gen(void); void sub_##va(void) { \
     uint32_t e0 = g_esp; sub_##va##_gen(); \
+    if (g_fn_trace_on) doa3_fn_trace(0x##va##u, e0); \
     if (g_esp - e0 != 4u + (n)) esp_probe_report(0x##va##u, e0, g_esp, 4u + (n)); }
 P(00011000, 0)
 P(00011980, 0)
@@ -1305,7 +1308,6 @@ P(000A5A60, 0)
 P(000A5B40, 0)
 P(000A5BC0, 0)
 P(000A5C20, 0)
-P(000A5C60, 0)
 P(000A5D30, 0)
 P(000A5D90, 0)
 P(000A5DC0, 0)

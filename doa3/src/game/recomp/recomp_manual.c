@@ -423,6 +423,31 @@ void sub_0018C9D3(void)          /* SwitchToFiber(handle), stdcall ret 4 */
     if ((h & 0xFFFF0000u) == XFIBER_TAG_4134) xbox_fiber_switch_direct((int)(h & 0xFFFF));
     else xbox_fiber_yield_back();
 }
+/* DirectSound effects-image download (0xA5C60; 0x9F640 on 3.0). The audio
+ * init sub_000A5DC0 runs DirectSoundCreate, then this (dsstdfx.bin into the
+ * DSP), then the CRI middleware setup (sub_001C79F0: ADX threads, the AFS
+ * partitions). The real download fails here, and on failure the init skips
+ * the CRI setup entirely -- no partitions, so the first task's AFS open loop
+ * (sub_00085C40) retried forever ("'ptid' is range outside"). The effects
+ * image is not needed; report success, as 3.0 does. Register argument (eax =
+ * file name), ret 0. */
+void sub_000A5C60(void) { eax = 0; esp += 4; }
+
+/* CRT memcpy/memmove (0x1B73D0 and 0x1B7CB0, the same two copies 3.0 has at
+ * 0x18DF40/0x18EE90): the trailing-byte dispatch is an intra-function jump
+ * table the lifter cannot follow, so copies lost their tail bytes. Native
+ * memmove. cdecl(dst, src, n) -> eax = dst. */
+static void crt4134_memmove(void)
+{
+    uint32_t dst = MEM32(esp + 4), src = MEM32(esp + 8), n = MEM32(esp + 12);
+    if (n) memmove((void *)((uintptr_t)dst + g_xbox_mem_offset),
+                   (void *)((uintptr_t)src + g_xbox_mem_offset), n);
+    eax = dst;
+    esp += 4;
+}
+void sub_001B73D0(void) { crt4134_memmove(); }
+void sub_001B7CB0(void) { crt4134_memmove(); }
+
 /* CRI middleware message sink (0x19A330, cdecl: formats into 0xC75500 and
  * hands it to the registered callback). The ADX/Sofdec error reporters
  * (0x1934D0 / 0x193510) end here, so log what the middleware says. */
@@ -491,4 +516,44 @@ void esp_probe_report(uint32_t va, uint32_t esp_in, uint32_t esp_out, uint32_t e
     fprintf(stderr, "[ESP] sub_%08X: esp %08X -> %08X, moved %+d, expected %+u (after kernel call #%llu)\n",
             va, esp_in, esp_out, (int)(esp_out - esp_in), expect, xbox_kernel_call_count());
     fflush(stderr);
+}
+
+/* ── Function return tracing (gen/recomp_probes.c wrappers) ─────────
+ * DOA3_TRACE_FN=a5c60,181640,... logs each return of those guest functions
+ * (probed ones only: real entries whose rets agree) with their first four
+ * stack arguments, eax, and the register arguments ecx/edx. Up to 64 lines
+ * per function. */
+int g_fn_trace_on = -1;
+static uint32_t s_fn_trace_va[32];
+static int      s_fn_trace_n[32], s_fn_trace_cnt;
+void doa3_fn_trace(uint32_t va, uint32_t esp_in)
+{
+    int i;
+    if (g_fn_trace_on < 0) {
+        const char *e = getenv("DOA3_TRACE_FN");
+#if defined(DOA3_XBE_ID_3_1)
+        /* Default while bringing 3.1 up: the audio/CRI init path that decides
+         * whether the CRI middleware is set up at all (sub_000A5DC0). */
+        if (!e) e = "a5dc0,1f2e65,a5c60,181460,18aba2,181640,1f1d62,1c79f0";
+#endif
+        g_fn_trace_on = 0;
+        while (e && *e && s_fn_trace_cnt < 32) {
+            char *end;
+            unsigned long v = strtoul(e, &end, 16);
+            if (end == e) break;
+            s_fn_trace_va[s_fn_trace_cnt++] = (uint32_t)v;
+            e = (*end == ',') ? end + 1 : end;
+        }
+        g_fn_trace_on = s_fn_trace_cnt > 0;
+        if (!g_fn_trace_on) return;
+    }
+    for (i = 0; i < s_fn_trace_cnt; i++) {
+        if (s_fn_trace_va[i] != va) continue;
+        if (s_fn_trace_n[i]++ >= 64) return;
+        fprintf(stderr, "[FN] sub_%08X(%08X, %08X, %08X, %08X) ecx=%08X edx=%08X -> eax=%08X\n",
+                va, MEM32(esp_in + 4), MEM32(esp_in + 8), MEM32(esp_in + 12), MEM32(esp_in + 16),
+                ecx, edx, eax);
+        fflush(stderr);
+        return;
+    }
 }

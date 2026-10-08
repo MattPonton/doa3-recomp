@@ -136,8 +136,11 @@ def main():
              " * 4 + N bytes above where it started (N from the function's `ret N`). */",
              "#include \"recomp_types.h\"",
              "void esp_probe_report(uint32_t va, uint32_t esp_in, uint32_t esp_out, uint32_t expect);",
+             "void doa3_fn_trace(uint32_t va, uint32_t esp_in);   /* DOA3_TRACE_FN, recomp_manual.c */",
+             "extern int g_fn_trace_on;",
              "#define P(va, n) void sub_##va##_gen(void); void sub_##va(void) { \\",
              "    uint32_t e0 = g_esp; sub_##va##_gen(); \\",
+             "    if (g_fn_trace_on) doa3_fn_trace(0x##va##u, e0); \\",
              "    if (g_esp - e0 != 4u + (n)) esp_probe_report(0x##va##u, e0, g_esp, 4u + (n)); }"]
     for va in sorted(have):
         lines.append(f"P({va:08X}, {have[va]})")
