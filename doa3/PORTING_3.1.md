@@ -68,6 +68,22 @@ fall-throughs dropped from 1,096 to 74.
 `main.c` now reserves 64 KB of stack for the exception handlers
 (`SetThreadStackGuarantee`), so a host stack overflow gets logged.
 
+## Diagnostics for silent deaths
+
+The fifth 3.1 run still died with nothing logged after CRT init. Added:
+
+- `[KCALL]` lines in `doa3_log.txt`: the first 400 kernel calls (ordinal,
+  fiber, guest esp, first two args), then a count every 2 s. `DOA3_KTRACE=N`
+  changes the 400.
+- A ring of the last 32 kernel calls (`[KTRACE]`), dumped on the first
+  non-AV exception, on an unhandled exception, and at process detach.
+- A process-detach hook (TLS callback): `[EXIT] process detach` means the
+  process ended through ExitProcess / return from main; no such line means it
+  was killed (fast fail, double fault).
+- 64 KB stack guarantee in every fiber, not just the main thread (each fiber
+  keeps its own, and new fibers start with none).
+- Release builds now write `DOA3.map` and a PDB, to map crash offsets.
+
 ## Generated-code fix-ups (`tools.recomp.postprocess`)
 
 Runs upstream's fixers for the lifter defect classes in NOTES.md, in order.

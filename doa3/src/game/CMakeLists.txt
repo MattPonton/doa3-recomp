@@ -90,8 +90,8 @@ if(MSVC)
     target_link_options(doa3 PRIVATE
         /DYNAMICBASE:NO
         /FIXED:NO
-        $<$<CONFIG:Debug>:/MAP>
-        $<$<CONFIG:Debug>:/DEBUG>
+        /MAP
+        /DEBUG
         $<$<CONFIG:Release>:/SUBSYSTEM:WINDOWS>
         $<$<CONFIG:Release>:/ENTRY:mainCRTStartup>
         /STACK:33554432

@@ -112,6 +112,12 @@ static int pick_next(int from)
 static void CALLBACK fiber_trampoline(LPVOID p)
 {
     Fiber *f = (Fiber *)p;
+    {   /* Each fiber has its own stack guarantee (saved per fiber), and new
+         * fibers start with none: keep 64 KB so a stack overflow on a worker
+         * or coroutine reaches the exception handlers and gets logged. */
+        ULONG guarantee = 64 * 1024;
+        SetThreadStackGuarantee(&guarantee);
+    }
     /* Set up the Xbox stack exactly like PsCreateSystemThreadEx does for the
      * main thread: push ctx2, ctx1, and a dummy return address, then call the
      * start routine. */

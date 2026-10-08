@@ -31,6 +31,7 @@
 #include "xbox_det.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <float.h>
 
 /* D3D vertical-blank event and counter the vblank emulation drives.
@@ -2850,6 +2851,23 @@ static int g_slot_arg_bytes[XBOX_KERNEL_THUNK_TABLE_SIZE];
 /* Current dispatching slot */
 static int g_kernel_dispatch_slot = -1;
 
+static struct { unsigned long long n; uint32_t esp, arg0; uint16_t ordinal; int16_t fiber; }
+    g_ktrace_ring[32];
+static volatile unsigned g_ktrace_pos;
+
+/* Print the last 32 kernel calls (oldest first). Safe to call from handlers. */
+void doa3_ktrace_dump(const char *why)
+{
+    unsigned end = g_ktrace_pos, i = end > 32 ? end - 32 : 0;
+    fprintf(stderr, "[KTRACE] %s: last kernel calls (of %llu):\n", why, g_kernel_call_count);
+    for (; i < end; i++)
+        fprintf(stderr, "[KTRACE]   #%llu ord=%u fiber=%d esp=%08X a0=%08X\n",
+                g_ktrace_ring[i & 31].n, g_ktrace_ring[i & 31].ordinal,
+                g_ktrace_ring[i & 31].fiber, g_ktrace_ring[i & 31].esp,
+                g_ktrace_ring[i & 31].arg0);
+    fflush(stderr);
+}
+
 static void kernel_thunk_dispatch(void)
 {
     int slot = g_kernel_dispatch_slot;
@@ -2873,7 +2891,29 @@ static void kernel_thunk_dispatch(void)
         if (g_fib_slice_due) xbox_fiber_timeslice();
     }
 
-    if (g_kernel_call_count <= 200) {
+    /* Flight recorder: the last kernel calls before a silent death. The first
+     * DOA3_KTRACE calls (default 400) are logged as they happen; after that a
+     * ring of the last 32 is kept and dumped by doa3_ktrace_dump() (process
+     * detach, unhandled exception, watchdog). */
+    {
+        static long s_trace_n = -1;
+        int fib = xbox_fiber_current();
+        if (s_trace_n < 0) {
+            const char *e = getenv("DOA3_KTRACE");
+            s_trace_n = e ? atol(e) : 400;
+        }
+        g_ktrace_ring[g_ktrace_pos & 31].ordinal = (uint16_t)ordinal;
+        g_ktrace_ring[g_ktrace_pos & 31].fiber = (int16_t)fib;
+        g_ktrace_ring[g_ktrace_pos & 31].esp = g_esp;
+        g_ktrace_ring[g_ktrace_pos & 31].arg0 = BRIDGE_MEM32(g_esp + 4);
+        g_ktrace_ring[g_ktrace_pos & 31].n = g_kernel_call_count;
+        g_ktrace_pos++;
+        if ((long long)g_kernel_call_count <= s_trace_n) {
+            fprintf(stderr, "[KCALL] #%llu ord=%lu fiber=%d esp=%08X a0=%08X a1=%08X\n",
+                    g_kernel_call_count, (unsigned long)ordinal, fib, g_esp,
+                    BRIDGE_MEM32(g_esp + 4), BRIDGE_MEM32(g_esp + 8));
+            fflush(stderr);
+        }
     }
 
     {
@@ -2882,6 +2922,9 @@ static void kernel_thunk_dispatch(void)
         if (last_summary_tick == 0) last_summary_tick = now;
         if (now - last_summary_tick >= 2000 && g_kernel_call_count > 200) {
             last_summary_tick = now;
+            fprintf(stderr, "[KCALL] %llu kernel calls so far (last ord=%lu fiber=%d)\n",
+                    g_kernel_call_count, (unsigned long)ordinal, xbox_fiber_current());
+            fflush(stderr);
         }
     }
 

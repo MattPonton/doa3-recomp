@@ -924,6 +924,10 @@ static LONG WINAPI crash_veh(PEXCEPTION_POINTERS info)
                     (unsigned long long)info->ContextRecord->Rip, g_esp,
                     (unsigned long long)info->ExceptionRecord->ExceptionInformation[1]);
             fflush(stderr);
+            if (s_nonav_logged == 1) {
+                extern void doa3_ktrace_dump(const char *why);
+                doa3_ktrace_dump("first non-AV exception");
+            }
         }
         return EXCEPTION_CONTINUE_SEARCH;
     }
@@ -1172,8 +1176,33 @@ static LONG WINAPI doa3_unhandled(PEXCEPTION_POINTERS info)
     }
     fprintf(stderr, "\n");
     fflush(stderr);
+    {   extern void doa3_ktrace_dump(const char *why);
+        doa3_ktrace_dump("unhandled exception"); }
     return EXCEPTION_CONTINUE_SEARCH;
 }
+
+/* Process-detach hook (TLS callback). Runs when the process ends through
+ * ExitProcess / return from main, but not when it is killed (fast fail,
+ * double fault, TerminateProcess) -- so its line in doa3_log.txt tells a
+ * deliberate exit from a crash the handlers never saw. */
+static void NTAPI doa3_tls_callback(PVOID h, DWORD reason, PVOID r)
+{
+    (void)h; (void)r;
+    if (reason == DLL_PROCESS_DETACH) {
+        extern void doa3_ktrace_dump(const char *why);
+        fprintf(stderr, "[EXIT] process detach (ExitProcess or return from main), g_esp=0x%08X fiber=%d\n",
+                g_esp, xbox_fiber_current());
+        doa3_ktrace_dump("process detach");
+    }
+}
+#pragma comment(linker, "/INCLUDE:_tls_used")
+#pragma comment(linker, "/INCLUDE:doa3_tls_cb_ptr")
+#pragma const_seg(".CRT$XLD")
+#ifdef __cplusplus
+extern "C"
+#endif
+const PIMAGE_TLS_CALLBACK doa3_tls_cb_ptr = doa3_tls_callback;
+#pragma const_seg()
 
 
 int main(int argc, char **argv)
