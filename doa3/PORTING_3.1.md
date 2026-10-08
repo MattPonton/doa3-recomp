@@ -146,6 +146,24 @@ its fall-through dropped. Two causes, both fixed:
   every code section on non-3.0 builds (69 restored after the regeneration). The gen source glob now has CONFIGURE_DEPENDS so new
 generated files are picked up without a manual cmake re-run.
 
+## Overrides (`tools.recomp.apply_overrides`)
+
+`tools/recomp/overrides_<version>.txt` lists guest functions replaced by
+hand-written code in `recomp_manual.c`; `apply_overrides` renames their
+generated bodies to `sub_X_gen` (run after `postprocess`, before
+`esp_probes`, which skips them).
+
+3.1 so far:
+
+- `0x1E27C0` CDevice::KickOff. The ninth run created the device and then
+  hung in BlockOnTime (0x1E2960), spinning on the fence semaphore
+  `[[dev+0x34]]` that only a GPU writes. The override translates the push
+  buffer written since the last kick to D3D11 (as 3.0's KickOff override
+  does; `DOA3_PB=0` turns that off), publishes DMA_PUT/GET, and sets the
+  semaphore to the last fence inserted (`[dev+0x30] - 2`), so every wait
+  on the GPU returns at once. XDK 4134 CDevice fields are listed above the
+  override.
+
 ## Generated-code fix-ups (`tools.recomp.postprocess`)
 
 Runs upstream's fixers for the lifter defect classes in NOTES.md, in order.

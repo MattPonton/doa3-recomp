@@ -282,6 +282,80 @@ recomp_func_t doa3_crt_lookup(uint32_t va)
 
 /* (none yet) */
 
+/* ── D3D 4134 push buffer (3.1) ─────────────────────────────────────
+ * There is no GPU: the push buffer is translated to D3D11 synchronously
+ * when the driver kicks it off, so by the time the driver looks, the "GPU"
+ * has consumed everything and passed every fence.
+ *
+ * CDevice fields in this build (from the generated code):
+ *   [dev+0x00] write cursor          [dev+0x08] flags (4 = recording into
+ *   [dev+0x24]/[dev+0x28] ring start/end      [dev+0x35C]; 0x2000 = no GPU yet)
+ *   [dev+0x2C] last kicked cursor    [dev+0x2264] FIFO channel window
+ *   [dev+0x30] next fence time (+2 per fence, InsertFence 0x1E28B0)
+ *   [dev+0x34] -> fence semaphore the GPU writes the last finished time to;
+ *              BlockOnTime (0x1E2960) spins until it reaches its target.
+ * 3.0 does the same job in its KickOff override at 0x1B88C0
+ * (reference/recomp_manual_30.c). */
+#if defined(DOA3_XBE_ID_3_1)
+extern int  pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param);
+static uint32_t s_pb4134_parsed;
+
+static void pb4134_translate(uint32_t from, uint32_t to)
+{
+    uint32_t pos = from;
+    while (pos + 4 <= to) {
+        uint32_t word = MEM32(pos); pos += 4;
+        uint32_t kind = word & 0xE0030003u;
+        if (word == 0) continue;
+        if (kind == 0 || kind == 0x40000000u) {      /* increasing / non-increasing */
+            uint32_t count = (word >> 18) & 0x7FF, method = word & 0x1FFC;
+            uint32_t sub = (word >> 13) & 7, i;
+            if (count == 0 || pos + count * 4 > to) break;
+            for (i = 0; i < count; i++) {
+                uint32_t param = MEM32(pos); pos += 4;
+                pgraph_d3d11_method((int)sub, kind == 0 ? method + i * 4 : method, param);
+            }
+        }
+        /* jump / call / return: no parameters to translate */
+    }
+}
+
+void sub_001E27C0_gen(void);
+void sub_001E27C0(void)
+{
+    static int s_on = -1, s_log;
+    uint32_t dev = ecx, flags = MEM32(dev + 8), cursor, start, end, sem;
+    if (s_on < 0) { const char *e = getenv("DOA3_PB"); s_on = !(e && *e == '0'); }
+    if (flags & 0x2000) {            /* no live GPU channel: the original only does bookkeeping */
+        sub_001E27C0_gen();
+        return;
+    }
+    cursor = (flags & 4) ? MEM32(dev + 0x35C) : MEM32(dev);
+    start = MEM32(dev + 0x24); end = MEM32(dev + 0x28);
+    if (s_on && cursor >= start && cursor <= end) {
+        if (s_pb4134_parsed < start || s_pb4134_parsed > cursor)
+            s_pb4134_parsed = start;                 /* first kick, or the ring wrapped */
+        if (cursor > s_pb4134_parsed) pb4134_translate(s_pb4134_parsed, cursor);
+        s_pb4134_parsed = cursor;
+    }
+    if (s_log < 8) {
+        s_log++;
+        fprintf(stderr, "[PB] kickoff #%d dev=%08X cursor=%08X ring=%08X-%08X fence=%08X\n",
+                s_log, dev, cursor, start, end, MEM32(dev + 0x30));
+    }
+    {   uint32_t chan = MEM32(dev + 0x2264);
+        if (chan) {
+            MEM32(chan + 0x40) = cursor & 0x3FFFFFFu;   /* DMA_PUT */
+            MEM32(chan + 0x44) = cursor & 0x3FFFFFFu;   /* DMA_GET: consumed */
+        }
+    }
+    MEM32(dev + 0x2C) = cursor;
+    sem = MEM32(dev + 0x34);
+    if (sem) MEM32(sem) = MEM32(dev + 0x30) - 2;     /* every fence inserted so far is done */
+    esp += 4;                                        /* fastcall, ret 0 */
+}
+#endif /* DOA3_XBE_ID_3_1 */
+
 /* ── Manual override table ──────────────────────────────────────────
  * Map original Xbox VA -> hand-written replacement; the trailing {0,0}
  * sentinel keeps the array valid and is skipped at lookup. */

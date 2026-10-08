@@ -1,0 +1,3 @@
+# Guest functions replaced by hand-written code in src/game/recomp/recomp_manual.c
+# (tools.recomp.apply_overrides renames the generated body to sub_X_gen).
+0x001E27C0  CDevice::KickOff (D3D 4134): translate the push buffer, report the GPU caught up

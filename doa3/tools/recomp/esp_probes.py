@@ -45,7 +45,17 @@ def remove():
     n = 0
     for f in gen_files():
         s = open(f).read()
-        s2, k = re.subn(r"^void (sub_[0-9A-F]{8})_gen\(void\)$", r"void \1(void)", s, flags=re.M)
+        from tools.recomp.apply_overrides import override_list
+        keep = override_list()
+        k = 0
+
+        def unren(m):
+            nonlocal k
+            if int(m.group(1)[4:], 16) in keep:
+                return m.group(0)
+            k += 1
+            return f"void {m.group(1)}(void)"
+        s2 = re.sub(r"^void (sub_[0-9A-F]{8})_gen\(void\)$", unren, s, flags=re.M)
         if k:
             open(f, "w").write(s2)
             n += k
@@ -76,11 +86,13 @@ def main():
                 return data[o:o + size]
         return b""
 
+    from tools.recomp.apply_overrides import override_list
+    overridden = override_list()     # hand-written; they own the sub_X name
     funcs = json.load(open(FUNCS))
     want = {}
     for f in funcs:
         start, end = int(f["start"], 16), int(f["end"], 16)
-        if start in SKIP or not any(lo <= start < hi for lo, hi in ranges):
+        if start in SKIP or start in overridden or not any(lo <= start < hi for lo, hi in ranges):
             continue
         # Only real entries: a seeded fragment (link_seed) starts mid-function
         # and legitimately pops what its function pushed.
