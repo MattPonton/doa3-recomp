@@ -198,10 +198,18 @@ static DWORD WINAPI doa3_watchdog(LPVOID unused)
             size_t nstk = 0;
             if (SuspendThread(g_doa3_guest_thread) != (DWORD)-1) {
                 got = GetThreadContext(g_doa3_guest_thread, &ctx);
-                if (got) {   /* raw copy of the top of the stack, no locks taken */
-                    SIZE_T rd = 0;
+                if (got) {   /* raw copy of the top of the stack, no locks taken.
+                              * Clip to the committed region: a fiber's rsp sits
+                              * near the top of its stack, and a read running
+                              * past the end fails as a whole. */
+                    SIZE_T rd = 0, want = sizeof s_stk;
+                    MEMORY_BASIC_INFORMATION mbi;
+                    if (VirtualQuery((LPCVOID)ctx.Rsp, &mbi, sizeof mbi)) {
+                        uintptr_t end = (uintptr_t)mbi.BaseAddress + mbi.RegionSize;
+                        if (end > ctx.Rsp && end - ctx.Rsp < want) want = end - ctx.Rsp;
+                    }
                     ReadProcessMemory(GetCurrentProcess(), (LPCVOID)ctx.Rsp, s_stk,
-                                      sizeof s_stk, &rd);
+                                      want, &rd);
                     nstk = rd / sizeof(uintptr_t);
                 }
                 ResumeThread(g_doa3_guest_thread);
@@ -231,6 +239,16 @@ static DWORD WINAPI doa3_watchdog(LPVOID unused)
             if (reports == 1) {
                 extern void doa3_ktrace_dump(const char *why);
                 doa3_ktrace_dump("watchdog stall");
+            }
+            {   /* the guest's last indirect calls (newest last) */
+                extern volatile uint32_t g_icall_trace[16];
+                extern volatile uint32_t g_icall_trace_idx;
+                extern volatile uint64_t g_icall_count;
+                unsigned i, n = g_icall_trace_idx;
+                fprintf(stderr, "[WDOG] last guest icalls:");
+                for (i = (n > 16 ? n - 16 : 0); i < n; i++)
+                    fprintf(stderr, " %08X", g_icall_trace[i & 15]);
+                fprintf(stderr, " (of %llu)\n", (unsigned long long)g_icall_count);
             }
             if (reports <= 2) {
                 extern void xbox_fiber_dump(void);

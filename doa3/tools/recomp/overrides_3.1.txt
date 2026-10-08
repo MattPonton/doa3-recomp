@@ -4,3 +4,4 @@
 0x0018C934  XAPI CreateFiber  -> host coroutine (xbox_fiber.c)
 0x0018C9C0  XAPI DeleteFiber
 0x0018C9D3  XAPI SwitchToFiber
+0x0019A330  CRI message sink: log the text

@@ -423,6 +423,28 @@ void sub_0018C9D3(void)          /* SwitchToFiber(handle), stdcall ret 4 */
     if ((h & 0xFFFF0000u) == XFIBER_TAG_4134) xbox_fiber_switch_direct((int)(h & 0xFFFF));
     else xbox_fiber_yield_back();
 }
+/* CRI middleware message sink (0x19A330, cdecl: formats into 0xC75500 and
+ * hands it to the registered callback). The ADX/Sofdec error reporters
+ * (0x1934D0 / 0x193510) end here, so log what the middleware says. */
+void sub_0019A330_gen(void);
+void sub_0019A330(void)
+{
+    static int s_n;
+    uint32_t fmt = MEM32(esp + 4);
+    s_n++;
+    if (s_n <= 40 || (s_n & (s_n - 1)) == 0) {
+        char buf[200]; int i;
+        for (i = 0; i < 199; i++) {
+            uint8_t c = fmt ? MEM8(fmt + i) : 0;
+            if (!c) break;
+            buf[i] = (c >= 0x20 && c < 0x7F) ? (char)c : '?';
+        }
+        buf[i] = 0;
+        fprintf(stderr, "[CRI] message #%d: %s\n", s_n, buf);
+        fflush(stderr);
+    }
+    sub_0019A330_gen();
+}
 #endif /* DOA3_XBE_ID_3_1 */
 
 /* ── Manual override table ──────────────────────────────────────────

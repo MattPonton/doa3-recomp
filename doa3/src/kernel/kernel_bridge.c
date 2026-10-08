@@ -2904,7 +2904,7 @@ static void kernel_thunk_dispatch(void)
         int fib = xbox_fiber_current();
         if (s_trace_n < 0) {
             const char *e = getenv("DOA3_KTRACE");
-            s_trace_n = e ? atol(e) : 400;
+            s_trace_n = e ? atol(e) : 1500;
         }
         g_ktrace_ring[g_ktrace_pos & 31].ordinal = (uint16_t)ordinal;
         g_ktrace_ring[g_ktrace_pos & 31].fiber = (int16_t)fib;
