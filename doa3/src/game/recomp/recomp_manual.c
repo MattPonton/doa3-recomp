@@ -300,7 +300,9 @@ recomp_func_t doa3_crt_lookup(uint32_t va)
 extern int  pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param);
 static uint32_t s_pb4134_parsed;
 
-static void pb4134_translate(uint32_t from, uint32_t to)
+static int s_pb4134_flip;     /* a FLIP_STALL went by: the frame is complete */
+
+static void pb4134_translate(uint32_t from, uint32_t to, int translate)
 {
     uint32_t pos = from;
     while (pos + 4 <= to) {
@@ -313,11 +315,39 @@ static void pb4134_translate(uint32_t from, uint32_t to)
             if (count == 0 || pos + count * 4 > to) break;
             for (i = 0; i < count; i++) {
                 uint32_t param = MEM32(pos); pos += 4;
-                pgraph_d3d11_method((int)sub, kind == 0 ? method + i * 4 : method, param);
+                uint32_t m = kind == 0 ? method + i * 4 : method;
+                if (m == 0x130) s_pb4134_flip = 1;   /* NV097_FLIP_STALL, end of D3DDevice_Swap */
+                if (translate) pgraph_d3d11_method((int)sub, m, param);
             }
         }
         /* jump / call / return: no parameters to translate */
     }
+}
+
+/* End of a frame (D3DDevice_Swap's FLIP_STALL reached the "GPU"): show it,
+ * pump the window, and run the vertical-blank interrupt the display would
+ * raise -- CMiniport's VBlank handler (0x1E4AA0, this = dev+0x2268) bumps
+ * the vblank count, completes pending flips, signals the vblank event and
+ * calls the game's vertical-blank callback. 3.0 does the equivalent by hand
+ * in its SetFence override. Called after KickOff has finished its own work,
+ * with every guest register put back afterwards. */
+void sub_001E4AA0(void);
+static void d3d4134_frame_done(uint32_t dev)
+{
+    extern void pgraph_d3d11_flush(void);
+    extern void doa3_present_frame(void);
+    static int s_frames;
+    uint32_t sv_eax = eax, sv_ecx = ecx, sv_edx = edx, sv_ebx = ebx;
+    uint32_t sv_esi = esi, sv_edi = edi, sv_esp = esp, sv_seh = g_seh_ebp;
+    pgraph_d3d11_flush();
+    doa3_present_frame();
+    if (++s_frames <= 3 || (s_frames % 600) == 0)
+        fprintf(stderr, "[PB] frame %d presented\n", s_frames);
+    ecx = dev + 0x2268;
+    PUSH32(esp, 0);
+    sub_001E4AA0();
+    eax = sv_eax; ecx = sv_ecx; edx = sv_edx; ebx = sv_ebx;
+    esi = sv_esi; edi = sv_edi; esp = sv_esp; g_seh_ebp = sv_seh;
 }
 
 void sub_001E27C0_gen(void);
@@ -332,10 +362,10 @@ void sub_001E27C0(void)
     }
     cursor = (flags & 4) ? MEM32(dev + 0x35C) : MEM32(dev);
     start = MEM32(dev + 0x24); end = MEM32(dev + 0x28);
-    if (s_on && cursor >= start && cursor <= end) {
+    if (cursor >= start && cursor <= end) {
         if (s_pb4134_parsed < start || s_pb4134_parsed > cursor)
             s_pb4134_parsed = start;                 /* first kick, or the ring wrapped */
-        if (cursor > s_pb4134_parsed) pb4134_translate(s_pb4134_parsed, cursor);
+        if (cursor > s_pb4134_parsed) pb4134_translate(s_pb4134_parsed, cursor, s_on);
         s_pb4134_parsed = cursor;
     }
     if (s_log < 8) {
@@ -353,6 +383,45 @@ void sub_001E27C0(void)
     sem = MEM32(dev + 0x34);
     if (sem) MEM32(sem) = MEM32(dev + 0x30) - 2;     /* every fence inserted so far is done */
     esp += 4;                                        /* fastcall, ret 0 */
+    if (s_pb4134_flip) {
+        s_pb4134_flip = 0;
+        d3d4134_frame_done(dev);
+    }
+}
+/* ── XAPI fibers (3.1) ──────────────────────────────────────────────
+ * Same as 3.0 (reference/recomp_manual_30.c, 0x164F50/0x164FDC/0x164FEF):
+ * the lifted SwitchToFiber swaps the guest esp, but its `ret` is a C return,
+ * so control never reaches the other fiber -- the eleventh run logged
+ * SwitchToFiber "returning" with esp on another fiber's stack. Back
+ * CreateFiber / DeleteFiber / SwitchToFiber with the host coroutines in
+ * xbox_fiber.c; handles are 0xF1BE0000|index, and any other handle (the
+ * ConvertThreadToFiber main fiber) means "switch back to the dispatcher". */
+#define XFIBER_TAG_4134 0xF1BE0000u
+extern int  xbox_fiber_create_dormant(uint32_t routine_va, uint32_t param, uint32_t stack_size);
+extern void xbox_fiber_destroy(int idx);
+extern void xbox_fiber_switch_direct(int idx);
+extern void xbox_fiber_yield_back(void);
+
+void sub_0018C934(void)          /* CreateFiber(stack, routine, param), stdcall ret 12 */
+{
+    int idx = xbox_fiber_create_dormant(MEM32(esp + 8), MEM32(esp + 12), MEM32(esp + 4));
+    eax = (idx > 0) ? (XFIBER_TAG_4134 | (uint32_t)idx) : 0;
+    esp += 16;
+}
+
+void sub_0018C9C0(void)          /* DeleteFiber(handle), stdcall ret 4 */
+{
+    uint32_t h = MEM32(esp + 4);
+    if ((h & 0xFFFF0000u) == XFIBER_TAG_4134) xbox_fiber_destroy((int)(h & 0xFFFF));
+    esp += 8;
+}
+
+void sub_0018C9D3(void)          /* SwitchToFiber(handle), stdcall ret 4 */
+{
+    uint32_t h = MEM32(esp + 4);
+    esp += 8;                    /* finish the call before transferring */
+    if ((h & 0xFFFF0000u) == XFIBER_TAG_4134) xbox_fiber_switch_direct((int)(h & 0xFFFF));
+    else xbox_fiber_yield_back();
 }
 #endif /* DOA3_XBE_ID_3_1 */
 

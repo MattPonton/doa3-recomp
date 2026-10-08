@@ -162,7 +162,18 @@ generated bodies to `sub_X_gen` (run after `postprocess`, before
   does; `DOA3_PB=0` turns that off), publishes DMA_PUT/GET, and sets the
   semaphore to the last fence inserted (`[dev+0x30] - 2`), so every wait
   on the GPU returns at once. XDK 4134 CDevice fields are listed above the
-  override.
+  override. When the translated range contains NV097_FLIP_STALL (0x130, the
+  end of D3DDevice_Swap) the frame is presented (`doa3_present_frame`, which
+  also pumps the window) and CMiniport's VBlank handler (0x1E4AA0, this =
+  dev+0x2268) is run once: vblank count, pending flips, vblank event and the
+  game's vertical-blank callback, which 3.0 emulates by hand in its SetFence
+  override. Without a present the window stopped pumping and Windows marked
+  the game "Not Responding" while it was still running (tenth run: 20,000
+  kernel calls and steady KickOffs, no frames shown).
+- `0x18C934` / `0x18C9C0` / `0x18C9D3` XAPI CreateFiber / DeleteFiber /
+  SwitchToFiber, backed by the host coroutines in xbox_fiber.c exactly as on
+  3.0. The lifted SwitchToFiber moved esp onto the other fiber's stack and
+  then returned to its caller (`[ESP] sub_0018C9D3 ... moved +22077656`).
 
 ## Generated-code fix-ups (`tools.recomp.postprocess`)
 
