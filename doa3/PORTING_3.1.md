@@ -264,7 +264,7 @@ Counts on 3.1:
 | `fix_ftol_inline` | 1,541 | `__ftol2` address from the layout; the inline form now uses `g_fp_stack`/`g_fp_top` directly, since the `fp_*` macros only exist in functions that touch the x87 stack |
 | `fix_cond_tailcall_ebp` | 9 | |
 | `fix_fpu_global` | 0 | the lifter already emits the global stack |
-| `fix_deferred_cmp` | 573 rewritten, 1 skipped | upstream: 271 on 3.0 |
+| `fix_deferred_cmp` | 0 (was 791) | now covered by the lifter's flag snapshots, below |
 | `fix_selfspins` | 11 | selects XDK functions by section address instead of upstream's `recomp_0010/0011.c` |
 
 The third 3.1 run hung after CRT init with 264 bytes of guest-stack drift in
@@ -272,6 +272,21 @@ two constructors: `_getptd` (0x1BB573) had been split at a seeded branch
 target (0x1BB5AC) whose fall-through was dropped, so every call leaked 12
 bytes and returned garbage instead of the per-thread data pointer. That is
 one of the 1,096.
+
+**Flag snapshots (lifter).** The lifter rebuilds a jcc/setcc/cmovcc/adc/sbb
+condition from the flag-setter's operands at the consumer, so an operand
+rewritten in between made the branch test the new value. `fix_deferred_cmp`
+patched that afterwards for `cmp`/`test` only. The ADX stereo decoder
+(0x19DC30) ends its inner loop with `dec ecx / mov [esp+24], ecx /
+mov ecx, [esp+28] / ... / jne`; the lifted `if (ecx != 0)` tested the
+reloaded source pointer, so the loop never ended and the decoder wrote PCM
+across all of guest RAM and on through the mirror views (twenty-sixth run:
+the `.data` corruption, the CRI thread-mode flag at 0x25478C, then a
+stack overflow in the thread-notify walk). `lift_basic_block` now copies the
+operands into `_fsN` locals when an instruction may write a register or
+memory they read and a consumer can still follow, for every integer
+flag-setter. 34,401 snapshots on 3.1; the regenerated code differs from the
+previous output only in those lines.
 
 ## Version-driven now
 

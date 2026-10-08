@@ -407,6 +407,7 @@ class FunctionTranslator:
                     label_addrs.add(t)
 
         flag_state = None
+        self.lifter._fs_next = 0   # flag-operand snapshots (_fsN), per function
         for bb in blocks:
             # Emit label if this block is a branch target.
             # Always append an empty statement (";") so a terminal label whose
@@ -472,6 +473,12 @@ class FunctionTranslator:
                 if frame_type == "fpo_leaf" and not has_prologue:
                     lines.insert(sig_idx + 2,
                                  "    ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */")
+
+        # Flag-operand snapshots taken by lift_basic_block (_fsN).
+        if self.lifter._fs_next:
+            sig_idx = lines.index("{")
+            names = ", ".join(f"_fs{k} = 0" for k in range(self.lifter._fs_next))
+            lines.insert(sig_idx + 1, f"    uint32_t {names}; /* flag operands kept for a later jcc */")
 
         return "\n".join(lines)
 

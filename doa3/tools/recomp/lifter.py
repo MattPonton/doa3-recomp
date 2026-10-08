@@ -1885,6 +1885,148 @@ class Lifter:
         return [f"/* FPU: {m} {insn.op_str} */"]
 
 
+# ── Flag snapshots (DOA3 3.1, 2026-10-08) ─────────────────────
+# Conditions are rebuilt at the consumer (jcc/setcc/cmovcc/adc/sbb) from the
+# flag-setter's OPERANDS, so anything that rewrites one of those operands in
+# between makes the branch test the new value. The 3.1 ADX stereo decoder
+# (0x19DC30) ends its inner loop with
+#     dec ecx / mov [esp+24], ecx / mov ecx, [esp+28] / ... / jne loop
+# and the lifted `if (ecx != 0)` tested the reloaded source pointer: the loop
+# never ended and the decoder wrote PCM through all of guest RAM.
+# When an instruction between setter and consumer may write a register or
+# memory an operand reads, copy the operand values into _fsN locals first and
+# let the condition read those. (fix_deferred_cmp patched the cmp/test cases
+# of this after the fact; this covers every integer setter.)
+_SNAP_SETTERS = frozenset({
+    "cmp", "test", "sub", "add", "and", "or", "xor", "inc", "dec", "neg",
+    "shl", "shr", "sar", "adc", "sbb", "shld", "shrd", "rol", "ror",
+    "rcl", "rcr", "bsf", "bsr", "bt", "bts", "btr", "btc",
+})
+_REG_FAMILY = {}
+for _fam, _names in {
+        "eax": ("eax", "ax", "al", "ah"), "ebx": ("ebx", "bx", "bl", "bh"),
+        "ecx": ("ecx", "cx", "cl", "ch"), "edx": ("edx", "dx", "dl", "dh"),
+        "esi": ("esi", "si"), "edi": ("edi", "di"),
+        "ebp": ("ebp", "bp"), "esp": ("esp", "sp")}.items():
+    for _n in _names:
+        _REG_FAMILY[_n] = _fam
+_ALL_GPR = frozenset(("eax", "ebx", "ecx", "edx", "esi", "edi", "ebp", "esp"))
+# Registers written implicitly (besides a register first operand).
+_IMPLICIT_WRITES = {
+    "push": {"esp"}, "pop": {"esp"}, "pushal": {"esp"}, "pushad": {"esp"},
+    "popal": _ALL_GPR, "popad": _ALL_GPR, "pushfd": {"esp"}, "popfd": {"esp"},
+    "call": {"eax", "ecx", "edx", "esp"}, "leave": {"esp", "ebp"},
+    "enter": {"esp", "ebp"}, "ret": {"esp"},
+    "cdq": {"edx"}, "cwd": {"edx"}, "cwde": {"eax"}, "cbw": {"eax"},
+    "lahf": {"eax"}, "mul": {"eax", "edx"}, "div": {"eax", "edx"},
+    "idiv": {"eax", "edx"}, "rdtsc": {"eax", "edx"},
+    "cpuid": {"eax", "ebx", "ecx", "edx"}, "cmpxchg": {"eax"},
+    "fnstsw": {"eax"},
+}
+# First-operand-is-memory instructions that only READ it.
+_MEM_READ_ONLY = frozenset({
+    "push", "cmp", "test", "bt", "call", "jmp", "fldcw", "prefetchnta",
+    "prefetcht0", "prefetcht1", "prefetcht2",
+})
+
+
+def _insn_may_write(insn):
+    """(registers possibly written, whether memory may be written)."""
+    m = insn.mnemonic
+    regs = set(_IMPLICIT_WRITES.get(m, ()))
+    ops = insn.operands
+    if m.startswith("rep") or m.split()[-1].rstrip("bwd") in ("movs", "stos",
+                                                             "lods", "scas",
+                                                             "cmps"):
+        regs |= {"ecx", "esi", "edi", "eax"}
+    if m == "imul" and len(ops) == 1:
+        regs |= {"eax", "edx"}
+    mem = False
+    if ops:
+        o0 = ops[0]
+        if o0.type == "reg" and m not in ("push", "cmp", "test", "bt", "call",
+                                          "jmp") and not m.startswith("j"):
+            regs.add(_REG_FAMILY.get(o0.reg, o0.reg))
+        elif o0.type == "mem" and m not in _MEM_READ_ONLY:
+            mem = True
+    if m in ("xchg", "xadd") and len(ops) > 1:
+        o1 = ops[1]
+        if o1.type == "reg":
+            regs.add(_REG_FAMILY.get(o1.reg, o1.reg))
+        else:
+            mem = True
+    if m in ("push", "call", "pushal", "pushad", "pushfd", "enter") or \
+            "stos" in m or "movs" in m:
+        mem = True
+    return regs, mem
+
+
+def _op_reads(op):
+    """(register families an operand reads, whether it reads memory)."""
+    if op.type == "reg":
+        return {_REG_FAMILY.get(op.reg, op.reg)}, False
+    if op.type == "mem":
+        r = set()
+        for x in (op.mem_base, op.mem_index):
+            if x:
+                r.add(_REG_FAMILY.get(x, x))
+        return r, True
+    return set(), False
+
+
+def _flag_ops_clobbered(flag_ops, insn):
+    wregs, wmem = _insn_may_write(insn)
+    for op in flag_ops:
+        rr, rm = _op_reads(op)
+        if rr & wregs or (rm and wmem):
+            return True
+    return False
+
+
+_FLAG_CONSUMER_PREFIX = ("set", "cmov")
+
+
+def _flags_consumed_later(insns, i):
+    """Can the flags pending at insns[i] still be read? Looks ahead in the
+    block for a consumer before the next instruction that replaces or clears
+    them; at the block end, only a fall-through carries them on."""
+    for k in range(i, len(insns)):
+        m = insns[k].mnemonic
+        if insns[k].is_cond_jump or m.startswith(_FLAG_CONSUMER_PREFIX) or \
+                m in ("adc", "sbb", "rcl", "rcr"):
+            return True
+        if m in FLAG_SETTERS or m in _EFLAGS_SETTERS or m in _FLAGS_UNDEFINED:
+            return False
+        if insns[k].is_call:
+            return False    # compiled code never reads flags across a call
+    last = insns[-1]
+    return not (last.is_ret or (last.is_jump and not last.is_cond_jump))
+
+
+def _snapshot_flag_ops(lifter, flag_ops, stmts):
+    """Copy each register/memory flag operand into a fresh _fsN local and
+    return operands that read those locals instead."""
+    from .disasm import Operand
+    out, seen = [], {}
+    for op in flag_ops:
+        if op.type not in ("reg", "mem"):
+            out.append(op)
+            continue
+        expr = _fmt_operand_read(op)
+        if expr not in seen:
+            n = getattr(lifter, "_fs_next", 0)
+            lifter._fs_next = n + 1
+            seen[expr] = f"_fs{n}"
+            stmts.append(f"_fs{n} = (uint32_t)({expr}); /* flag operand kept for a later jcc */")
+        var = seen[expr]
+        size = op.mem_size if op.type == "mem" else (
+            1 if op.reg.endswith(("l", "h")) and len(op.reg) == 2 else
+            2 if len(op.reg) == 2 else 4)
+        name = {1: f"LO8({var})", 2: f"LO16({var})"}.get(size, var)
+        out.append(Operand(type="reg", reg=name))
+    return out
+
+
 def lift_basic_block(lifter, bb, flag_state=None):
     """
     Lift a basic block to C statements.
@@ -1913,6 +2055,16 @@ def lift_basic_block(lifter, bb, flag_state=None):
 
     while i < len(insns):
         curr = insns[i]
+
+        # An instruction about to overwrite what the pending condition reads:
+        # latch the operand values first (see _SNAP_SETTERS).
+        if (last_flag_setter in _SNAP_SETTERS and last_flag_ops
+                and not curr.is_cond_jump
+                and curr.mnemonic not in FLAG_SETTERS
+                and curr.mnemonic not in _EFLAGS_SETTERS
+                and _flag_ops_clobbered(last_flag_ops, curr)
+                and _flags_consumed_later(insns, i + 1)):
+            last_flag_ops = _snapshot_flag_ops(lifter, last_flag_ops, stmts)
 
         # Try cmp/test + jcc pattern first (2-instruction match)
         match = try_match_cmp_jcc(insns, i, lifter=lifter)
