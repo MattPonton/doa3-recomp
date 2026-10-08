@@ -1280,6 +1280,21 @@ void mcpx_apu_vp_frame(MCPXAPUState *d,
             }
 
             uint16_t v = cur;
+            if (v >= MCPX_HW_MAX_VOICES) {
+                /* A handle outside the voice array (the list head or a link
+                 * the driver had not finished writing: this thread reads the
+                 * guest's lists while the game thread edits them). Indexing
+                 * the voice tables with it wrote past the end of the debug
+                 * state and killed the process on the 3.1 boot. Stop the walk
+                 * for this frame; the next frame sees the finished list. */
+                static int s_bad;
+                if (s_bad < 8) {
+                    s_bad++;
+                    fprintf(stderr, "[APU] voice list %d: handle 0x%04X out of range, walk stopped\n",
+                            list, v);
+                }
+                break;
+            }
             uint16_t nxt = (uint16_t)voice_get_mask(d, v, NV_PAVS_VOICE_TAR_PITCH_LINK,
                                NV_PAVS_VOICE_TAR_PITCH_LINK_NEXT_VOICE_HANDLE);
             if (nxt == v) nxt = 0xFFFF;   /* self-linked: treat as end of list */
