@@ -33,6 +33,13 @@
 #include <string.h>
 #include <float.h>
 
+/* D3D vertical-blank event and counter the vblank emulation drives.
+ * 3.0 keeps upstream's values: event 0x001C2CF0 (= [0x001C3390] + 0x24F0)
+ * and the counter at 0x001C2B08 + 0x820. Other builds read the device
+ * pointer found in their own BlockUntilVerticalBlank (xbe_layout.h). */
+static uint32_t doa3_vblank_event_va(void);
+static uint32_t doa3_vblank_count_va(void);
+
 
 
 /* Access to recompiled code globals */
@@ -866,7 +873,7 @@ static void bridge_KeWaitForSingleObject(void)
         uint32_t thi = timeout_ptr ? BRIDGE_MEM32(timeout_ptr + 4) : 0;
         g_kwait_log++;
     }
-    if (xbox_fiber_active() && obj == 0x001C2CF0u) {
+    if (xbox_fiber_active() && obj && obj == doa3_vblank_event_va()) {
         /* D3D vblank event: on hardware the GPU vblank interrupt signals it
          * every 16.7ms, so an INFINITE wait always returns. We have no GPU
          * interrupt; only boot-time diagnostic wrappers pulsed it, and once
@@ -881,9 +888,12 @@ static void bridge_KeWaitForSingleObject(void)
          * frame and the music stopped reading. The file server keeps
          * finishing all queued I/O inside the frame, so a load completes on
          * the same frame on both machines whatever music was in flight. */
+#ifdef DOA3_XBE_ID_3_0
         if (g_xbox_det_active && xbox_fiber_current_ctx1() == 0x0016A570u)
             xbox_fiber_block(XBOX_DET_VBLANK_KEY);
-        else if (g_xbox_det_active && (xbox_fiber_is_primary() || xbox_fiber_is_coroutine())) xbox_fiber_run_workers_idle(1024);
+        else
+#endif
+        if (g_xbox_det_active && (xbox_fiber_is_primary() || xbox_fiber_is_coroutine())) xbox_fiber_run_workers_idle(1024);
         else xbox_fiber_yield();
         BRIDGE_MEM32(obj + 4) = 0;
         /* Run the CRI server pump on each vblank wait: on hardware the ADXM
@@ -907,7 +917,10 @@ static void bridge_KeWaitForSingleObject(void)
          * event N times and read the counter to see time pass; without the
          * bump they spin forever inside the frame (Present never runs, so
          * the SetFence-wrapper vblank emulation cannot advance it either). */
-        BRIDGE_MEM32(0x001C2B08u + 0x820u) = BRIDGE_MEM32(0x001C2B08u + 0x820u) + 1;
+        {
+            uint32_t cnt = doa3_vblank_count_va();
+            if (cnt) BRIDGE_MEM32(cnt) = BRIDGE_MEM32(cnt) + 1;
+        }
         g_eax = 0;
         return;
     }
@@ -2992,4 +3005,28 @@ void xbox_kernel_bridge_init(void)
     );
 
 
+}
+
+static uint32_t doa3_vblank_event_va(void)
+{
+#if defined(DOA3_XBE_ID_3_0)
+    return 0x001C2CF0u;
+#elif defined(DOA3_D3D_PDEVICE_VA)
+    uint32_t dev = BRIDGE_MEM32(DOA3_D3D_PDEVICE_VA);
+    return dev ? dev + DOA3_D3D_VBLANK_EVENT_OFS : 0;
+#else
+    return 0;
+#endif
+}
+
+static uint32_t doa3_vblank_count_va(void)
+{
+#if defined(DOA3_XBE_ID_3_0)
+    return 0x001C2B08u + 0x820u;
+#elif defined(DOA3_D3D_PDEVICE_VA) && defined(DOA3_D3D_VBLANK_COUNT_OFS)
+    uint32_t dev = BRIDGE_MEM32(DOA3_D3D_PDEVICE_VA);
+    return dev ? dev + DOA3_D3D_VBLANK_COUNT_OFS : 0;
+#else
+    return 0;
+#endif
 }

@@ -1279,10 +1279,12 @@ int main(int argc, char **argv)
      * the ptr just needs to be non-NULL; we use the CRT's own CS buffer at
      * 0xBF4CF0 (stride 0x1C), exactly as the original _mtinitlocks does. */
     {
-        uint32_t cs_addr = 0xBF4CF0;   /* DOA3 CS buffer array (BSS) */
+        /* Lock table and CS buffer come from the XBE's own _mtinitlocks
+         * (xbe_layout.h); 3.0: 0x3C0FB8 and 0xBF4CF0. */
+        uint32_t cs_addr = DOA3_CRT_CS_BUFFER;   /* CS buffer array (BSS) */
         int locks = 0;
-        for (int i = 0; i < 36; i++) {
-            uint32_t ptr_va  = 0x3C0FB8 + i * 8;
+        for (int i = 0; i < DOA3_CRT_LOCKTABLE_N; i++) {
+            uint32_t ptr_va  = DOA3_CRT_LOCKTABLE + i * 8;
             uint32_t flag_va = ptr_va + 4;
             if (MEM32(flag_va) == 1) {
                 MEM32(ptr_va) = cs_addr;

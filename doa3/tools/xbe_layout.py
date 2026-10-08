@@ -220,6 +220,51 @@ def crt_initializers():
     return out
 
 
+def _runtime_symbols(data):
+    """Runtime addresses the C runtime needs, found by code signature."""
+    out = []
+    # _mtinitlocks: push esi; push edi; mov esi, locktable; mov edi, cs_buffer;
+    # cmp [esi+4],1 ... add esi,8; cmp esi, locktable_end
+    m = re.search(rb"\x56\x57\xBE(....)\xBF(....)\x83\x7E\x04\x01\x75.\x89\x3E"
+                  rb"\x68\xA0\x0F\x00\x00\xFF\x36\x83\xC7\x1C\xE8....\x85\xC0\x59\x59"
+                  rb"\x74.\x83\xC6\x08\x81\xFE(....)", data, re.S)
+    if m:
+        lt, cs, end = (struct.unpack("<I", m.group(i))[0] for i in (1, 2, 3))
+        out += ["/* CRT lock table and critical-section buffer (from _mtinitlocks) */",
+                f"#define DOA3_CRT_LOCKTABLE      0x{lt:08X}u",
+                f"#define DOA3_CRT_LOCKTABLE_N    {(end - lt) // 8}",
+                f"#define DOA3_CRT_CS_BUFFER      0x{cs:08X}u", ""]
+    # D3DDevice_BlockUntilVerticalBlank (XDK 4134): mov eax,[g_pDevice];
+    # push 0; push 0; push 1; mov [eax+SIG], 0; push 6; add eax, EVT; push eax
+    m = re.search(rb"\xA1(....)\x6A\x00\x6A\x00\x6A\x01\xC7\x80(....)\x00\x00\x00\x00"
+                  rb"\x6A\x06\x05(....)\x50\xFF\x15", data, re.S)
+    if m:
+        pdev, sig, evt = (struct.unpack("<I", m.group(i))[0] for i in (1, 2, 3))
+        if sig == evt + 4:
+            out += ["/* D3D device pointer and its vertical-blank event (BlockUntilVerticalBlank) */",
+                    f"#define DOA3_D3D_PDEVICE_VA         0x{pdev:08X}u",
+                    f"#define DOA3_D3D_VBLANK_EVENT_OFS   0x{evt:X}u"]
+            if _d3d8_build(data) == 4134 and evt == 0x2430:
+                # Verified in 3.1: CMiniport is at device+0x2268; its VBlank
+                # handler bumps this+0x1F4 and signals this+0x1C8 (= +0x2430).
+                out += ["/* CMiniport vblank count, device+0x2268+0x1F4 (XDK 4134 only) */",
+                        f"#define DOA3_D3D_VBLANK_COUNT_OFS   0x{0x2268 + 0x1F4:X}u"]
+            out.append("")
+    return out
+
+
+def _d3d8_build(data):
+    """Build number of the statically linked D3D8 library."""
+    u = lambda o: struct.unpack_from("<I", data, o)[0]
+    off = lambda va: va - XBE_BASE_ADDRESS
+    n, la = u(0x160), u(0x164)
+    for i in range(n):
+        o = off(la) + i * 16
+        if data[o:o + 8].rstrip(b"\0") == b"D3D8":
+            return struct.unpack_from("<H", data, o + 12)[0]
+    return None
+
+
 def _align(v, a):
     return (v + a - 1) & ~(a - 1)
 
@@ -300,6 +345,9 @@ def write_header(path):
         a(f"#define DOA3_CRT_XC_LO          0x{crt[2]:08X}u")
         a(f"#define DOA3_CRT_XC_HI          0x{crt[3]:08X}u")
         a("")
+    for line in _runtime_symbols(data):
+        a(line)
+    a("")
     a("/* CRT helpers the lifter special-cases */")
     for nm, val in (("SEH_PROLOG", SEH_PROLOG), ("SEH_EPILOG", SEH_EPILOG), ("FTOL2", FTOL2)):
         if val:

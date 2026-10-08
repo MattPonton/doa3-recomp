@@ -8,6 +8,7 @@
 #include <stddef.h>
 
 #include "video_settings.h"
+#include "xbe_layout.h"   /* DOA3_XBE_ID_<version> */
 
 extern HWND d3d8_GetHWND(void);
 extern ptrdiff_t g_xbox_mem_offset;
@@ -109,6 +110,11 @@ void video_set_aspect(int aspect)
  * g_aspect directly. */
 void video_sync_guest_widescreen(void)
 {
+#ifndef DOA3_XBE_ID_3_0
+    /* The addresses below are 3.0's. TODO(3.1): find this build's widescreen
+     * flags (written by the XC_VIDEO query cache, sub_001539C0 on 3.0). */
+    return;
+#else
     volatile uint8_t *m = (volatile uint8_t *)(uintptr_t)g_xbox_mem_offset;
     volatile uint32_t *pp_w  = (volatile uint32_t *)(m + 0x90F4A8);
     volatile uint32_t *pp_fl = (volatile uint32_t *)(m + 0x90F4D0);
@@ -118,6 +124,7 @@ void video_sync_guest_widescreen(void)
     if (!g_xbox_mem_offset || *pp_w != 0x2D0u) return;
     if (on) { *ws |= 1u;  *pp_fl |= 0x10u;  *vflag |= 1u; }
     else    { *ws &= ~1u; *pp_fl &= ~0x10u; *vflag &= ~1u; }
+#endif
 }
 
 void video_apply_window_mode(HWND hwnd, int mode)

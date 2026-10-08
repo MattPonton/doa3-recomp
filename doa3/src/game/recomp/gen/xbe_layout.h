@@ -98,6 +98,18 @@
 #define DOA3_CRT_XC_LO          0x00252070u
 #define DOA3_CRT_XC_HI          0x0025216Cu
 
+/* CRT lock table and critical-section buffer (from _mtinitlocks) */
+#define DOA3_CRT_LOCKTABLE      0x002587E0u
+#define DOA3_CRT_LOCKTABLE_N    36
+#define DOA3_CRT_CS_BUFFER      0x004D9EF0u
+
+/* D3D device pointer and its vertical-blank event (BlockUntilVerticalBlank) */
+#define DOA3_D3D_PDEVICE_VA         0x001EDE80u
+#define DOA3_D3D_VBLANK_EVENT_OFS   0x2430u
+/* CMiniport vblank count, device+0x2268+0x1F4 (XDK 4134 only) */
+#define DOA3_D3D_VBLANK_COUNT_OFS   0x245Cu
+
+
 /* CRT helpers the lifter special-cases */
 #define DOA3_SEH_PROLOG         0x001B84A4u
 #define DOA3_SEH_EPILOG         0x001B84DDu
