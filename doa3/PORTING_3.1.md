@@ -197,6 +197,19 @@ notification walk (0x18C3E1). Two fixes:
   of 0x16A530 does; xbox_fiber.c's "not a real worker" exclusion now knows
   the 3.1 address too.
 
+Fourteenth run: the CRI setup reached its partition load and the main
+fiber spun in `do { st = ADXF_GetPtStat(2); } while (st != 3)` (0x1C7AE0)
+while the four CRI threads sat READY: nothing ever handed them the CPU.
+On hardware the scheduler preempts that loop. Two changes:
+
+- Every esp-probe wrapper is now also a scheduling point: when the 4 ms
+  tick is due it calls `xbox_fiber_timeslice()`, as RECOMP_ICALL_SAFE and
+  the kernel dispatcher already do. The slice timer is started at
+  `xbox_fiber_init` (it was only created on the first due slice, i.e. never,
+  unless something else called the timeslice first).
+- `doa3_workers_may_run` lets slices run from the start; 3.0 waits for its
+  intro movie and two CRI lock words. TODO(3.1): the lock check.
+
 Diagnostics added on the way: `[KCALL]` lines now end with the bridge's
 return value; `DOA3_TRACE_FN=addr,addr,...` logs returns of probed functions
 (`[FN]` lines, with stack and register arguments). The NtQueryInformationFile

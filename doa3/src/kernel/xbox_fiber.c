@@ -169,6 +169,7 @@ void xbox_fiber_init(void)
     g_nfib = 1;
     g_cur  = 0;
     g_active = 1;
+    xbox_fiber_timeslice();      /* starts the 4 ms slice timer (nothing is due yet) */
     fprintf(stderr, "[FIBER] primary fiber initialized\n");
     fflush(stderr);
 }

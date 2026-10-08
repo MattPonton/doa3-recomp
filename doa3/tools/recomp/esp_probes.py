@@ -138,8 +138,12 @@ def main():
              "void esp_probe_report(uint32_t va, uint32_t esp_in, uint32_t esp_out, uint32_t expect);",
              "void doa3_fn_trace(uint32_t va, uint32_t esp_in);   /* DOA3_TRACE_FN, recomp_manual.c */",
              "extern int g_fn_trace_on;",
+             "/* Each wrapper is also a scheduling point: give the worker fibers their",
+             " * time slice (xbox_fiber_timeslice) when the 4 ms tick is due, the way the",
+             " * hardware scheduler would preempt a polling loop. */",
              "#define P(va, n) void sub_##va##_gen(void); void sub_##va(void) { \\",
              "    uint32_t e0 = g_esp; sub_##va##_gen(); \\",
+             "    if (g_fib_slice_due) xbox_fiber_timeslice(); \\",
              "    if (g_fn_trace_on) doa3_fn_trace(0x##va##u, e0); \\",
              "    if (g_esp - e0 != 4u + (n)) esp_probe_report(0x##va##u, e0, g_esp, 4u + (n)); }"]
     for va in sorted(have):

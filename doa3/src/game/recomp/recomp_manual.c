@@ -235,14 +235,16 @@ void doa3_pump_cri_servers(void)
     if (!s_warned) { s_warned = 1; doa3_port_todo_once("doa3_pump_cri_servers"); }
 }
 
-/* Whether the cooperative worker fibers may run this frame. 3.0 also
- * required its two CRI lock words (0x00B24D38, 0x00C0E384) to be clear.
- * g_doa3_post_movie is only set by movie-flow overrides, so this stays 0
- * until those exist for this XBE.
- * TODO(3.1): restore the CRI lock check with this build's addresses. */
+/* Whether the cooperative worker fibers may be given a time slice. 3.0
+ * only slices after its intro movie (whose timing was tuned without it) and
+ * also requires its two CRI lock words (0x00B24D38, 0x00C0E384) to be clear.
+ * 3.1 slices from the start: the CRI setup (0x1C79F0) waits for the file
+ * server thread to load the AFS partitions by polling ADXF_GetPtStat in a
+ * loop that never yields, which on hardware the scheduler preempts.
+ * TODO(3.1): the CRI lock check, with this build's addresses. */
 int doa3_workers_may_run(void)
 {
-    return g_doa3_post_movie && !g_doa3_in_pump;
+    return !g_doa3_in_pump;
 }
 
 /* Netplay: force the guest's XPP pad table to the session's pad mask.
