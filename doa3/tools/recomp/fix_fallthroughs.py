@@ -55,6 +55,13 @@ LO, HI = _L.TEXT_VA_START, _L.TEXT_VA_END   # all of .text (3.0: 0x11000-0x1B0DE
 KEEP_XDK = {0x1B4611, 0x1C3FDD, 0x1B1388, 0x1B18C9, 0x1BB96C, 0x1B60A3, 0x1E6774}
 if _L.VERSION != "3.0":
     KEEP_XDK = set()   # 3.0 addresses; re-derive per build as they are proven
+    # Other builds: every code section. Each candidate goes through the
+    # disassembly guard (_real_fallthrough) first, which is what upstream's
+    # blanket fix lacked. On 3.1 D3D's 0x1E00DA fragment (inside
+    # CDevice::SetShaderConstantMode) fell off the end after a push and left
+    # CreateDevice reading its parameters 16 bytes off.
+    _code = [s for s in _L.LAYOUT["sections"] if s[0] not in _L.DATA_SECTION_NAMES and s[0] != "DOLBY"]
+    LO, HI = min(s[1] for s in _code), max(s[1] + s[4] for s in _code)
 # NOTE: 0x1C883B (DSOUND stream-service fragment) is NOT a real fall-through -
 # restoring it caused infinite recursion (native stack overflow). Its -4
 # esp/call is contained by an ESP_FIX wrapper in recomp_manual.c instead.

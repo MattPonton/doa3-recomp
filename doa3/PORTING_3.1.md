@@ -124,8 +124,26 @@ between the two leaves the stack unbalanced.
 to `sub_X_gen` and adds a wrapper `sub_X` (gen/recomp_probes.c) that checks
 the function moved esp by exactly 4 + N; mismatches are logged as `[ESP]`
 lines (first two per function, 400 in all, `DOA3_ESPPROBE=0` to silence).
-On 3.1: 9,779 functions probed. `--remove` takes them out again. Run it
-after `postprocess`. The gen source glob now has CONFIGURE_DEPENDS so new
+Only real entries are probed (not seeded fragments, which start mid-function,
+and not functions framed by the SEH prolog/epilog helpers): 5,033 on 3.1.
+`--remove` takes them out again. Run it after `postprocess`.
+
+First result (eighth run): `sub_001E2D10 moved -12, expected +4`. Its callee
+0x1E00C0 (D3D's shader-constant-mode setter) had been cut into fragments at
+0x1E00C6 and 0x1E0109, and the 0x1E00DA fragment ended on a `push esi` with
+its fall-through dropped. Two causes, both fixed:
+
+- `find_pointer_targets` accepted data tables of small consecutive numbers
+  (0x1E00C4, 0x1E00C5, 0x1E00C6, ...) as pointer tables, because any
+  existing function start counted as an entry, including seeded fragments,
+  and a bare `push ebx` counted as a prologue. Now only detector-found
+  starts and real prologues/terminator boundaries count.
+- `extend_functions` treated every linear-sweep call target as a function
+  entry; 4,233 of them land mid-function. They now need to look like an
+  entry. 0x1E00C0 now spans 0x1E00C0-0x1E01B5.
+- `fix_fallthroughs` covered only `.text` (+D3DX) on 3.1, leaving the D3D,
+  DSOUND and XPP sections unfixed; with the disassembly guard it now covers
+  every code section on non-3.0 builds (69 restored after the regeneration). The gen source glob now has CONFIGURE_DEPENDS so new
 generated files are picked up without a manual cmake re-run.
 
 ## Generated-code fix-ups (`tools.recomp.postprocess`)

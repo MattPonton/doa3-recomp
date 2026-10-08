@@ -66,14 +66,41 @@ def main():
     funcs = json.load(open(FUNCS))
     by_start = {int(f["start"], 16): f for f in funcs}
 
-    # Real entries: direct call targets anywhere in code, plus detector finds
-    # and pointer seeds named on the command line.
+    # Real entries: detector finds, pointer seeds named on the command line,
+    # and direct call targets that look like a function entry. A linear sweep
+    # also decodes calls out of inline data and misaligned bytes; taken at face
+    # value those "targets" land mid-function (0x1E00C6, a `push ebx` inside
+    # D3D's 0x1E00C0) and split real functions into fragments whose
+    # fall-throughs then get dropped.
+    boundary, prev = set(), {}
+    for name, va, _vs, raw, rs, _fl in secs:
+        last = None
+        for ins in md.disasm(data[raw:raw + rs], va):
+            boundary.add(ins.address)
+            prev[ins.address] = last
+            last = ins
+
+    def looks_like_entry(t):
+        p = prev.get(t)
+        if t not in boundary:
+            return False
+        if p is None or p.mnemonic in ("ret", "retn", "jmp", "int3", "nop", "hlt") or \
+                (p.mnemonic == "lea" and p.op_str in ("esi, [esi]", "edi, [edi]", "esp, [esp]")):
+            return True
+        s = sec_of(t)
+        o = s[3] + t - s[1]
+        b = data[o:o + 3]
+        return b == b"\x55\x8b\xec" or b[:2] in (b"\x83\xec", b"\x81\xec")
+
     real = {L.ENTRY_POINT}
+    calls = set()
     for f in funcs:
-        if f.get("detection_method") in ("call_target", "prologue", "entry_point"):
+        if f.get("detection_method") in ("prologue", "entry_point"):
             real.add(int(f["start"], 16))
+        elif f.get("detection_method") == "call_target":
+            calls.add(int(f["start"], 16))   # same entry test as other call targets
         for c in f.get("calls_to", []) or []:
-            real.add(int(c, 16))
+            calls.add(int(c, 16))
     for path in sys.argv[1:]:
         for line in open(path):
             line = line.strip()
@@ -82,7 +109,16 @@ def main():
     for name, va, _vs, raw, rs, _fl in secs:
         for ins in md.disasm(data[raw:raw + rs], va):
             if ins.mnemonic == "call" and ins.op_str.startswith("0x"):
-                real.add(int(ins.op_str, 16))
+                calls.add(int(ins.op_str, 16))
+    dropped = 0
+    for t in calls:
+        if t in real:
+            continue
+        if looks_like_entry(t):
+            real.add(t)
+        else:
+            dropped += 1
+    print(f"{dropped} call targets ignored as entries (mid-function)", file=sys.stderr)
 
     def is_pad(va):
         s = sec_of(va)

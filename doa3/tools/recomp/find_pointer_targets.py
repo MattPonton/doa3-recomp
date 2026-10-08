@@ -16,7 +16,7 @@ A candidate is kept only if it lands on an instruction boundary of the
 linear disassembly of the section it is in, and it either starts a known
 function already, or looks like a function entry: preceded by ret/jmp/int3/
 nop padding, or a common prologue (push ebp; mov ebp, esp / sub esp / push
-of a callee-saved register). Addresses that already have a body are skipped.
+is not enough). Addresses that already have a body are skipped.
 
 Usage (from doa3/, with DOA3_XBE set):
   py -3 -m tools.recomp.find_pointer_targets > ptr_seeds.txt
@@ -52,6 +52,12 @@ def main():
 
     funcs = json.load(open(FUNCS))
     starts = {int(f["start"], 16) for f in funcs}
+    # Starts the detector found on its own. Seeded fragments (link_seed) are
+    # not evidence of an entry: data tables of small consecutive numbers
+    # (0x1E00C4, 0x1E00C5, 0x1E00C6, ...) otherwise "confirm" themselves
+    # once an earlier pass has seeded them.
+    trusted = {int(f["start"], 16) for f in funcs
+               if f.get("detection_method") in ("call_target", "prologue", "entry_point")}
 
     md = Cs(CS_ARCH_X86, CS_MODE_32)
     md.detail = True
@@ -76,7 +82,7 @@ def main():
                 imms[ops[1].imm & 0xFFFFFFFF] += 1
 
     def looks_like_entry(t):
-        if t in starts:
+        if t in trusted:
             return True
         if t not in boundary:
             return False
@@ -87,8 +93,9 @@ def main():
         s = in_code(t)
         o = s[3] + t - s[1]
         b = data[o:o + 3]
-        return b[:3] == b"\x55\x8b\xec" or b[:2] == b"\x83\xec" or b[:2] == b"\x81\xec" \
-            or b[:1] in (b"\x53", b"\x56", b"\x57")  # push ebx/esi/edi
+        # (a bare push ebx/esi/edi is not enough: it is just as often the
+        # middle of a function, e.g. 0x1E00C6 inside D3D's 0x1E00C0)
+        return b[:3] == b"\x55\x8b\xec" or b[:2] == b"\x83\xec" or b[:2] == b"\x81\xec"
 
     cands = {}
     for t, n in imms.items():

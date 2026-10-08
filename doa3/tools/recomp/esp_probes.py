@@ -82,10 +82,20 @@ def main():
         start, end = int(f["start"], 16), int(f["end"], 16)
         if start in SKIP or not any(lo <= start < hi for lo, hi in ranges):
             continue
+        # Only real entries: a seeded fragment (link_seed) starts mid-function
+        # and legitimately pops what its function pushed.
+        if f.get("detection_method") == "link_seed":
+            continue
         rets = set()
+        seh = False
         for ins in md.disasm(code(start, end - start), start):
             if ins.mnemonic in ("ret", "retn"):
                 rets.add(int(ins.op_str, 0) if ins.op_str else 0)
+            elif ins.mnemonic == "call" and ins.op_str.startswith("0x") and \
+                    int(ins.op_str, 16) in (L.SEH_PROLOG, L.SEH_EPILOG):
+                seh = True      # frame set up / torn down by the SEH helpers
+        if seh:
+            continue
         if len(rets) == 1:
             want[start] = rets.pop()
 
