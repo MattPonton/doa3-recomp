@@ -57,32 +57,67 @@ kernel data 0x00CB4000, stack 0x00CC0000. The low heap is ~0.5 MB smaller than
 
 All 8 kernel imports new in 3.1 already have bridge handlers.
 
-## Still 3.0-specific (to do)
+## `recomp_manual.c`
 
-1. **`src/game/recomp/recomp_manual.c`**: 262 function overrides and 585
-   `sub_` references at 3.0 addresses, 317 of which are not functions in 3.1,
-   plus ~50 helpers / 40 globals other modules use (push-buffer translation,
-   CRI pump, small-block heap). Plan: keep the helpers, move the 3.0 overrides
-   to a non-compiled reference file, re-derive 3.1 overrides as needed.
-2. **Runtime game symbols**:
-   - `kernel_bridge.c` `bridge_NtWaitForSingleObject`: installer thread ctx
-     `0x0009D440`, CRI vblank event `0x001C2CF0`.
-   - `xbox_fiber.c`: CRI watchdog `0x0016A530`.
-   - `main.c` `DOA3_WATCHARR` debug watch (`0x00C05844`), debug only.
-   - `nv2a/*_snapshot.h`: debug captures, 3.0 addresses.
-3. **Netplay** (`src/online/netplay_session.c`): 63 fight-state addresses and
-   `sub_000BB270`. Leave online disabled for 3.1 until offline play works.
-4. **Entry points reached only through pointers** beyond the CRT tables:
+Upstream's file (7,072 lines: 262 overrides, ~480 helper definitions, most of
+them 3.0 diagnostics) is kept unbuilt as `src/game/recomp/reference/
+recomp_manual_30.c`. The new file (about 300 lines) keeps only what the rest
+of the runtime links against: the 17 symbols used outside the file plus their
+dependencies, unchanged apart from the APU ISR range, which now uses the
+DSOUND section bounds from `xbe_layout.h`.
+
+Placeholders for helpers that read 3.0 game memory (each marked `TODO(3.1)`):
+
+| Function | 3.0 behaviour | Now |
+|---|---|---|
+| `doa3_pump_cri_servers` | runs the CRI ADX/Sofdec servers each vblank | logs once, does nothing: streamed audio and movies are expected to stall |
+| `doa3_guest_display_size` | reads the device's back-buffer size | returns 0, NV2A falls back to SET_SURFACE_CLIP |
+| `doa3_workers_may_run` | also requires two CRI lock words clear | lock check dropped (gate stays closed until movie-flow overrides exist) |
+| `doa3_netplay_force_pads` | writes the XPP pad table | logs once, does nothing |
+| `doa3_ptinfo_check` | page-table diagnostic (`DOA3_PTCHK=1`) | no-op |
+| `doa3_crt_lookup` | 3.0's separate constructor table | returns 0; constructors are in the dispatch table |
+
+The override table is empty. Add 3.1 overrides there as defects are found.
+
+## Gated to 3.0 builds (`#ifdef DOA3_XBE_ID_3_0`)
+
+- `kernel_bridge.c` `bridge_NtWaitForSingleObject`: the installer-thread
+  wait (ctx `0x0009D440`) and the CRI vblank pulse (`0x001C2CF0`). Other
+  XBEs get the old "satisfied at once" result. TODO(3.1).
+- `xbox_fiber.c`: the CRI watchdog exclusion (`0x0016A530`). TODO(3.1).
+- `online/netplay_session.c`: every address in it is 3.0's. On other XBEs,
+  arming a session or loading a replay is refused with a message, so none
+  of it touches guest memory.
+
+## Compile check (without Windows)
+
+Every runtime C file and all 12 generated units compile with clang against
+the mingw-w64 headers (`--target=x86_64-w64-windows-gnu -fms-extensions`),
+except `kernel_path.c`, whose `KernelMode` macro clashes with mingw's RPC
+headers (also true of unmodified upstream; MSVC's headers do not clash).
+Comparing undefined against defined symbols across the objects leaves only
+Windows/CRT imports and symbols from files that check could not build
+(`kernel_path.c`, the C++ UI). The real build is MSVC on Windows.
+
+## Still to do
+
+1. **First MSVC build** on Windows, then boot and fix what breaks.
+2. **CRI pump and movie flow**: re-derive `doa3_pump_cri_servers` and the
+   movie-flow overrides against 3.1's CRI library.
+3. **Remaining runtime game symbols**: the three gated addresses above;
+   `main.c` `DOA3_WATCHARR` debug watch (`0x00C05844`) and the
+   `nv2a/*_snapshot.h` debug captures are 3.0 addresses, debug only.
+4. **Netplay**: port the state regions, then lift the gate.
+5. **Entry points reached only through pointers** beyond the CRT tables:
    vtables, callback and state tables (upstream's `recomp_vtbl.c`,
    `recomp_seedattract.c`). Found at runtime through `[ICALL-CENSUS]` /
    unresolved-dispatch logs.
-5. **Fix scripts not yet run on the 3.1 output**: `fix_deferred_cmp`,
+6. **Fix scripts not yet run on the 3.1 output**: `fix_deferred_cmp`,
    `fix_fallthroughs` / `scan_fallthroughs2` (hardcode 3.0's .text end and an
    XDK keep-list), `fix_fpu_global`, `fix_selfspins` (hardcodes file names),
    `fix_cond_tailcall_ebp`, `fix_ftol_inline` (now layout-driven).
-6. **3++ code cave**: 0x2355E0 in `.rdata` is skipped by the lifter; implement
-   the 3++ throw-damage fix as an override of `sub_000A92C0` instead (see
-   `VERSION_DIFF.md` in the analysis notes).
+7. **3++ code cave**: 0x2355E0 in `.rdata` is skipped by the lifter; implement
+   the 3++ throw-damage fix as an override of `sub_000A92C0` instead.
 
 The NOTES.md "Lifter Defect Reference" describes each defect class upstream
 hit on 3.0; expect the same classes on 3.1 at different addresses.

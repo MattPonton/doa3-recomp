@@ -17,8 +17,17 @@
 #include "game/recomp/recomp_types.h"
 #include "kernel/kernel.h"
 #include "xbox_det.h"
+#include "xbe_layout.h"
 
+/* Every guest address and function in this file is 3.0's (DOA3 NTSC-U).
+ * On any other XBE, sessions refuse to start, so nothing here can write
+ * 3.0 offsets into another build's memory. See PORTING_3.1.md. */
+#ifdef DOA3_XBE_ID_3_0
+#define NETPLAY_SUPPORTED 1
 void sub_000BB270(void);                       /* rebuilds the per-port button maps */
+#else
+#define NETPLAY_SUPPORTED 0
+#endif
 void doa3_netplay_force_pads(uint32_t mask);   /* recomp_manual.c */
 void mcpx_apu_det_begin(uint64_t xgscnt_base); /* apu_core.c: chip stepped per frame */
 uint64_t mcpx_apu_xgscnt_now(void);
@@ -306,7 +315,11 @@ static void rebuild_button_maps(void)
 {
     uint32_t sv[7] = { g_eax, g_ecx, g_edx, g_ebx, g_esi, g_edi, g_esp };
     PUSH32(g_esp, 0);
+#if NETPLAY_SUPPORTED
     sub_000BB270();
+#else
+    g_esp += 4;   /* no 3.1 equivalent yet; sessions cannot start anyway */
+#endif
     g_eax = sv[0]; g_ecx = sv[1]; g_edx = sv[2];
     g_ebx = sv[3]; g_esi = sv[4]; g_edi = sv[5]; g_esp = sv[6];
 }
@@ -901,6 +914,11 @@ uint32_t netplay_filter_pad_mask(uint32_t host_mask)
 
 void netplay_set_armed(int armed, int role)
 {
+    if (armed && !NETPLAY_SUPPORTED) {
+        _snprintf(s_msg, sizeof(s_msg) - 1, "Online play is not ported to DOA3 %s yet", DOA3_XBE_VERSION);
+        s_armed = 0;
+        return;
+    }
     if (s_state != NP_STATE_ACTIVE) s_role = role;
     s_armed = armed ? 1 : 0;
 }
@@ -915,6 +933,10 @@ int netplay_record(void) { return s_record; }
 void netplay_request_replay(const char *path)
 {
     if (!path || s_state == NP_STATE_ACTIVE) return;
+    if (!NETPLAY_SUPPORTED) {
+        _snprintf(s_msg, sizeof(s_msg) - 1, "Replays are not ported to DOA3 %s yet", DOA3_XBE_VERSION);
+        return;
+    }
     strncpy(s_req_path, path, sizeof(s_req_path) - 1);
     s_req_path[sizeof(s_req_path) - 1] = 0;
     InterlockedExchange(&s_req_replay, 1);

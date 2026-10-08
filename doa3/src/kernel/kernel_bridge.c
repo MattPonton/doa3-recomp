@@ -327,6 +327,10 @@ static void bridge_NtWaitForSingleObject(void)
     uint32_t h = STACK_ARG(0);
     uint32_t timeout_va = STACK_ARG(2);
     if ((h & 0xFFFF0000u) == 0xBEEF0000u) {
+#ifdef DOA3_XBE_ID_3_0
+        /* 3.0 addresses: the installer thread's start context and the CRI
+         * workers' vblank event. TODO(3.1): find this build's equivalents;
+         * until then other XBEs keep the old "satisfied at once" result. */
         const uint32_t install_ctx = 0x0009D440u;
         int zero_timeout = timeout_va &&
                            BRIDGE_MEM32(timeout_va) == 0 && BRIDGE_MEM32(timeout_va + 4) == 0;
@@ -343,6 +347,7 @@ static void bridge_NtWaitForSingleObject(void)
                 xbox_fiber_yield();
             }
         }
+#endif /* DOA3_XBE_ID_3_0 */
         g_eax = 0;   /* STATUS_WAIT_0 */
         return;
     }

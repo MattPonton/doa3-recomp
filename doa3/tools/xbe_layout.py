@@ -12,6 +12,7 @@ values fall back to the 3.0 layout upstream was written for.
 
 import hashlib
 import os
+import re
 import struct
 from pathlib import Path
 
@@ -244,6 +245,7 @@ def write_header(path):
     a("")
     a(f'#define DOA3_XBE_VERSION        "{VERSION}"')
     a(f'#define DOA3_XBE_MD5            "{LAYOUT["md5"]}"')
+    a(f"#define DOA3_XBE_ID_{re.sub(r'[^A-Za-z0-9]', '_', VERSION).upper()} 1  /* for #ifdef on version-bound code */")
     a(f"#define DOA3_ENTRY_POINT        0x{ENTRY_POINT:08X}u")
     a(f"#define DOA3_IMAGE_BASE         0x{XBE_BASE_ADDRESS:08X}u")
     a(f"#define DOA3_IMAGE_END          0x{image_end:08X}u")
@@ -262,6 +264,12 @@ def write_header(path):
     for i, (nm, va, vs, raw, rs, _) in enumerate(extra):
         tail = " \\" if i < len(extra) - 1 else ""
         a(f'    {{ "{nm}", 0x{va:08X}u, 0x{rs:08X}u, 0x{raw:08X}u }},{tail}')
+    a("")
+    a("/* Named bounds of every section: [VA, END) over the virtual size */")
+    for nm, va, vs, raw, rs, _ in LAYOUT["sections"]:
+        k = re.sub(r"[^A-Za-z0-9]", "", nm).upper()
+        a(f"#define DOA3_SEC_{k + '_VA':<16} 0x{va:08X}u")
+        a(f"#define DOA3_SEC_{k + '_END':<16} 0x{va + vs:08X}u")
     a("")
     a("/* Runtime placements just above the image (3.0 reproduces upstream's values) */")
     a(f"#define DOA3_FAKE_TLS_VA        0x{tls:08X}u")

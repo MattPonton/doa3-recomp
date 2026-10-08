@@ -189,7 +189,9 @@ int xbox_fiber_workers_ready(void)
          * READY; counting it meant "until idle" always ran to its cap, and
          * within that budget the file server's progress on a load depended
          * on how much music streaming was queued ahead of it. */
-        if (g_fib[i].ctx1 == 0x0016A530u) continue;
+#ifdef DOA3_XBE_ID_3_0
+        if (g_fib[i].ctx1 == 0x0016A530u) continue;   /* 3.0 address; TODO(3.1) */
+#endif
         if (g_fib[i].state == FIB_READY) return 1;
     }
     return 0;

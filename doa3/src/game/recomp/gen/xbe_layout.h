@@ -5,6 +5,7 @@
 
 #define DOA3_XBE_VERSION        "3.1"
 #define DOA3_XBE_MD5            "4d1a10a16b8ad2065ad9dee65e951f08"
+#define DOA3_XBE_ID_3_1 1  /* for #ifdef on version-bound code */
 #define DOA3_ENTRY_POINT        0x0018CB89u
 #define DOA3_IMAGE_BASE         0x00010000u
 #define DOA3_IMAGE_END          0x00CABB00u
@@ -35,6 +36,36 @@
     { "XPP", 0x00210760u, 0x0000729Cu, 0x00203000u }, \
     { "DOLBY", 0x00CA2560u, 0x00006D84u, 0x003FC000u }, \
     { "$$XTIMAGE", 0x00CA9300u, 0x00002800u, 0x00403000u },
+
+/* Named bounds of every section: [VA, END) over the virtual size */
+#define DOA3_SEC_TEXT_VA          0x00011000u
+#define DOA3_SEC_TEXT_END         0x001DC330u
+#define DOA3_SEC_D3D_VA           0x001DC340u
+#define DOA3_SEC_D3D_END          0x001EE0A0u
+#define DOA3_SEC_D3DX_VA          0x001EE0A0u
+#define DOA3_SEC_D3DX_END         0x001F0F48u
+#define DOA3_SEC_XGRPH_VA         0x001F0F60u
+#define DOA3_SEC_XGRPH_END        0x001F125Cu
+#define DOA3_SEC_DSOUND_VA        0x001F1260u
+#define DOA3_SEC_DSOUND_END       0x0020C6A4u
+#define DOA3_SEC_PSGSFD00_VA      0x0020C6C0u
+#define DOA3_SEC_PSGSFD00_END     0x0020FA50u
+#define DOA3_SEC_PSGSFDI_VA       0x0020FA60u
+#define DOA3_SEC_PSGSFDI_END      0x0020FC50u
+#define DOA3_SEC_PSGSFDB_VA       0x0020FC60u
+#define DOA3_SEC_PSGSFDB_END      0x00210320u
+#define DOA3_SEC_PSGSFDP_VA       0x00210320u
+#define DOA3_SEC_PSGSFDP_END      0x00210750u
+#define DOA3_SEC_XPP_VA           0x00210760u
+#define DOA3_SEC_XPP_END          0x002179FCu
+#define DOA3_SEC_RDATA_VA         0x00217A00u
+#define DOA3_SEC_RDATA_END        0x00252058u
+#define DOA3_SEC_DATA_VA          0x00252060u
+#define DOA3_SEC_DATA_END         0x00CA255Cu
+#define DOA3_SEC_DOLBY_VA         0x00CA2560u
+#define DOA3_SEC_DOLBY_END        0x00CA92F8u
+#define DOA3_SEC_XTIMAGE_VA       0x00CA9300u
+#define DOA3_SEC_XTIMAGE_END      0x00CABB00u
 
 /* Runtime placements just above the image (3.0 reproduces upstream's values) */
 #define DOA3_FAKE_TLS_VA        0x00CAC000u
