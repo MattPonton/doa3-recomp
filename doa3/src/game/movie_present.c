@@ -757,6 +757,7 @@ void doa3_movie_present_finish(void)
     fflush(stderr);
 }
 
+int g_doa3_capture_shift = 0;   /* >0: write every (1<<shift)-th pixel (smaller files) */
 void doa3_capture_backbuffer(const char *path)
 {
     ID3D11Device *dev = d3d8_GetD3D11Device();
@@ -781,7 +782,8 @@ void doa3_capture_backbuffer(const char *path)
                                           D3D11_MAP_READ, 0, &map))) {
         FILE *f = fopen(path, "wb");
         if (f) {
-            int w = (int)td.Width, h = (int)td.Height;
+            int sh = g_doa3_capture_shift, step = 1 << sh;
+            int w = (int)td.Width >> sh, h = (int)td.Height >> sh;
             int stride = (w * 3 + 3) & ~3;
             unsigned char hdr[54];
             unsigned size = 54u + (unsigned)(stride * h);
@@ -799,7 +801,7 @@ void doa3_capture_backbuffer(const char *path)
                 unsigned char *row = (unsigned char *)calloc(1, (size_t)stride);
                 for (int y = h - 1; y >= 0; y--) {
                     const unsigned char *src =
-                        (const unsigned char *)map.pData + (size_t)y * map.RowPitch;
+                        (const unsigned char *)map.pData + (size_t)(y * step) * map.RowPitch;
                     /* The swap chain is DXGI_FORMAT_R8G8B8A8_UNORM, i.e.
                      * memory order R,G,B,A -- not BGRA as this loop used to
                      * assume. A 24-bit BMP stores B,G,R, so copying straight
@@ -807,16 +809,16 @@ void doa3_capture_backbuffer(const char *path)
                      * read back the wrong colour (the FMV end card came out
                      * blue in the dumps while the window showed it red). */
                     for (int x = 0; x < w; x++) {      /* RGBA -> BGR */
-                        row[x * 3 + 0] = src[x * 4 + 2];   /* B <- R */
-                        row[x * 3 + 1] = src[x * 4 + 1];   /* G */
-                        row[x * 3 + 2] = src[x * 4 + 0];   /* R <- B */
+                        row[x * 3 + 0] = src[x * step * 4 + 2];   /* B <- R */
+                        row[x * 3 + 1] = src[x * step * 4 + 1];   /* G */
+                        row[x * 3 + 2] = src[x * step * 4 + 0];   /* R <- B */
                     }
                     fwrite(row, 1, (size_t)stride, f);
                 }
                 free(row);
             }
             fclose(f);
-            fprintf(stderr, "[CAPTURE] wrote %s (%ux%u)\n", path, td.Width, td.Height);
+            fprintf(stderr, "[CAPTURE] wrote %s (%dx%d)\n", path, w, h);
             fflush(stderr);
         }
         ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource *)stg, 0);

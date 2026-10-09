@@ -469,6 +469,64 @@ static void d3d4134_pace(void)
     }
 }
 
+/* Frame captures by presented-frame number: DOA3_CAPTURE_FRAMES="a-b,c-d"
+ * writes half-size frame_NNNN.bmp of each frame in the ranges, just before it
+ * is presented. The default ranges bracket the two one-frame glitches seen on
+ * the boot screens (legal text brightening, a box around the TECMO logo),
+ * located relative to the draw-count captures: frame_at30 + ~206 and
+ * frame_at400 + ~111 (the [CAPTURE] "draw N = presented frame M" lines map
+ * those). DOA3_CAPTURE_FRAMES=0 turns it off. */
+extern unsigned g_doa3_frames_presented;   /* nv2a_pgraph_d3d11.c */
+static void d3d4134_capture_frame(unsigned frame)
+{
+    static int s_init, s_n;
+    static unsigned s_lo[8], s_hi[8];
+    int k;
+    if (!s_init) {
+        const char *e = getenv("DOA3_CAPTURE_FRAMES");
+        s_init = 1;
+        if (e && !strcmp(e, "0")) e = "";
+        if (e) {
+            while (*e && s_n < 8) {
+                char *end; unsigned a = strtoul(e, &end, 10), b = a;
+                if (end == e) break;
+                if (*end == '-') { e = end + 1; b = strtoul(e, &end, 10); }
+                s_lo[s_n] = a; s_hi[s_n] = b; s_n++;
+                e = (*end == ',') ? end + 1 : end;
+            }
+        }
+    }
+    {   /* default: relative to the frames where draw 30 / draw 400 were captured */
+        extern unsigned g_doa3_frame_at_draw30, g_doa3_frame_at_draw400;
+        static int s_rel0, s_rel1;
+        if (!getenv("DOA3_CAPTURE_FRAMES")) {
+            if (!s_rel0 && g_doa3_frame_at_draw30) {
+                s_rel0 = 1;
+                s_lo[s_n] = g_doa3_frame_at_draw30 - 1 + 200; s_hi[s_n] = s_lo[s_n] + 12;
+                fprintf(stderr, "[CAPTURE] will capture frames %u-%u\n", s_lo[s_n], s_hi[s_n]);
+                s_n++;
+            }
+            if (!s_rel1 && g_doa3_frame_at_draw400) {
+                s_rel1 = 1;
+                s_lo[s_n] = g_doa3_frame_at_draw400 - 1 + 105; s_hi[s_n] = s_lo[s_n] + 12;
+                fprintf(stderr, "[CAPTURE] will capture frames %u-%u\n", s_lo[s_n], s_hi[s_n]);
+                s_n++;
+            }
+        }
+    }
+    for (k = 0; k < s_n; k++)
+        if (frame >= s_lo[k] && frame <= s_hi[k]) {
+            extern void doa3_capture_backbuffer(const char *path);
+            extern int g_doa3_capture_shift;
+            char path[64];
+            sprintf(path, "frame_%04u.bmp", frame);
+            g_doa3_capture_shift = 1;
+            doa3_capture_backbuffer(path);
+            g_doa3_capture_shift = 0;
+            return;
+        }
+}
+
 static void d3d4134_frame_done(uint32_t dev)
 {
     extern void pgraph_d3d11_flush(void);
@@ -477,6 +535,7 @@ static void d3d4134_frame_done(uint32_t dev)
     uint32_t sv_eax = eax, sv_ecx = ecx, sv_edx = edx, sv_ebx = ebx;
     uint32_t sv_esi = esi, sv_edi = edi, sv_esp = esp, sv_seh = g_seh_ebp;
     pgraph_d3d11_flush();
+    d3d4134_capture_frame(++g_doa3_frames_presented);
     doa3_present_frame();
     d3d4134_pace();
     { extern void doa3_fn_profile_tick(void); doa3_fn_profile_tick(); }
@@ -775,24 +834,29 @@ void doa3_fn_trace(uint32_t va, uint32_t esp_in)
 {
     int i;
 #if defined(DOA3_XBE_ID_3_1)
-    {   /* Value watch by polling at every probed return: the movie's video
-         * output handler slot (sfd handle 0xC86480 + 6*0x610 + 0x31A0) is
-         * cleared mid-movie; name the function that returned when it changed. */
-        static uint32_t s_wv_va = 0xC8BA80u, s_wv_last;
+    {   /* Value watch by polling at every probed return. The movie's
+         * get-frame handler (0x1A4C80) delivers only while the sfd handle's
+         * state [0xC86480+0x40] is 3 or 4; mid-movie it leaves those and no
+         * frame is delivered again. Name the function that returned when the
+         * watched words changed. */
+        static const uint32_t s_wv_va[2] = { 0xC864C0u, 0xC8BA80u };
+        static uint32_t s_wv_last[2];
         static int s_wv_n;
-        uint32_t v = MEM32(s_wv_va);
-        if (v != s_wv_last && s_wv_n < 24) {
-            s_wv_n++;
-            fprintf(stderr, "[VWATCH] [%08X] %08X -> %08X at return of sub_%08X (fiber %d); recent:",
-                    s_wv_va, s_wv_last, v, va, xbox_fiber_current());
-            {   unsigned j, k = 0;
+        int w;
+        for (w = 0; w < 2; w++) {
+            uint32_t v = MEM32(s_wv_va[w]);
+            if (v != s_wv_last[w] && s_wv_n < 60) {
+                unsigned j, k = 0;
+                s_wv_n++;
+                fprintf(stderr, "[VWATCH] [%08X] %08X -> %08X at return of sub_%08X (fiber %d, frame %u); recent:",
+                        s_wv_va[w], s_wv_last[w], v, va, xbox_fiber_current(), g_doa3_frames_presented);
                 for (j = s_ring_n; j > 0 && k < 24; j--, k++)
                     fprintf(stderr, " %X/%d", s_ring[(j - 1) & 8191].va, s_ring[(j - 1) & 8191].fib);
+                fprintf(stderr, "\n");
+                fflush(stderr);
             }
-            fprintf(stderr, "\n");
-            fflush(stderr);
+            s_wv_last[w] = v;
         }
-        s_wv_last = v;
     }
 #endif
     if (g_fn_trace_on > 0) {

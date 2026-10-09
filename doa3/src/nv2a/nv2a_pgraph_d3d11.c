@@ -3299,8 +3299,14 @@ static void submit_draw(void)
             g_pg.stats.draw_calls == 2400u ||
             g_pg.stats.draw_calls == 5000u || g_pg.stats.draw_calls == 60000u) {
             char ep[64];
+            extern unsigned g_doa3_frames_presented, g_doa3_frame_at_draw30, g_doa3_frame_at_draw400;
+            /* stored +1 so that 0 means "not yet" */
+            if (g_pg.stats.draw_calls == 30u)  g_doa3_frame_at_draw30  = g_doa3_frames_presented + 1;
+            if (g_pg.stats.draw_calls == 400u) g_doa3_frame_at_draw400 = g_doa3_frames_presented + 1;
             sprintf(ep, "frame_at%u.bmp", g_pg.stats.draw_calls);
             doa3_capture_backbuffer(ep);
+            fprintf(stderr, "[CAPTURE] draw %u = presented frame %u\n",
+                    g_pg.stats.draw_calls, g_doa3_frames_presented);
         }
         if (g_doa3_post_movie) {
             if (!s_base) s_base = g_pg.stats.draw_calls;
@@ -3316,6 +3322,10 @@ static void submit_draw(void)
     if (g_pg.stats.draw_calls <= 5 || (g_pg.stats.draw_calls % 1000) == 0) {
     }
 }
+
+/* Presented-frame counter (the 3.1 flip path counts it) and the frames on
+ * which draws 30 / 400 were captured, for frame-numbered captures. */
+unsigned g_doa3_frames_presented, g_doa3_frame_at_draw30, g_doa3_frame_at_draw400;
 
 /* ══════════════════════════════════════════════════════════════════════
  * Method Handler
