@@ -144783,7 +144783,7 @@ void sub_0018B744_gen(void)
 
 loc_0018B744: ;
     ecx = MEM32(esp + 4);
-    /* TODO: rdtsc  */
+    { uint64_t _t = doa3_guest_rdtsc(); eax = (uint32_t)_t; edx = (uint32_t)(_t >> 32); } /* rdtsc */
     MEM32(ecx) = eax;
     MEM32(ecx + 4) = edx;
     eax = 0; /* xor self */

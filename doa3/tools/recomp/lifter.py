@@ -955,6 +955,30 @@ class Lifter:
             return ["/* wait - FPU sync */"]
 
         # ── Misc ──
+        if m in ("rcr", "rcl") and nops == 2 and ops[1].type == "imm" and ops[1].imm == 1:
+            # Rotate through carry by one; _cf comes from the shift lifted just
+            # before (see lift_basic_block). The CRT's 64-bit divide/remainder
+            # helpers (_aulldiv 0x1B8890 / _aullrem 0x1B8940 / 0x1B87A0 /
+            # 0x1BD580) shift a 64-bit pair with `shr hi,1 / rcr lo,1`; as a
+            # TODO the low word never moved and the quotient was wrong.
+            v = _fmt_operand_read(ops[0])
+            size = ops[0].mem_size if ops[0].type == "mem" else 4
+            if size != 4:
+                return [f"/* TODO: {m} {insn.op_str} (narrow) */"]
+            if m == "rcr":
+                return [f"{{ uint32_t _o = {v}; "
+                        + _fmt_operand_write(ops[0], "(_o >> 1) | ((uint32_t)_cf << 31)")
+                        + " _cf = _o & 1; } /* rcr 1 */"]
+            return [f"{{ uint32_t _o = {v}; "
+                    + _fmt_operand_write(ops[0], "(_o << 1) | (uint32_t)_cf")
+                    + " _cf = _o >> 31; } /* rcl 1 */"]
+        if m == "rdtsc":
+            # DOA3 3.1: was a TODO (eax/edx left as they were). Sofdec times
+            # its picture decode with it (0x1A9300, 733 MHz) and XAPI's
+            # QueryPerformanceCounter is rdtsc (0x18B744); garbage there cut
+            # macroblocks out of the intro movie's frames (green blocks).
+            return ["{ uint64_t _t = doa3_guest_rdtsc(); eax = (uint32_t)_t; "
+                    "edx = (uint32_t)(_t >> 32); } /* rdtsc */"]
         if m == "cdq":
             return ["edx = ((int32_t)eax < 0) ? 0xFFFFFFFF : 0; /* cdq */"]
         if m == "cwde":
@@ -2169,6 +2193,16 @@ def lift_basic_block(lifter, bb, flag_state=None):
             cf_expr = _make_cf_expr(last_flag_setter, last_flag_ops)
             if cf_expr is not None:
                 stmts.append(f"_cf = {cf_expr}; /* CF from {last_flag_setter} */")
+
+        # A shift whose carry feeds a following rcr/rcl: latch CF first.
+        if (curr.mnemonic in ("shr", "sar", "shl") and i + 1 < len(insns)
+                and insns[i + 1].mnemonic in ("rcr", "rcl")
+                and len(curr.operands) == 2 and curr.operands[1].type == "imm"
+                and 1 <= curr.operands[1].imm <= 31):
+            v = _fmt_operand_read(curr.operands[0])
+            k = curr.operands[1].imm
+            bit = (k - 1) if curr.mnemonic in ("shr", "sar") else (32 - k)
+            stmts.append(f"_cf = (int)(((uint32_t)({v}) >> {bit}) & 1); /* CF of {curr.mnemonic} */")
 
         # Lift the instruction normally
         results = lifter.lift_instruction(insns[i])

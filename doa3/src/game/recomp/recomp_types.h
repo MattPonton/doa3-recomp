@@ -102,6 +102,9 @@ extern uint32_t g_seh_ebp;
 extern volatile uint32_t g_icall_trace[ICALL_TRACE_SIZE];
 extern volatile uint32_t g_icall_trace_idx;
 extern volatile uint64_t g_icall_count;
+/* Guest time-stamp counter: host QPC scaled to the Xbox CPU's 733.33 MHz
+ * (the lifted rdtsc; recomp_manual.c). */
+uint64_t doa3_guest_rdtsc(void);
 
 /* ── ICALL failure diagnostic ────────────────────────────── */
 void recomp_icall_fail_log(uint32_t va);

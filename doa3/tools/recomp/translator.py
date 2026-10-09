@@ -337,7 +337,7 @@ class FunctionTranslator:
             lines.append(f"    int _flags = 0; /* fallback flag var */")
 
         # Add _cf for carry-dependent instructions (sbb, adc)
-        has_carry = any(insn.mnemonic in ("sbb", "adc")
+        has_carry = any(insn.mnemonic in ("sbb", "adc", "rcr", "rcl")
                         for insn in instructions)
         if has_carry:
             lines.append(f"    int _cf = 0; /* carry flag */")

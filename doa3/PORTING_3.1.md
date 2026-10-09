@@ -443,3 +443,15 @@ there), and add gets ja/jbe from its result (CF = result < addend). A
 fallback (35 sites left on 3.1: imul/sbb/adc combinations, mostly in code
 that is never reached).
 
+Thirty-fourth run (0.0.40): the movie shows, with green and stale 16x16
+blocks in its early frames. Two instructions the lifter left as TODO
+comments are in the paths it runs: `rdtsc` (Sofdec's decode timer 0x1A9300
+at 733 MHz, XAPI's QueryPerformanceCounter 0x18B744) and `rcr` (the CRT's
+64-bit divide/remainder helpers 0x1B87A0/0x1B8890/0x1B8940/0x1BD580 shift a
+64-bit pair with `shr hi,1 / rcr lo,1`, so large-divisor 64-bit divisions
+were wrong). rdtsc now reads host QPC scaled to 733.33 MHz
+(`doa3_guest_rdtsc`); rcr/rcl by one rotate through `_cf`, which the
+preceding shift latches. The movie file is read to its last byte (frame
+1472) and the ADX error follows ~4 s later: the audio side never sees the
+end of its data.
+

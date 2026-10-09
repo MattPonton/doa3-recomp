@@ -119,6 +119,20 @@ void doa3_apu_deliver_irq(void)
 
 volatile int g_doa3_post_movie = 0;
 
+uint64_t doa3_guest_rdtsc(void)
+{
+    static LARGE_INTEGER s_f, s_0;
+    LARGE_INTEGER n;
+    if (!s_f.QuadPart) { QueryPerformanceFrequency(&s_f); QueryPerformanceCounter(&s_0); }
+    QueryPerformanceCounter(&n);
+    /* 733,333,333 Hz, as XAPI's QueryPerformanceFrequency (0x18B755) reports */
+    {
+        uint64_t d = (uint64_t)(n.QuadPart - s_0.QuadPart);
+        return (d / (uint64_t)s_f.QuadPart) * 733333333ull +
+               (d % (uint64_t)s_f.QuadPart) * 733333333ull / (uint64_t)s_f.QuadPart;
+    }
+}
+
 /* ── Call profile of the probed functions (gen/recomp_probes.c) ──────
  * Each probe wrapper counts its calls and registers its counter on the first
  * one. doa3_fn_profile_tick() (once per presented frame) prints, every 5 s,

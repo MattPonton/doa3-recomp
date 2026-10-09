@@ -29397,7 +29397,7 @@ void sub_001A9300_gen(void)
 loc_001A9300: ;
     esp = esp - 8;
     PUSH32(esp, esi);
-    /* TODO: rdtsc  */
+    { uint64_t _t = doa3_guest_rdtsc(); eax = (uint32_t)_t; edx = (uint32_t)(_t >> 32); } /* rdtsc */
     MEM32(esp + 4) = edx;
     MEM32(esp + 8) = eax;
     ecx = MEM32(esp + 8);
@@ -88467,10 +88467,12 @@ loc_001B87C1: ;
     eax = MEM32(esp + 8);
 
 loc_001B87CF: ;
+    _cf = (int)(((uint32_t)(ecx) >> 0) & 1); /* CF of shr */
     ecx = ecx >> 1;
-    /* TODO: rcr ebx, 1 */
+    { uint32_t _o = ebx; ebx = (_o >> 1) | ((uint32_t)_cf << 31); _cf = _o & 1; } /* rcr 1 */
+    _cf = (int)(((uint32_t)(edx) >> 0) & 1); /* CF of shr */
     edx = edx >> 1;
-    /* TODO: rcr eax, 1 */
+    { uint32_t _o = eax; eax = (_o >> 1) | ((uint32_t)_cf << 31); _cf = _o & 1; } /* rcr 1 */
     ecx = ecx | ecx;
     if ((ecx != 0)) goto loc_001B87CF; /* jne: not equal / not zero */
 
@@ -88536,10 +88538,12 @@ loc_001B87C1: ;
     eax = MEM32(esp + 8);
 
 loc_001B87CF: ;
+    _cf = (int)(((uint32_t)(ecx) >> 0) & 1); /* CF of shr */
     ecx = ecx >> 1;
-    /* TODO: rcr ebx, 1 */
+    { uint32_t _o = ebx; ebx = (_o >> 1) | ((uint32_t)_cf << 31); _cf = _o & 1; } /* rcr 1 */
+    _cf = (int)(((uint32_t)(edx) >> 0) & 1); /* CF of shr */
     edx = edx >> 1;
-    /* TODO: rcr eax, 1 */
+    { uint32_t _o = eax; eax = (_o >> 1) | ((uint32_t)_cf << 31); _cf = _o & 1; } /* rcr 1 */
     ecx = ecx | ecx;
     if ((ecx != 0)) goto loc_001B87CF; /* jne: not equal / not zero */
 
@@ -88848,10 +88852,12 @@ loc_001B88E9: ;
     eax = MEM32(esp + 0x10);
 
 loc_001B88F7: ;
+    _cf = (int)(((uint32_t)(ebx) >> 0) & 1); /* CF of shr */
     ebx = ebx >> 1;
-    /* TODO: rcr ecx, 1 */
+    { uint32_t _o = ecx; ecx = (_o >> 1) | ((uint32_t)_cf << 31); _cf = _o & 1; } /* rcr 1 */
+    _cf = (int)(((uint32_t)(edx) >> 0) & 1); /* CF of shr */
     edx = edx >> 1;
-    /* TODO: rcr eax, 1 */
+    { uint32_t _o = eax; eax = (_o >> 1) | ((uint32_t)_cf << 31); _cf = _o & 1; } /* rcr 1 */
     ebx = ebx | ebx;
     if ((ebx != 0)) goto loc_001B88F7; /* jne: not equal / not zero */
 
@@ -88921,10 +88927,12 @@ loc_001B88E9: ;
     eax = MEM32(esp + 0x10);
 
 loc_001B88F7: ;
+    _cf = (int)(((uint32_t)(ebx) >> 0) & 1); /* CF of shr */
     ebx = ebx >> 1;
-    /* TODO: rcr ecx, 1 */
+    { uint32_t _o = ecx; ecx = (_o >> 1) | ((uint32_t)_cf << 31); _cf = _o & 1; } /* rcr 1 */
+    _cf = (int)(((uint32_t)(edx) >> 0) & 1); /* CF of shr */
     edx = edx >> 1;
-    /* TODO: rcr eax, 1 */
+    { uint32_t _o = eax; eax = (_o >> 1) | ((uint32_t)_cf << 31); _cf = _o & 1; } /* rcr 1 */
     ebx = ebx | ebx;
     if ((ebx != 0)) goto loc_001B88F7; /* jne: not equal / not zero */
 
@@ -89012,6 +89020,7 @@ loc_001B8934: ;
 void sub_001B8940_gen(void)
 {
     int _flags = 0; /* fallback flag var */
+    int _cf = 0; /* carry flag */
 
 loc_001B8940: ;
     PUSH32(esp, ebx);
@@ -89042,10 +89051,12 @@ loc_001B8962: ;
     eax = MEM32(esp + 0xC);
 
 loc_001B8970: ;
+    _cf = (int)(((uint32_t)(ecx) >> 0) & 1); /* CF of shr */
     ecx = ecx >> 1;
-    /* TODO: rcr ebx, 1 */
+    { uint32_t _o = ebx; ebx = (_o >> 1) | ((uint32_t)_cf << 31); _cf = _o & 1; } /* rcr 1 */
+    _cf = (int)(((uint32_t)(edx) >> 0) & 1); /* CF of shr */
     edx = edx >> 1;
-    /* TODO: rcr eax, 1 */
+    { uint32_t _o = eax; eax = (_o >> 1) | ((uint32_t)_cf << 31); _cf = _o & 1; } /* rcr 1 */
     ecx = ecx | ecx;
     if ((ecx != 0)) goto loc_001B8970; /* jne: not equal / not zero */
 
@@ -89095,6 +89106,7 @@ loc_001B89A3: ;
 void sub_001B8962(void)
 {
     int _flags = 0; /* fallback flag var */
+    int _cf = 0; /* carry flag */
 
 loc_001B8962: ;
     ecx = eax;
@@ -89103,10 +89115,12 @@ loc_001B8962: ;
     eax = MEM32(esp + 0xC);
 
 loc_001B8970: ;
+    _cf = (int)(((uint32_t)(ecx) >> 0) & 1); /* CF of shr */
     ecx = ecx >> 1;
-    /* TODO: rcr ebx, 1 */
+    { uint32_t _o = ebx; ebx = (_o >> 1) | ((uint32_t)_cf << 31); _cf = _o & 1; } /* rcr 1 */
+    _cf = (int)(((uint32_t)(edx) >> 0) & 1); /* CF of shr */
     edx = edx >> 1;
-    /* TODO: rcr eax, 1 */
+    { uint32_t _o = eax; eax = (_o >> 1) | ((uint32_t)_cf << 31); _cf = _o & 1; } /* rcr 1 */
     ecx = ecx | ecx;
     if ((ecx != 0)) goto loc_001B8970; /* jne: not equal / not zero */
 
