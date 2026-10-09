@@ -2682,6 +2682,10 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     return 1;
 }
 
+/* Array-draw outcomes, reported every 5 s by pgraph_d3d11_flush's caller:
+ * [0] batches dropped for a non-finite vertex, [1] batches clipped away
+ * entirely, [2] batches drawn, [3] vertices in the NaN-dropped batches. */
+unsigned g_doa3_drop[4];
 static void submit_array_draw(void)
 {
     nv_sync_render_target();
@@ -2714,6 +2718,7 @@ static void submit_array_draw(void)
     nv_batch_ctx_init(&ctx);
 
     if (!is_points && nv_gpu_ff_submit(dev, &ctx, prim, is_quads)) {
+        g_doa3_drop[2]++;
         g_pg.idx_count = 0;
         g_pg.idx_dropped = 0;
         return;
@@ -2825,7 +2830,7 @@ static void submit_array_draw(void)
         uint32_t k;
         for (k = 0; k < out_n; k++) {
             float X = out[k].x, Y = out[k].y, W = out[k].rhw;
-            if (!(X == X) || !(Y == Y) || !(W == W)) { g_pg.idx_count = 0; return; }
+            if (!(X == X) || !(Y == Y) || !(W == W)) { g_doa3_drop[0]++; g_doa3_drop[3] += out_n; g_pg.idx_count = 0; return; }
         }
     }
 
@@ -2858,7 +2863,7 @@ static void submit_array_draw(void)
             }
         }
         if (!getenv("DOA3_NOCLIP")) {
-            if (cn < 3) { g_pg.idx_count = 0; return; }
+            if (cn < 3) { g_doa3_drop[1]++; g_pg.idx_count = 0; return; }
             out = cl; out_n = cn; prim = D3DPT_TRIANGLELIST; prim_count = cn / 3;
         }
     }
@@ -2875,6 +2880,7 @@ static void submit_array_draw(void)
         if (got == 0) dev->lpVtbl->SetVertexShader(dev, prev_vs);
     }
     g_pg.stats.draw_calls++;
+    g_doa3_drop[2]++;
     g_pg.stats.vertices_submitted += out_n;
     g_pg.idx_count = 0;
     g_pg.idx_dropped = 0;

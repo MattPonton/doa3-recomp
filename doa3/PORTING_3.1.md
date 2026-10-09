@@ -627,3 +627,15 @@ sub/add/adc/sbb/and/or/xor/inc/dec/neg/shifts) took 32-bit width; they now
 use the operand's width (_sign_cast), and sub's reconstructed operand for
 ordered compares wraps at 8/16 bits. 54 sites. The pause loop in fights is
 unchanged by the XPP fix; no device change was reported.
+
+Forty-seventh run (0.0.53): START/A skips mv_op (after the 60-frame fade).
+XEMU comparison shots (scene_*.webp beside our scene_*.bmp): most of the
+frame matches; missing are the title stage's floor light rows, part of the
+torch flames, Christie's specular sheen, floor reflections, and on Azuchi's
+top floor the whole room (we show sky). Demo fights also lose wall hits
+(a tree hit becomes a knockdown) and stall at tier drops -- possibly the same
+missing stage geometry seen by collision. In fights "PAUSED PLAYER 1" comes
+back every frame. The pause trigger 0x8A2E0 also fires for a human player
+whose assigned pad (0x30E3F4[player]) is not in the open mask 0x73C8C8;
+0.0.54 logs its inputs ([PAUSE]) and counts array draws dropped for a
+non-finite vertex or clipped away entirely ([DRAW], every 5 s).

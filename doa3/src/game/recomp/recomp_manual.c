@@ -557,6 +557,32 @@ void sub_00088910(void)
     }
 }
 
+/* Battle pause trigger (0x8A2E0): returns the controller of the first human
+ * player whose pad has START in its per-frame aggregate (0x73C8D8 +
+ * pad*0x2C), or whose assigned pad (0x30E3F4[player]) is not in the open
+ * mask 0x73C8C8 -- the "controller gone" case, which also pauses. In fights
+ * on 3.1 it fires every frame for player 1 with no START held. Log the
+ * inputs each time it reports a player (first 30). */
+void sub_0008A2E0_gen(void);
+void sub_0008A2E0(void)
+{
+    static int s_n;
+    sub_0008A2E0_gen();
+    if ((eax & 0xFF) != 0xFF && s_n < 30) {
+        int p;
+        s_n++;
+        fprintf(stderr, "[PAUSE] trigger -> %02X (frame %u): uiActive %u openmask %08X mode %u assign",
+                eax & 0xFF, g_doa3_frames_presented, MEM8(0x5A27A0u), MEM32(0x73C8C8u), MEM8(0x5A2858u));
+        for (p = 0; p < 4; p++) fprintf(stderr, " %02X", MEM8(0x30E3F4u + p));
+        fprintf(stderr, " claimed");
+        for (p = 0; p < 4; p++) fprintf(stderr, " %u", MEM8(0xC5985Cu + p));
+        fprintf(stderr, " agg+8");
+        for (p = 0; p < 4; p++) fprintf(stderr, " %08X", MEM32(0x73C8D8u + p * 0x2C));
+        fprintf(stderr, " human %u %u\n", MEM8(0x59CF58u), MEM8(0x59CF58u + 0x68));
+        fflush(stderr);
+    }
+}
+
 /* Title-attract exit (0x53EB0): with attract input pending (0x5C9248) and
  * action 2 (mv_op), mp_UpdateTitleAttract calls this every frame. First call
  * arms a 60-frame fade (0x5A697A = 1, counter 0x5A6970); when the counter
@@ -962,6 +988,15 @@ void sub_001E27C0(void)
         s_log++;
         fprintf(stderr, "[PB] kickoff #%d dev=%08X cursor=%08X ring=%08X-%08X fence=%08X\n",
                 s_log, dev, cursor, start, end, MEM32(dev + 0x30));
+    }
+    {   static DWORD s_dnext;
+        extern unsigned g_doa3_drop[4];
+        if (GetTickCount() >= s_dnext && g_doa3_frames_presented > 1500) {
+            s_dnext = GetTickCount() + 5000;
+            fprintf(stderr, "[DRAW] frame %u, last 5 s of array draws: drawn %u, dropped (non-finite vertex) %u (%u verts), clipped away %u\n",
+                    g_doa3_frames_presented, g_doa3_drop[2], g_doa3_drop[0], g_doa3_drop[3], g_doa3_drop[1]);
+            g_doa3_drop[0] = g_doa3_drop[1] = g_doa3_drop[2] = g_doa3_drop[3] = 0;
+        }
     }
     {   static DWORD s_next;
         if (GetTickCount() >= s_next) {
