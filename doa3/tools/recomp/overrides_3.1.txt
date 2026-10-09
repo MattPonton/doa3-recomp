@@ -12,3 +12,4 @@
 0x00191D60  CRI file server tick: counted for the watchdog
 0x0019DC30  ADX stereo decoder: argument trace (writes past guest RAM)
 0x0019EA30  Sofdec frame copy + CSC: show the converted movie frame
+0x0019A380  CRI formatted-error sink: logged

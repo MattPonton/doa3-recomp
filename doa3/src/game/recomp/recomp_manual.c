@@ -748,6 +748,30 @@ void sub_0019A330(void)
     }
     sub_0019A330_gen();
 }
+
+/* CRI error sink for formatted messages (0x19A380; the Sofdec/mwPly error
+ * formatter 0x1A0040 lands here). The intro movie's handle went to state -4
+ * (error) right after one of these, mid-movie. */
+void sub_0019A380_gen(void);
+void sub_0019A380(void)
+{
+    static int s_n;
+    uint32_t msg = MEM32(esp + 4);
+    s_n++;
+    if (s_n <= 60 || (s_n & (s_n - 1)) == 0) {
+        char buf[256]; int i;
+        for (i = 0; i < 255; i++) {
+            uint8_t c = msg ? MEM8(msg + i) : 0;
+            if (!c) break;
+            buf[i] = (c >= 0x20 && c < 0x7F) ? (char)c : '?';
+        }
+        buf[i] = 0;
+        fprintf(stderr, "[CRI] error #%d (fiber %d, frame %u): %s\n", s_n, xbox_fiber_current(),
+                g_doa3_frames_presented, buf);
+        fflush(stderr);
+    }
+    sub_0019A380_gen();
+}
 #else
 void doa3_wdog_peek(void) { }
 #endif /* DOA3_XBE_ID_3_1 */
