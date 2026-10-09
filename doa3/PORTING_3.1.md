@@ -304,6 +304,16 @@ frames arrive, and the Sofdec frame copy + colour conversion (0x19EA30, the
 same code as 3.0's 0x1762B0) is wrapped to show each converted frame
 (`doa3_present_movie_guest`, guest-decoded, no host decoder).
 
+Twenty-eighth run: the legal screen and TECMO logo drew, but each lasted a
+few host frames: the flip completes at once, so the game loop free-ran at
+~500 frames/s, and every per-frame counter in the game follows the flips.
+`d3d4134_frame_done` now holds each flip to the next 1/60 s deadline (3.0's
+Present-wrapper pacer), running ready worker fibers while it waits, as the
+CRI threads run on hardware while the game thread waits for vblank.
+`DOA3_NOPACE=1` turns it off. The movie copied only 6 frames and the
+ninja.sfd stream stopped reading at ~20 MB of 35 MB; with the game loop
+paced, see whether the decoder keeps up.
+
 ## Version-driven now
 
 | Piece | Source |

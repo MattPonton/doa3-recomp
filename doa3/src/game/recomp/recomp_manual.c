@@ -336,6 +336,65 @@ static void pb4134_translate(uint32_t from, uint32_t to, int translate)
  * in its SetFence override. Called after KickOff has finished its own work,
  * with every guest register put back afterwards. */
 void sub_001E4AA0(void);
+/* 60 Hz frame pacing (3.0: the Present-wrapper pacer in
+ * reference/recomp_manual_30.c). On hardware the flip waits for the vertical
+ * blank, and every per-frame counter in the game follows the flips 1:1; here
+ * the flip completes at once, so the game free-ran at ~500 frames/s (the
+ * twenty-eighth run showed the legal screen for 8 captured frames and the
+ * TECMO logo for one). Hold each flip to the next 1/60 s deadline. While
+ * waiting, give the CPU to ready worker fibers -- on hardware the CRI
+ * decoder/streaming threads run while the game thread waits for vblank. */
+static void d3d4134_pace(void)
+{
+    extern int xbox_fiber_workers_ready(void);
+    extern int xbox_fiber_is_primary(void);
+    extern void xbox_fiber_yield(void);
+    extern int doa3_workers_may_run(void);
+    static LONGLONG s_qpf, s_next;
+    static HANDLE s_timer;
+    LARGE_INTEGER now;
+    LONGLONG period;
+    if (getenv("DOA3_NOPACE")) return;
+    if (!s_qpf) {
+        LARGE_INTEGER f;
+        QueryPerformanceFrequency(&f);
+        s_qpf = f.QuadPart;
+        s_timer = CreateWaitableTimerExW(NULL, NULL, 0x00000002 /* HIGH_RESOLUTION */,
+                                         TIMER_MODIFY_STATE | SYNCHRONIZE);
+        if (!s_timer)
+            s_timer = CreateWaitableTimerExW(NULL, NULL, 0, TIMER_MODIFY_STATE | SYNCHRONIZE);
+    }
+    period = s_qpf / 60;
+    QueryPerformanceCounter(&now);
+    if (!s_next) s_next = now.QuadPart;
+    s_next += period;
+    /* overran by more than 8 frames: write the hitch off, re-anchor */
+    if (now.QuadPart - s_next > period * 8) s_next = now.QuadPart;
+    for (;;) {
+        LONGLONG rem;
+        QueryPerformanceCounter(&now);
+        rem = s_next - now.QuadPart;
+        if (rem <= 0) break;
+        if (rem * 1000 > s_qpf && xbox_fiber_is_primary() && doa3_workers_may_run() &&
+            xbox_fiber_workers_ready()) {
+            xbox_fiber_yield();             /* a worker lap while we wait */
+            continue;
+        }
+        if (s_timer && rem * 2000 > s_qpf) {
+            LARGE_INTEGER due;
+            LONGLONG wait = rem - s_qpf / 2000;
+            if (wait > s_qpf / 1000) wait = s_qpf / 1000;   /* re-check workers each ms */
+            due.QuadPart = -(wait * 10000000 / s_qpf);
+            if (SetWaitableTimer(s_timer, &due, 0, NULL, NULL, FALSE))
+                WaitForSingleObject(s_timer, 20);
+            else
+                Sleep(0);
+        } else {
+            YieldProcessor();
+        }
+    }
+}
+
 static void d3d4134_frame_done(uint32_t dev)
 {
     extern void pgraph_d3d11_flush(void);
@@ -345,6 +404,9 @@ static void d3d4134_frame_done(uint32_t dev)
     uint32_t sv_esi = esi, sv_edi = edi, sv_esp = esp, sv_seh = g_seh_ebp;
     pgraph_d3d11_flush();
     doa3_present_frame();
+    d3d4134_pace();
+    eax = sv_eax; ecx = sv_ecx; edx = sv_edx; ebx = sv_ebx;    /* the worker laps */
+    esi = sv_esi; edi = sv_edi; esp = sv_esp; g_seh_ebp = sv_seh;
     if (++s_frames <= 3 || (s_frames % 600) == 0)
         fprintf(stderr, "[PB] frame %d presented\n", s_frames);
     ecx = dev + 0x2268;
@@ -507,9 +569,9 @@ void sub_0019EA30(void)
     uint32_t a[6]; int k;
     for (k = 0; k < 6; k++) a[k] = MEM32(esp + 4 + 4u * k);
     sub_0019EA30_gen();
-    if (s_n < 6) {
-        s_n++;
-        fprintf(stderr, "[MOVIE] frame copy(%08X, %08X, %u, %u, %08X, %08X)\n",
+    if (++s_n <= 6 || (s_n % 60) == 0) {
+        fprintf(stderr, "[MOVIE] frame copy #%d (", s_n);
+        fprintf(stderr, "%08X, %08X, %u, %u, %08X, %08X)\n",
                 a[0], a[1], a[2], a[3], a[4], a[5]);
         fflush(stderr);
     }
