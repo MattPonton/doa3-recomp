@@ -94,7 +94,8 @@ void xbox_fiber_yield_back(void);
 
 /* Index of the currently running fiber (0 = primary). */
 int  xbox_fiber_current(void);
-uint32_t xbox_fiber_current_ctx1(void);   /* start context of the running fiber (0 = primary) */
+uint32_t xbox_fiber_current_ctx1(void);
+uint32_t xbox_fiber_current_xhandle(void); /* the running fiber's NT thread handle (0 = none) */   /* start context of the running fiber (0 = primary) */
 
 /* Number of live (non-finished) fibers, including the primary. */
 int  xbox_fiber_count(void);

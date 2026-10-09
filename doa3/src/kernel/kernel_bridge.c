@@ -264,6 +264,17 @@ static void bridge_PsCreateSystemThreadEx(void)
      * The mwPly spin needs a different fix (its resume targets do reach the
      * right fibers; the decoder's wait chain is the issue). */
     xhandle = 0xBEEF0001u;
+#if !defined(DOA3_XBE_ID_3_0)
+    /* 3.1: one handle per thread. CRI's ADXM lock/unlock (0x1925D0/0x192610)
+     * resumes and SUSPENDS the idle thread [0xC80070] from whatever thread
+     * takes the lock; with one shared handle the suspend parked the CALLER --
+     * the movie decode server (group-5 thread) blocked at every unlock and
+     * advanced one lock/unlock step per wake-up, 120 a second, so the intro
+     * movie took ~30 s to prebuffer and its ADX stream starved (FF000C08,
+     * thirty-first run). Suspending another thread is a no-op here (see
+     * bridge_NtSuspendThread). */
+    xhandle = 0xBEEF0100u + (uint32_t)g_thread_call_count;
+#endif
 
 
     if (xbox_handle_ptr) {
@@ -1073,9 +1084,20 @@ static void bridge_NtSuspendThread(void)
                 if (s_logged < 4) { s_logged++;
                     fprintf(stderr, "[FIBER] fiber %d self-suspends through handle %08X; parked on its own thread handle\n",
                             xbox_fiber_current(), handle); fflush(stderr); }
+#if defined(DOA3_XBE_ID_3_0)
                 handle = 0xBEEF0001u;
+#else
+                handle = xbox_fiber_current_xhandle();
+#endif
             }
+#if defined(DOA3_XBE_ID_3_0)
             xbox_fiber_block(handle);
+#else
+            /* Only a thread suspending ITSELF waits here; suspending another
+             * thread (ADXM's idle thread at every lock release) is ignored. */
+            if (handle == xbox_fiber_current_xhandle())
+                xbox_fiber_block(handle);
+#endif
         }
     }
     g_eax = 0;

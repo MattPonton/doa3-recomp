@@ -551,6 +551,7 @@ int xbox_fiber_is_primary(void)
 }
 
 uint32_t xbox_fiber_current_ctx1(void) { return g_active ? g_fib[g_cur].ctx1 : 0; }
+uint32_t xbox_fiber_current_xhandle(void) { return g_active ? g_fib[g_cur].xhandle : 0; }
 
 int xbox_fiber_current(void)
 {

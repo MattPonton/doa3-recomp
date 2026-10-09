@@ -325,6 +325,15 @@ for the D3D vblank event and are released at 59.94 Hz
 (`xbox_fiber_vblank_tick`, run at every scheduling decision). The flip pacer
 also gives worker laps while a game-task coroutine waits.
 
+Thirty-first run (0.0.37): the movie then took ~30 s to prebuffer and its
+ADX stream starved (`SFD ERROR(FF000C08)`, ADXT error -1). [FIBRUNS] showed
+the group-5 decode thread resumed 180 times a second but its server
+(0x19A690) not running: ADXM's lock release (0x192610) SUSPENDS the idle
+thread [0xC80070], and with one shared thread handle the bridge parked the
+caller instead, so the decode server advanced one lock step per wake-up.
+3.1 now gives every thread its own handle (0xBEEF0100 + n); NtSuspendThread
+blocks only a thread suspending itself and ignores suspending another one.
+
 ## Version-driven now
 
 | Piece | Source |
