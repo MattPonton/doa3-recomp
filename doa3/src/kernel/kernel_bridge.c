@@ -1627,6 +1627,12 @@ static NTSTATUS bridge_create_file_impl(
             (win_access & (GENERIC_WRITE | GENERIC_ALL | FILE_WRITE_DATA | FILE_APPEND_DATA)))
             s_fh_write[(gh & 0x00FFFFFFu) / 4u] = 1;
         if (handle_va) BRIDGE_MEM32(handle_va) = gh;
+        {   static int s_opens;
+            if (s_opens++ < 200) {
+                fprintf(stderr, "[OPEN] %08X = %ls\n", gh, win_path);
+                fflush(stderr);
+            }
+        }
         bridge_write_iostatus(iostatus_va, STATUS_SUCCESS,
                               (disposition == 2) ? 2 /* FILE_CREATED */ : 1 /* FILE_OPENED */);
     }

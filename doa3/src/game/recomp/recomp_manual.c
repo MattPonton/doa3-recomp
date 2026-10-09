@@ -750,8 +750,34 @@ void sub_0019EA30(void)
     }
     {
         uint32_t dst = a[1] & 0x07FFFFFFu;
-        if (dst >= 0x1000u && dst + 2880u * 480u < 0x08000000u)
+        if (dst >= 0x1000u && dst + 2880u * 480u < 0x08000000u) {
+            if (s_n == 30 || s_n == 200) {
+                /* What the guest decoded and converted: the 720x480 32bpp
+                 * destination as movie_NNN.bmp, plus how much of it is lit. */
+                char path[64]; FILE *f; unsigned nz = 0, k, y, x;
+                for (k = 0; k < 2880u * 480u; k += 64) nz += MEM8(dst + k) != 0;
+                fprintf(stderr, "[MOVIE] frame copy #%d: %u of %u sampled bytes non-zero\n",
+                        s_n, nz, 2880u * 480u / 64u);
+                sprintf(path, "movie_%03d.bmp", s_n);
+                f = fopen(path, "wb");
+                if (f) {
+                    uint8_t hdr[54] = { 'B', 'M' };
+                    uint32_t size = 54u + 720u * 480u * 3u, v;
+                    memcpy(hdr + 2, &size, 4); v = 54; memcpy(hdr + 10, &v, 4);
+                    v = 40; memcpy(hdr + 14, &v, 4); v = 720; memcpy(hdr + 18, &v, 4);
+                    v = 480; memcpy(hdr + 22, &v, 4); hdr[26] = 1; hdr[28] = 24;
+                    fwrite(hdr, 1, 54, f);
+                    for (y = 480; y-- > 0;)
+                        for (x = 0; x < 720; x++) {
+                            uint32_t p = dst + y * 2880u + x * 4u;
+                            uint8_t bgr[3] = { MEM8(p), MEM8(p + 1), MEM8(p + 2) };
+                            fwrite(bgr, 1, 3, f);
+                        }
+                    fclose(f);
+                }
+            }
             doa3_present_movie_guest((const void *)XBOX_PTR(dst), 720, 480, 2880);
+        }
     }
 }
 
@@ -808,6 +834,16 @@ void sub_0019A380(void)
         fprintf(stderr, "[CRI] error #%d (fiber %d, frame %u): %s\n", s_n, xbox_fiber_current(),
                 g_doa3_frames_presented, buf);
         fflush(stderr);
+        if (strstr(buf, "FF000C0")) {
+            /* The movie's ADX link (sfd handle 0xC86480 + 0x3E00): ADXT
+             * object, its decoder [+4] and input stream-joint [+0x14]. */
+            uint32_t sfd = 0xC86480u, adxt = MEM32(sfd + 0x3E00), k;
+            fprintf(stderr, "[ADXT] sfd state %d, adxt %08X:", (int)MEM32(sfd + 0x40), adxt);
+            if (adxt >= 0x1000 && adxt < 0x08000000u)
+                for (k = 0; k < 0x80; k += 4) fprintf(stderr, "%s%08X", (k % 32) ? " " : "\n[ADXT]   ", MEM32(adxt + k));
+            fprintf(stderr, "\n");
+            fflush(stderr);
+        }
     }
     sub_0019A380_gen();
 }
