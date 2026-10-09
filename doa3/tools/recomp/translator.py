@@ -407,8 +407,7 @@ class FunctionTranslator:
                 for t in switch_targets:
                     label_addrs.add(t)
 
-        flag_state = None
-        self.lifter._fs_next = 0   # flag-operand snapshots (_fsN), per function
+        block_stmts, join_n = self._lift_blocks_with_joins(blocks, start)
         for bb in blocks:
             # Emit label if this block is a branch target.
             # Always append an empty statement (";") so a terminal label whose
@@ -416,13 +415,7 @@ class FunctionTranslator:
             # valid C — a label must be followed by a statement.
             if bb.start in label_addrs or bb.start == start:
                 lines.append(f"loc_{bb.start:08X}: ;")
-
-            # Propagate flag state from previous block (fallthrough path).
-            # This handles patterns like: test eax,eax / ja X / jb Y
-            # where jb uses the same flags as ja from the preceding block.
-            stmts, flag_state = lift_basic_block(
-                self.lifter, bb, flag_state=flag_state)
-            for stmt in stmts:
+            for stmt in block_stmts[bb.start]:
                 lines.append(f"    {stmt}")
 
             lines.append(f"")
@@ -480,8 +473,135 @@ class FunctionTranslator:
             sig_idx = lines.index("{")
             names = ", ".join(f"_fs{k} = 0" for k in range(self.lifter._fs_next))
             lines.insert(sig_idx + 1, f"    uint32_t {names}; /* flag operands kept for a later jcc */")
+        if join_n:
+            sig_idx = lines.index("{")
+            names = ", ".join(f"_fj{k} = 0" for k in range(join_n))
+            lines.insert(sig_idx + 1, f"    uint32_t {names}; /* flag operands joined from predecessors */")
 
         return "\n".join(lines)
+
+    def _lift_blocks_with_joins(self, blocks, func_start):
+        """Lift the blocks, passing pending flags into blocks that read them.
+
+        Flags used to flow only from the block lifted just before (the
+        linear fall-through). A block that starts with a jcc reached from
+        several places got whatever compare preceded it in the listing: at
+        0x1963F3 (ADXT error check) the jle shared by two paths compared the
+        fall-through path's registers on the path that arrived by jmp, so a
+        5-second timeout fired on its first tick. Here every predecessor
+        that carries the same kind of pending compare latches its operands
+        into _fjN locals, and the joined block's condition reads those.
+        """
+        from . import lifter as LM
+        from .disasm import Operand
+        by_start = {bb.start: bb for bb in blocks}
+        preds = {bb.start: [] for bb in blocks}
+        for bb in blocks:
+            for t in bb.successors:
+                if t in preds and bb.start not in preds[t]:
+                    preds[t].append(bb.start)
+        prev_of = {}
+        for a, b in zip(blocks, blocks[1:]):
+            prev_of[b.start] = a.start
+        readers = [bb for bb in blocks if bb.start != func_start and preds[bb.start]
+                   and LM.block_reads_incoming_flags(bb)]
+
+        def run(overrides, inserts):
+            self.lifter._fs_next = 0
+            out_states, stmts_of = {}, {}
+            flag_state = None
+            for bb in blocks:
+                if bb.start in overrides:
+                    flag_state = overrides[bb.start]
+                stmts, flag_state = lift_basic_block(self.lifter, bb, flag_state=flag_state)
+                stmts = list(stmts)
+                if bb.start in inserts:
+                    extra = inserts[bb.start]
+                    last = bb.last_insn
+                    if last is not None and (last.is_jump or last.is_cond_jump) and stmts:
+                        stmts[-1:-1] = extra
+                    else:
+                        stmts.extend(extra)
+                stmts_of[bb.start] = stmts
+                out_states[bb.start] = flag_state
+            return stmts_of, out_states
+
+        def plan(out_states):
+            joins = {}
+            for bb in readers:
+                ps = preds[bb.start]
+                states = [out_states.get(p) for p in ps]
+                keys = [LM.flag_state_key(st) for st in states]
+                linear = out_states.get(prev_of.get(bb.start))
+                if all(k is not None and k == keys[0] for k in keys) and \
+                        keys[0] == LM.flag_state_key(linear):
+                    continue            # every path brings what the listing order gives
+                if any(st is None or st[0] not in LM.JOIN_SETTERS for st in states):
+                    continue
+                if len({st[0] for st in states}) != 1 or len({len(st[1]) for st in states}) != 1:
+                    continue
+                n_ops = len(states[0][1])
+                sizes = [{LM.operand_size(st[1][i]) for st in states} for i in range(n_ops)]
+                if any(len(sz) != 1 for sz in sizes):
+                    continue
+                joins[bb.start] = (states[0][0], [next(iter(sz)) for sz in sizes])
+            return joins
+
+        stmts_of, out_states = run({}, {})
+        joins = plan(out_states)
+        if not joins:
+            return stmts_of, 0
+        # jmp-terminated predecessors must keep their compare operands alive
+        # to the block end (see lifter._flags_consumed_later).
+        for t in joins:
+            for p in preds[t]:
+                last = by_start[p].last_insn
+                if last is not None and last.is_jump:
+                    LM._CARRY_JMP.add(last.address)
+        def build(joins):
+            overrides, var_of, n = {}, {}, 0
+            for t, (setter, sizes) in sorted(joins.items()):
+                ops = []
+                for sz in sizes:
+                    v = f"_fj{n}"
+                    n += 1
+                    ops.append(Operand(type="reg", reg={1: f"LO8({v})", 2: f"LO16({v})"}.get(sz, v)))
+                    var_of.setdefault(t, []).append(v)
+                overrides[t] = (setter, ops)
+            return overrides, var_of, n
+
+        def uniform(t, out_states):
+            st = [out_states.get(p) for p in preds[t]]
+            return all(x is not None and x[0] == joins[t][0] and len(x[1]) == len(joins[t][1])
+                       and [LM.operand_size(o) for o in x[1]] == joins[t][1] for x in st)
+
+        for _ in range(4):
+            overrides, var_of, join_n = build(joins)
+            stmts_of, out_states = run(overrides, {})
+            new_joins = {t: j for t, j in plan(out_states).items() if t not in overrides}
+            new_joins.update({t: joins[t] for t in joins if uniform(t, out_states)})
+            if set(new_joins) == set(joins):
+                break
+            joins = new_joins
+            for t in joins:
+                for p in preds[t]:
+                    last = by_start[p].last_insn
+                    if last is not None and last.is_jump:
+                        LM._CARRY_JMP.add(last.address)
+        else:
+            overrides, var_of, join_n = build(joins)
+            stmts_of, out_states = run(overrides, {})
+        if not joins:
+            return stmts_of, 0
+        inserts = {}
+        for t in joins:
+            for p in preds[t]:
+                st = out_states[p]
+                for op, v in zip(st[1], var_of[t]):
+                    inserts.setdefault(p, []).append(
+                        f"{v} = (uint32_t)({LM._fmt_operand_read(op)}); /* flags into 0x{t:08X} */")
+        stmts_of, _ = run(overrides, inserts)
+        return stmts_of, join_n
 
     def _find_used_registers(self, instructions):
         """Find which 32-bit registers are referenced by any instruction."""

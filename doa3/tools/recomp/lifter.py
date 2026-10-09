@@ -2055,7 +2055,54 @@ def _flags_consumed_later(insns, i):
         if insns[k].is_call:
             return False    # compiled code never reads flags across a call
     last = insns[-1]
+    if last.is_jump and last.address in _CARRY_JMP:
+        return True     # a jmp into a block that reads these flags (flag join)
     return not (last.is_ret or (last.is_jump and not last.is_cond_jump))
+
+
+# Addresses of `jmp` instructions whose target block reads the flags they
+# carry; set per function by the translator's flag-join pass.
+_CARRY_JMP = set()
+
+# Setters whose pending condition can be rebuilt from latched operand values
+# at a join (carry chains are excluded: they also need _cf).
+JOIN_SETTERS = _SNAP_SETTERS - {"adc", "sbb", "rcl", "rcr"}
+_FLAG_READERS = ("adc", "sbb", "rcl", "rcr")
+
+
+def block_reads_incoming_flags(bb):
+    """Does the block consume flags before setting its own?"""
+    for insn in bb.instructions:
+        m = insn.mnemonic
+        if insn.is_cond_jump or m.startswith(_FLAG_CONSUMER_PREFIX) or m in _FLAG_READERS:
+            return True
+        if m in FLAG_SETTERS or m in _EFLAGS_SETTERS or m in _FLAGS_UNDEFINED:
+            return False
+        if insn.is_call:
+            return False
+    return False
+
+
+def flag_state_key(state):
+    if not state or not state[0]:
+        return None
+    return (state[0], tuple(_fmt_operand_read(o) if o.type in ("reg", "mem", "imm")
+                            else repr(o) for o in state[1]))
+
+
+def operand_size(op):
+    if op.type == "mem":
+        return op.mem_size
+    if op.type == "reg":
+        r = op.reg
+        if r.startswith(("LO8(", "HI8(")):
+            return 1
+        if r.startswith("LO16("):
+            return 2
+        if r.startswith("_f"):
+            return 4
+        return 1 if (len(r) == 2 and r.endswith(("l", "h"))) else 2 if len(r) == 2 else 4
+    return 0
 
 
 def _snapshot_flag_ops(lifter, flag_ops, stmts):

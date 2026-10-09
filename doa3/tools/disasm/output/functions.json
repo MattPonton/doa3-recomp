@@ -162551,6 +162551,19 @@
   "called_by": []
  },
  {
+  "start": "0x00210A43",
+  "end": "0x00210B6C",
+  "size": 297,
+  "name": "sub_00210A43",
+  "section": "XPP",
+  "confidence": 0.5,
+  "detection_method": "link_seed",
+  "num_instructions": 0,
+  "has_prologue": false,
+  "calls_to": [],
+  "called_by": []
+ },
+ {
   "start": "0x00210B6C",
   "end": "0x00210BFA",
   "size": 142,
@@ -162755,6 +162768,19 @@
   "called_by": [
    "0x00210BFA"
   ]
+ },
+ {
+  "start": "0x002111F2",
+  "end": "0x00211213",
+  "size": 33,
+  "name": "sub_002111F2",
+  "section": "XPP",
+  "confidence": 0.5,
+  "detection_method": "link_seed",
+  "num_instructions": 0,
+  "has_prologue": false,
+  "calls_to": [],
+  "called_by": []
  },
  {
   "start": "0x00211213",

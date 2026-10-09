@@ -477,3 +477,17 @@ The ADX end: ADXSJD (0xC7BC80) decoded all 911,881 samples of the movie's
 ADX header ([adxt+0x64]), but ADXT stayed in state 3 and the input ran dry
 -> error -1 (FF000C08). 0x1952E0 sets decode-end only while the decoder is
 idle; 0.0.43 logs [ADXSJD] lines from the input end to the error.
+
+Thirty-seventh run (0.0.43): the ninja movie plays clean; it still ends in
+FF000C08. At the error ADXSJD had decoded all 911,881 samples, its decoder
+was idle and [sjd+0x34] == [dec+0x18], so the next pass would have set
+decode-end. The error came early: ADXT's check 0x196300 lets the input run
+dry for svrfreq*5 ticks (5 s) before raising -1, but its `jle` at 0x1963F3
+is shared by two paths, one of which arrives by `jmp` after its own `cmp`.
+The lifter carried flags only from the block lifted just before, so that
+path compared the other path's registers (300 <= 60: false) and raised the
+error on the first dry tick. The translator now joins pending flags at
+blocks that read them: every predecessor latches its compare operands into
+_fjN locals and the jcc reads those (_lift_blocks_with_joins; 550 latches
+across the game, mostly compiler-merged compare chains). Two more indirect
+targets from the [ICALL] log are seeded (XPP 0x210A43, 0x2111F2).
