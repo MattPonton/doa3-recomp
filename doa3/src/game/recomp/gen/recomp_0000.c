@@ -2084,7 +2084,7 @@ loc_000119FC: ;
 loc_00011A08: ;
     SET_LO8(ecx, LO8(ecx) - 1);
     MEM8(0x4DA330) = LO8(ecx);
-    if (((int32_t)LO8(ecx) >= 0)) goto loc_00011A22; /* jns: not sign (positive) */
+    if (((int8_t)LO8(ecx) >= 0)) goto loc_00011A22; /* jns: not sign (positive) */
 
 loc_00011A12: ;
     MEM8(0x4DA2DD) = 2;
@@ -2120,7 +2120,7 @@ loc_00011A71: ;
 loc_00011A7B: ;
     SET_LO8(ecx, LO8(ecx) - 1);
     MEM8(0x4DA1B2) = LO8(ecx);
-    if (((int32_t)LO8(ecx) >= 0)) goto loc_00011AFA; /* jns: not sign (positive) */
+    if (((int8_t)LO8(ecx) >= 0)) goto loc_00011AFA; /* jns: not sign (positive) */
 
 loc_00011A85: ;
     PUSH32(esp, ebx);
@@ -2196,7 +2196,7 @@ loc_000119FC: ;
 loc_00011A08: ;
     SET_LO8(ecx, LO8(ecx) - 1);
     MEM8(0x4DA330) = LO8(ecx);
-    if (((int32_t)LO8(ecx) >= 0)) goto loc_00011A22; /* jns: not sign (positive) */
+    if (((int8_t)LO8(ecx) >= 0)) goto loc_00011A22; /* jns: not sign (positive) */
 
 loc_00011A12: ;
     MEM8(0x4DA2DD) = 2;
@@ -2232,7 +2232,7 @@ loc_00011A71: ;
 loc_00011A7B: ;
     SET_LO8(ecx, LO8(ecx) - 1);
     MEM8(0x4DA1B2) = LO8(ecx);
-    if (((int32_t)LO8(ecx) >= 0)) goto loc_00011AFA; /* jns: not sign (positive) */
+    if (((int8_t)LO8(ecx) >= 0)) goto loc_00011AFA; /* jns: not sign (positive) */
 
 loc_00011A85: ;
     PUSH32(esp, ebx);
@@ -2303,7 +2303,7 @@ void sub_00011A08(void)
 loc_00011A08: ;
     SET_LO8(ecx, LO8(ecx) - 1);
     MEM8(0x4DA330) = LO8(ecx);
-    if (((int32_t)LO8(ecx) >= 0)) goto loc_00011A22; /* jns: not sign (positive) */
+    if (((int8_t)LO8(ecx) >= 0)) goto loc_00011A22; /* jns: not sign (positive) */
 
 loc_00011A12: ;
     MEM8(0x4DA2DD) = 2;
@@ -2339,7 +2339,7 @@ loc_00011A71: ;
 loc_00011A7B: ;
     SET_LO8(ecx, LO8(ecx) - 1);
     MEM8(0x4DA1B2) = LO8(ecx);
-    if (((int32_t)LO8(ecx) >= 0)) goto loc_00011AFA; /* jns: not sign (positive) */
+    if (((int8_t)LO8(ecx) >= 0)) goto loc_00011AFA; /* jns: not sign (positive) */
 
 loc_00011A85: ;
     PUSH32(esp, ebx);
@@ -2437,7 +2437,7 @@ loc_00011A71: ;
 loc_00011A7B: ;
     SET_LO8(ecx, LO8(ecx) - 1);
     MEM8(0x4DA1B2) = LO8(ecx);
-    if (((int32_t)LO8(ecx) >= 0)) goto loc_00011AFA; /* jns: not sign (positive) */
+    if (((int8_t)LO8(ecx) >= 0)) goto loc_00011AFA; /* jns: not sign (positive) */
 
 loc_00011A85: ;
     PUSH32(esp, ebx);
@@ -16471,7 +16471,7 @@ loc_00016B4B: ;
     SET_LO8(ebx, MEM8(eax + 0xED));
     SET_LO8(ebx, LO8(ebx) - LO8(edx));
     MEM8(eax + 0xED) = LO8(ebx);
-    if (((int32_t)LO8(ebx) >= 0)) goto loc_00016B69; /* jns: not sign (positive) */
+    if (((int8_t)LO8(ebx) >= 0)) goto loc_00016B69; /* jns: not sign (positive) */
 
 loc_00016B60: ;
     SET_LO8(ecx, LO8(ecx) + LO8(ebx));
@@ -16481,7 +16481,7 @@ loc_00016B69: ;
     SET_LO8(ebx, MEM8(eax + 0xEE));
     SET_LO8(ebx, LO8(ebx) - LO8(edx));
     MEM8(eax + 0xEE) = LO8(ebx);
-    if (((int32_t)LO8(ebx) >= 0)) goto loc_00016B82; /* jns: not sign (positive) */
+    if (((int8_t)LO8(ebx) >= 0)) goto loc_00016B82; /* jns: not sign (positive) */
 
 loc_00016B79: ;
     SET_LO8(ecx, LO8(ecx) + LO8(ebx));
@@ -16494,7 +16494,7 @@ loc_00016B82: ;
     _fs0 = (uint32_t)(LO8(ebx)); /* flag operand kept for a later jcc */
     _fs1 = (uint32_t)(LO8(edx)); /* flag operand kept for a later jcc */
     SET_LO8(edx, LO8(ebx));
-    if (((int32_t)LO8(_fs0) >= 0)) goto loc_00016B9D; /* jns: not sign (positive) */
+    if (((int8_t)LO8(_fs0) >= 0)) goto loc_00016B9D; /* jns: not sign (positive) */
 
 loc_00016B94: ;
     SET_LO8(ecx, LO8(ecx) + LO8(edx));
@@ -16510,7 +16510,7 @@ loc_00016BA5: ;
     SET_LO8(ebx, MEM8(eax + 0xEC));
     SET_LO8(ebx, LO8(ebx) - LO8(edx));
     MEM8(eax + 0xEC) = LO8(ebx);
-    if (((int32_t)LO8(ebx) >= 0)) goto loc_00016BC3; /* jns: not sign (positive) */
+    if (((int8_t)LO8(ebx) >= 0)) goto loc_00016BC3; /* jns: not sign (positive) */
 
 loc_00016BBA: ;
     SET_LO8(ecx, LO8(ecx) + LO8(ebx));
@@ -16520,7 +16520,7 @@ loc_00016BC3: ;
     SET_LO8(ebx, MEM8(eax + 0xEE));
     SET_LO8(ebx, LO8(ebx) - LO8(edx));
     MEM8(eax + 0xEE) = LO8(ebx);
-    if (((int32_t)LO8(ebx) >= 0)) goto loc_00016BDC; /* jns: not sign (positive) */
+    if (((int8_t)LO8(ebx) >= 0)) goto loc_00016BDC; /* jns: not sign (positive) */
 
 loc_00016BD3: ;
     SET_LO8(ecx, LO8(ecx) + LO8(ebx));
@@ -16533,7 +16533,7 @@ loc_00016BDC: ;
     _fs2 = (uint32_t)(LO8(ebx)); /* flag operand kept for a later jcc */
     _fs3 = (uint32_t)(LO8(edx)); /* flag operand kept for a later jcc */
     SET_LO8(edx, LO8(ebx));
-    if (((int32_t)LO8(_fs2) >= 0)) goto loc_00016BF7; /* jns: not sign (positive) */
+    if (((int8_t)LO8(_fs2) >= 0)) goto loc_00016BF7; /* jns: not sign (positive) */
 
 loc_00016BEE: ;
     SET_LO8(ecx, LO8(ecx) + LO8(edx));
@@ -16549,7 +16549,7 @@ loc_00016BFF: ;
     SET_LO8(ebx, MEM8(eax + 0xEC));
     SET_LO8(ebx, LO8(ebx) - LO8(edx));
     MEM8(eax + 0xEC) = LO8(ebx);
-    if (((int32_t)LO8(ebx) >= 0)) goto loc_00016C1D; /* jns: not sign (positive) */
+    if (((int8_t)LO8(ebx) >= 0)) goto loc_00016C1D; /* jns: not sign (positive) */
 
 loc_00016C14: ;
     SET_LO8(ecx, LO8(ecx) + LO8(ebx));
@@ -16559,7 +16559,7 @@ loc_00016C1D: ;
     SET_LO8(ebx, MEM8(eax + 0xED));
     SET_LO8(ebx, LO8(ebx) - LO8(edx));
     MEM8(eax + 0xED) = LO8(ebx);
-    if (((int32_t)LO8(ebx) >= 0)) goto loc_00016C36; /* jns: not sign (positive) */
+    if (((int8_t)LO8(ebx) >= 0)) goto loc_00016C36; /* jns: not sign (positive) */
 
 loc_00016C2D: ;
     SET_LO8(ecx, LO8(ecx) + LO8(ebx));
@@ -16572,7 +16572,7 @@ loc_00016C36: ;
     _fs4 = (uint32_t)(LO8(ebx)); /* flag operand kept for a later jcc */
     _fs5 = (uint32_t)(LO8(edx)); /* flag operand kept for a later jcc */
     SET_LO8(edx, LO8(ebx));
-    if (((int32_t)LO8(_fs4) >= 0)) goto loc_00016C51; /* jns: not sign (positive) */
+    if (((int8_t)LO8(_fs4) >= 0)) goto loc_00016C51; /* jns: not sign (positive) */
 
 loc_00016C48: ;
     SET_LO8(ecx, LO8(ecx) + LO8(edx));
@@ -16588,7 +16588,7 @@ loc_00016C59: ;
     SET_LO8(ebx, MEM8(eax + 0xEC));
     SET_LO8(ebx, LO8(ebx) - LO8(edx));
     MEM8(eax + 0xEC) = LO8(ebx);
-    if (((int32_t)LO8(ebx) >= 0)) goto loc_00016C77; /* jns: not sign (positive) */
+    if (((int8_t)LO8(ebx) >= 0)) goto loc_00016C77; /* jns: not sign (positive) */
 
 loc_00016C6E: ;
     SET_LO8(ecx, LO8(ecx) + LO8(ebx));
@@ -16598,7 +16598,7 @@ loc_00016C77: ;
     SET_LO8(ebx, MEM8(eax + 0xED));
     SET_LO8(ebx, LO8(ebx) - LO8(edx));
     MEM8(eax + 0xED) = LO8(ebx);
-    if (((int32_t)LO8(ebx) >= 0)) goto loc_00016C90; /* jns: not sign (positive) */
+    if (((int8_t)LO8(ebx) >= 0)) goto loc_00016C90; /* jns: not sign (positive) */
 
 loc_00016C87: ;
     SET_LO8(ecx, LO8(ecx) + LO8(ebx));
@@ -16611,7 +16611,7 @@ loc_00016C90: ;
     _fs6 = (uint32_t)(LO8(ebx)); /* flag operand kept for a later jcc */
     _fs7 = (uint32_t)(LO8(edx)); /* flag operand kept for a later jcc */
     SET_LO8(edx, LO8(ebx));
-    if (((int32_t)LO8(_fs6) >= 0)) goto loc_00016CAB; /* jns: not sign (positive) */
+    if (((int8_t)LO8(_fs6) >= 0)) goto loc_00016CAB; /* jns: not sign (positive) */
 
 loc_00016CA2: ;
     SET_LO8(ecx, LO8(ecx) + LO8(edx));
@@ -178967,7 +178967,7 @@ loc_00048F0D: ;
     esp += 4; return; /* ret */
 
     SET_LO8(eax, LO8(eax) + 0);
-    if (((int32_t)LO8(eax) < 0)) goto loc_00048EB0; /* jl: less (signed <) */
+    if (((int8_t)LO8(eax) < 0)) goto loc_00048EB0; /* jl: less (signed <) */
 
 loc_00048F22: ;
     SET_LO8(eax, LO8(eax) + 0);

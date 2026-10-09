@@ -26704,7 +26704,7 @@ loc_00053EC9: ;
 
 loc_00053F0E: ;
     MEM16(0x5A6970) = MEM16(0x5A6970) - 1;
-    if (((int32_t)MEM16(0x5A6970) >= 0)) goto loc_00053F1E; /* jns: not sign (positive) */
+    if (((int16_t)MEM16(0x5A6970) >= 0)) goto loc_00053F1E; /* jns: not sign (positive) */
 
 loc_00053F17: ;
     _fs0 = (uint32_t)(MEM16(0x5A6970)); /* flag operand kept for a later jcc */
@@ -127638,7 +127638,7 @@ loc_000794AF: ;
 
 loc_000794BB: ;
     MEM8(0x5B1338) = MEM8(0x5B1338) - 1;
-    if (((int32_t)MEM8(0x5B1338) >= 0)) goto loc_000794F4; /* jns: not sign (positive) */
+    if (((int8_t)MEM8(0x5B1338) >= 0)) goto loc_000794F4; /* jns: not sign (positive) */
 
 loc_000794C3: ;
     MEM8(0x5B1338) = 2;
@@ -127963,7 +127963,7 @@ loc_000794AF: ;
 
 loc_000794BB: ;
     MEM8(0x5B1338) = MEM8(0x5B1338) - 1;
-    if (((int32_t)MEM8(0x5B1338) >= 0)) goto loc_000794F4; /* jns: not sign (positive) */
+    if (((int8_t)MEM8(0x5B1338) >= 0)) goto loc_000794F4; /* jns: not sign (positive) */
 
 loc_000794C3: ;
     MEM8(0x5B1338) = 2;
@@ -128260,7 +128260,7 @@ loc_000794AF: ;
 
 loc_000794BB: ;
     MEM8(0x5B1338) = MEM8(0x5B1338) - 1;
-    if (((int32_t)MEM8(0x5B1338) >= 0)) goto loc_000794F4; /* jns: not sign (positive) */
+    if (((int8_t)MEM8(0x5B1338) >= 0)) goto loc_000794F4; /* jns: not sign (positive) */
 
 loc_000794C3: ;
     MEM8(0x5B1338) = 2;

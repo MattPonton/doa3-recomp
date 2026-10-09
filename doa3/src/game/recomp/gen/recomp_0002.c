@@ -4011,7 +4011,7 @@ loc_000843D7: ;
 
 loc_000843E0: ;
     MEM8(0x5B1D90) = MEM8(0x5B1D90) - 1;
-    if (((int32_t)MEM8(0x5B1D90) >= 0)) goto loc_000843EF; /* jns: not sign (positive) */
+    if (((int8_t)MEM8(0x5B1D90) >= 0)) goto loc_000843EF; /* jns: not sign (positive) */
 
 loc_000843E8: ;
     _fs2 = (uint32_t)(MEM8(0x5B1D90)); /* flag operand kept for a later jcc */
@@ -4240,7 +4240,7 @@ loc_000843D7: ;
 
 loc_000843E0: ;
     MEM8(0x5B1D90) = MEM8(0x5B1D90) - 1;
-    if (((int32_t)MEM8(0x5B1D90) >= 0)) goto loc_000843EF; /* jns: not sign (positive) */
+    if (((int8_t)MEM8(0x5B1D90) >= 0)) goto loc_000843EF; /* jns: not sign (positive) */
 
 loc_000843E8: ;
     _fs2 = (uint32_t)(MEM8(0x5B1D90)); /* flag operand kept for a later jcc */
@@ -4466,7 +4466,7 @@ loc_000843D7: ;
 
 loc_000843E0: ;
     MEM8(0x5B1D90) = MEM8(0x5B1D90) - 1;
-    if (((int32_t)MEM8(0x5B1D90) >= 0)) goto loc_000843EF; /* jns: not sign (positive) */
+    if (((int8_t)MEM8(0x5B1D90) >= 0)) goto loc_000843EF; /* jns: not sign (positive) */
 
 loc_000843E8: ;
     _fs2 = (uint32_t)(MEM8(0x5B1D90)); /* flag operand kept for a later jcc */
@@ -17459,7 +17459,7 @@ loc_00089E9D: ;
 
 loc_00089EA1: ;
     MEM8(0x5C93BA) = MEM8(0x5C93BA) - 1;
-    if (((int32_t)MEM8(0x5C93BA) >= 0)) goto loc_00089ED5; /* jns: not sign (positive) */
+    if (((int8_t)MEM8(0x5C93BA) >= 0)) goto loc_00089ED5; /* jns: not sign (positive) */
 
 loc_00089EA9: ;
     SET_LO8(eax, MEM8(0x5C93C8));
@@ -17737,7 +17737,7 @@ loc_0008A122: ;
 loc_0008A126: ;
     SET_LO8(ecx, LO8(ecx) - 1);
     MEM8(0x5C93BD) = LO8(ecx);
-    if (((int32_t)LO8(ecx) >= 0)) goto loc_0008A154; /* jns: not sign (positive) */
+    if (((int8_t)LO8(ecx) >= 0)) goto loc_0008A154; /* jns: not sign (positive) */
 
 loc_0008A130: ;
     MEM8(0x5C93BD) = LO8(ebx);
@@ -17922,7 +17922,7 @@ loc_00089E9D: ;
 
 loc_00089EA1: ;
     MEM8(0x5C93BA) = MEM8(0x5C93BA) - 1;
-    if (((int32_t)MEM8(0x5C93BA) >= 0)) goto loc_00089ED5; /* jns: not sign (positive) */
+    if (((int8_t)MEM8(0x5C93BA) >= 0)) goto loc_00089ED5; /* jns: not sign (positive) */
 
 loc_00089EA9: ;
     SET_LO8(eax, MEM8(0x5C93C8));
@@ -18200,7 +18200,7 @@ loc_0008A122: ;
 loc_0008A126: ;
     SET_LO8(ecx, LO8(ecx) - 1);
     MEM8(0x5C93BD) = LO8(ecx);
-    if (((int32_t)LO8(ecx) >= 0)) goto loc_0008A154; /* jns: not sign (positive) */
+    if (((int8_t)LO8(ecx) >= 0)) goto loc_0008A154; /* jns: not sign (positive) */
 
 loc_0008A130: ;
     MEM8(0x5C93BD) = LO8(ebx);
@@ -19433,7 +19433,7 @@ loc_0008A6D7: ;
 
 loc_0008A6E3: ;
     MEM8(0x5B1338) = MEM8(0x5B1338) - 1;
-    if (((int32_t)MEM8(0x5B1338) >= 0)) goto loc_0008A71B; /* jns: not sign (positive) */
+    if (((int8_t)MEM8(0x5B1338) >= 0)) goto loc_0008A71B; /* jns: not sign (positive) */
 
 loc_0008A6EB: ;
     MEM8(0x5B1338) = 2;
@@ -24859,7 +24859,7 @@ loc_0008C091: ;
     SET_LO8(eax, LO8(eax) - 1);
     MEM8(ecx + 7) = LO8(edx);
     MEM8(ecx + 8) = 0x2F;
-    if (((int32_t)LO8(eax) >= 0)) goto loc_0008C0A7; /* jns: not sign (positive) */
+    if (((int8_t)LO8(eax) >= 0)) goto loc_0008C0A7; /* jns: not sign (positive) */
 
 loc_0008C0A5: ;
     SET_LO8(eax, 0); /* xor self */
@@ -24896,7 +24896,7 @@ loc_0008C0C9: ;
 
 loc_0008C0D3: ;
     SET_LO8(edx, LO8(edx) - 1);
-    if (((int32_t)LO8(edx) >= 0)) goto loc_0008C0D9; /* jns: not sign (positive) */
+    if (((int8_t)LO8(edx) >= 0)) goto loc_0008C0D9; /* jns: not sign (positive) */
 
 loc_0008C0D7: ;
     SET_LO8(edx, 0); /* xor self */
@@ -24975,7 +24975,7 @@ loc_0008C0C9: ;
 
 loc_0008C0D3: ;
     SET_LO8(edx, LO8(edx) - 1);
-    if (((int32_t)LO8(edx) >= 0)) goto loc_0008C0D9; /* jns: not sign (positive) */
+    if (((int8_t)LO8(edx) >= 0)) goto loc_0008C0D9; /* jns: not sign (positive) */
 
 loc_0008C0D7: ;
     SET_LO8(edx, 0); /* xor self */
@@ -41242,7 +41242,7 @@ loc_0009072D: ;
     /* TODO: das  */
     /* TODO: cmc  */
     MEM8(eax) = MEM8(eax) | LO8(eax);
-    if (((int32_t)MEM8(eax) >= 0)) (void)0; /* goto loc_00090757 - dead code, label not in function */ /* jge: greater or equal (signed >=) */
+    if (((int8_t)MEM8(eax) >= 0)) (void)0; /* goto loc_00090757 - dead code, label not in function */ /* jge: greater or equal (signed >=) */
 
 loc_00090762: ;
     MEM8(eax) = MEM8(eax) | LO8(eax);
@@ -41936,7 +41936,7 @@ loc_0009072D: ;
     /* TODO: das  */
     /* TODO: cmc  */
     MEM8(eax) = MEM8(eax) | LO8(eax);
-    if (((int32_t)MEM8(eax) >= 0)) (void)0; /* goto loc_00090757 - dead code, label not in function */ /* jge: greater or equal (signed >=) */
+    if (((int8_t)MEM8(eax) >= 0)) (void)0; /* goto loc_00090757 - dead code, label not in function */ /* jge: greater or equal (signed >=) */
 
 loc_00090762: ;
     MEM8(eax) = MEM8(eax) | LO8(eax);

@@ -90301,7 +90301,7 @@ loc_000D2760: ;
     SET_LO8(eax, MEM8(esi + 0x1EA));
     SET_LO8(eax, LO8(eax) - LO8(ecx));
     PUSH32(esp, edi);
-    if (((int32_t)LO8(eax) >= 0)) goto loc_000D278B; /* jns: not sign (positive) */
+    if (((int8_t)LO8(eax) >= 0)) goto loc_000D278B; /* jns: not sign (positive) */
 
 loc_000D2785: ;
     SET_LO8(eax, LO8(eax) + MEM8(0x9B78E8));
@@ -101535,7 +101535,7 @@ loc_000D6750: ;
 loc_000D6768: ;
     SET_LO8(ecx, LO8(ecx) - 1);
     SET_LO8(eax, LO8(ecx));
-    if (((int32_t)LO8(ecx) >= 0)) goto loc_000D6770; /* jns: not sign (positive) */
+    if (((int8_t)LO8(ecx) >= 0)) goto loc_000D6770; /* jns: not sign (positive) */
 
 loc_000D676E: ;
     SET_LO8(eax, 0); /* xor self */
@@ -106391,7 +106391,7 @@ loc_000D8599: ;
 loc_000D85A5: ;
     SET_LO8(ebx, MEM8(edi + -1));
     SET_LO8(ebx, LO8(ebx) + MEM8(esp + 0x12));
-    if (((int32_t)LO8(ebx) < 0)) goto loc_000D8709; /* js: sign (negative) */
+    if (((int8_t)LO8(ebx) < 0)) goto loc_000D8709; /* js: sign (negative) */
 
 loc_000D85B2: ;
     if (CMP_G(LO8(ebx), 4)) goto loc_000D8709; /* jg: greater (signed >) */

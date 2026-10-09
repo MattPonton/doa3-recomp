@@ -86086,7 +86086,7 @@ loc_001B740C: ;
     eax = edi;
     edx = 3;
     ecx = ecx - 4;
-    if (CMP_B((uint32_t)ecx + (uint32_t)4, (uint32_t)4)) goto loc_001B7424; /* jb: below (unsigned <) */
+    if (CMP_B((uint32_t)((uint32_t)ecx + (uint32_t)4), (uint32_t)4)) goto loc_001B7424; /* jb: below (unsigned <) */
 
 loc_001B7418: ;
     eax = eax & 3;
@@ -87719,7 +87719,7 @@ loc_001B7CEC: ;
     eax = edi;
     edx = 3;
     ecx = ecx - 4;
-    if (CMP_B((uint32_t)ecx + (uint32_t)4, (uint32_t)4)) goto loc_001B7D04; /* jb: below (unsigned <) */
+    if (CMP_B((uint32_t)((uint32_t)ecx + (uint32_t)4), (uint32_t)4)) goto loc_001B7D04; /* jb: below (unsigned <) */
 
 loc_001B7CF8: ;
     eax = eax & 3;
@@ -87818,19 +87818,19 @@ loc_001B7D80: ;
 
 loc_001B7D8F: ;
     SET_HI8(eax, HI8(eax) + LO8(ebx));
-    if (((int32_t)HI8(eax) >= 0)) (void)0; /* goto loc_001B7DAE - dead code, label not in function */ /* jge: greater or equal (signed >=) */
+    if (((int8_t)HI8(eax) >= 0)) (void)0; /* goto loc_001B7DAE - dead code, label not in function */ /* jge: greater or equal (signed >=) */
 
 loc_001B7D93: ;
     SET_HI8(eax, HI8(eax) + LO8(edx));
-    if (((int32_t)HI8(eax) >= 0)) (void)0; /* goto loc_001B7DB2 - dead code, label not in function */ /* jge: greater or equal (signed >=) */
+    if (((int8_t)HI8(eax) >= 0)) (void)0; /* goto loc_001B7DB2 - dead code, label not in function */ /* jge: greater or equal (signed >=) */
 
 loc_001B7D97: ;
     SET_HI8(eax, HI8(eax) + LO8(ecx));
-    if (((int32_t)HI8(eax) >= 0)) (void)0; /* goto loc_001B7DB6 - dead code, label not in function */ /* jge: greater or equal (signed >=) */
+    if (((int8_t)HI8(eax) >= 0)) (void)0; /* goto loc_001B7DB6 - dead code, label not in function */ /* jge: greater or equal (signed >=) */
 
 loc_001B7D9B: ;
     SET_HI8(eax, HI8(eax) + LO8(eax));
-    if (((int32_t)HI8(eax) >= 0)) (void)0; /* goto loc_001B7DBA - dead code, label not in function */ /* jge: greater or equal (signed >=) */
+    if (((int8_t)HI8(eax) >= 0)) (void)0; /* goto loc_001B7DBA - dead code, label not in function */ /* jge: greater or equal (signed >=) */
 
 loc_001B7D9F: ;
     MEM8(ebp + edi * 2 + 0x7DB4001B) = MEM8(ebp + edi * 2 + 0x7DB4001B) + HI8(ebx);

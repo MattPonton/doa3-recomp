@@ -79249,7 +79249,7 @@ loc_001DF430: ;
 
 loc_001DF47E: ;
     ecx = ecx - 0x10;
-    if (CMP_GE((uint32_t)ecx + (uint32_t)0x10, (uint32_t)0x10)) goto loc_001DF430; /* jge: greater or equal (signed >=) */
+    if (CMP_GE((uint32_t)((uint32_t)ecx + (uint32_t)0x10), (uint32_t)0x10)) goto loc_001DF430; /* jge: greater or equal (signed >=) */
 
 loc_001DF483: ;
     ecx = ecx + 0x10;
@@ -79294,7 +79294,7 @@ loc_001DF430: ;
     esi = esi + 0x40;
     edi = edi + 0x40;
     ecx = ecx - 0x10;
-    if (CMP_GE((uint32_t)ecx + (uint32_t)0x10, (uint32_t)0x10)) goto loc_001DF430; /* jge: greater or equal (signed >=) */
+    if (CMP_GE((uint32_t)((uint32_t)ecx + (uint32_t)0x10), (uint32_t)0x10)) goto loc_001DF430; /* jge: greater or equal (signed >=) */
 
 loc_001DF483: ;
     ecx = ecx + 0x10;
@@ -79322,7 +79322,7 @@ void sub_001DF47E(void)
 
 loc_001DF47E: ;
     ecx = ecx - 0x10;
-    if (CMP_GE((uint32_t)ecx + (uint32_t)0x10, (uint32_t)0x10)) { g_seh_ebp = ebp; sub_001DF430(); return; } /* jge: greater or equal (signed >=) */
+    if (CMP_GE((uint32_t)((uint32_t)ecx + (uint32_t)0x10), (uint32_t)0x10)) { g_seh_ebp = ebp; sub_001DF430(); return; } /* jge: greater or equal (signed >=) */
 
 loc_001DF483: ;
     ecx = ecx + 0x10;

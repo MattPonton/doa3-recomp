@@ -617,3 +617,13 @@ mv_op: START reaches mp_UpdatePlayerJoinAndStartInput as the attract input
 branch (0x5C9254 = 2; 0x5C9248 was already 1), so mp_UpdateTitleAttract
 should be running the exit fade 0x53EB0 (gated on 0x5A8B97 == 0, 60-frame
 counter 0x5A6970, then 0x53F20). 0.0.52 logs it ([ATTRACT] exit fade).
+
+Forty-sixth run (0.0.52): START during mv_op does arm the exit fade
+(0x53EB0: 0x5A697A 0 -> 1, counter 0x5A6970 = 60), but the counter went
+60 .. 0 .. 65535 and never ended the movie: `dec word [0x5A6970] / jns`
+was lifted as `(int32_t)MEM16(...) >= 0`, which a 16-bit value always is.
+Every result-based sign condition (js/jns/jl/jge/jle/jg after
+sub/add/adc/sbb/and/or/xor/inc/dec/neg/shifts) took 32-bit width; they now
+use the operand's width (_sign_cast), and sub's reconstructed operand for
+ordered compares wraps at 8/16 bits. 54 sites. The pause loop in fights is
+unchanged by the XPP fix; no device change was reported.

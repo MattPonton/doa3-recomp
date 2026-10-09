@@ -137838,15 +137838,15 @@ loc_001882F4: ;
     esp += 4; return; /* ret */
 
     MEM8(ebx + -268429188) = MEM8(ebx + -268429188) + LO8(ecx);
-    if (((int32_t)MEM8(ebx + -268429188) < 0)) goto loc_0018831F; /* jl: less (signed <) */
+    if (((int8_t)MEM8(ebx + -268429188) < 0)) goto loc_0018831F; /* jl: less (signed <) */
 
 loc_00188307: ;
     SET_LO8(eax, LO8(eax) + HI8(edx));
-    if (((int32_t)LO8(eax) < 0)) { g_seh_ebp = ebp; sub_00188323(); return; } /* jl: less (signed <) */
+    if (((int8_t)LO8(eax) < 0)) { g_seh_ebp = ebp; sub_00188323(); return; } /* jl: less (signed <) */
 
 loc_0018830B: ;
     SET_LO8(eax, LO8(eax) + HI8(edx));
-    if (((int32_t)LO8(eax) < 0)) { g_seh_ebp = ebp; sub_00188327(); return; } /* jl: less (signed <) */
+    if (((int8_t)LO8(eax) < 0)) { g_seh_ebp = ebp; sub_00188327(); return; } /* jl: less (signed <) */
 
 loc_0018830F: ;
     MEM8(eax + 0x7B) = MEM8(eax + 0x7B) + HI8(eax);
@@ -139612,15 +139612,15 @@ loc_001882F4: ;
     esp += 4; return; /* ret */
 
     MEM8(ebx + -268429188) = MEM8(ebx + -268429188) + LO8(ecx);
-    if (((int32_t)MEM8(ebx + -268429188) < 0)) goto loc_0018831F; /* jl: less (signed <) */
+    if (((int8_t)MEM8(ebx + -268429188) < 0)) goto loc_0018831F; /* jl: less (signed <) */
 
 loc_00188307: ;
     SET_LO8(eax, LO8(eax) + HI8(edx));
-    if (((int32_t)LO8(eax) < 0)) { g_seh_ebp = ebp; sub_00188323(); return; } /* jl: less (signed <) */
+    if (((int8_t)LO8(eax) < 0)) { g_seh_ebp = ebp; sub_00188323(); return; } /* jl: less (signed <) */
 
 loc_0018830B: ;
     SET_LO8(eax, LO8(eax) + HI8(edx));
-    if (((int32_t)LO8(eax) < 0)) { g_seh_ebp = ebp; sub_00188327(); return; } /* jl: less (signed <) */
+    if (((int8_t)LO8(eax) < 0)) { g_seh_ebp = ebp; sub_00188327(); return; } /* jl: less (signed <) */
 
 loc_0018830F: ;
     MEM8(eax + 0x7B) = MEM8(eax + 0x7B) + HI8(eax);
