@@ -154,6 +154,7 @@ void doa3_fn_profile_tick(void)
         }
         if (k < TOP) { top[k] = i; if (ntop < TOP) ntop++; }
     }
+    { extern void xbox_fiber_dump_runs(void); xbox_fiber_dump_runs(); }
     fprintf(stderr, "[PROF] t=%lus active=%d:", (unsigned long)((now - s_t0) / 1000), ntop);
     for (k = 0; k < ntop; k++)
         fprintf(stderr, " %X:%u", s_prof[top[k]].va, *s_prof[top[k]].cnt - s_prof[top[k]].last);
@@ -530,6 +531,39 @@ static void d3d4134_capture_frame(unsigned frame)
         }
 }
 
+/* Method trace of chosen frames: DOA3_MTRACE="a-b,c-d" (default the
+ * legal-text brightening at frame 308 and the TECMO logo fade-out, 590-612)
+ * writes mtrace_NNNN.txt with every NV2A method of frame NNNN. Called at
+ * each flip with the number of the frame that comes next. =0 turns it off. */
+static void doa3_mtrace_frame(unsigned next)
+{
+    extern FILE *g_doa3_mtrace;
+    extern void pgraph_mtrace_flush_run(void);
+    static int s_init, s_n;
+    static unsigned s_lo[8], s_hi[8];
+    int k;
+    if (!s_init) {
+        const char *e = getenv("DOA3_MTRACE");
+        s_init = 1;
+        if (!e) e = "305-310,590-612";
+        while (*e && s_n < 8) {
+            char *end; unsigned a = strtoul(e, &end, 10), b = a;
+            if (end == e) break;
+            if (*end == '-') { e = end + 1; b = strtoul(e, &end, 10); }
+            if (a) { s_lo[s_n] = a; s_hi[s_n] = b; s_n++; }
+            e = (*end == ',') ? end + 1 : end;
+        }
+    }
+    if (g_doa3_mtrace) { pgraph_mtrace_flush_run(); fclose(g_doa3_mtrace); g_doa3_mtrace = NULL; }
+    for (k = 0; k < s_n; k++)
+        if (next >= s_lo[k] && next <= s_hi[k]) {
+            char path[64];
+            sprintf(path, "mtrace_%04u.txt", next);
+            g_doa3_mtrace = fopen(path, "w");
+            return;
+        }
+}
+
 static void d3d4134_frame_done(uint32_t dev)
 {
     extern void pgraph_d3d11_flush(void);
@@ -540,6 +574,7 @@ static void d3d4134_frame_done(uint32_t dev)
     pgraph_d3d11_flush();
     d3d4134_capture_frame(++g_doa3_frames_presented);
     { extern void doa3_frame_monitor(unsigned frame); doa3_frame_monitor(g_doa3_frames_presented); }
+    doa3_mtrace_frame(g_doa3_frames_presented + 1);
     doa3_present_frame();
     d3d4134_pace();
     { extern void doa3_fn_profile_tick(void); doa3_fn_profile_tick(); }

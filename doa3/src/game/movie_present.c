@@ -899,7 +899,7 @@ void doa3_frame_monitor(unsigned frame)
         }
         if (!s_csv) {
             s_csv = fopen("doa3_frames.csv", "w");
-            if (s_csv) fputs("frame,mean,red\n", s_csv);
+            if (s_csv) fputs("frame,mean,red,draws\n", s_csv);
         }
     }
     w = s_w / 2; h = s_h / 2;
@@ -928,7 +928,14 @@ void doa3_frame_monitor(unsigned frame)
                    (fabs(mean - s_prev_mean) > 2.0 ||
                     labs(red - s_prev_red) > (s_prev_red / 4 > 50 ? s_prev_red / 4 : 50));
         char path[64];
-        if (s_csv) { fprintf(s_csv, "%u,%.2f,%ld\n", frame, mean, red); fflush(s_csv); }
+        if (s_csv) {
+            extern unsigned pgraph_draw_count(void);
+            static unsigned s_last_draws;
+            unsigned d = pgraph_draw_count();
+            fprintf(s_csv, "%u,%.2f,%ld,%u\n", frame, mean, red, d - s_last_draws);
+            s_last_draws = d;
+            fflush(s_csv);
+        }
         if (jump && s_trig < 8) {
             int k;
             s_trig++;

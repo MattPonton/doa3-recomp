@@ -3326,6 +3326,7 @@ static void submit_draw(void)
 /* Presented-frame counter (the 3.1 flip path counts it) and the frames on
  * which draws 30 / 400 were captured, for frame-numbered captures. */
 unsigned g_doa3_frames_presented, g_doa3_frame_at_draw30, g_doa3_frame_at_draw400;
+unsigned pgraph_draw_count(void) { return g_pg.stats.draw_calls; }
 
 /* ══════════════════════════════════════════════════════════════════════
  * Method Handler
@@ -3472,11 +3473,34 @@ static void nv_mtab_init(void)
     s_mtab_ready = 1;
 }
 
+/* DOA3 DIAG: per-frame method trace (see doa3_mtrace_frame in
+ * recomp_manual.c): every method of the traced frames, inline vertex data
+ * runs collapsed to a count. */
+FILE *g_doa3_mtrace;
+static uint32_t s_mt_last = 0xFFFFFFFFu, s_mt_run;
+void pgraph_mtrace_flush_run(void)
+{
+    if (g_doa3_mtrace && s_mt_run) {
+        fprintf(g_doa3_mtrace, "%04X x%u (data)\n", s_mt_last, s_mt_run);
+        s_mt_run = 0;
+    }
+    s_mt_last = 0xFFFFFFFFu;
+}
 int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
 {
     const NvMethodEntry *me;
     uint32_t f;
     (void)subchannel;
+    if (g_doa3_mtrace) {
+        int data = (method == 0x1818 || (method >= 0x1800 && method < 0x1810));
+        if (data) {
+            if (method != s_mt_last) { pgraph_mtrace_flush_run(); s_mt_last = method; }
+            s_mt_run++;
+        } else {
+            pgraph_mtrace_flush_run();
+            fprintf(g_doa3_mtrace, "%04X %08X\n", method, param);
+        }
+    }
     if (!s_mtab_ready) nv_mtab_init();
 
     if (method >= 0x2000 || (method & 3)) {

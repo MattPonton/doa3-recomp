@@ -60,6 +60,7 @@ typedef struct {
 } Fiber;
 
 static Fiber g_fib[MAX_FIBERS];
+static unsigned g_fib_runs[MAX_FIBERS];   /* times each fiber was resumed (diagnostic) */
 static int   g_nfib   = 0;
 static int   g_cur    = 0;
 static int   g_active = 0;
@@ -322,7 +323,7 @@ void xbox_fiber_yield(void)
     g_cur = n; g_fib[n].state = FIB_RUNNING; load_regs(&g_fib[n]);
     SwitchToFiber(g_fib[n].handle);
     /* Resumed: the switcher already restored our register-globals. */
-    g_cur = me; g_fib[me].state = FIB_RUNNING;
+    g_cur = me; g_fib[me].state = FIB_RUNNING; g_fib_runs[g_cur]++;
 }
 
 /* Time-based scheduling point for the worker threads.
@@ -415,7 +416,7 @@ void xbox_fiber_block(uint32_t event_va)
     g_cur = n; g_fib[n].state = FIB_RUNNING; load_regs(&g_fib[n]);
     SwitchToFiber(g_fib[n].handle);
     /* Woken: the switcher restored our register-globals. */
-    g_cur = me; g_fib[me].state = FIB_RUNNING; g_fib[me].wait_event = 0;
+    g_cur = me; g_fib[me].state = FIB_RUNNING; g_fib[me].wait_event = 0; g_fib_runs[g_cur]++;
 }
 
 void xbox_fiber_wake(uint32_t event_va)
@@ -515,7 +516,7 @@ int xbox_fiber_run_thread(uint32_t xhandle)
         g_cur = i; f->state = FIB_RUNNING; load_regs(f);
         SwitchToFiber(f->handle);
         /* target parked; the direct-return path switched back to us */
-        g_cur = me; g_fib[me].state = FIB_RUNNING;
+        g_cur = me; g_fib[me].state = FIB_RUNNING; g_fib_runs[g_cur]++;
         g_direct_return = -1;
         return 1;
     }
@@ -648,7 +649,7 @@ void xbox_fiber_yield_back(void)
     load_regs(&g_fib[r]);
     SwitchToFiber(g_fib[r].handle);
     /* Resumed (switched back into this task). */
-    g_cur = self;
+    g_cur = self; g_fib_runs[g_cur]++;
     g_fib[self].state = FIB_RUNNING;
 }
 
@@ -666,7 +667,7 @@ void xbox_fiber_switch_direct(int idx)
     load_regs(t);
     SwitchToFiber(t->handle);
     /* Switched back: our registers were restored by whoever resumed us. */
-    g_cur = me;
+    g_cur = me; g_fib_runs[g_cur]++;
     g_fib[me].state = FIB_RUNNING;
 }
 
@@ -676,6 +677,23 @@ int xbox_fiber_count(void)
     for (int i = 0; i < g_nfib; i++)
         if (g_fib[i].state == FIB_READY || g_fib[i].state == FIB_RUNNING) c++;
     return c;
+}
+
+/* One line: per fiber state, wait key and resumes since the last call. */
+void xbox_fiber_dump_runs(void)
+{
+    static const char *S[] = { "FREE", "READY", "RUN", "WAIT", "DONE", "DORM" };
+    static unsigned s_last[MAX_FIBERS];
+    int i;
+    fprintf(stderr, "[FIBRUNS] cur=%d", g_cur);
+    for (i = 0; i < g_nfib; i++) {
+        fprintf(stderr, " #%d:%X:%s", i, g_fib[i].ctx1 ? g_fib[i].ctx1 : g_fib[i].start_routine,
+                S[g_fib[i].state]);
+        if (g_fib[i].state == FIB_WAITING) fprintf(stderr, "(%X)", g_fib[i].wait_event);
+        fprintf(stderr, "=%u", g_fib_runs[i] - s_last[i]);
+        s_last[i] = g_fib_runs[i];
+    }
+    fprintf(stderr, "\n");
 }
 
 void xbox_fiber_dump(void)
