@@ -14,3 +14,11 @@
 0x0019EA30  Sofdec frame copy + CSC: show the converted movie frame
 0x0019A380  CRI formatted-error sink: logged
 0x001F3FA0  DSOUND DPC voice service: check the voice lists before walking them
+0x001F5157  DSOUND voice retire wait: deliver the APU interrupt while spinning (3.0: doa3_apu_wait_retire)
+0x0021157D  XAPI XGetDevices -> host pads
+0x0021159F  XAPI XGetDeviceChanges -> host pad changes
+0x00211823  XAPI XInputOpen -> fake handle
+0x00211898  XAPI XInputClose
+0x002118A4  XAPI XInputGetCapabilities -> gamepad
+0x00211A96  XAPI XInputPoll -> complete at once
+0x00211B07  XAPI XInputGetState -> host pad

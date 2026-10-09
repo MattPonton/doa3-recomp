@@ -363,16 +363,185 @@ int doa3_workers_may_run(void)
     return !g_doa3_in_pump;
 }
 
-/* Netplay: force the guest's XPP pad table to the session's pad mask.
- * 3.0 writes its pad state at 0x005E5CD0 (+0x80 per port) and friends.
- * Online play is not ported to this XBE yet, so this only reports.
- * TODO(3.1): port with the netplay state regions (netplay_session.c). */
+#if defined(DOA3_XBE_ID_3_1)
+/* ── XPP (controller) input: host-backed pads ───────────────────────────
+ * There is no USB stack behind XAPI's XPP functions, so 3.0 replaces them
+ * (reference/recomp_manual_30.c, which has the full reasoning). On 3.1 the
+ * XDK code is byte-identical and moved; the game's pad table moved by
+ * +0x1569F8 (3.0 -> 3.1 matched in the pad open/poll code 0x9EA60 / 0xA4D40):
+ *   pad structs  0x73C6C8 (+0x80 per port; 3.0 0x5E5CD0)
+ *   inserted     0x73C6BC   removed 0x73C6C0   (3.0 0x5E5CC8 / 0x5E5CCC)
+ *   open mask    0x73C8C8   aggregates 0x73C8D0..0x73C99C (3.0 0x5E5ED0 / ED8)
+ * Each pad struct holds two XINPUT_STATEs, at +0x19 and +0x2F; the game asks
+ * for +0x2F and its per-frame aggregate builder reads +0x19, so both are
+ * written. Before this, no input reached 3.1 at all (START could not skip
+ * mv_op.sfd). */
+extern unsigned g_doa3_frames_presented;
+#define XPP_PAD_BASE   0x0073C6C8u
+#define XPP_PAD_STRIDE 0x80u
+#define XPP_INSERTED   0x0073C6BCu
+#define XPP_REMOVED    0x0073C6C0u
+#define XPP_OPEN_MASK  0x0073C8C8u
+#define XPP_AGG_LO     0x0073C8D0u
+#define XPP_AGG_HI     0x0073C99Cu
+
+static uint32_t s_xpp_prev_mask;   /* XGetDeviceChanges baseline */
+
+void sub_0021157D(void)   /* XGetDevices(type) -> connected mask, stdcall ret 4 */
+{
+    extern DWORD xbox_InputHostMask(void);
+    uint32_t mask = netplay_filter_pad_mask(xbox_InputHostMask());
+    static int s_n;
+    s_xpp_prev_mask = mask;       /* resets the change baseline, as XAPI does */
+    if (s_n++ < 4) { fprintf(stderr, "[XPP] XGetDevices -> %X\n", mask); fflush(stderr); }
+    eax = mask;
+    esp += 8;
+}
+
+void sub_0021159F(void)   /* XGetDeviceChanges(type, &ins, &rem), stdcall ret 12 */
+{
+    extern DWORD xbox_InputHostMask(void);
+    uint32_t p_ins = MEM32(esp + 8), p_rem = MEM32(esp + 12);
+    uint32_t cur = netplay_filter_pad_mask(xbox_InputHostMask());
+    uint32_t ins = cur & ~s_xpp_prev_mask, rem = s_xpp_prev_mask & ~cur;
+    {   uint32_t forced = netplay_forced_pads(), p;
+        for (p = 0; p < 4; p++)
+            if ((forced & (1u << p)) && MEM32(XPP_PAD_BASE + XPP_PAD_STRIDE * p + 0x78u) == 0)
+                ins |= 1u << p;
+    }
+    s_xpp_prev_mask = cur;
+    if (p_ins) MEM32(p_ins) = ins;     /* both words, every call */
+    if (p_rem) MEM32(p_rem) = rem;
+    if (ins | rem) { fprintf(stderr, "[XPP] device changes: +%X -%X\n", ins, rem); fflush(stderr); }
+    eax = (ins | rem) ? 1u : 0u;
+    esp += 16;
+}
+
+void doa3_netplay_force_pads(uint32_t mask)
+{
+    uint32_t p, i;
+    for (p = 0; p < 4; p++) {
+        uint32_t pad = XPP_PAD_BASE + XPP_PAD_STRIDE * p;
+        for (i = 0x00; i < 0x19; i++) MEM8(pad + i) = 0;
+        for (i = 0x19; i < 0x45; i++) MEM8(pad + i) = 0;
+        for (i = 0x71; i < 0x78; i++) MEM8(pad + i) = 0;
+        MEM32(pad + 0x7C) = 0;
+        if (mask & (1u << p)) {
+            MEM8(pad) = 1;
+            MEM32(pad + 0x78) = 0x0AD00001u + p;
+        } else {
+            MEM32(pad + 0x78) = 0;
+        }
+    }
+    for (i = XPP_AGG_LO; i < XPP_AGG_HI; i++) MEM8(i) = 0;
+    MEM32(XPP_OPEN_MASK) = mask;
+    MEM32(XPP_INSERTED) = 0;
+    MEM32(XPP_REMOVED) = 0;
+    s_xpp_prev_mask = mask;
+}
+
+void sub_00211898(void)   /* XInputClose(handle), stdcall ret 4 */
+{
+    fprintf(stderr, "[XPP] XInputClose(0x%08X)\n", MEM32(esp + 4));
+    eax = 0;
+    esp += 8;
+}
+
+void sub_00211823(void)   /* XInputOpen(type, port, slot, attrs) -> handle, ret 16 */
+{
+    uint32_t port = MEM32(esp + 8);
+    fprintf(stderr, "[XPP] XInputOpen(port %u)\n", port);
+    fflush(stderr);
+    eax = 0x0AD00001u + port;
+    esp += 20;
+}
+
+void sub_002118A4(void)   /* XInputGetCapabilities(handle, caps), ret 8 */
+{
+    uint32_t caps = MEM32(esp + 8);
+    if (caps) {
+        int i;
+        for (i = 0; i < 0x18; i += 4) MEM32(caps + i) = 0;
+        MEM8(caps + 0x18) = 0;
+        MEM8(caps) = 1;   /* XINPUT_DEVSUBTYPE_GC_GAMEPAD */
+    }
+    eax = 0;
+    esp += 12;
+}
+
+void sub_00211A96(void)   /* XInputPoll(handle) — complete at once, ret 8 */
+{
+    int i;
+    for (i = 0; i < 4; i++) {
+        uint32_t st = XPP_PAD_BASE + 0x2Fu + XPP_PAD_STRIDE * i;
+        if (MEM32(st) == 0x3E5) MEM32(st) = 0;   /* ERROR_IO_PENDING marker */
+    }
+    eax = 0;
+    esp += 12;
+}
+
+void sub_00211B07(void)   /* XInputGetState(handle, state) -> 0, ret 8 */
+{
+    uint32_t st = MEM32(esp + 8);
+    static uint32_t s_packet = 0x1000;
+    s_packet++;
+    if (st) {
+        uint16_t buttons = 0;
+        uint8_t an[8] = {0};
+        int16_t lx = 0, ly = 0, rx = 0, ry = 0;
+        uint32_t port = 0, pi, slots[2];
+        int nslots = 1, si, i;
+        for (pi = 0; pi < 4; pi++)
+            if (st == XPP_PAD_BASE + 0x2Fu + XPP_PAD_STRIDE * pi ||
+                st == XPP_PAD_BASE + 0x19u + XPP_PAD_STRIDE * pi) port = pi;
+        {
+            extern DWORD xbox_InputGetState(DWORD, void *);
+            uint8_t raw[32] = {0};
+            if (xbox_InputGetState(port, raw) == 0) {
+                buttons = *(uint16_t *)(raw + 4);
+                memcpy(an, raw + 6, 8);
+                lx = *(int16_t *)(raw + 14); ly = *(int16_t *)(raw + 16);
+                rx = *(int16_t *)(raw + 18); ry = *(int16_t *)(raw + 20);
+            }
+        }
+        {   static int s_log = 0, s_was = 0;
+            int now = (buttons != 0), ai;
+            for (ai = 0; ai < 8; ai++) if (an[ai] >= 30) now = 1;
+            if (now && !s_was && s_log < 24) {
+                s_log++;
+                fprintf(stderr, "[XPP] press port %u buttons %04X analog %02X %02X (frame %u)\n",
+                        port, buttons, an[0], an[1], g_doa3_frames_presented);
+                fflush(stderr);
+            }
+            s_was = now;
+        }
+        slots[0] = st;
+        for (i = 0; i < 4; i++)
+            if (st == XPP_PAD_BASE + 0x2Fu + XPP_PAD_STRIDE * (uint32_t)i) {
+                slots[1] = XPP_PAD_BASE + 0x19u + XPP_PAD_STRIDE * (uint32_t)i;
+                nslots = 2;
+                break;
+            }
+        for (si = 0; si < nslots; si++) {
+            uint32_t d = slots[si];
+            MEM32(d) = s_packet;
+            MEM16(d + 4) = buttons;
+            for (i = 0; i < 8; i++) MEM8(d + 6 + i) = an[i];
+            MEM16(d + 14) = (uint16_t)lx; MEM16(d + 16) = (uint16_t)ly;
+            MEM16(d + 18) = (uint16_t)rx; MEM16(d + 20) = (uint16_t)ry;
+        }
+    }
+    eax = 0;
+    esp += 12;
+}
+#else
 void doa3_netplay_force_pads(uint32_t mask)
 {
     static int s_warned = 0;
     (void)mask;
     if (!s_warned) { s_warned = 1; doa3_port_todo_once("doa3_netplay_force_pads"); }
 }
+#endif /* DOA3_XBE_ID_3_1 (XPP) */
 
 /* Page-table integrity diagnostic (DOA3_PTCHK=1 on 3.0). Its table addresses
  * are 3.0's; a no-op here. */
@@ -854,6 +1023,50 @@ void sub_0019A330(void)
         fflush(stderr);
     }
     sub_0019A330_gen();
+}
+
+/* DirectSound's voice retire wait (0x1F5157, ecx = voice): if the voice
+ * is active (+0x12 bit 0), spin until the APU interrupt's DPC has retired it
+ * (+0x12 bit 0x8000 clear). On the Xbox the interrupt arrives during the
+ * spin. Here nothing interrupts recompiled code, and fix_selfspins had
+ * removed the loop, so a voice was destroyed while still linked into the
+ * APU's active list (+0x6C4): its node stayed there with the destructed
+ * object's base vtable 0x218090, the DPC then called slot 0x14 (AddRef) on
+ * it every interrupt, and when its memory was reused the list looped onto
+ * itself -- the crash at the end of mv_op.sfd. Deliver the interrupt from
+ * inside the wait, as 3.0 does (doa3_apu_wait_retire), keeping the guest
+ * registers. */
+void sub_001F5157(void)
+{
+    uint32_t v = ecx;
+    uint32_t r_eax = eax, r_ecx = ecx, r_edx = edx, r_ebx = ebx, r_esi = esi,
+             r_edi = edi, r_esp = esp, r_seh = g_seh_ebp;
+    DWORD t0 = GetTickCount(), tlog = 0;
+    static int s_n;
+    if ((MEM8(v + 0x12) & 1) && (MEM16(v + 0x12) & 0x8000)) {
+        while (MEM16(v + 0x12) & 0x8000) {
+            doa3_apu_deliver_irq();
+            eax = r_eax; ecx = r_ecx; edx = r_edx; ebx = r_ebx; esi = r_esi;
+            edi = r_edi; esp = r_esp; g_seh_ebp = r_seh;
+            if (!(MEM16(v + 0x12) & 0x8000)) break;
+            {   extern volatile int g_apu_det;
+                extern void mcpx_apu_det_step(void);
+                if (g_apu_det) { mcpx_apu_det_step(); continue; }
+            }
+            Sleep(1);
+            if (GetTickCount() - t0 > 1000 + tlog) {
+                tlog += 2000;
+                fprintf(stderr, "[DSRETIRE] voice %08X still not retired after %lu ms (flags %04X)\n",
+                        v, (unsigned long)(GetTickCount() - t0), MEM16(v + 0x12));
+                fflush(stderr);
+            }
+        }
+        if (s_n++ < 8) {
+            fprintf(stderr, "[DSRETIRE] voice %08X retired after %lu ms\n", v, (unsigned long)(GetTickCount() - t0));
+            fflush(stderr);
+        }
+    }
+    esp += 4;   /* ret */
 }
 
 /* DirectSound's DPC voice service (0x1F3FA0, ecx = the APU object): walks

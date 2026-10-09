@@ -518,3 +518,26 @@ emulated IRQL. 0.0.46 mirrors IRQL into guest byte 0x24, runs the ISR at
 DIRQL and DPCs at DISPATCH, holds the interrupt while IRQL >= DISPATCH, and
 skips timeslices there. The voice-service wrapper ([DSVOICE]) logs every
 change to the lists, so if the bad node is still there its arrival shows.
+
+Fortieth run (0.0.46): same end-of-movie crash, now explained by [DSVOICE].
+At frame 1765 (mv_op start) a voice node appeared in the APU's active list
+whose object already carried the root vtable 0x218090 -- the one the voice
+destructor chain (0x1F6642 -> 0x1F5566) leaves behind. A voice leaves that
+list only from the interrupt path (0x1F44E8 -> 0x1F40D6 -> 0x1F4EF7); the
+thread side waits for it in 0x1F5157 (`while (flags & 0x8000)`), which
+fix_selfspins had removed because nothing interrupts recompiled code. 3.0
+handles its copy of this wait by delivering the APU interrupt from inside it
+(doa3_apu_wait_retire); 0x1F5157 is now overridden the same way. At frame
+8277 the dangling node's memory was reused and the list pointed at itself.
+DirectSound's auto-lock (0x1F3C45) also confirms the IRQL work: it raises to
+DISPATCH only when fs:[0x24] < 2.
+
+Input: no XPP override existed for 3.1, so no pad reached the game. The
+3.0 overrides (XGetDevices, XGetDeviceChanges, XInputOpen/Close,
+XInputGetCapabilities, XInputPoll, XInputGetState) are ported: the XDK code
+matches byte for byte at 0x21157D/0x21159F/0x211823/0x211898/0x2118A4/
+0x211A96/0x211B07, and the pad table moved by +0x1569F8 (0x73C6C8).
+
+Red box at the TECMO fade-out (glitch_0596): that frame's push buffer uploads
+a vertex program (0x0B00.., execution mode 0x1E94 = 6) for the fade quad and
+the logo's transparent texels come out dark red. Not looked at further yet.
