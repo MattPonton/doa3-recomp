@@ -562,3 +562,21 @@ scan of every uncovered gap for 16-aligned entries after ret/padding gave
 half-res scene_NNNNN.bmp every 3 s after frame 1500, logs the pad aggregates
 at each press, and logs the attract movie player 0xD7490 (it skips on bits
 0x300/0x30 of 0x73C8D8 + pad*0x2C). Exe icon: the game's save icon.
+
+Forty-third run (0.0.49): the Press Start screen and the Nine Lives
+sequence run (no hang at the hand-off), with exploded geometry: in the
+scene snapshots rigid character parts and some stage pieces are right while
+the skinned/blended meshes (hair, joints, torso links) are missing or flung
+out. The sequence stalls at stage-tier transitions and never leaves Lost
+World. START never skipped mv_op: the attract movie is played by
+0xD7490's sibling path (0x53E60, action 2), not 0xD7490 (no [ATTRACT] line);
+its exit is decided by mp_UpdatePlayerJoinAndStartInput (0x88xxx), which
+ignores pads while 0x596AA5 == 1 (set by the stage loader thread while it
+loads). Watched now: 0x596AA5, P1/P2 join 0x596A32/33, attract action
+0x5A262A, join result 0x5A697C.
+
+New [ICALL] misses: 0x132750..0x1327F0, eight 3-5 instruction x87 helpers
+(`fld [esp+8]; fadd [k]; ret`) folded into one link_seed fragment. A scan of
+every function range for 16-aligned entries after `ret` + padding found 30
+such swallowed functions (incl. a second helper set at 0x141C40..); all
+seeded.

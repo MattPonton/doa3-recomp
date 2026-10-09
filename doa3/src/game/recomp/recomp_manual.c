@@ -1346,9 +1346,14 @@ void doa3_fn_trace(uint32_t va, uint32_t esp_in)
         /* [6..8]: the attract hand-off after the logos: 0x593038
          * (title/attract loop active), 0x598E80 (main strand state),
          * 0x5A2858 (current game mode). */
-        static uint32_t s_wv_va[9] = { 0xC864C0u, 0xC8BA80u, 0, 0, 0, 0,
-                                       0x593038u, 0x598E80u, 0x5A2858u };
-        static uint32_t s_wv_last[9];
+        /* [9..14]: title-attract input path -- 0x596AA5 (input blocked
+         * while the stage loader runs), 0x596A32 (P1 join), 0x5A262A
+         * (attract action),
+         * 0x5A697C (join result). */
+        static uint32_t s_wv_va[15] = { 0xC864C0u, 0xC8BA80u, 0, 0, 0, 0,
+                                       0x593038u, 0x598E80u, 0x5A2858u,
+                                       0x596AA4u, 0x596A30u, 0x5A2628u, 0, 0, 0x5A697Cu };
+        static uint32_t s_wv_last[15];
         static int s_wv_n;
         int w;
         {
@@ -1359,10 +1364,10 @@ void doa3_fn_trace(uint32_t va, uint32_t esp_in)
                 s_wv_va[4] = h + ib * 0x388u + 0xF90u; s_wv_va[5] = h + ib * 0x388u + 0xF94u;
             }
         }
-        for (w = 0; w < 9; w++) {
+        for (w = 0; w < 15; w++) {
             if (!s_wv_va[w]) continue;
             uint32_t v = MEM32(s_wv_va[w]);
-            if (v != s_wv_last[w] && s_wv_n < 160) {
+            if (v != s_wv_last[w] && s_wv_n < 400) {
                 unsigned j, k = 0;
                 s_wv_n++;
                 fprintf(stderr, "[VWATCH] [%08X] %08X -> %08X at return of sub_%08X (fiber %d, frame %u); recent:",
