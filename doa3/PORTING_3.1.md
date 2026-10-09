@@ -491,3 +491,14 @@ blocks that read them: every predecessor latches its compare operands into
 _fjN locals and the jcc reads those (_lift_blocks_with_joins; 550 latches
 across the game, mostly compiler-merged compare chains). Two more indirect
 targets from the [ICALL] log are seeded (XPP 0x210A43, 0x2111F2).
+
+Thirty-eighth run (0.0.44): the ninja movie ends normally, the attract flag
+0x593038 goes to 1 (frame 1780) and mv_op.sfd plays through. Right after it
+(frame 8276, sfd state 4 -> 1 -> 6 -> 1 -> 0) DirectSound's AddRef 0x1F1816
+ran `inc [this+4]` with this = 0xF57F4AA9. Host = guest + 0x20000000 put
+that inside a fiber stack's guard page; the guard handler resumed the access
+against the host stack and the process then died at rip=0. 0.0.45: a guard
+fault from recompiled code at guest 0x08000000..0xF0000000 now restores the
+guard and skips the instruction, and the guard / native-crash handlers print
+the host call stack ([BT], exe offsets for DOA3.map) and the last probed
+returns ([RING]) to find where the bad pointer came from.

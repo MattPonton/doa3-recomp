@@ -987,6 +987,19 @@ static unsigned s_fn_calls[32];
  * call can print the calls nested inside it: [NEST] lines. */
 static struct { uint32_t va, e0, eax; int fib; } s_ring[8192];
 static unsigned s_ring_n;
+/* Crash context: the last probed-function returns, newest first, with the
+ * fiber each ran on (main.c's fault handlers call this). */
+void doa3_ring_dump(const char *why)
+{
+    unsigned j, k = 0;
+    fprintf(stderr, "[RING] %s: g_esp=%08X eax=%08X ecx=%08X edx=%08X ebx=%08X esi=%08X edi=%08X fiber %d, last returns:",
+            why, g_esp, g_eax, g_ecx, g_edx, g_ebx, g_esi, g_edi, xbox_fiber_current());
+    for (j = s_ring_n; j > 0 && k < 96; j--, k++)
+        fprintf(stderr, "%s%X/%d=%X", (k % 8) ? " " : "\n[RING]   ",
+                s_ring[(j - 1) & 8191].va, s_ring[(j - 1) & 8191].fib, s_ring[(j - 1) & 8191].eax);
+    fprintf(stderr, "\n");
+    fflush(stderr);
+}
 static void doa3_fn_nest_dump(uint32_t va, uint32_t e0, unsigned callno)
 {
     int fib = xbox_fiber_current(), k, n = 0;

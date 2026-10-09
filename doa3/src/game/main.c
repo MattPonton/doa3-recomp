@@ -315,6 +315,24 @@ extern volatile uint32_t g_icall_trace_idx;
 extern volatile uint64_t g_icall_count;
 
 /* ── Fault-skip decoders (ported verbatim from burnout3/src/game/main.c) ── */
+/* Host call stack at a fault, as offsets into DOA3.exe (symbolise with
+ * DOA3.map: the sub_XXXXXXXX names are the guest functions on the chain). */
+static void doa3_host_backtrace(const char *why)
+{
+    void *bt[48];
+    USHORT n = CaptureStackBackTrace(0, 48, bt, NULL), i;
+    HMODULE exe = GetModuleHandleA(NULL);
+    fprintf(stderr, "[BT] %s:", why);
+    for (i = 0; i < n; i++) {
+        uintptr_t a = (uintptr_t)bt[i];
+        if (a >= (uintptr_t)exe && a < (uintptr_t)exe + 0x2000000u)
+            fprintf(stderr, " +%llX", (unsigned long long)(a - (uintptr_t)exe));
+        else
+            fprintf(stderr, " %llX", (unsigned long long)a);
+    }
+    fprintf(stderr, "\n");
+}
+
 static BOOL veh_skip_faulting_read(PCONTEXT ctx)
 {
     uint8_t *rip = (uint8_t *)ctx->Rip;
@@ -938,13 +956,36 @@ static LONG WINAPI crash_veh(PEXCEPTION_POINTERS info)
          * clears PAGE_GUARD before raising this, so resuming simply retries
          * the access against the now-normal committed page. */
         static int s_guard_logged = 0;
+        uintptr_t gf = info->ExceptionRecord->ExceptionInformation[1];
+        uintptr_t grip = (uintptr_t)info->ContextRecord->Rip;
+        uintptr_t gbase = (uintptr_t)g_xbox_mem_offset;
+        /* A guest access through a wild pointer that lands in a host fiber
+         * stack's guard page (the stacks sit inside the 4 GB window above
+         * the guest base): retrying it reads -- or writes -- the host stack.
+         * 3.1 after mv_op.sfd: `inc [garbage+4]` in DirectSound's AddRef
+         * 0x1F1816 did that and the process died on a smashed return
+         * address (rip=0). Put the guard back and skip the instruction like
+         * any other wild guest access. */
+        int guest_wild = grip >= 0x140000000ull && grip < 0x142000000ull &&
+                         gf >= gbase + 0x08000000ull && gf < gbase + 0xF0000000ull;
         if (s_guard_logged < 8) {
             s_guard_logged++;
-            fprintf(stderr, "[GUARD] rip=0x%llX %s fault=0x%llX g_esp=0x%08X (unguarded, resuming)\n",
-                    (unsigned long long)info->ContextRecord->Rip,
+            fprintf(stderr, "[GUARD] rip=0x%llX %s fault=0x%llX (guest 0x%08X) g_esp=0x%08X (%s)\n",
+                    (unsigned long long)grip,
                     info->ExceptionRecord->ExceptionInformation[0] ? "write" : "read",
-                    (unsigned long long)info->ExceptionRecord->ExceptionInformation[1], g_esp);
+                    (unsigned long long)gf, (uint32_t)(gf - gbase), g_esp,
+                    guest_wild ? "wild guest pointer: guard restored, access skipped" : "unguarded, resuming");
+            doa3_host_backtrace("guard");
+            if (s_guard_logged <= 2) { extern void doa3_ring_dump(const char *); doa3_ring_dump("guard"); }
             fflush(stderr);
+        }
+        if (guest_wild) {
+            DWORD oldp;
+            VirtualProtect((LPVOID)(gf & ~(uintptr_t)0xFFF), 0x1000, PAGE_READWRITE | PAGE_GUARD, &oldp);
+            BOOL ok = info->ExceptionRecord->ExceptionInformation[0]
+                ? veh_skip_faulting_write(info->ContextRecord)
+                : veh_skip_faulting_read(info->ContextRecord);
+            if (ok) return EXCEPTION_CONTINUE_EXECUTION;
         }
         return EXCEPTION_CONTINUE_EXECUTION;
     }
@@ -1136,6 +1177,12 @@ static LONG WINAPI crash_veh(PEXCEPTION_POINTERS info)
                     (unsigned long long)info->ContextRecord->Rip,
                     modname,
                     (unsigned long long)(info->ContextRecord->Rip - (uintptr_t)mod));
+            {   static int s_nc = 0;
+                if (s_nc++ < 2) {
+                    doa3_host_backtrace("native crash");
+                    extern void doa3_ring_dump(const char *); doa3_ring_dump("native crash");
+                }
+            }
             fflush(stderr);
         }
     }
