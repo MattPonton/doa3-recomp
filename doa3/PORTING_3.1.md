@@ -551,3 +551,14 @@ the lifter wrote that as CMP_GE(LO16(eax) & LO16(eax), 0). The AND promotes
 to int, so CMP_GE compared at 32 bits and 0xFFFF counted as >= 0: the walk
 ran off the end. Signed/unsigned conditions after an 8/16-bit `test` now
 cast the AND back to the operand width (474 sites).
+
+Forty-second run (0.0.48): past the title logo. The Press Start screen
+rendered, then stopped updating; Nine Lives started (song first, then the
+in-engine dance with exploded vertices). START still does not skip mv_op.
+The log named five indirect-call targets with no function: 0x9DB70,
+0x9DC20, 0x9DCC0, 0x9DCF0, 0x69040 -- code in gaps no function covers. A
+scan of every uncovered gap for 16-aligned entries after ret/padding gave
+14 plausible ones, now seeded (ptr_seeds_3.1.txt). 0.0.49 also writes a
+half-res scene_NNNNN.bmp every 3 s after frame 1500, logs the pad aggregates
+at each press, and logs the attract movie player 0xD7490 (it skips on bits
+0x300/0x30 of 0x73C8D8 + pad*0x2C). Exe icon: the game's save icon.

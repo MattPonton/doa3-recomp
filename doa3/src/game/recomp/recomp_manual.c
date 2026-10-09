@@ -508,9 +508,14 @@ void sub_00211B07(void)   /* XInputGetState(handle, state) -> 0, ret 8 */
             int now = (buttons != 0), ai;
             for (ai = 0; ai < 8; ai++) if (an[ai] >= 30) now = 1;
             if (now && !s_was && s_log < 24) {
+                uint32_t pp;
                 s_log++;
-                fprintf(stderr, "[XPP] press port %u buttons %04X analog %02X %02X (frame %u)\n",
+                fprintf(stderr, "[XPP] press port %u buttons %04X analog %02X %02X (frame %u); aggregates:",
                         port, buttons, an[0], an[1], g_doa3_frames_presented);
+                for (pp = 0; pp < 4; pp++)
+                    fprintf(stderr, " [%u] %08X %08X %08X", pp, MEM32(XPP_AGG_LO + pp * 0x2C),
+                            MEM32(XPP_AGG_LO + pp * 0x2C + 4), MEM32(XPP_AGG_LO + pp * 0x2C + 8));
+                fprintf(stderr, "\n");
                 fflush(stderr);
             }
             s_was = now;
@@ -533,6 +538,23 @@ void sub_00211B07(void)   /* XInputGetState(handle, state) -> 0, ret 8 */
     }
     eax = 0;
     esp += 12;
+}
+/* The attract movie player (0xD7490, the pad index in eax -> ebx): plays
+ * mv_op.sfd and leaves early when the pad's aggregate word at
+ * 0x73C8D8 + pad*0x2C has bits 0x300 or 0x30. START did not skip it on
+ * 3.1; log which pad it watches and that word while it runs. */
+void sub_000D7490_gen(void);
+void sub_000D7490(void)
+{
+    fprintf(stderr, "[ATTRACT] movie player 0xD7490 for pad %d (frame %u); words:", (int)eax, g_doa3_frames_presented);
+    {   uint32_t pp;
+        for (pp = 0; pp < 4; pp++) fprintf(stderr, " %08X", MEM32(0x73C8D8u + pp * 0x2C));
+    }
+    fprintf(stderr, "\n");
+    fflush(stderr);
+    sub_000D7490_gen();
+    fprintf(stderr, "[ATTRACT] movie player returned (frame %u)\n", g_doa3_frames_presented);
+    fflush(stderr);
 }
 #else
 void doa3_netplay_force_pads(uint32_t mask)

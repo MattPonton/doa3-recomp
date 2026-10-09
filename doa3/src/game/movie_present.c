@@ -882,7 +882,11 @@ void doa3_frame_monitor(unsigned frame)
         s_until = e ? (unsigned)strtoul(e, NULL, 10) : 1500u;
         if (!s_until) s_until = 1;
     }
-    if (frame > s_until || !dev || !ctx || !bb) return;
+    /* Past the glitch window: a half-res snapshot every 3 s (scene_NNNNN.bmp,
+     * at most 80) so the in-engine screens after the movies can be seen. */
+    static int s_scenes;
+    int scene = frame > s_until && (frame % 180u) == 0 && s_scenes < 80;
+    if ((frame > s_until && !scene) || !dev || !ctx || !bb) return;
     ID3D11Texture2D_GetDesc(bb, &td);
     if (!s_stg || s_w != (int)td.Width || s_h != (int)td.Height) {
         D3D11_TEXTURE2D_DESC sd = td;
@@ -922,6 +926,13 @@ void doa3_frame_monitor(unsigned frame)
     }
     ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource *)s_stg, 0);
     s_ring_frame[slot] = frame;
+    if (scene) {
+        char sp[64];
+        s_scenes++;
+        sprintf(sp, "scene_%05u.bmp", frame);
+        bmp_write(sp, img, w, h);
+        return;
+    }
     {
         double mean = n ? sum / (3.0 * n) : 0.0;
         int jump = s_prev_mean >= 0.0 &&

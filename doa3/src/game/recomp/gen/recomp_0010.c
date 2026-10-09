@@ -1,11 +1,416 @@
 /**
  * Dead or Alive 3 - Recompiled code chunk 10
- * Functions: 985 (0x001F146E - 0xE9D2ECA9)
+ * Functions: 999 (0x001F1376 - 0xE9D2ECA9)
  */
 
 #define RECOMP_GENERATED_CODE
 #include "recomp_funcs.h"
 #include <math.h>
+
+/**
+ * sub_001F1376
+ * Original: 0x001F1376 - 0x001F13A5 (47 bytes, 14 insns)
+ * Category: game_audio
+ * CC: cdecl, 0 params, returns int_or_void
+ * Frame: fpo_leaf
+ */
+void sub_001F1376_gen(void)
+{
+    int _flags = 0; /* fallback flag var */
+
+loc_001F1376: ;
+    PUSH32(esp, esi);
+    PUSH32(esp, MEM32(esp + 0x10));
+    esi = ecx;
+    PUSH32(esp, MEM32(esp + 0x10));
+    ecx = MEM32(esi + 0x14);
+    PUSH32(esp, MEM32(esp + 0x10));
+    PUSH32(esp, 0); sub_001F3A9F(); /* call 0x001F3A9F */
+
+loc_001F138D: ;
+    if (TEST_S(eax, eax)) goto loc_001F139A; /* jl: less (signed <) */
+
+loc_001F1391: ;
+    MEM32(esi + 0x2BC) = MEM32(esi + 0x2BC) | 1;
+    goto loc_001F13A1;
+
+loc_001F139A: ;
+    MEM32(esi + 0x2BC) = MEM32(esi + 0x2BC) & 0xFFFFFFFEu;
+
+loc_001F13A1: ;
+    POP32(esp, esi);
+    esp += 16; return; /* ret 12 */
+
+}
+
+/**
+ * sub_001F139A
+ * Original: 0x001F139A - 0x001F13A5 (11 bytes, 3 insns)
+ * CC: cdecl, 0 params, returns int_or_void
+ * Frame: fpo_leaf
+ */
+void sub_001F139A(void)
+{
+
+loc_001F139A: ;
+    MEM32(esi + 0x2BC) = MEM32(esi + 0x2BC) & 0xFFFFFFFEu;
+    POP32(esp, esi);
+    esp += 16; return; /* ret 12 */
+
+}
+
+/**
+ * sub_001F13A1
+ * Original: 0x001F13A1 - 0x001F13A5 (4 bytes, 2 insns)
+ * CC: cdecl, 0 params, returns int_or_void
+ * Frame: fpo_leaf
+ */
+void sub_001F13A1(void)
+{
+
+loc_001F13A1: ;
+    POP32(esp, esi);
+    esp += 16; return; /* ret 12 */
+
+}
+
+/**
+ * sub_001F13A5
+ * Original: 0x001F13A5 - 0x001F13AA (5 bytes, 2 insns)
+ * CC: cdecl, 0 params, returns int_or_void
+ * Frame: fpo_leaf
+ */
+void sub_001F13A5_gen(void)
+{
+
+loc_001F13A5: ;
+    eax = 0; /* xor self */
+    esp += 16; return; /* ret 12 */
+
+}
+
+/**
+ * sub_001F13AA
+ * Original: 0x001F13AA - 0x001F13AF (5 bytes, 2 insns)
+ * CC: cdecl, 0 params, returns int_or_void
+ * Frame: fpo_leaf
+ */
+void sub_001F13AA_gen(void)
+{
+
+loc_001F13AA: ;
+    eax = 0; /* xor self */
+    esp += 24; return; /* ret 20 */
+
+}
+
+/**
+ * sub_001F13AF
+ * Original: 0x001F13AF - 0x001F13C5 (22 bytes, 9 insns)
+ * CC: cdecl, 0 params, returns int_or_void
+ * Frame: fpo_leaf
+ */
+void sub_001F13AF_gen(void)
+{
+    uint32_t _fs0 = 0, _fs1 = 0; /* flag operands kept for a later jcc */
+    int _cf = 0; /* carry flag */
+
+loc_001F13AF: ;
+    eax = MEM32(esp + 4);
+    ecx = eax + -28;
+    eax = (uint32_t)(-(int32_t)eax);
+    _cf = ((eax) != 0); /* CF from neg */
+    eax = _cf ? 0xFFFFFFFF : 0; /* sbb self (CF extend) */
+    eax = eax & ecx;
+    ecx = MEM32(eax);
+    { uint32_t _icall_esp = g_esp;
+    PUSH32(esp, eax);
+    _fs0 = (uint32_t)(eax); /* flag operand kept for a later jcc */
+    _fs1 = (uint32_t)(ecx); /* flag operand kept for a later jcc */
+    { uint32_t _icall_t = MEM32(ecx + 8); PUSH32(esp, 0); RECOMP_ICALL_SAFE(_icall_t, _icall_esp); } /* indirect call */
+    }
+
+loc_001F13C2: ;
+    esp += 8; return; /* ret 4 */
+
+}
+
+/**
+ * sub_001F13C5
+ * Original: 0x001F13C5 - 0x001F13E4 (31 bytes, 10 insns)
+ * Category: game_audio
+ * CC: cdecl, 0 params, returns int_or_void
+ * Frame: fpo_leaf
+ */
+void sub_001F13C5_gen(void)
+{
+    uint32_t _fs0 = 0; /* flag operands kept for a later jcc */
+    int _flags = 0; /* fallback flag var */
+
+loc_001F13C5: ;
+    PUSH32(esp, esi);
+    PUSH32(esp, 0); sub_001F1358(); /* call 0x001F1358 */
+
+loc_001F13CB: ;
+    esi = ZX8(LO8(eax));
+    PUSH32(esp, 0); sub_001F1307(); /* call 0x001F1307 */
+
+loc_001F13D3: ;
+    /* test esi, esi - flags set for next jcc */
+    _fs0 = (uint32_t)(esi); /* flag operand kept for a later jcc */
+    POP32(esp, esi);
+    if (TEST_Z(_fs0, _fs0)) goto loc_001F13E3; /* je: equal / zero */
+
+loc_001F13D8: ;
+    { uint32_t _icall_esp = g_esp;
+    PUSH32(esp, 0x20BE58);
+    { uint32_t _icall_t = MEM32(0x217AC4); PUSH32(esp, 0); RECOMP_ICALL_SAFE(_icall_t, _icall_esp); } /* indirect call */
+    }
+
+loc_001F13E3: ;
+    esp += 4; return; /* ret */
+
+}
+
+/**
+ * sub_001F13E4
+ * Original: 0x001F13E4 - 0x001F142F (75 bytes, 27 insns)
+ * Category: game_audio
+ * CC: cdecl, 0 params, returns int_or_void
+ * Frame: fpo_leaf
+ */
+void sub_001F13E4_gen(void)
+{
+    uint32_t _fs0 = 0; /* flag operands kept for a later jcc */
+    uint32_t ebp;
+    int _flags = 0; /* fallback flag var */
+    #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
+    #define fp_pop() (g_fp_top++)
+    #define fp_popp() (fp_pop())
+    #define fp_top() g_fp_stack[g_fp_top & 7]
+    #define fp_st1() g_fp_stack[(g_fp_top + 1) & 7]
+
+loc_001F13E4: ;
+    PUSH32(esp, ebp);
+    ebp = esp;
+    PUSH32(esp, ecx);
+    PUSH32(esp, esi);
+    ecx = ebp + -4;
+    PUSH32(esp, 0); sub_001F1294(); /* call 0x001F1294 */
+
+loc_001F13F1: ;
+    eax = MEM32(ebp + 8);
+    if (CMP_NE(eax, 0xBB80)) goto loc_001F13FF; /* jne: not equal / not zero */
+
+loc_001F13FB: ;
+    esi = 0; /* xor self */
+    goto loc_001F1420;
+
+loc_001F13FF: ;
+    /* test eax, eax - flags set for next jcc */
+    MEM32(ebp + 8) = eax;
+    fp_push((double)SMEM32(ebp + 8)); /* fild */
+    if (CMP_GE(eax & eax, 0)) goto loc_001F140F; /* jge: greater or equal (signed >=) */
+
+loc_001F1409: ;
+    fp_top() = fp_top() + (double)MEMF(0x250EFC); /* fadd mem */
+
+loc_001F140F: ;
+    fp_top() = fp_top() * (double)MEMF(0x21809C); /* fmul mem */
+    PUSH32(esp, ecx);
+    MEMF(esp) = (float)fp_top(); fp_popp(); /* fstp */
+    _fs0 = (uint32_t)(eax); /* flag operand kept for a later jcc */
+    PUSH32(esp, 0); sub_001F492A(); /* call 0x001F492A */
+
+loc_001F141E: ;
+    esi = eax;
+
+loc_001F1420: ;
+    ecx = ebp + -4;
+    PUSH32(esp, 0); sub_001F12B9(); /* call 0x001F12B9 */
+
+loc_001F1428: ;
+    eax = esi;
+    POP32(esp, esi);
+    esp = ebp;
+    POP32(esp, ebp); /* leave */
+    esp += 8; return; /* ret 4 */
+
+    #undef fp_push
+    #undef fp_pop
+    #undef fp_popp
+    #undef fp_top
+    #undef fp_st1
+}
+
+/**
+ * sub_001F13FF
+ * Original: 0x001F13FF - 0x001F142F (48 bytes, 16 insns)
+ * CC: cdecl, 0 params, returns int_or_void
+ * Frame: fpo_leaf
+ */
+void sub_001F13FF(void)
+{
+    uint32_t _fs0 = 0; /* flag operands kept for a later jcc */
+    uint32_t ebp;
+    int _flags = 0; /* fallback flag var */
+    #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
+    #define fp_pop() (g_fp_top++)
+    #define fp_popp() (fp_pop())
+    #define fp_top() g_fp_stack[g_fp_top & 7]
+    #define fp_st1() g_fp_stack[(g_fp_top + 1) & 7]
+    ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
+
+loc_001F13FF: ;
+    /* test eax, eax - flags set for next jcc */
+    MEM32(ebp + 8) = eax;
+    fp_push((double)SMEM32(ebp + 8)); /* fild */
+    if (CMP_GE(eax & eax, 0)) goto loc_001F140F; /* jge: greater or equal (signed >=) */
+
+loc_001F1409: ;
+    fp_top() = fp_top() + (double)MEMF(0x250EFC); /* fadd mem */
+
+loc_001F140F: ;
+    fp_top() = fp_top() * (double)MEMF(0x21809C); /* fmul mem */
+    PUSH32(esp, ecx);
+    MEMF(esp) = (float)fp_top(); fp_popp(); /* fstp */
+    _fs0 = (uint32_t)(eax); /* flag operand kept for a later jcc */
+    PUSH32(esp, 0); sub_001F492A(); /* call 0x001F492A */
+
+loc_001F141E: ;
+    esi = eax;
+    ecx = ebp + -4;
+    PUSH32(esp, 0); sub_001F12B9(); /* call 0x001F12B9 */
+
+loc_001F1428: ;
+    eax = esi;
+    POP32(esp, esi);
+    esp = ebp;
+    POP32(esp, ebp); /* leave */
+    esp += 8; return; /* ret 4 */
+
+    #undef fp_push
+    #undef fp_pop
+    #undef fp_popp
+    #undef fp_top
+    #undef fp_st1
+}
+
+/**
+ * sub_001F1420
+ * Original: 0x001F1420 - 0x001F142F (15 bytes, 6 insns)
+ * CC: cdecl, 0 params, returns int_or_void
+ * Frame: fpo_leaf
+ */
+void sub_001F1420(void)
+{
+    uint32_t ebp;
+    ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
+
+loc_001F1420: ;
+    ecx = ebp + -4;
+    PUSH32(esp, 0); sub_001F12B9(); /* call 0x001F12B9 */
+
+loc_001F1428: ;
+    eax = esi;
+    POP32(esp, esi);
+    esp = ebp;
+    POP32(esp, ebp); /* leave */
+    esp += 8; return; /* ret 4 */
+
+}
+
+/**
+ * sub_001F142F
+ * Original: 0x001F142F - 0x001F1451 (34 bytes, 15 insns)
+ * CC: cdecl, 0 params, returns int_or_void
+ * Frame: fpo_leaf
+ */
+void sub_001F142F_gen(void)
+{
+    uint32_t _fs0 = 0; /* flag operands kept for a later jcc */
+    int _flags = 0; /* fallback flag var */
+
+loc_001F142F: ;
+    eax = MEM32(esp + 4);
+    if (TEST_Z(eax, eax)) goto loc_001F1444; /* je: equal / zero */
+
+loc_001F1437: ;
+    edx = MEM32(eax);
+    MEM32(ecx + 0xC) = edx;
+    eax = MEM32(eax + 4);
+    MEM32(ecx + 0x10) = eax;
+    goto loc_001F144E;
+
+loc_001F1444: ;
+    PUSH32(esp, edi);
+    eax = eax | 0xFFFFFFFFu;
+    edi = ecx + 0xC;
+    _fs0 = (uint32_t)(eax); /* flag operand kept for a later jcc */
+    MEM32(edi) = eax; edi += 4; /* stosd */
+    MEM32(edi) = eax; edi += 4; /* stosd */
+    POP32(esp, edi);
+
+loc_001F144E: ;
+    esp += 8; return; /* ret 4 */
+
+}
+
+/**
+ * sub_001F1444
+ * Original: 0x001F1444 - 0x001F1451 (13 bytes, 7 insns)
+ * CC: cdecl, 0 params, returns int_or_void
+ * Frame: fpo_leaf
+ */
+void sub_001F1444(void)
+{
+
+loc_001F1444: ;
+    PUSH32(esp, edi);
+    eax = eax | 0xFFFFFFFFu;
+    edi = ecx + 0xC;
+    MEM32(edi) = eax; edi += 4; /* stosd */
+    MEM32(edi) = eax; edi += 4; /* stosd */
+    POP32(esp, edi);
+    esp += 8; return; /* ret 4 */
+
+}
+
+/**
+ * sub_001F144E
+ * Original: 0x001F144E - 0x001F1451 (3 bytes, 1 insns)
+ * CC: cdecl, 0 params, returns int_or_void
+ * Frame: fpo_leaf
+ */
+void sub_001F144E(void)
+{
+
+loc_001F144E: ;
+    esp += 8; return; /* ret 4 */
+
+}
+
+/**
+ * sub_001F1451
+ * Original: 0x001F1451 - 0x001F146E (29 bytes, 8 insns)
+ * Category: game_vtable
+ * CC: cdecl, 0 params, returns int_or_void
+ * Frame: fpo_leaf
+ */
+void sub_001F1451_gen(void)
+{
+
+loc_001F1451: ;
+    eax = ecx;
+    ecx = eax + 0x10;
+    MEM32(eax + 4) = 2;
+    MEM32(eax) = 0x2180A0;
+    MEM32(0x20C4F8) = eax;
+    MEM32(eax + 0x14) = ecx;
+    MEM32(ecx) = ecx;
+    esp += 4; return; /* ret */
+
+}
 
 /**
  * sub_001F146E

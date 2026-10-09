@@ -22,3 +22,4 @@
 0x002118A4  XAPI XInputGetCapabilities -> gamepad
 0x00211A96  XAPI XInputPoll -> complete at once
 0x00211B07  XAPI XInputGetState -> host pad
+0x000D7490  attract movie (mv_op) player: log which pad's aggregate gates the skip
