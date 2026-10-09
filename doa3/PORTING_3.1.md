@@ -597,3 +597,23 @@ NV2A has), finishes the old lap before a ring wrap instead of dropping it,
 and logs the control-word counts ([PB] control words). Also: [JOIN] lines
 from mp_UpdatePlayerJoinAndStartInput (0x88910) whenever an aggregate has
 START, and two consecutive method traces every 1500 frames past 1500.
+
+Forty-fifth run (0.0.51): the scrambled geometry is gone -- the only
+control words in the ring were its wrap jumps (one per lap), so the fix was
+finishing the old lap before the wrap instead of dropping it. Materials and
+reflections are still wrong, character select renders black, tier
+transitions halt and some hit reactions are the wrong animation. In a fight
+the pause menu reopens one frame after it is dismissed.
+
+Input: 3.1's XAPI has no XInputPoll. 0x211A96 is XInputGetState and
+0x211B07 is XInputSetState (rumble; the game calls it every frame its
+feedback header is not ERROR_IO_PENDING). The 3.0 port's names for its
+copies are one function off and its pad state was written from the rumble
+call; ported as-is, 3.1 got its input only through SetState into the
+feedback header (pad+0x2F) and a mirror at pad+0x19. Now GetState fills the
+state it is given from the host pad and SetState completes at once.
+
+mv_op: START reaches mp_UpdatePlayerJoinAndStartInput as the attract input
+branch (0x5C9254 = 2; 0x5C9248 was already 1), so mp_UpdateTitleAttract
+should be running the exit fade 0x53EB0 (gated on 0x5A8B97 == 0, 60-frame
+counter 0x5A6970, then 0x53F20). 0.0.52 logs it ([ATTRACT] exit fade).

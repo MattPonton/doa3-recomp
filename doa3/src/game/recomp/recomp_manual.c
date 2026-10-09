@@ -469,73 +469,67 @@ void sub_002118A4(void)   /* XInputGetCapabilities(handle, caps), ret 8 */
     esp += 12;
 }
 
-void sub_00211A96(void)   /* XInputPoll(handle) — complete at once, ret 8 */
+/* 3.1's XAPI has no XInputPoll. Reading the code: 0x211A96 is
+ * XInputGetState(handle, pState) -- cmp [h+0xA3],1 / 0x48F when the device is
+ * gone / copies the report from h+0x14 -- and 0x211B07 is
+ * XInputSetState(handle, pFeedback) (rumble: stamps the feedback header at
+ * +0x40/+0x41 and queues it). The 3.0 port's names for its copies (0x1E70AD
+ * "XInputPoll", 0x1E711E "XInputGetState") are one function off, and its
+ * input was written from the rumble call. On 3.1 that left the pad state
+ * updated only when the game rumbled: in a fight START stayed "held" from
+ * the last rumble call, so the pause menu reopened every frame. Serve the
+ * pad from GetState and complete rumble requests at once. */
+static uint32_t xpp_port_of(uint32_t h)
 {
+    uint32_t p = h - 0x0AD00001u;
+    return p < 4 ? p : 0;
+}
+
+void sub_00211A96(void)   /* XInputGetState(handle, pState) -> 0, ret 8 */
+{
+    uint32_t h = MEM32(esp + 4), st = MEM32(esp + 8), port = xpp_port_of(h);
+    static uint32_t s_packet[4] = { 0x1000, 0x1000, 0x1000, 0x1000 };
+    uint16_t buttons = 0;
+    uint8_t an[8] = {0};
+    int16_t lx = 0, ly = 0, rx = 0, ry = 0;
     int i;
-    for (i = 0; i < 4; i++) {
-        uint32_t st = XPP_PAD_BASE + 0x2Fu + XPP_PAD_STRIDE * i;
-        if (MEM32(st) == 0x3E5) MEM32(st) = 0;   /* ERROR_IO_PENDING marker */
+    {
+        extern DWORD xbox_InputGetState(DWORD, void *);
+        uint8_t raw[32] = {0};
+        if (xbox_InputGetState(port, raw) == 0) {
+            buttons = *(uint16_t *)(raw + 4);
+            memcpy(an, raw + 6, 8);
+            lx = *(int16_t *)(raw + 14); ly = *(int16_t *)(raw + 16);
+            rx = *(int16_t *)(raw + 18); ry = *(int16_t *)(raw + 20);
+        }
+    }
+    {   static int s_log = 0, s_was = 0;
+        int now = (buttons != 0), ai;
+        for (ai = 0; ai < 8; ai++) if (an[ai] >= 30) now = 1;
+        if (now && !s_was && s_log < 24) {
+            s_log++;
+            fprintf(stderr, "[XPP] press port %u buttons %04X analog %02X %02X (frame %u) state at %08X\n",
+                    port, buttons, an[0], an[1], g_doa3_frames_presented, st);
+            fflush(stderr);
+        }
+        s_was = now;
+    }
+    if (st) {
+        s_packet[port]++;
+        MEM32(st) = s_packet[port];   /* dwPacketNumber */
+        MEM16(st + 4) = buttons;      /* wButtons */
+        for (i = 0; i < 8; i++) MEM8(st + 6 + i) = an[i];
+        MEM16(st + 14) = (uint16_t)lx; MEM16(st + 16) = (uint16_t)ly;
+        MEM16(st + 18) = (uint16_t)rx; MEM16(st + 20) = (uint16_t)ry;
     }
     eax = 0;
     esp += 12;
 }
 
-void sub_00211B07(void)   /* XInputGetState(handle, state) -> 0, ret 8 */
+void sub_00211B07(void)   /* XInputSetState(handle, pFeedback) -> 0, ret 8 */
 {
-    uint32_t st = MEM32(esp + 8);
-    static uint32_t s_packet = 0x1000;
-    s_packet++;
-    if (st) {
-        uint16_t buttons = 0;
-        uint8_t an[8] = {0};
-        int16_t lx = 0, ly = 0, rx = 0, ry = 0;
-        uint32_t port = 0, pi, slots[2];
-        int nslots = 1, si, i;
-        for (pi = 0; pi < 4; pi++)
-            if (st == XPP_PAD_BASE + 0x2Fu + XPP_PAD_STRIDE * pi ||
-                st == XPP_PAD_BASE + 0x19u + XPP_PAD_STRIDE * pi) port = pi;
-        {
-            extern DWORD xbox_InputGetState(DWORD, void *);
-            uint8_t raw[32] = {0};
-            if (xbox_InputGetState(port, raw) == 0) {
-                buttons = *(uint16_t *)(raw + 4);
-                memcpy(an, raw + 6, 8);
-                lx = *(int16_t *)(raw + 14); ly = *(int16_t *)(raw + 16);
-                rx = *(int16_t *)(raw + 18); ry = *(int16_t *)(raw + 20);
-            }
-        }
-        {   static int s_log = 0, s_was = 0;
-            int now = (buttons != 0), ai;
-            for (ai = 0; ai < 8; ai++) if (an[ai] >= 30) now = 1;
-            if (now && !s_was && s_log < 24) {
-                uint32_t pp;
-                s_log++;
-                fprintf(stderr, "[XPP] press port %u buttons %04X analog %02X %02X (frame %u); aggregates:",
-                        port, buttons, an[0], an[1], g_doa3_frames_presented);
-                for (pp = 0; pp < 4; pp++)
-                    fprintf(stderr, " [%u] %08X %08X %08X", pp, MEM32(XPP_AGG_LO + pp * 0x2C),
-                            MEM32(XPP_AGG_LO + pp * 0x2C + 4), MEM32(XPP_AGG_LO + pp * 0x2C + 8));
-                fprintf(stderr, "\n");
-                fflush(stderr);
-            }
-            s_was = now;
-        }
-        slots[0] = st;
-        for (i = 0; i < 4; i++)
-            if (st == XPP_PAD_BASE + 0x2Fu + XPP_PAD_STRIDE * (uint32_t)i) {
-                slots[1] = XPP_PAD_BASE + 0x19u + XPP_PAD_STRIDE * (uint32_t)i;
-                nslots = 2;
-                break;
-            }
-        for (si = 0; si < nslots; si++) {
-            uint32_t d = slots[si];
-            MEM32(d) = s_packet;
-            MEM16(d + 4) = buttons;
-            for (i = 0; i < 8; i++) MEM8(d + 6 + i) = an[i];
-            MEM16(d + 14) = (uint16_t)lx; MEM16(d + 16) = (uint16_t)ly;
-            MEM16(d + 18) = (uint16_t)rx; MEM16(d + 20) = (uint16_t)ry;
-        }
-    }
+    uint32_t fb = MEM32(esp + 8);
+    if (fb) MEM32(fb) = 0;        /* XINPUT_FEEDBACK_HEADER.dwStatus: done */
     eax = 0;
     esp += 12;
 }
@@ -559,6 +553,26 @@ void sub_00088910(void)
                 g_doa3_frames_presented, agg0, MEM8(0x596AA5u), MEM8(0x598E80u), MEM8(0x5A262Au),
                 MEM32(0x5A2858u), MEM8(0x596A2Cu), MEM8(0x5C9364u), MEM32(0x5C9288u),
                 MEM8(0x596A32u), MEM8(0x596A33u), pre, MEM32(0x5C9248u), MEM32(0x5C9254u));
+        fflush(stderr);
+    }
+}
+
+/* Title-attract exit (0x53EB0): with attract input pending (0x5C9248) and
+ * action 2 (mv_op), mp_UpdateTitleAttract calls this every frame. First call
+ * arms a 60-frame fade (0x5A697A = 1, counter 0x5A6970); when the counter
+ * runs out 0x53F20 ends the action. All of it is gated on 0x5A8B97 == 0.
+ * START reached 0x5C9248 on 3.1 and mv_op still played on: log the gate. */
+void sub_00053EB0_gen(void);
+void sub_00053EB0(void)
+{
+    static int s_n;
+    uint8_t gate = MEM8(0x5A8B97u), armed = MEM8(0x5A697Au);
+    int32_t cnt = (int32_t)MEM32(0x5A6970u);
+    sub_00053EB0_gen();
+    if (s_n < 40 && (s_n < 8 || (g_doa3_frames_presented % 60u) == 0)) {
+        s_n++;
+        fprintf(stderr, "[ATTRACT] exit fade 0x53EB0 (frame %u): gate 5A8B97=%u armed %u->%u counter %d->%d ret %u\n",
+                g_doa3_frames_presented, gate, armed, MEM8(0x5A697Au), cnt, (int32_t)MEM32(0x5A6970u), eax);
         fflush(stderr);
     }
 }

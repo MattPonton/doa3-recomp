@@ -20,7 +20,8 @@
 0x00211823  XAPI XInputOpen -> fake handle
 0x00211898  XAPI XInputClose
 0x002118A4  XAPI XInputGetCapabilities -> gamepad
-0x00211A96  XAPI XInputPoll -> complete at once
-0x00211B07  XAPI XInputGetState -> host pad
+0x00211A96  XAPI XInputGetState -> host pad
+0x00211B07  XAPI XInputSetState (rumble) -> done at once
 0x000D7490  attract movie (mv_op) player: log which pad's aggregate gates the skip
 0x00088910  mp_UpdatePlayerJoinAndStartInput: log START handling in the attract loop
+0x00053EB0  title-attract exit fade (START during mv_op): log its gate
