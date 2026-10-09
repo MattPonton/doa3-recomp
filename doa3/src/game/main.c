@@ -1261,6 +1261,7 @@ const PIMAGE_TLS_CALLBACK doa3_tls_cb_ptr = doa3_tls_callback;
 #pragma const_seg()
 
 
+#include "doa3_version.h"
 int main(int argc, char **argv)
 {
     void *xbe_data = NULL; size_t xbe_size = 0;
@@ -1293,6 +1294,7 @@ int main(int argc, char **argv)
     /* stderr -> doa3_log.txt when logging is on in the Esc menu, NUL when
      * off (the default). See log_settings.h. */
     doa3_log_init();
+    fprintf(stderr, "[DOA3] DOA3.exe version %s (%s)\n", DOA3_VER_STR, DOA3_XBE_VERSION);
 
     atexit(doa3_atexit);
     SetUnhandledExceptionFilter(doa3_unhandled);

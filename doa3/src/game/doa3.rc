@@ -1,2 +1,32 @@
 // Window, taskbar and Explorer icon
 1 ICON "DOA.ico"
+
+// Version (Properties > Details, crash reports): see doa3_version.h
+#include <winver.h>
+#include "doa3_version.h"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     DOA3_VER_MAJOR, DOA3_VER_MINOR, DOA3_VER_UPDATE, DOA3_VER_BUILD
+PRODUCTVERSION  DOA3_VER_MAJOR, DOA3_VER_MINOR, DOA3_VER_UPDATE, DOA3_VER_BUILD
+FILEFLAGSMASK   0x3fL
+FILEFLAGS       0x0L
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "FileDescription", "Dead or Alive 3 PC recompilation"
+            VALUE "FileVersion",     DOA3_VER_STR
+            VALUE "ProductName",     "doa3-recomp"
+            VALUE "ProductVersion",  DOA3_VER_STR
+            VALUE "OriginalFilename", "DOA3.exe"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
