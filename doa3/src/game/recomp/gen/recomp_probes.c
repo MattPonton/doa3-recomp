@@ -8,8 +8,9 @@ extern int g_fn_trace_on;
 /* Each wrapper is also a scheduling point: give the worker fibers their
  * time slice (xbox_fiber_timeslice) when the 4 ms tick is due, the way the
  * hardware scheduler would preempt a polling loop. */
-#define P(va, n) void sub_##va##_gen(void); void sub_##va(void) { \
-    uint32_t e0 = g_esp; sub_##va##_gen(); \
+void doa3_fn_register(uint32_t va, unsigned *count);   /* call profile, recomp_manual.c */
+#define P(va, n) static unsigned c_##va; void sub_##va##_gen(void); void sub_##va(void) { \
+    uint32_t e0 = g_esp; if (!c_##va++) doa3_fn_register(0x##va##u, &c_##va); sub_##va##_gen(); \
     if (g_fib_slice_due) xbox_fiber_timeslice(); \
     if (g_fn_trace_on) doa3_fn_trace(0x##va##u, e0); \
     if (g_esp - e0 != 4u + (n)) esp_probe_report(0x##va##u, e0, g_esp, 4u + (n)); }

@@ -119,6 +119,68 @@ void doa3_apu_deliver_irq(void)
 
 volatile int g_doa3_post_movie = 0;
 
+/* ── Call profile of the probed functions (gen/recomp_probes.c) ──────
+ * Each probe wrapper counts its calls and registers its counter on the first
+ * one. doa3_fn_profile_tick() (once per presented frame) prints, every 5 s,
+ * the functions called most in that window: "[PROF] t=..s va:calls ...".
+ * Comparing a window where something works with one where it has stalled
+ * shows what stopped running. DOA3_PROF=0 turns the lines off. */
+static struct { uint32_t va; unsigned *cnt; unsigned last, prevd; } s_prof[6000];
+static int s_nprof;
+void doa3_fn_register(uint32_t va, unsigned *count)
+{
+    if (s_nprof < (int)(sizeof s_prof / sizeof s_prof[0])) {
+        s_prof[s_nprof].va = va; s_prof[s_nprof].cnt = count; s_prof[s_nprof].last = 0; s_prof[s_nprof].prevd = 0;
+        s_nprof++;
+    }
+}
+void doa3_fn_profile_tick(void)
+{
+    static int s_on = -1, s_dumps;
+    static DWORD s_t0, s_last;
+    DWORD now = GetTickCount();
+    enum { TOP = 40 };
+    int top[TOP], ntop = 0, i, k;
+    if (s_on < 0) { const char *e = getenv("DOA3_PROF"); s_on = !(e && *e == '0'); s_t0 = s_last = now; }
+    if (!s_on || now - s_last < 5000 || s_dumps >= 60) return;
+    s_last = now; s_dumps++;
+    for (i = 0; i < s_nprof; i++) {
+        unsigned d = *s_prof[i].cnt - s_prof[i].last;
+        if (!d) continue;
+        for (k = ntop; k > 0; k--) {
+            int j = top[k - 1];
+            if (*s_prof[j].cnt - s_prof[j].last >= d) break;
+            if (k < TOP) top[k] = j;
+        }
+        if (k < TOP) { top[k] = i; if (ntop < TOP) ntop++; }
+    }
+    fprintf(stderr, "[PROF] t=%lus active=%d:", (unsigned long)((now - s_t0) / 1000), ntop);
+    for (k = 0; k < ntop; k++)
+        fprintf(stderr, " %X:%u", s_prof[top[k]].va, *s_prof[top[k]].cnt - s_prof[top[k]].last);
+    fprintf(stderr, "\n");
+    {   /* functions active in the previous window that did not run in this one */
+        int n = 0;
+        fprintf(stderr, "[PROF]   stopped:");
+        for (i = 0; i < s_nprof && n < 60; i++)
+            if (s_prof[i].prevd && *s_prof[i].cnt == s_prof[i].last) {
+                fprintf(stderr, " %X:%u", s_prof[i].va, s_prof[i].prevd);
+                n++;
+            }
+        fprintf(stderr, "\n[PROF]   new:");
+        for (i = 0, n = 0; i < s_nprof && n < 60; i++)
+            if (!s_prof[i].prevd && *s_prof[i].cnt != s_prof[i].last && s_dumps > 1) {
+                fprintf(stderr, " %X:%u", s_prof[i].va, *s_prof[i].cnt - s_prof[i].last);
+                n++;
+            }
+        fprintf(stderr, "\n");
+    }
+    fflush(stderr);
+    for (i = 0; i < s_nprof; i++) {
+        s_prof[i].prevd = *s_prof[i].cnt - s_prof[i].last;
+        s_prof[i].last = *s_prof[i].cnt;
+    }
+}
+
 volatile int g_doa3_in_pump = 0;
 
 uint32_t g_doa3_offrt_offs[8]; int g_doa3_offrt_n;   /* every texture surface seen */
@@ -405,6 +467,7 @@ static void d3d4134_frame_done(uint32_t dev)
     pgraph_d3d11_flush();
     doa3_present_frame();
     d3d4134_pace();
+    { extern void doa3_fn_profile_tick(void); doa3_fn_profile_tick(); }
     eax = sv_eax; ecx = sv_ecx; edx = sv_edx; ebx = sv_ebx;    /* the worker laps */
     esi = sv_esi; edi = sv_edi; esp = sv_esp; g_seh_ebp = sv_seh;
     if (++s_frames <= 3 || (s_frames % 600) == 0)
