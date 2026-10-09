@@ -952,13 +952,30 @@ void doa3_fn_trace(uint32_t va, uint32_t esp_in)
          * state [0xC86480+0x40] is 3 or 4; mid-movie it leaves those and no
          * frame is delivered again. Name the function that returned when the
          * watched words changed. */
-        static const uint32_t s_wv_va[2] = { 0xC864C0u, 0xC8BA80u };
-        static uint32_t s_wv_last[2];
+        /* [2..5]: the end flags (+0xF90 / +0xF94, 0x388 per substream) of
+         * the two substreams the ADX end check 0x1A4350 looks at,
+         * [h+0x43D4] (input) and [h+0x43D8] (ADX side): when the input one
+         * ends while ADXT is playing, it marks the ADX one ended. */
+        /* [6..8]: the attract hand-off after the logos: 0x593038
+         * (title/attract loop active), 0x598E80 (main strand state),
+         * 0x5A2858 (current game mode). */
+        static uint32_t s_wv_va[9] = { 0xC864C0u, 0xC8BA80u, 0, 0, 0, 0,
+                                       0x593038u, 0x598E80u, 0x5A2858u };
+        static uint32_t s_wv_last[9];
         static int s_wv_n;
         int w;
-        for (w = 0; w < 2; w++) {
+        {
+            const uint32_t h = 0xC86480u;
+            uint32_t ia = MEM32(h + 0x43D4u), ib = MEM32(h + 0x43D8u);
+            if (ia < 16 && ib < 16) {
+                s_wv_va[2] = h + ia * 0x388u + 0xF90u; s_wv_va[3] = h + ia * 0x388u + 0xF94u;
+                s_wv_va[4] = h + ib * 0x388u + 0xF90u; s_wv_va[5] = h + ib * 0x388u + 0xF94u;
+            }
+        }
+        for (w = 0; w < 9; w++) {
+            if (!s_wv_va[w]) continue;
             uint32_t v = MEM32(s_wv_va[w]);
-            if (v != s_wv_last[w] && s_wv_n < 60) {
+            if (v != s_wv_last[w] && s_wv_n < 160) {
                 unsigned j, k = 0;
                 s_wv_n++;
                 fprintf(stderr, "[VWATCH] [%08X] %08X -> %08X at return of sub_%08X (fiber %d, frame %u); recent:",
@@ -986,7 +1003,7 @@ void doa3_fn_trace(uint32_t va, uint32_t esp_in)
          * wraps onto .data (the 128 MB view repeats). Whose pointer is it? */
         /* Intro movie service 0xA4AB0: get current frame (0x19E3C0), blit
          * (0xA4680 -> frame copy 0x19EA30), release frame (0x19E230). */
-        if (!e) e = "19e3c0,19e230,a4680,a4ab0";
+        if (!e) e = "19e3c0,19e230,a4680,a4ab0,1a81e0,1a8220";
 #endif
         g_fn_trace_on = 0;
         while (e && *e && s_fn_trace_cnt < 32) {
