@@ -524,6 +524,13 @@ def _make_condition(jcc, flag_setter, flag_ops):
 
     # ── add: a = a + b, flags from result ──
     if flag_setter == "add":
+        same = (len(flag_ops) >= 2 and flag_ops[0].type == "reg" and
+                flag_ops[1].type == "reg" and flag_ops[0].reg == flag_ops[1].reg)
+        # CF after add = (result < addend), unsigned; ZF = (result == 0)
+        if rhs and not same and jcc in ("ja", "jnbe"):
+            return f"((uint32_t)({lhs}) >= (uint32_t)({rhs}) && ({lhs}) != 0)", desc
+        if rhs and not same and jcc in ("jbe", "jna"):
+            return f"((uint32_t)({lhs}) < (uint32_t)({rhs}) || ({lhs}) == 0)", desc
         if jcc in ("je", "jz"):
             return f"({lhs} == 0)", desc
         if jcc in ("jne", "jnz"):
@@ -580,6 +587,17 @@ def _make_condition(jcc, flag_setter, flag_ops):
 
     # ── dec/inc: result-based, CF unchanged ──
     if flag_setter in ("dec", "inc"):
+        # inc/dec leave CF as the previous instruction set it; the compiled
+        # and hand-written loops that branch with ja/jbe after a dec follow an
+        # add/sub of pointers, i.e. CF = 0 (DOA3 3.1: the Sofdec MMX colour
+        # converter 0x1A3480 ends its row loop with `dec eax / mov [ebp+10h],
+        # eax / ja`; the unhandled ja fell back to `if (_flags)`, always false,
+        # so every movie frame got two rows and the screen showed a 2-pixel
+        # strip).
+        if jcc in ("ja", "jnbe"):
+            return f"({lhs} != 0) /* CF taken as 0 */", desc
+        if jcc in ("jbe", "jna"):
+            return f"({lhs} == 0) /* CF taken as 0 */", desc
         if jcc in ("je", "jz"):
             return f"({lhs} == 0)", desc
         if jcc in ("jne", "jnz"):
@@ -2103,6 +2121,9 @@ def lift_basic_block(lifter, bb, flag_state=None):
         if curr.is_cond_jump and last_flag_setter:
             result = _make_condition(
                 curr.mnemonic, last_flag_setter, last_flag_ops)
+            if not result:
+                # say which setter the fallback replaced (fallback audits)
+                stmts.append(f"/* unhandled flags: {last_flag_setter} -> {curr.mnemonic} */")
             if result:
                 cond_expr, desc = result
                 target = curr.jump_target

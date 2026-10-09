@@ -1779,10 +1779,12 @@ static void bridge_NtReadFile(void)
         static int s_rd, s_sus;
         static unsigned s_all;
         int suspect = buffer_va < 0x00D00000u && length >= 0x4000u;
-        if (s_rd < 40 || (suspect && s_sus < 60) || (++s_all % 32u) == 0) {
+        extern unsigned g_doa3_frames_presented;
+        if (s_rd < 40 || (suspect && s_sus < 60) || length >= 0x10000u || !result ||
+            bytes_read < length || (++s_all % 32u) == 0) {
             if (s_rd < 40) s_rd++; else s_sus++;
-            fprintf(stderr, "[READ]%s h=%08X buf=%08X len=%u off=%08X%s apc=%08X fiber=%d -> %s %lu bytes\n",
-                    suspect ? "[LOW-BUFFER]" : "", STACK_ARG(0), buffer_va, length,
+            fprintf(stderr, "[READ]%s frame %u h=%08X buf=%08X len=%u off=%08X%s apc=%08X fiber=%d -> %s %lu bytes\n",
+                    suspect ? "[LOW-BUFFER]" : "", g_doa3_frames_presented, STACK_ARG(0), buffer_va, length,
                     offset_va ? BRIDGE_MEM32(offset_va) : 0,
                     offset_va ? "" : "(cur)", apc_ctx, xbox_fiber_current(),
                     result ? "ok" : "FAIL", (unsigned long)bytes_read);

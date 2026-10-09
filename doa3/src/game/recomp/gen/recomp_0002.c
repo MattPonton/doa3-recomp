@@ -112630,6 +112630,7 @@ loc_000A723D: ;
     esp += 4; return; /* ret */
 
     SET_LO8(ecx, LO8(ecx) + HI8(eax));
+    /* unhandled flags: add -> jo */
     if (_flags /* jo: overflow */) (void)0; /* goto loc_000A7261 - dead code, label not in function */
 
 loc_000A7257: ;

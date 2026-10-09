@@ -20460,7 +20460,7 @@ loc_000B738F: ;
     goto loc_000B7509;
 
 loc_000B7397: ;
-    if (_flags /* jbe: below or equal (unsigned <=) */) goto loc_000B73AC;
+    if (((uint32_t)(esp) < (uint32_t)(4) || (esp) == 0)) goto loc_000B73AC; /* jbe: below or equal (unsigned <=) */
 
 loc_000B7399: ;
     eax = 1;
@@ -75697,6 +75697,7 @@ loc_000CCFB0: ;
     PUSH32(esp, ebx);
     /* TODO: iretd  */
     SET_LO8(eax, LO8(eax) | 0);
+    /* unhandled flags: or -> jp */
     if (_flags /* jp: parity */) (void)0; /* goto loc_000CCFA5 - dead code, label not in function */
 
 loc_000CCFD6: ;

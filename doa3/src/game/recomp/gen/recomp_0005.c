@@ -77249,6 +77249,7 @@ loc_0013D875: ;
     /* TODO: aaa  */
     /* TODO: xlatb  */
     eax = eax + MEM32(eax) + _cf; /* adc */
+    /* unhandled flags: adc -> jae */
     if (_flags /* jae: above or equal (unsigned >=) */) (void)0; /* goto loc_0013D85D - dead code, label not in function */
 
 loc_0013D886: ;

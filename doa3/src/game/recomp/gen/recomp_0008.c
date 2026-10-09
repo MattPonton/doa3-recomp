@@ -10159,7 +10159,7 @@ loc_001A3938: ;
     eax = MEM32(ebp + 0x10);
     eax--;
     MEM32(ebp + 0x10) = eax;
-    if (_flags /* ja: above (unsigned >) */) goto loc_001A34F5;
+    if ((eax != 0) /* CF taken as 0 */) goto loc_001A34F5; /* ja: above (unsigned >) */
 
 loc_001A397B: ;
     /* emms */
@@ -70547,6 +70547,7 @@ loc_001B3B0C: ;
     MEM8(ebx + 0x2A) = MEM8(ebx + 0x2A) + HI8(ebx);
     _cf = ((uint32_t)(MEM8(ebx + 0x2A)) < (uint32_t)(HI8(ebx))); /* CF from add */
     eax = eax - MEM32(eax) - _cf; /* sbb */
+    /* unhandled flags: sbb -> jae */
     if (_flags /* jae: above or equal (unsigned >=) */) (void)0; /* goto loc_001B3BEC - dead code, label not in function */
 
 loc_001B3BC2: ;
@@ -84253,6 +84254,7 @@ loc_001B7647: ;
     { uint32_t _tmp = esp;
     esp = eax;
     eax = _tmp; }
+    /* unhandled flags: sbb -> jbe */
     if (_flags /* jbe: below or equal (unsigned <=) */) (void)0; /* goto loc_001B767A - dead code, label not in function */
 
 loc_001B765F: ;
@@ -85697,6 +85699,7 @@ loc_001B7D9F: ;
     _fs1 = (uint32_t)(eax); /* flag operand kept for a later jcc */
     _fs2 = (uint32_t)(MEM32(eax)); /* flag operand kept for a later jcc */
     SET_LO8(eax, MEM8(esi)); esi++; /* lodsb */
+    /* unhandled flags: sbb -> jge */
     if (_flags /* jge: greater or equal (signed >=) */) (void)0; /* goto loc_001B7DC6 - dead code, label not in function */
 
 loc_001B7DAB: ;

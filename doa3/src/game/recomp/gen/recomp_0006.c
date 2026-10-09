@@ -130854,6 +130854,7 @@ loc_00186E17: ;
 
     _cf = ((uint32_t)(esp) < (uint32_t)(0x50)); /* CF from add */
     MEM8(eax) = MEM8(eax) - LO8(eax) - _cf; /* sbb */
+    /* unhandled flags: sbb -> jae */
     if (_flags /* jae: above or equal (unsigned >=) */) (void)0; /* goto loc_00186E96 - dead code, label not in function */
 
 loc_00186E2A: ;
@@ -132610,6 +132611,7 @@ loc_0018830F: ;
     _fs75 = (uint32_t)(MEM8(eax)); /* flag operand kept for a later jcc */
     _fs76 = (uint32_t)(LO8(eax)); /* flag operand kept for a later jcc */
     /* TODO: pushal  */
+    /* unhandled flags: sbb -> jnp */
     if (_flags /* jnp: not parity */) { g_seh_ebp = ebp; sub_0018832F(); return; }
 
 loc_00188317: ;
@@ -134383,6 +134385,7 @@ loc_0018830F: ;
     _fs58 = (uint32_t)(MEM8(eax)); /* flag operand kept for a later jcc */
     _fs59 = (uint32_t)(LO8(eax)); /* flag operand kept for a later jcc */
     /* TODO: pushal  */
+    /* unhandled flags: sbb -> jnp */
     if (_flags /* jnp: not parity */) { g_seh_ebp = ebp; sub_0018832F(); return; }
 
 loc_00188317: ;

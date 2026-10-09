@@ -15541,6 +15541,7 @@ loc_0001650C: ;
     MEM8(edi) = MEM8(esi); esi++; edi++; /* movsb */
     /* TODO: popal  */
     MEM32(eax) = MEM32(eax) + eax;
+    /* unhandled flags: add -> jo */
     if (_flags /* jo: overflow */) (void)0; /* goto loc_000165E3 - dead code, label not in function */
 
 loc_00016596: ;
@@ -18270,7 +18271,7 @@ loc_00017724: ;
 
 loc_00017733: ;
     MEM8(edi + 0x23000175) = MEM8(edi + 0x23000175) + LO8(edx);
-    if (_flags /* ja: above (unsigned >) */) (void)0; /* goto loc_0001773C - dead code, label not in function */
+    if (((uint32_t)(MEM8(edi + 0x23000175)) >= (uint32_t)(LO8(edx)) && (MEM8(edi + 0x23000175)) != 0)) (void)0; /* goto loc_0001773C - dead code, label not in function */ /* ja: above (unsigned >) */
 
 loc_0001773B: ;
     MEM8(eax) = MEM8(eax) + LO8(eax);
@@ -28046,7 +28047,7 @@ loc_0001A1DA: ;
     PUSH32(esp, esp);
     /* lahf - load AH from flags (used in FPU compare idiom) */
     MEM32(eax) = MEM32(eax) + eax;
-    if (_flags /* jbe: below or equal (unsigned <=) */) (void)0; /* goto loc_0001A1B3 - dead code, label not in function */
+    if (((uint32_t)(MEM32(eax)) < (uint32_t)(eax) || (MEM32(eax)) == 0)) (void)0; /* goto loc_0001A1B3 - dead code, label not in function */ /* jbe: below or equal (unsigned <=) */
 
 loc_0001A216: ;
     MEM32(eax) = MEM32(eax) + eax;
@@ -110807,7 +110808,7 @@ loc_00035561: ;
     MEM8(edx) = MEM8(edx) + HI8(ebx);
     PUSH32(esp, esp);
     eax = eax + MEM32(eax);
-    if (_flags /* ja: above (unsigned >) */) goto loc_000355E6;
+    if (((uint32_t)(eax) >= (uint32_t)(MEM32(eax)) && (eax) != 0)) goto loc_000355E6; /* ja: above (unsigned >) */
 
 loc_00035592: ;
     eax = eax + MEM32(eax);
@@ -111888,7 +111889,7 @@ loc_00035561: ;
     MEM8(edx) = MEM8(edx) + HI8(ebx);
     PUSH32(esp, esp);
     eax = eax + MEM32(eax);
-    if (_flags /* ja: above (unsigned >) */) { g_seh_ebp = ebp; sub_000355E6(); return; }
+    if (((uint32_t)(eax) >= (uint32_t)(MEM32(eax)) && (eax) != 0)) { g_seh_ebp = ebp; sub_000355E6(); return; } /* ja: above (unsigned >) */
 
 loc_00035592: ;
     eax = eax + MEM32(eax);

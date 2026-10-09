@@ -70881,7 +70881,7 @@ void sub_002179CC(void)
 loc_002179CC: ;
     POP32(esp, esp);
     esp++;
-    if (_flags /* jbe: below or equal (unsigned <=) */) { g_seh_ebp = ebp; sub_00217A3A(); return; }
+    if ((esp == 0) /* CF taken as 0 */) { g_seh_ebp = ebp; sub_00217A3A(); return; } /* jbe: below or equal (unsigned <=) */
 
 loc_002179D1: ;
     /* TODO: arpl word ptr [ebp + 0x5c], sp */
@@ -71002,7 +71002,7 @@ loc_00217ADE: ;
     _cf = ((uint32_t)(MEM8(eax)) < (uint32_t)(LO8(eax))); /* CF from add */
     MEM8(edi + -1384120320) = MEM8(edi + -1384120320) + 0 + _cf; /* adc */
     MEM8(eax + -2147483473) = MEM8(eax + -2147483473) + LO8(eax);
-    if (_flags /* ja: above (unsigned >) */) goto loc_00217B8E;
+    if (((uint32_t)(MEM8(eax + -2147483473)) >= (uint32_t)(LO8(eax)) && (MEM8(eax + -2147483473)) != 0)) goto loc_00217B8E; /* ja: above (unsigned >) */
 
 loc_00217B8E: ;
     MEM8(eax + -2147483472) = MEM8(eax + -2147483472) + LO8(eax);
@@ -71028,15 +71028,17 @@ loc_00217B8E: ;
     PUSH32(esp, 0 /* seg:es */);
     MEM8(edi) = MEM8(edi) + LO8(eax);
     SET_HI8(eax, HI8(eax) + HI8(edx));
+    /* unhandled flags: add -> jnp */
     if (_flags /* jnp: not parity */) (void)0; /* goto loc_00217C00 - dead code, label not in function */
 
 loc_00217BDF: ;
     MEM8(esp + eax * 2 + 0x65) = MEM8(esp + eax * 2 + 0x65) + LO8(ebx);
-    if (_flags /* jbe: below or equal (unsigned <=) */) (void)0; /* goto loc_00217C4E - dead code, label not in function */
+    if (((uint32_t)(MEM8(esp + eax * 2 + 0x65)) < (uint32_t)(LO8(ebx)) || (MEM8(esp + eax * 2 + 0x65)) == 0)) (void)0; /* goto loc_00217C4E - dead code, label not in function */ /* jbe: below or equal (unsigned <=) */
 
 loc_00217BE5: ;
     /* TODO: arpl word ptr [ebp + 0x5c], sp */
     ebx++;
+    /* unhandled flags: inc -> jb */
     if (_flags /* jb: below (unsigned <) */) goto loc_00217C5B;
 
 loc_00217BEC: ;
@@ -71052,7 +71054,7 @@ loc_00217BEC: ;
     _cf = ((uint32_t)(MEM8(eax + eax)) < (uint32_t)(LO8(ebx))); /* CF from add */
     eax = eax - 0x217C0400 - _cf; /* sbb */
     MEM8(esp + eax * 2 + 0x65) = MEM8(esp + eax * 2 + 0x65) + LO8(ebx);
-    if (_flags /* jbe: below or equal (unsigned <=) */) (void)0; /* goto loc_00217C72 - dead code, label not in function */
+    if (((uint32_t)(MEM8(esp + eax * 2 + 0x65)) < (uint32_t)(LO8(ebx)) || (MEM8(esp + eax * 2 + 0x65)) == 0)) (void)0; /* goto loc_00217C72 - dead code, label not in function */ /* jbe: below or equal (unsigned <=) */
 
 loc_00217C09: ;
     /* TODO: arpl word ptr [ebp + 0x5c], sp */
@@ -71063,6 +71065,7 @@ loc_00217C09: ;
 
 loc_00217C10: ;
     esi = (uint32_t)((int32_t)MEM32(ebx + 0x6B) * (int32_t)0x61705C30);
+    /* unhandled flags: imul -> jb */
     if (_flags /* jb: below (unsigned <) */) (void)0; /* goto loc_00217C8E - dead code, label not in function */
 
 loc_00217C1A: ;
@@ -71079,7 +71082,7 @@ loc_00217C1A: ;
     PUSH32(esp, edi);
     /* cmp LO8(eax), MEM8(eax) - flags set for next jcc */
     MEM8(ebx + edx * 2 + 0x61) = MEM8(ebx + edx * 2 + 0x61) + LO8(ebx);
-    if (_flags /* jbe: below or equal (unsigned <=) */) goto loc_00217C9E;
+    if (((uint32_t)(MEM8(ebx + edx * 2 + 0x61)) < (uint32_t)(LO8(ebx)) || (MEM8(ebx + edx * 2 + 0x61)) == 0)) goto loc_00217C9E; /* jbe: below or equal (unsigned <=) */
 
 loc_00217C39: ;
     ebp--;
@@ -71096,9 +71099,11 @@ loc_00217C42: ;
     eax = eax | 0x5C000000;
     PUSH32(esp, esp);
     esi = (uint32_t)((int32_t)MEM32(esp + ebp * 2 + 0x65) * (int32_t)0x6174654D);
+    /* unhandled flags: imul -> js */
     if (_flags /* js: sign (negative) */) goto loc_00217CB7;
 
 loc_00217C55: ;
+    /* unhandled flags: imul -> js */
     if (_flags /* js: sign (negative) */) goto loc_00217C57;
 
 loc_00217C57: ;
@@ -71121,7 +71126,7 @@ loc_00217C6A: ;
 loc_00217C6C: ;
     /* TODO: sldt word ptr [eax] */
     MEM8(ebx + edx * 2 + 0x61) = MEM8(ebx + edx * 2 + 0x61) + LO8(ebx);
-    if (_flags /* jbe: below or equal (unsigned <=) */) (void)0; /* goto loc_00217CDA - dead code, label not in function */
+    if (((uint32_t)(MEM8(ebx + edx * 2 + 0x61)) < (uint32_t)(LO8(ebx)) || (MEM8(ebx + edx * 2 + 0x61)) == 0)) (void)0; /* goto loc_00217CDA - dead code, label not in function */ /* jbe: below or equal (unsigned <=) */
 
 loc_00217C75: ;
     ecx--;
@@ -71183,7 +71188,7 @@ loc_00217CDB: ;
     MEM8(esp + eax * 2 + 0x65) = MEM8(esp + eax * 2 + 0x65) + LO8(ebx);
 
 loc_00217CDF: ;
-    if (_flags /* jbe: below or equal (unsigned <=) */) goto loc_00217D4A;
+    if (((uint32_t)(MEM8(esp + eax * 2 + 0x65)) < (uint32_t)(LO8(ebx)) || (MEM8(esp + eax * 2 + 0x65)) == 0)) goto loc_00217D4A; /* jbe: below or equal (unsigned <=) */
 
 loc_00217CE1: ;
     /* TODO: arpl word ptr [ebp + 0x5c], sp */
@@ -71194,6 +71199,7 @@ loc_00217CE1: ;
 
 loc_00217CE8: ;
     esi = (uint32_t)((int32_t)MEM32(ebx + 0x6B) * (int32_t)0x61505C30);
+    /* unhandled flags: imul -> jb */
     if (_flags /* jb: below (unsigned <) */) (void)0; /* goto loc_00217D66 - dead code, label not in function */
 
 loc_00217CF2: ;
@@ -71212,7 +71218,7 @@ loc_00217CFC: ;
     MEM8(edi) = MEM8(edi) + HI8(ecx);
     MEM8(eax) = MEM8(eax) + HI8(edx);
     MEM8(edi * 2 + 0x445C0021) = MEM8(edi * 2 + 0x445C0021) + LO8(edx);
-    if (_flags /* jbe: below or equal (unsigned <=) */) (void)0; /* goto loc_00217D82 - dead code, label not in function */
+    if (((uint32_t)(MEM8(edi * 2 + 0x445C0021)) < (uint32_t)(LO8(edx)) || (MEM8(edi * 2 + 0x445C0021)) == 0)) (void)0; /* goto loc_00217D82 - dead code, label not in function */ /* jbe: below or equal (unsigned <=) */
 
 loc_00217D19: ;
     /* TODO: arpl word ptr [ebp + 0x5c], sp */
@@ -71223,6 +71229,7 @@ loc_00217D19: ;
 
 loc_00217D20: ;
     esi = (uint32_t)((int32_t)MEM32(ebx + 0x6B) * (int32_t)0x61705C30);
+    /* unhandled flags: imul -> jb */
     if (_flags /* jb: below (unsigned <) */) (void)0; /* goto loc_00217D9E - dead code, label not in function */
 
 loc_00217D2A: ;
@@ -71244,7 +71251,7 @@ loc_00217D2A: ;
     edx++;
     esi--;
     MEM8(ebx + edx * 2 + 0x61) = MEM8(ebx + edx * 2 + 0x61) + LO8(ebx);
-    if (_flags /* jbe: below or equal (unsigned <=) */) goto loc_00217DAE;
+    if (((uint32_t)(MEM8(ebx + edx * 2 + 0x61)) < (uint32_t)(LO8(ebx)) || (MEM8(ebx + edx * 2 + 0x61)) == 0)) goto loc_00217DAE; /* jbe: below or equal (unsigned <=) */
 
 loc_00217D49: ;
     ebp--;
@@ -71263,9 +71270,11 @@ loc_00217D52: ;
     eax = eax | 0x5C000000;
     PUSH32(esp, esp);
     esi = (uint32_t)((int32_t)MEM32(esp + ebp * 2 + 0x65) * (int32_t)0x6174654D);
+    /* unhandled flags: imul -> js */
     if (_flags /* js: sign (negative) */) goto loc_00217DC7;
 
 loc_00217D65: ;
+    /* unhandled flags: imul -> js */
     if (_flags /* js: sign (negative) */) goto loc_00217D67;
 
 loc_00217D67: ;
@@ -71286,7 +71295,7 @@ loc_00217D7A: ;
 loc_00217D7C: ;
     /* TODO: sldt word ptr [eax] */
     MEM8(ebx + edx * 2 + 0x61) = MEM8(ebx + edx * 2 + 0x61) + LO8(ebx);
-    if (_flags /* jbe: below or equal (unsigned <=) */) (void)0; /* goto loc_00217DEA - dead code, label not in function */
+    if (((uint32_t)(MEM8(ebx + edx * 2 + 0x61)) < (uint32_t)(LO8(ebx)) || (MEM8(ebx + edx * 2 + 0x61)) == 0)) (void)0; /* goto loc_00217DEA - dead code, label not in function */ /* jbe: below or equal (unsigned <=) */
 
 loc_00217D85: ;
     ecx--;

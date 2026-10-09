@@ -431,3 +431,15 @@ Windows/CRT imports and symbols from files that check could not build
 
 The NOTES.md "Lifter Defect Reference" describes each defect class upstream
 hit on 3.0; expect the same classes on 3.1 at different addresses.
+
+Thirty-third run (0.0.39): the intro movie played (540 frames copied) but
+showed as a 2-pixel strip at the top of the window. Sofdec's MMX colour
+converter (0x1A3480) ends its row loop with `dec eax / mov [ebp+10h], eax /
+ja`; the lifter had no condition for ja/jbe after inc/dec and fell back to
+`if (_flags)`, always false, so each frame got two rows. inc/dec now take CF
+as 0 for ja/jbe (CF survives from the previous instruction, a pointer add
+there), and add gets ja/jbe from its result (CF = result < addend). A
+"/* unhandled flags: setter -> jcc */" comment now marks every remaining
+fallback (35 sites left on 3.1: imul/sbb/adc combinations, mostly in code
+that is never reached).
+

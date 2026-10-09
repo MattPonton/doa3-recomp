@@ -68907,10 +68907,12 @@ loc_000FE2EA: ;
 
 loc_000FE2F7: ;
     SET_LO8(eax, LO8(eax) + LO8(ebx));
+    /* unhandled flags: add -> loope */
     if (_flags /* loope: loope */) goto loc_000FE30A;
 
 loc_000FE2FB: ;
     SET_LO8(ecx, LO8(ecx) + HI8(ebx));
+    /* unhandled flags: add -> loope */
     if (_flags /* loope: loope */) (void)0; /* goto loc_000FE30E - dead code, label not in function */
 
 loc_000FE2FF: ;
