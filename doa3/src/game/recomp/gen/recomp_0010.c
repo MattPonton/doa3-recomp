@@ -1,6 +1,6 @@
 /**
  * Dead or Alive 3 - Recompiled code chunk 10
- * Functions: 979 (0x001F146E - 0xE9D2ECA9)
+ * Functions: 983 (0x001F146E - 0xE9D2ECA9)
  */
 
 #define RECOMP_GENERATED_CODE
@@ -33823,6 +33823,111 @@ loc_0020CCD2: ;
 }
 
 /**
+ * sub_0020CC10
+ * Original: 0x0020CC10 - 0x0020CC70 (96 bytes, 36 insns)
+ * CC: cdecl, 0 params, returns int_or_void
+ * Frame: fpo_leaf
+ */
+void sub_0020CC10(void)
+{
+    uint32_t _fs0 = 0; /* flag operands kept for a later jcc */
+
+loc_0020CC10: ;
+    esp = esp - 8;
+    PUSH32(esp, esi);
+    esi = MEM32(esp + 0x10);
+    PUSH32(esp, edi);
+    eax = esi + 0x1E0;
+    PUSH32(esp, eax);
+    eax = MEM32(esi + 0xF0);
+    ecx = esp + 0xC;
+    edi = esi + 0xE8;
+    PUSH32(esp, ecx);
+    PUSH32(esp, eax);
+    edx = esi + 0x278;
+    PUSH32(esp, esi);
+    _fs0 = (uint32_t)(esp); /* flag operand kept for a later jcc */
+    PUSH32(esp, 0); sub_0020C7B0(); /* call 0x0020C7B0 */
+
+loc_0020CC3E: ;
+    eax = MEM32(esi + 0x1F0);
+    ecx = eax + 0x180;
+    MEM32(esi + 0x1F0) = ecx;
+    edx = MEM32(esi + 0x2A8);
+    PUSH32(esp, edx);
+    PUSH32(esp, edi);
+    PUSH32(esp, eax);
+    PUSH32(esp, 0); sub_0020ECA0(); /* call 0x0020ECA0 */
+
+loc_0020CC5E: ;
+    esp = esp + 0x1C;
+    POP32(esp, edi);
+    POP32(esp, esi);
+    esp = esp + 8;
+    esp += 4; return; /* ret */
+
+}
+
+/**
+ * sub_0020CC70
+ * Original: 0x0020CC70 - 0x0020CCE0 (112 bytes, 42 insns)
+ * CC: cdecl, 0 params, returns int_or_void
+ * Frame: fpo_leaf
+ */
+void sub_0020CC70(void)
+{
+    uint32_t _fs0 = 0; /* flag operands kept for a later jcc */
+
+loc_0020CC70: ;
+    esp = esp - 8;
+    PUSH32(esp, ebx);
+    PUSH32(esp, esi);
+    esi = MEM32(esp + 0x14);
+    ecx = MEM32(esi + 0xF0);
+    PUSH32(esp, edi);
+    edi = esi + 0x1D0;
+    PUSH32(esp, edi);
+    eax = esp + 0x10;
+    ebx = esi + 0xE8;
+    PUSH32(esp, eax);
+    PUSH32(esp, ecx);
+    edx = esi + 0x254;
+    PUSH32(esp, esi);
+    _fs0 = (uint32_t)(esp); /* flag operand kept for a later jcc */
+    PUSH32(esp, 0); sub_0020C7B0(); /* call 0x0020C7B0 */
+
+loc_0020CC9F: ;
+    eax = edi + 0x10;
+    PUSH32(esp, eax);
+    eax = MEM32(ebx + 0xC);
+    ecx = esp + 0x20;
+    PUSH32(esp, ecx);
+    PUSH32(esp, eax);
+    edx = esi + 0x278;
+    PUSH32(esp, esi);
+    PUSH32(esp, 0); sub_0020C7B0(); /* call 0x0020C7B0 */
+
+loc_0020CCB8: ;
+    eax = MEM32(edi + 0x20);
+    ecx = eax + 0x180;
+    MEM32(edi + 0x20) = ecx;
+    edx = MEM32(esi + 0x2A8);
+    PUSH32(esp, edx);
+    PUSH32(esp, ebx);
+    PUSH32(esp, eax);
+    PUSH32(esp, 0); sub_0020EF70(); /* call 0x0020EF70 */
+
+loc_0020CCD2: ;
+    esp = esp + 0x2C;
+    POP32(esp, edi);
+    POP32(esp, esi);
+    POP32(esp, ebx);
+    esp = esp + 8;
+    esp += 4; return; /* ret */
+
+}
+
+/**
  * sub_0020CCE0
  * Original: 0x0020CCE0 - 0x0020CD98 (184 bytes, 56 insns)
  * CC: cdecl, 0 params, returns int_or_void
@@ -38147,6 +38252,145 @@ loc_0020E2D8: ;
     PUSH32(esp, eax);
     eax = edi;
     _fs3 = (uint32_t)(eax); /* flag operand kept for a later jcc */
+    PUSH32(esp, 0); sub_0020D2F0(); /* call 0x0020D2F0 */
+
+loc_0020E331: ;
+    esp = esp + 0x24;
+    POP32(esp, edi);
+    POP32(esp, esi);
+    POP32(esp, ebx);
+    esp = esp + 8;
+    esp += 4; return; /* ret */
+
+}
+
+/**
+ * sub_0020E200
+ * Original: 0x0020E200 - 0x0020E290 (144 bytes, 43 insns)
+ * CC: cdecl, 0 params, returns int_or_void
+ * Frame: fpo_leaf
+ */
+void sub_0020E200(void)
+{
+    uint32_t _fs0 = 0, _fs1 = 0; /* flag operands kept for a later jcc */
+
+loc_0020E200: ;
+    esp = esp - 8;
+    PUSH32(esp, esi);
+    esi = MEM32(esp + 0x10);
+    PUSH32(esp, edi);
+    ecx = esi + 0x1E0;
+    PUSH32(esp, ecx);
+    ecx = MEM32(esi + 0xF0);
+    edx = esp + 0xC;
+    edi = esi + 0xE8;
+    PUSH32(esp, edx);
+    PUSH32(esp, ecx);
+    eax = esi + 0x278;
+    PUSH32(esp, esi);
+    _fs0 = (uint32_t)(esp); /* flag operand kept for a later jcc */
+    PUSH32(esp, 0); sub_0020DF10(); /* call 0x0020DF10 */
+
+loc_0020E22E: ;
+    edx = MEM32(esi + 0x200);
+    eax = MEM32(esp + 0x18);
+    edx = edx + eax;
+    ecx = esi + 0xF8;
+    MEM32(ecx + 4) = edx;
+    edx = MEM32(esi + 0x204);
+    edx = edx + eax;
+    MEM32(ecx + 0xC) = edx;
+    eax = MEM32(esi + 0x208);
+    edx = MEM32(esp + 0x1C);
+    eax = eax + edx;
+    MEM32(ecx + 0x14) = eax;
+    edx = MEM32(ecx + 0x14);
+    eax = eax + 8;
+    MEM32(ecx + 0x1C) = eax;
+    eax = (uint32_t)(int32_t)SMEM16(esi + 0x20E);
+    eax = edx + eax * 8;
+    MEM32(ecx + 0x24) = eax;
+    eax = eax + 8;
+    MEM32(ecx + 0x2C) = eax;
+    eax = MEM32(esi + 0x2A8);
+    PUSH32(esp, eax);
+    eax = edi;
+    _fs1 = (uint32_t)(eax); /* flag operand kept for a later jcc */
+    PUSH32(esp, 0); sub_0020CF90(); /* call 0x0020CF90 */
+
+loc_0020E287: ;
+    esp = esp + 0x14;
+    POP32(esp, edi);
+    POP32(esp, esi);
+    esp = esp + 8;
+    esp += 4; return; /* ret */
+
+}
+
+/**
+ * sub_0020E290
+ * Original: 0x0020E290 - 0x0020E340 (176 bytes, 59 insns)
+ * CC: cdecl, 0 params, returns int_or_void
+ * Frame: fpo_leaf
+ */
+void sub_0020E290(void)
+{
+    uint32_t _fs0 = 0, _fs1 = 0; /* flag operands kept for a later jcc */
+
+loc_0020E290: ;
+    esp = esp - 8;
+    PUSH32(esp, ebx);
+    PUSH32(esp, esi);
+    esi = MEM32(esp + 0x14);
+    edx = MEM32(esi + 0xF0);
+    PUSH32(esp, edi);
+    ebx = esi + 0x1D0;
+    PUSH32(esp, ebx);
+    ecx = esp + 0x10;
+    edi = esi + 0xE8;
+    PUSH32(esp, ecx);
+    PUSH32(esp, edx);
+    eax = esi + 0x254;
+    PUSH32(esp, esi);
+    _fs0 = (uint32_t)(esp); /* flag operand kept for a later jcc */
+    PUSH32(esp, 0); sub_0020DF10(); /* call 0x0020DF10 */
+
+loc_0020E2BF: ;
+    edx = MEM32(edi + 0xC);
+    ebx = ebx + 0x10;
+    PUSH32(esp, ebx);
+    ecx = esp + 0x20;
+    PUSH32(esp, ecx);
+    PUSH32(esp, edx);
+    eax = esi + 0x278;
+    PUSH32(esp, esi);
+    PUSH32(esp, 0); sub_0020DF10(); /* call 0x0020DF10 */
+
+loc_0020E2D8: ;
+    ecx = MEM32(esi + 0x200);
+    eax = MEM32(esp + 0x2C);
+    ecx = ecx + eax;
+    edx = esi + 0xF8;
+    MEM32(edx + 4) = ecx;
+    ecx = MEM32(esi + 0x204);
+    ecx = ecx + eax;
+    MEM32(edx + 0xC) = ecx;
+    eax = MEM32(esi + 0x208);
+    ecx = MEM32(esp + 0x30);
+    eax = eax + ecx;
+    MEM32(edx + 0x14) = eax;
+    ecx = MEM32(edx + 0x14);
+    eax = eax + 8;
+    MEM32(edx + 0x1C) = eax;
+    eax = (uint32_t)(int32_t)SMEM16(esi + 0x20E);
+    eax = ecx + eax * 8;
+    MEM32(edx + 0x24) = eax;
+    eax = eax + 8;
+    MEM32(edx + 0x2C) = eax;
+    eax = MEM32(esi + 0x2A8);
+    PUSH32(esp, eax);
+    eax = edi;
+    _fs1 = (uint32_t)(eax); /* flag operand kept for a later jcc */
     PUSH32(esp, 0); sub_0020D2F0(); /* call 0x0020D2F0 */
 
 loc_0020E331: ;

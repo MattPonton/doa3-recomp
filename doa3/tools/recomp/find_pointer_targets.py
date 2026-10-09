@@ -111,6 +111,11 @@ def main():
             if in_code(v) and v in boundary:
                 run.append(v)
                 continue
+            # Null slots do not end a table: Sofdec's per-picture-type
+            # handler tables (0x21AD80, 0x21ADA8 on 3.1) are mostly zeros
+            # with one B-picture routine each, five slots apart.
+            if v == 0 and run:
+                continue
             if len(run) >= MIN_RUN:
                 tables += 1
                 for t in run:

@@ -455,3 +455,25 @@ preceding shift latches. The movie file is read to its last byte (frame
 1472) and the ADX error follows ~4 s later: the audio side never sees the
 end of its data.
 
+
+Thirty-fifth/sixth runs (0.0.41/0.0.42): blocks unchanged. The green ones
+are in every other frame (frame means alternate ~41/~58), i.e. the
+B-pictures. The picture-header parser 0x1AAEE0 picks its macroblock
+routines from per-picture-type tables (0x21ACC8..0x21ADA8, five slots per
+table, mostly null). The B-only slots 0x21AD80/0x21ADA8 hold 0x20E200,
+0x20E290 (and 0x20CC10/0x20CC70 for the other mode). Each sits alone
+between nulls, so find_pointer_targets (runs of >= 2 code pointers) never
+saw them, and the detector folded them into the preceding functions.
+`recomp_icall_fail_log` counted the misses without printing anything, so
+every B-macroblock those routines own was skipped silently: zero YUV
+(green) in buffers never written yet, stale blocks from older frames
+after that. Null slots no longer end a pointer run; the four are seeded
+(tools/recomp/ptr_seeds_3.1.txt, seed_missing_functions) and the
+unresolved-icall log now names each new target once ([ICALL]). The widened
+scan also proposes 11 more targets, mostly SEH filter/handler blocks
+(`mov reg,[ebp-0x18]` after a ret) - not seeded yet.
+
+The ADX end: ADXSJD (0xC7BC80) decoded all 911,881 samples of the movie's
+ADX header ([adxt+0x64]), but ADXT stayed in state 3 and the input ran dry
+-> error -1 (FF000C08). 0x1952E0 sets decode-end only while the decoder is
+idle; 0.0.43 logs [ADXSJD] lines from the input end to the error.

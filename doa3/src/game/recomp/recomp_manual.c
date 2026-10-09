@@ -284,6 +284,13 @@ void recomp_icall_fail_log(uint32_t va)
             }
         }
     }
+    if (new_target) {
+        /* An indirect call into nothing does nothing at all: name each new
+         * target once (3.1: Sofdec's B-picture routines 0x20E200/0x20E290
+         * were missing and every B-frame macroblock they own stayed blank). */
+        fprintf(stderr, "[ICALL] no function at %08X (indirect call skipped; first time)\n", va);
+        fflush(stderr);
+    }
     if (g_icall_fail_logged < 200 || new_target) {
         if (va == 0) {
             void *bt[10]; int n = CaptureStackBackTrace(1, 10, bt, NULL);
@@ -589,6 +596,7 @@ static void d3d4134_frame_done(uint32_t dev)
     d3d4134_capture_frame(++g_doa3_frames_presented);
     { extern void doa3_frame_monitor(unsigned frame); doa3_frame_monitor(g_doa3_frames_presented); }
     doa3_mtrace_frame(g_doa3_frames_presented + 1);
+    { void doa3_adx_frame(unsigned frame); doa3_adx_frame(g_doa3_frames_presented); }
     doa3_present_frame();
     d3d4134_pace();
     { extern void doa3_fn_profile_tick(void); doa3_fn_profile_tick(); }
@@ -828,6 +836,60 @@ void sub_0019A330(void)
     sub_0019A330_gen();
 }
 
+/* The movie's ADX decode chain at the end of the movie. ADXT [0xC86480+0x3E00]
+ * -> ADXSJD [adxt+4] (0x9C-byte slots from 0xC7BC80): +1 state (3 = decode
+ * end, which ADXT's error check 0x196300 needs once the input runs dry),
+ * +3 supply-ended, +8 input stream joint, +0x14/+0x18 current chunk,
+ * +0x2C decoded samples, +0x34; decoder [sjd+4]: +0x10, +0x18, +0xA8 status.
+ * 0x1952E0 sets decode end on: supply ended and input empty; decoder idle
+ * and the next two bytes are the 0x8001 ADX end block; or [sjd+0x34] >=
+ * [dec+0x18]. It only runs while the decoder [sjd+4] is idle (0x19B8F0). */
+static void doa3_adx_dump(const char *why)
+{
+    uint32_t adxt = MEM32(0xC86480u + 0x3E00), sjd, dec, sj, ck, k;
+    if (adxt < 0x1000 || adxt >= 0x08000000u) return;
+    sjd = MEM32(adxt + 4);
+    if (sjd < 0x1000 || sjd >= 0x08000000u) return;
+    dec = MEM32(sjd + 4); sj = MEM32(sjd + 8); ck = MEM32(sjd + 0x14);
+    fprintf(stderr, "[ADXSJD] %s frame %u: adxt state %u sjd %08X state %u supply-end %u decoded %u lim34 %d chunk %08X+%d",
+            why, g_doa3_frames_presented, MEM8(adxt + 1), sjd, MEM8(sjd + 1), MEM8(sjd + 3),
+            MEM32(sjd + 0x2C), (int)MEM32(sjd + 0x34), ck, (int)MEM32(sjd + 0x18));
+    if (ck >= 0x1000 && ck < 0x08000000u)
+        fprintf(stderr, " [%02X %02X %02X %02X]", MEM8(ck), MEM8(ck + 1), MEM8(ck + 2), MEM8(ck + 3));
+    if (dec >= 0x1000 && dec < 0x08000000u)
+        fprintf(stderr, " dec %08X +10=%d +18=%d +A8=%d", dec, (int)MEM32(dec + 0x10),
+                (int)MEM32(dec + 0x18), (int)(int16_t)MEM16(dec + 0xA8));
+    fprintf(stderr, "\n");
+    if (!strcmp(why, "error")) {
+        fprintf(stderr, "[ADXSJD] sjd:");
+        for (k = 0; k < 0xA0; k += 4) fprintf(stderr, "%s%08X", (k % 32) ? " " : "\n[ADXSJD]   ", MEM32(sjd + k));
+        if (dec >= 0x1000 && dec < 0x08000000u) {
+            fprintf(stderr, "\n[ADXSJD] dec %08X:", dec);
+            for (k = 0; k < 0xC0; k += 4) fprintf(stderr, "%s%08X", (k % 32) ? " " : "\n[ADXSJD]   ", MEM32(dec + k));
+        }
+        if (sj >= 0x1000 && sj < 0x08000000u) {
+            fprintf(stderr, "\n[ADXSJD] input sj %08X:", sj);
+            for (k = 0; k < 0x60; k += 4) fprintf(stderr, "%s%08X", (k % 32) ? " " : "\n[ADXSJD]   ", MEM32(sj + k));
+        }
+        fprintf(stderr, "\n");
+    }
+    fflush(stderr);
+}
+
+/* Once the movie's input has ended ([h+0x43D4] substream +0xF94), one
+ * [ADXSJD] line every 15 frames until the ADX side ends or errors. */
+void doa3_adx_frame(unsigned frame)
+{
+    static unsigned s_lines;
+    const uint32_t h = 0xC86480u;
+    uint32_t ia = MEM32(h + 0x43D4u), ib = MEM32(h + 0x43D8u);
+    if (ia >= 16 || ib >= 16 || s_lines >= 80) return;
+    if (MEM32(h + ia * 0x388u + 0xF94u) != 1 || MEM32(h + ib * 0x388u + 0xF94u) == 1) return;
+    if (frame % 15) return;
+    s_lines++;
+    doa3_adx_dump("tick");
+}
+
 /* CRI error sink for formatted messages (0x19A380; the Sofdec/mwPly error
  * formatter 0x1A0040 lands here). The intro movie's handle went to state -4
  * (error) right after one of these, mid-movie. */
@@ -856,6 +918,7 @@ void sub_0019A380(void)
             if (adxt >= 0x1000 && adxt < 0x08000000u)
                 for (k = 0; k < 0x80; k += 4) fprintf(stderr, "%s%08X", (k % 32) ? " " : "\n[ADXT]   ", MEM32(adxt + k));
             fprintf(stderr, "\n");
+            doa3_adx_dump("error");
             fflush(stderr);
         }
     }
