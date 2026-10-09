@@ -478,6 +478,13 @@ def _make_condition(jcc, flag_setter, flag_ops):
         if test_macro:
             return f"{test_macro}({lhs}, {rhs})", desc
         if cmp_macro:
+            # The CMP_* macros take the width from sizeof(left operand), and
+            # `LO16(a) & LO16(b)` is an int: keep the AND at operand width
+            # (3.1: `test ax,ax / jge` in the stage loader 0xF3300 walked a
+            # -1-terminated index list as 0xFFFF >= 0 and never stopped).
+            ucast = {"int8_t": "uint8_t", "int16_t": "uint16_t"}.get(_sign_cast(lhs))
+            if ucast:
+                return f"{cmp_macro}(({ucast})({lhs} & {rhs}), 0)", desc
             return f"{cmp_macro}({lhs} & {rhs}, 0)", desc
         if jcc == "js":
             return f"(({_sign_cast(lhs)})({lhs} & {rhs}) < 0)", desc

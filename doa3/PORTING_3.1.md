@@ -541,3 +541,13 @@ matches byte for byte at 0x21157D/0x21159F/0x211823/0x211898/0x2118A4/
 Red box at the TECMO fade-out (glitch_0596): that frame's push buffer uploads
 a vertex program (0x0B00.., execution mode 0x1E94 = 6) for the fade quad and
 the logo's transparent texels come out dark red. Not looked at further yet.
+
+Forty-first run (0.0.47): no crash at the end of mv_op.sfd any more (the
+retire wait returned in 0 ms both times); START skips the ninja movie. The
+title logo then froze mid-fade and the process died on the fault-skip cap:
+the stage loader thread (0xE8030 -> 0xE8290, stage 0x38 -> 0xEFF70 ->
+0xF3300) walks -1-terminated short index lists with `test ax,ax / jge`, and
+the lifter wrote that as CMP_GE(LO16(eax) & LO16(eax), 0). The AND promotes
+to int, so CMP_GE compared at 32 bits and 0xFFFF counted as >= 0: the walk
+ran off the end. Signed/unsigned conditions after an 8/16-bit `test` now
+cast the AND back to the operand width (474 sites).

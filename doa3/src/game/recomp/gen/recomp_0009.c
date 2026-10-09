@@ -16132,7 +16132,7 @@ loc_001BFB75: ;
 loc_001BFB7A: ;
     /* test LO16(eax), LO16(eax) - flags set for next jcc */
     MEM16(edi) = LO16(eax);
-    if (CMP_GE(LO16(eax) & LO16(eax), 0)) goto loc_001BFB9B; /* jge: greater or equal (signed >=) */
+    if (CMP_GE((uint16_t)(LO16(eax) & LO16(eax)), 0)) goto loc_001BFB9B; /* jge: greater or equal (signed >=) */
 
 loc_001BFB82: ;
     ecx = eax + -2340;

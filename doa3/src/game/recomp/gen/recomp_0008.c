@@ -55349,7 +55349,7 @@ loc_001B0150: ;
 
 loc_001B0158: ;
     SET_LO16(eax, MEM16(edx));
-    if (CMP_GE(LO16(eax) & LO16(eax), 0)) goto loc_001B0171; /* jge: greater or equal (signed >=) */
+    if (CMP_GE((uint16_t)(LO16(eax) & LO16(eax)), 0)) goto loc_001B0171; /* jge: greater or equal (signed >=) */
 
 loc_001B0160: ;
     ecx = SX16(LO16(eax));
