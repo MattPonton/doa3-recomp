@@ -236,9 +236,27 @@ int xbox_fiber_spawn(uint32_t start_routine, uint32_t ctx1, uint32_t ctx2,
     return 1;
 }
 
+/* Hardware-paced vertical blank for worker threads (non-3.0 builds; see the
+ * vblank branch of bridge_KeWaitForSingleObject). Worker fibers that wait for
+ * the D3D vblank event park on XBOX_FIB_VBLANK_KEY; this releases them once
+ * per 1/60 s of wall time. It runs at every scheduling decision, so it needs
+ * no thread of its own. */
+void xbox_fiber_vblank_tick(void)
+{
+    static LONGLONG s_qpf, s_next;
+    LARGE_INTEGER now;
+    if (!s_qpf) { LARGE_INTEGER f; QueryPerformanceFrequency(&f); s_qpf = f.QuadPart; }
+    QueryPerformanceCounter(&now);
+    if (now.QuadPart < s_next) return;
+    if (!s_next || now.QuadPart - s_next > s_qpf / 10) s_next = now.QuadPart;
+    s_next += s_qpf * 1001 / 60000;                 /* 59.94 Hz */
+    xbox_fiber_wake(XBOX_FIB_VBLANK_KEY);
+}
+
 void xbox_fiber_yield(void)
 {
     if (!g_active) return;
+    xbox_fiber_vblank_tick();
     int me = g_cur;
     int n = -1;
     if (g_direct_return >= 0 && g_direct_return != me) {
@@ -371,6 +389,7 @@ void xbox_fiber_timeslice(void)
 void xbox_fiber_block(uint32_t event_va)
 {
     if (!g_active) return;
+    xbox_fiber_vblank_tick();
     int me = g_cur;
     g_fib[me].wait_event = event_va;
     g_fib[me].state = FIB_WAITING;

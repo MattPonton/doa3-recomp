@@ -908,6 +908,16 @@ static void bridge_KeWaitForSingleObject(void)
         if (g_xbox_det_active && xbox_fiber_current_ctx1() == 0x0016A570u)
             xbox_fiber_block(XBOX_DET_VBLANK_KEY);
         else
+#else
+        /* Worker threads wait for a real vertical blank. Answering at once
+         * ran CRI's vsync and mwPly threads (0x1926F0/0x192760) millions of
+         * times a second, and ADX counts its stall check in server ticks: the
+         * intro movie's ADX stream saw "no progress for 5 x svrfreq ticks"
+         * within microseconds, set error -2 (ADXT_ExecErrChk, 0x19634F) and
+         * Sofdec aborted the movie with SFD ERROR(FF000C09) (thirtieth run). */
+        if (!g_xbox_det_active && !xbox_fiber_is_primary() && !xbox_fiber_is_coroutine())
+            xbox_fiber_block(XBOX_FIB_VBLANK_KEY);
+        else
 #endif
         if (g_xbox_det_active && (xbox_fiber_is_primary() || xbox_fiber_is_coroutine())) xbox_fiber_run_workers_idle(1024);
         else xbox_fiber_yield();

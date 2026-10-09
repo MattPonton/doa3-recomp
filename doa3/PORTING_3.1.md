@@ -314,6 +314,17 @@ CRI threads run on hardware while the game thread waits for vblank.
 ninja.sfd stream stopped reading at ~20 MB of 35 MB; with the game loop
 paced, see whether the decoder keeps up.
 
+Thirtieth run: the movie handle went PLAYING -> -4 at frame 616 with
+`SFD ERROR(FF000C09)`: Sofdec's check of its ADX stream (0x1A43A0) found
+ADXT error -2, set by ADXT_ExecErrChk (0x19634F) when the decoded-sample
+count has not moved for 5 x svrfreq server ticks. Those ticks are vblanks on
+hardware; here every vblank wait was answered at once, so the vsync/mwPly
+threads ticked millions of times a second and the check fired within
+microseconds. Worker fibers now park on `XBOX_FIB_VBLANK_KEY` when they wait
+for the D3D vblank event and are released at 59.94 Hz
+(`xbox_fiber_vblank_tick`, run at every scheduling decision). The flip pacer
+also gives worker laps while a game-task coroutine waits.
+
 ## Version-driven now
 
 | Piece | Source |

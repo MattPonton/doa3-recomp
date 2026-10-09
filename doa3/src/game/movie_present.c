@@ -827,6 +827,132 @@ void doa3_capture_backbuffer(const char *path)
     ID3D11Texture2D_Release(bb);
 }
 
+/* ── Boot-screen glitch finder ─────────────────────────────────────────
+ * For the first DOA3_GLITCH_UNTIL presented frames (default 1500), read each
+ * frame back at half size, log its mean brightness and red-pixel count to
+ * doa3_frames.csv, and when a frame jumps away from the one before it (mean
+ * brightness by more than 2/255, or the red-pixel count by more than a
+ * quarter), write it as glitch_NNNN.bmp together with the 3 frames before and
+ * the 3 after. Gradual fades never trigger; one-frame flashes do. */
+static void bmp_write(const char *path, const unsigned char *bgr, int w, int h)
+{
+    FILE *f = fopen(path, "wb");
+    int stride = (w * 3 + 3) & ~3, y;
+    unsigned char hdr[54];
+    unsigned size = 54u + (unsigned)(stride * h);
+    static const unsigned char pad[4];
+    if (!f) return;
+    memset(hdr, 0, sizeof hdr);
+    hdr[0] = 'B'; hdr[1] = 'M';
+    memcpy(hdr + 2, &size, 4);
+    { unsigned off = 54; memcpy(hdr + 10, &off, 4); }
+    { unsigned ih = 40; memcpy(hdr + 14, &ih, 4); }
+    memcpy(hdr + 18, &w, 4);
+    memcpy(hdr + 22, &h, 4);
+    { unsigned short pl = 1, bc = 24; memcpy(hdr + 26, &pl, 2); memcpy(hdr + 28, &bc, 2); }
+    fwrite(hdr, 1, sizeof hdr, f);
+    for (y = h - 1; y >= 0; y--) {
+        fwrite(bgr + (size_t)y * w * 3, 1, (size_t)w * 3, f);
+        fwrite(pad, 1, (size_t)(stride - w * 3), f);
+    }
+    fclose(f);
+}
+
+void doa3_frame_monitor(unsigned frame)
+{
+    enum { RING = 4 };
+    static unsigned s_until = 0;
+    static ID3D11Texture2D *s_stg;
+    static int s_w, s_h, s_post, s_trig;
+    static unsigned char *s_ring[RING];
+    static unsigned s_ring_frame[RING];
+    static double s_prev_mean = -1.0;
+    static long s_prev_red = -1;
+    static FILE *s_csv;
+    ID3D11Device *dev = d3d8_GetD3D11Device();
+    ID3D11DeviceContext *ctx = d3d8_GetD3D11Context();
+    ID3D11Texture2D *bb = d3d8_GetGuestTexture();
+    D3D11_MAPPED_SUBRESOURCE map;
+    D3D11_TEXTURE2D_DESC td;
+    unsigned char *img;
+    double sum = 0.0; long red = 0, n = 0;
+    int x, y, slot = (int)(frame % RING), w, h;
+    if (!s_until) {
+        const char *e = getenv("DOA3_GLITCH_UNTIL");
+        s_until = e ? (unsigned)strtoul(e, NULL, 10) : 1500u;
+        if (!s_until) s_until = 1;
+    }
+    if (frame > s_until || !dev || !ctx || !bb) return;
+    ID3D11Texture2D_GetDesc(bb, &td);
+    if (!s_stg || s_w != (int)td.Width || s_h != (int)td.Height) {
+        D3D11_TEXTURE2D_DESC sd = td;
+        int i;
+        if (s_stg) { ID3D11Texture2D_Release(s_stg); s_stg = NULL; }
+        sd.Usage = D3D11_USAGE_STAGING; sd.BindFlags = 0;
+        sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ; sd.MiscFlags = 0;
+        if (FAILED(ID3D11Device_CreateTexture2D(dev, &sd, NULL, &s_stg))) { s_stg = NULL; return; }
+        s_w = (int)td.Width; s_h = (int)td.Height;
+        for (i = 0; i < RING; i++) {
+            free(s_ring[i]);
+            s_ring[i] = (unsigned char *)calloc((size_t)(s_w / 2) * (s_h / 2), 3);
+            s_ring_frame[i] = 0;
+        }
+        if (!s_csv) {
+            s_csv = fopen("doa3_frames.csv", "w");
+            if (s_csv) fputs("frame,mean,red\n", s_csv);
+        }
+    }
+    w = s_w / 2; h = s_h / 2;
+    img = s_ring[slot];
+    if (!img) return;
+    ID3D11DeviceContext_CopyResource(ctx, (ID3D11Resource *)s_stg, (ID3D11Resource *)bb);
+    if (FAILED(ID3D11DeviceContext_Map(ctx, (ID3D11Resource *)s_stg, 0, D3D11_MAP_READ, 0, &map)))
+        return;
+    for (y = 0; y < h; y++) {
+        const unsigned char *src = (const unsigned char *)map.pData + (size_t)(y * 2) * map.RowPitch;
+        unsigned char *dst = img + (size_t)y * w * 3;
+        for (x = 0; x < w; x++) {
+            unsigned r = src[x * 8 + 0], g = src[x * 8 + 1], b = src[x * 8 + 2];   /* RGBA */
+            dst[x * 3 + 0] = (unsigned char)b; dst[x * 3 + 1] = (unsigned char)g; dst[x * 3 + 2] = (unsigned char)r;
+            if (((x | y) & 3) == 0) {
+                sum += r + g + b; n++;
+                if (r > 40 && g < 30 && b < 30) red++;
+            }
+        }
+    }
+    ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource *)s_stg, 0);
+    s_ring_frame[slot] = frame;
+    {
+        double mean = n ? sum / (3.0 * n) : 0.0;
+        int jump = s_prev_mean >= 0.0 &&
+                   (fabs(mean - s_prev_mean) > 2.0 ||
+                    labs(red - s_prev_red) > (s_prev_red / 4 > 50 ? s_prev_red / 4 : 50));
+        char path[64];
+        if (s_csv) { fprintf(s_csv, "%u,%.2f,%ld\n", frame, mean, red); fflush(s_csv); }
+        if (jump && s_trig < 8) {
+            int k;
+            s_trig++;
+            fprintf(stderr, "[GLITCH] frame %u: mean %.2f -> %.2f, red %ld -> %ld; writing glitch_*.bmp\n",
+                    frame, s_prev_mean, mean, s_prev_red, red);
+            fflush(stderr);
+            for (k = RING - 1; k >= 1; k--) {        /* the 3 frames before */
+                int sl = (slot + RING - k) % RING;
+                if (s_ring_frame[sl] && s_ring_frame[sl] + (unsigned)k == frame) {
+                    sprintf(path, "glitch_%04u.bmp", s_ring_frame[sl]);
+                    bmp_write(path, s_ring[sl], w, h);
+                }
+            }
+            s_post = 4;                               /* this one and 3 after */
+        }
+        if (s_post > 0) {
+            s_post--;
+            sprintf(path, "glitch_%04u.bmp", frame);
+            bmp_write(path, img, w, h);
+        }
+        s_prev_mean = mean; s_prev_red = red;
+    }
+}
+
 void doa3_movie_repaint(void)
 {
     ID3D11DeviceContext *ctx = d3d8_GetD3D11Context();

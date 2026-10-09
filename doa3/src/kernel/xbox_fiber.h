@@ -43,6 +43,9 @@ void xbox_fiber_yield(void);
  * WAITING on event_va, switches to another runnable fiber, and resumes here only
  * after it is woken. Models the real game's KeWaitForSingleObject on a CRI event. */
 void xbox_fiber_block(uint32_t event_va);
+/* Key worker fibers park on to wait for the next (59.94 Hz) vertical blank. */
+#define XBOX_FIB_VBLANK_KEY 0xB1A4B1A4u
+void xbox_fiber_vblank_tick(void);
 
 /* Wake every fiber WAITING on event_va (mark them runnable). event_va == 0 wakes
  * all waiters. Models KeSetEvent / NtSetEvent. */
