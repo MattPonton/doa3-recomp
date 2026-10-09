@@ -580,3 +580,20 @@ New [ICALL] misses: 0x132750..0x1327F0, eight 3-5 instruction x87 helpers
 every function range for 16-aligned entries after `ret` + padding found 30
 such swallowed functions (incl. a second helper set at 0x141C40..); all
 seeded.
+
+Forty-fourth run (0.0.50): Nine Lives stalls at Azuchi's tier drop; START
+skips Nine Lives; the main menu and character select are reachable. The
+geometry is scrambled differently every frame on every 3D screen (the
+animation itself is right). mv_op still does not skip: during it the
+loader flag 0x596AA5 stayed 0, attract action was 2, and the P1 join flag
+never moved, so the START press is lost before the join logic.
+
+The push-buffer translator in the KickOff override (pb4134_translate)
+skipped NV2A jump/call/return words and carried on with the next word in
+the ring. After a jump those words are left over from an earlier lap and
+were translated as live commands, and calls (precompiled push buffers) were
+never followed. 0.0.51 follows jumps and calls (one return slot, as the
+NV2A has), finishes the old lap before a ring wrap instead of dropping it,
+and logs the control-word counts ([PB] control words). Also: [JOIN] lines
+from mp_UpdatePlayerJoinAndStartInput (0x88910) whenever an aggregate has
+START, and two consecutive method traces every 1500 frames past 1500.

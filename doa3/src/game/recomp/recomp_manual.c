@@ -539,6 +539,30 @@ void sub_00211B07(void)   /* XInputGetState(handle, state) -> 0, ret 8 */
     eax = 0;
     esp += 12;
 }
+/* mp_UpdatePlayerJoinAndStartInput (0x88910, once per frame). START in the
+ * title-attract loop (main strand 2, action 2 = mv_op) should set the
+ * attract input word 0x5C9248, which mp_UpdateTitleAttract turns into the
+ * exit. START never skipped mv_op on 3.1: log the gate state whenever a
+ * pad's per-frame aggregate (0x73C8D8 + pad*0x2C) has START (0x10). */
+void sub_00088910_gen(void);
+void sub_00088910(void)
+{
+    static int s_n;
+    uint32_t agg0 = MEM32(0x73C8D8u), pre = MEM32(0x5C9248u);
+    int any = 0, p;
+    for (p = 0; p < 4; p++) if (MEM8(0x73C8D8u + p * 0x2C) & 0x10) any = 1;
+    sub_00088910_gen();
+    if (any && s_n < 40) {
+        s_n++;
+        fprintf(stderr, "[JOIN] START seen (frame %u): agg0 %08X aa5 %u strand %u action %u mode %u a2c %u c9364 %u c9288 %08X "
+                "joinP1 %u joinP2 %u c9248 %u->%u c9254 %08X\n",
+                g_doa3_frames_presented, agg0, MEM8(0x596AA5u), MEM8(0x598E80u), MEM8(0x5A262Au),
+                MEM32(0x5A2858u), MEM8(0x596A2Cu), MEM8(0x5C9364u), MEM32(0x5C9288u),
+                MEM8(0x596A32u), MEM8(0x596A33u), pre, MEM32(0x5C9248u), MEM32(0x5C9254u));
+        fflush(stderr);
+    }
+}
+
 /* The attract movie player (0xD7490, the pad index in eax -> ebx): plays
  * mv_op.sfd and leaves early when the pad's aggregate word at
  * 0x73C8D8 + pad*0x2C has bits 0x300 or 0x30. START did not skip it on
@@ -613,27 +637,89 @@ static uint32_t s_pb4134_parsed;
 
 static int s_pb4134_flip;     /* a FLIP_STALL went by: the frame is complete */
 
-static void pb4134_translate(uint32_t from, uint32_t to, int translate)
+/* NV2A push-buffer control words besides method headers:
+ *   old jump  001x xxxx xxxx xxxx xxxx xxxx xxxx xx00  (word & 0xE0000003) == 0x20000000
+ *   new jump  word & 3 == 1        call  word & 3 == 2     return  0x00020000
+ * Targets are physical addresses; guest RAM is mapped 1:1 from VA 0.
+ * The translator used to skip these words and carry on with the next word
+ * in the ring. After a jump the words that follow are whatever an earlier
+ * lap left there, and those were translated as commands: stale draws with
+ * stale vertex pointers every frame. A call (D3D's RunPushBuffer, the
+ * precompiled buffers) was not followed at all. Follow both; a jump inside
+ * the ring itself (the wrap back to its start) ends this span, KickOff picks
+ * the ring up from its start next time. */
+static unsigned s_pb_ctl[4], s_pb_ctl_logged;
+static void pb4134_translate_span(uint32_t from, uint32_t to, int translate, uint32_t ring_lo,
+                                  uint32_t ring_hi, int depth)
 {
-    uint32_t pos = from;
-    while (pos + 4 <= to) {
-        uint32_t word = MEM32(pos); pos += 4;
-        uint32_t kind = word & 0xE0030003u;
+    uint32_t pos = from, budget = 8u << 20, ret_to = 0;
+    int in_call = 0;
+    while (budget--) {
+        uint32_t word;
+        if (!in_call && pos + 4 > to) break;
+        if (pos < 0x1000 || pos >= 0x08000000u) break;
+        word = MEM32(pos); pos += 4;
         if (word == 0) continue;
-        if (kind == 0 || kind == 0x40000000u) {      /* increasing / non-increasing */
-            uint32_t count = (word >> 18) & 0x7FF, method = word & 0x1FFC;
-            uint32_t sub = (word >> 13) & 7, i;
-            if (count == 0 || pos + count * 4 > to) break;
-            for (i = 0; i < count; i++) {
-                uint32_t param = MEM32(pos); pos += 4;
-                uint32_t m = kind == 0 ? method + i * 4 : method;
-                if (m == 0x130) s_pb4134_flip = 1;   /* NV097_FLIP_STALL, end of D3DDevice_Swap */
-                if (translate) pgraph_d3d11_method((int)sub, m, param);
+        if ((word & 0xE0000003u) == 0x20000000u || (word & 3u) == 1u) {      /* jump */
+            uint32_t tgt = ((word & 3u) == 1u) ? (word & ~3u) : (word & 0x1FFFFFFCu);
+            tgt &= 0x07FFFFFFu;
+            s_pb_ctl[0]++;
+            if (s_pb_ctl_logged < 24) {
+                s_pb_ctl_logged++;
+                fprintf(stderr, "[PB] jump at %08X -> %08X (ring %08X-%08X, span end %08X, call %d)\n",
+                        pos - 4, tgt, ring_lo, ring_hi, to, in_call);
+            }
+            if (!in_call && tgt >= ring_lo && tgt < ring_hi) {
+                if (tgt <= pos - 4) break;          /* wrap to the ring start: span ends */
+                pos = tgt;                          /* skip forward inside the ring */
+                continue;
+            }
+            pos = tgt;                              /* into another buffer (or back) */
+            continue;
+        }
+        if ((word & 3u) == 2u) {                                                /* call */
+            s_pb_ctl[1]++;
+            if (s_pb_ctl_logged < 24) {
+                s_pb_ctl_logged++;
+                fprintf(stderr, "[PB] call at %08X -> %08X\n", pos - 4, word & 0x07FFFFFCu);
+            }
+            if (in_call) break;                     /* the NV2A has one return slot */
+            ret_to = pos; in_call = 1;
+            pos = word & 0x07FFFFFCu;
+            continue;
+        }
+        if (word == 0x00020000u) {                                              /* return */
+            s_pb_ctl[2]++;
+            if (in_call) { in_call = 0; pos = ret_to; continue; }
+            continue;
+        }
+        {
+            uint32_t kind = word & 0xE0030003u;
+            if (kind == 0 || kind == 0x40000000u) {      /* increasing / non-increasing */
+                uint32_t count = (word >> 18) & 0x7FF, method = word & 0x1FFC;
+                uint32_t sub = (word >> 13) & 7, i;
+                if (count == 0) continue;
+                if (!in_call && pos + count * 4 > to) break;
+                for (i = 0; i < count; i++) {
+                    uint32_t param = MEM32(pos); pos += 4;
+                    uint32_t m = kind == 0 ? method + i * 4 : method;
+                    if (m == 0x130) s_pb4134_flip = 1;   /* NV097_FLIP_STALL, end of D3DDevice_Swap */
+                    if (translate) pgraph_d3d11_method((int)sub, m, param);
+                }
+            } else {
+                s_pb_ctl[3]++;                       /* unknown control word */
             }
         }
-        /* jump / call / return: no parameters to translate */
     }
+    (void)depth;
 }
+
+static void pb4134_translate(uint32_t from, uint32_t to, int translate)
+{
+    extern uint32_t g_pb4134_ring_lo, g_pb4134_ring_hi;
+    pb4134_translate_span(from, to, translate, g_pb4134_ring_lo, g_pb4134_ring_hi, 0);
+}
+uint32_t g_pb4134_ring_lo, g_pb4134_ring_hi;
 
 /* End of a frame (D3DDevice_Swap's FLIP_STALL reached the "GPU"): show it,
  * pump the window, and run the vertical-blank interrupt the display would
@@ -794,6 +880,17 @@ static void doa3_mtrace_frame(unsigned next)
             g_doa3_mtrace = fopen(path, "w");
             return;
         }
+    /* In-engine screens: two consecutive frames every 25 s past frame 1500
+     * (at most 40 files), to compare what changes between frames of the
+     * same scene -- the 3D geometry differs from frame to frame. */
+    {   static int s_auto;
+        if (next > 1500 && (next % 1500u) <= 1 && s_auto < 40) {
+            char path[64];
+            s_auto++;
+            sprintf(path, "mtrace_%05u.txt", next);
+            g_doa3_mtrace = fopen(path, "w");
+        }
+    }
 }
 
 static void d3d4134_frame_done(uint32_t dev)
@@ -834,9 +931,16 @@ void sub_001E27C0(void)
     }
     cursor = (flags & 4) ? MEM32(dev + 0x35C) : MEM32(dev);
     start = MEM32(dev + 0x24); end = MEM32(dev + 0x28);
+    g_pb4134_ring_lo = start; g_pb4134_ring_hi = end + 4;
     if (cursor >= start && cursor <= end) {
+        if (s_pb4134_parsed > cursor && s_pb4134_parsed <= end) {
+            /* the ring wrapped: finish the old lap up to its jump back to
+             * the start (the span stops there), then go on from the start */
+            pb4134_translate(s_pb4134_parsed, end + 4, s_on);
+            s_pb4134_parsed = start;
+        }
         if (s_pb4134_parsed < start || s_pb4134_parsed > cursor)
-            s_pb4134_parsed = start;                 /* first kick, or the ring wrapped */
+            s_pb4134_parsed = start;                 /* first kick */
         if (cursor > s_pb4134_parsed) pb4134_translate(s_pb4134_parsed, cursor, s_on);
         s_pb4134_parsed = cursor;
     }
@@ -844,6 +948,13 @@ void sub_001E27C0(void)
         s_log++;
         fprintf(stderr, "[PB] kickoff #%d dev=%08X cursor=%08X ring=%08X-%08X fence=%08X\n",
                 s_log, dev, cursor, start, end, MEM32(dev + 0x30));
+    }
+    {   static DWORD s_next;
+        if (GetTickCount() >= s_next) {
+            s_next = GetTickCount() + 10000;
+            fprintf(stderr, "[PB] control words so far: jump %u call %u return %u unknown %u\n",
+                    s_pb_ctl[0], s_pb_ctl[1], s_pb_ctl[2], s_pb_ctl[3]);
+        }
     }
     {   uint32_t chan = MEM32(dev + 0x2264);
         if (chan) {
