@@ -748,9 +748,37 @@ extern int xbox_fiber_current(void);
 static uint32_t s_fn_trace_va[32];
 static int      s_fn_trace_n[32], s_fn_trace_cnt;
 static unsigned s_fn_calls[32];
+/* Return ring of every probed function (while tracing is on), so a traced
+ * call can print the calls nested inside it: [NEST] lines. */
+static struct { uint32_t va, e0, eax; int fib; } s_ring[8192];
+static unsigned s_ring_n;
+static void doa3_fn_nest_dump(uint32_t va, uint32_t e0, unsigned callno)
+{
+    int fib = xbox_fiber_current(), k, n = 0;
+    unsigned j, stop = s_ring_n > 8192 ? s_ring_n - 8192 : 0;
+    static unsigned idx[400];
+    for (j = s_ring_n - 1; j > stop && n < 400; j--) {   /* skip this call's own entry */
+        unsigned r = (j - 1) & 8191;
+        if (s_ring[r].fib != fib) continue;
+        if (s_ring[r].e0 >= e0) break;           /* returned before this call began */
+        idx[n++] = r;
+    }
+    fprintf(stderr, "[NEST] sub_%08X call #%u -> eax=%08X, %d nested returns:", va, callno, eax, n);
+    for (k = n - 1; k >= 0; k--)
+        fprintf(stderr, " %X(%X)%s", s_ring[idx[k]].va, s_ring[idx[k]].eax,
+                ((n - 1 - k) % 12 == 11) ? "\n[NEST]  " : "");
+    fprintf(stderr, "\n");
+    fflush(stderr);
+}
+
 void doa3_fn_trace(uint32_t va, uint32_t esp_in)
 {
     int i;
+    if (g_fn_trace_on > 0) {
+        unsigned r = s_ring_n++ & 8191;
+        s_ring[r].va = va; s_ring[r].e0 = esp_in; s_ring[r].eax = eax;
+        s_ring[r].fib = xbox_fiber_current();
+    }
     if (g_fn_trace_on < 0) {
         const char *e = getenv("DOA3_TRACE_FN");
 #if defined(DOA3_XBE_ID_3_1)
@@ -783,6 +811,9 @@ void doa3_fn_trace(uint32_t va, uint32_t esp_in)
         /* the first 8 calls, then only calls with an argument past the end of
          * guest RAM (up to 64 lines in all) */
         s_fn_calls[i]++;
+        if (i == 0 && (s_fn_calls[i] <= 10 || s_fn_calls[i] == 40 || s_fn_calls[i] == 300 ||
+                       s_fn_calls[i] == 1000))
+            doa3_fn_nest_dump(va, esp_in, s_fn_calls[i]);
         if (s_fn_trace_n[i] >= 64 || (s_fn_trace_n[i] >= 8 && !odd && (s_fn_calls[i] % 256u) != 0)) return;
         s_fn_trace_n[i]++;
         fprintf(stderr, "[FN]%s #%u sub_%08X(%08X, %08X, %08X, %08X, %08X, %08X, %08X, %08X) ecx=%08X edx=%08X -> eax=%08X fiber=%d\n",
