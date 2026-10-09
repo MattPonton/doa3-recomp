@@ -87362,6 +87362,7 @@ loc_001B7B90: ;
  */
 void sub_001B7B9D_gen(void)
 {
+    uint32_t _fj0 = 0; /* flag operands joined from predecessors */
     uint32_t _fs0 = 0, _fs1 = 0, _fs2 = 0; /* flag operands kept for a later jcc */
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -87407,12 +87408,14 @@ loc_001B7BD9: ;
     _fs0 = (uint32_t)(MEM32(0x4D9EE8)); /* flag operand kept for a later jcc */
     fp_push(MEMF(0x21B91E)); /* fld */
     { double _t = fp_top(); fp_top() = g_fp_stack[(g_fp_top + 1) & 7]; g_fp_stack[(g_fp_top + 1) & 7] = _t; } /* fxch st(1) */
+    _fj0 = (1 /* jp after cmp - parity */) ? 1u : 0u; /* condition for 0x001B7BE1 */
 
 loc_001B7BE1: ;
     fp_top() = remainder(fp_top(), fp_st1()); /* fprem1 */
     /* wait - FPU sync */
     SET_HI8(eax, (_fpu_cmp < 0 ? 0x01 : 0) | (_fpu_cmp == 0 ? 0x40 : 0)); /* fnstsw ax */
     /* sahf - store AH to flags */
+    _fj0 = (0 /* fpu: unordered/NaN */) ? 1u : 0u; /* condition for 0x001B7BE1 */
     if (0 /* fpu: unordered/NaN */) goto loc_001B7BE1; /* jp: parity */
 
 loc_001B7BE9: ;

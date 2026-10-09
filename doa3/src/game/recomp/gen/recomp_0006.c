@@ -239,6 +239,7 @@ loc_00159D00: ;
  */
 void sub_00159D10(void)
 {
+    uint32_t _fj0 = 0; /* flag operands joined from predecessors */
     uint32_t _fs0 = 0, _fs1 = 0, _fs2 = 0; /* flag operands kept for a later jcc */
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -284,15 +285,17 @@ loc_00159D50: ;
 
 loc_00159D55: ;
     eax = eax & 0x80000003u;
+    _fj0 = ((eax != 0)) ? 1u : 0u; /* condition for 0x00159D61 */
     if (((int32_t)eax >= 0)) goto loc_00159D61; /* jns: not sign (positive) */
 
 loc_00159D5C: ;
     eax--;
     eax = eax | 0xFFFFFFFCu;
     eax++;
+    _fj0 = ((eax != 0)) ? 1u : 0u; /* condition for 0x00159D61 */
 
 loc_00159D61: ;
-    if ((eax != 0)) goto loc_00159D93; /* jne: not equal / not zero */
+    if ((_fj0)) goto loc_00159D93; /* jne: joined condition */
 
 loc_00159D63: ;
     edi = 0; /* xor self */
@@ -1115,6 +1118,7 @@ loc_0015A1D0: ;
  */
 void sub_0015A1E0(void)
 {
+    uint32_t _fj0 = 0; /* flag operands joined from predecessors */
     uint32_t _fs0 = 0, _fs1 = 0, _fs2 = 0, _fs3 = 0; /* flag operands kept for a later jcc */
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -1160,15 +1164,17 @@ loc_0015A220: ;
 
 loc_0015A225: ;
     eax = eax & 0x80000003u;
+    _fj0 = ((eax != 0)) ? 1u : 0u; /* condition for 0x0015A231 */
     if (((int32_t)eax >= 0)) goto loc_0015A231; /* jns: not sign (positive) */
 
 loc_0015A22C: ;
     eax--;
     eax = eax | 0xFFFFFFFCu;
     eax++;
+    _fj0 = ((eax != 0)) ? 1u : 0u; /* condition for 0x0015A231 */
 
 loc_0015A231: ;
-    if ((eax != 0)) goto loc_0015A263; /* jne: not equal / not zero */
+    if ((_fj0)) goto loc_0015A263; /* jne: joined condition */
 
 loc_0015A233: ;
     edi = 0; /* xor self */
@@ -4191,6 +4197,7 @@ loc_0015AD20: ;
  */
 void sub_0015AD30(void)
 {
+    uint32_t _fj0 = 0; /* flag operands joined from predecessors */
     uint32_t _fs0 = 0, _fs1 = 0, _fs2 = 0; /* flag operands kept for a later jcc */
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -4236,15 +4243,17 @@ loc_0015AD70: ;
 
 loc_0015AD75: ;
     eax = eax & 0x80000003u;
+    _fj0 = ((eax != 0)) ? 1u : 0u; /* condition for 0x0015AD81 */
     if (((int32_t)eax >= 0)) goto loc_0015AD81; /* jns: not sign (positive) */
 
 loc_0015AD7C: ;
     eax--;
     eax = eax | 0xFFFFFFFCu;
     eax++;
+    _fj0 = ((eax != 0)) ? 1u : 0u; /* condition for 0x0015AD81 */
 
 loc_0015AD81: ;
-    if ((eax != 0)) goto loc_0015ADB3; /* jne: not equal / not zero */
+    if ((_fj0)) goto loc_0015ADB3; /* jne: joined condition */
 
 loc_0015AD83: ;
     edi = 0; /* xor self */
@@ -4757,7 +4766,8 @@ loc_0015B2D1: ;
  */
 void sub_0015B2F0_gen(void)
 {
-    uint32_t _fs0 = 0, _fs1 = 0, _fs2 = 0, _fs3 = 0, _fs4 = 0; /* flag operands kept for a later jcc */
+    uint32_t _fj0 = 0; /* flag operands joined from predecessors */
+    uint32_t _fs0 = 0, _fs1 = 0, _fs2 = 0, _fs3 = 0; /* flag operands kept for a later jcc */
     int _flags = 0; /* fallback flag var */
     xmm128_t xmm0, xmm1, xmm2, xmm3;
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -4847,16 +4857,18 @@ loc_0015B3AA: ;
     ecx = esi;
     esp = esp + 8;
     ecx = ecx & 0x80000001u;
+    _fj0 = ((ecx == 0)) ? 1u : 0u; /* condition for 0x0015B3C0 */
     if (((int32_t)ecx >= 0)) goto loc_0015B3C0; /* jns: not sign (positive) */
 
 loc_0015B3BB: ;
     ecx--;
     ecx = ecx | 0xFFFFFFFEu;
     ecx++;
+    _fj0 = ((ecx == 0)) ? 1u : 0u; /* condition for 0x0015B3C0 */
 
 loc_0015B3C0: ;
     PUSH32(esp, 0x3F800000);
-    if ((ecx == 0)) goto loc_0015B3D5; /* je: equal / zero */
+    if ((_fj0)) goto loc_0015B3D5; /* je: joined condition */
 
 loc_0015B3C7: ;
     edx = MEM32(0xA3F2C0);
@@ -4865,7 +4877,6 @@ loc_0015B3C7: ;
 
 loc_0015B3D5: ;
     eax = MEM32(0xA3F2C0);
-    _fs4 = (uint32_t)(ecx); /* flag operand kept for a later jcc */
     ecx = MEM32(eax + 0x23C);
 
 loc_0015B3E0: ;
@@ -4903,7 +4914,8 @@ loc_0015B404: ;
  */
 void sub_0015B313(void)
 {
-    uint32_t _fs0 = 0, _fs1 = 0, _fs2 = 0, _fs3 = 0; /* flag operands kept for a later jcc */
+    uint32_t _fj0 = 0; /* flag operands joined from predecessors */
+    uint32_t _fs0 = 0, _fs1 = 0, _fs2 = 0; /* flag operands kept for a later jcc */
     int _flags = 0; /* fallback flag var */
     xmm128_t xmm0, xmm1, xmm2, xmm3;
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -4976,16 +4988,18 @@ loc_0015B3AA: ;
     ecx = esi;
     esp = esp + 8;
     ecx = ecx & 0x80000001u;
+    _fj0 = ((ecx == 0)) ? 1u : 0u; /* condition for 0x0015B3C0 */
     if (((int32_t)ecx >= 0)) goto loc_0015B3C0; /* jns: not sign (positive) */
 
 loc_0015B3BB: ;
     ecx--;
     ecx = ecx | 0xFFFFFFFEu;
     ecx++;
+    _fj0 = ((ecx == 0)) ? 1u : 0u; /* condition for 0x0015B3C0 */
 
 loc_0015B3C0: ;
     PUSH32(esp, 0x3F800000);
-    if ((ecx == 0)) goto loc_0015B3D5; /* je: equal / zero */
+    if ((_fj0)) goto loc_0015B3D5; /* je: joined condition */
 
 loc_0015B3C7: ;
     edx = MEM32(0xA3F2C0);
@@ -4994,7 +5008,6 @@ loc_0015B3C7: ;
 
 loc_0015B3D5: ;
     eax = MEM32(0xA3F2C0);
-    _fs3 = (uint32_t)(ecx); /* flag operand kept for a later jcc */
     ecx = MEM32(eax + 0x23C);
 
 loc_0015B3E0: ;
@@ -5032,7 +5045,8 @@ loc_0015B404: ;
  */
 void sub_0015B317(void)
 {
-    uint32_t _fs0 = 0, _fs1 = 0, _fs2 = 0, _fs3 = 0; /* flag operands kept for a later jcc */
+    uint32_t _fj0 = 0; /* flag operands joined from predecessors */
+    uint32_t _fs0 = 0, _fs1 = 0, _fs2 = 0; /* flag operands kept for a later jcc */
     uint32_t ebp;
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
     int _flags = 0; /* fallback flag var */
@@ -5106,16 +5120,18 @@ loc_0015B3AA: ;
     ecx = esi;
     esp = esp + 8;
     ecx = ecx & 0x80000001u;
+    _fj0 = ((ecx == 0)) ? 1u : 0u; /* condition for 0x0015B3C0 */
     if (((int32_t)ecx >= 0)) goto loc_0015B3C0; /* jns: not sign (positive) */
 
 loc_0015B3BB: ;
     ecx--;
     ecx = ecx | 0xFFFFFFFEu;
     ecx++;
+    _fj0 = ((ecx == 0)) ? 1u : 0u; /* condition for 0x0015B3C0 */
 
 loc_0015B3C0: ;
     PUSH32(esp, 0x3F800000);
-    if ((ecx == 0)) goto loc_0015B3D5; /* je: equal / zero */
+    if ((_fj0)) goto loc_0015B3D5; /* je: joined condition */
 
 loc_0015B3C7: ;
     edx = MEM32(0xA3F2C0);
@@ -5124,7 +5140,6 @@ loc_0015B3C7: ;
 
 loc_0015B3D5: ;
     eax = MEM32(0xA3F2C0);
-    _fs3 = (uint32_t)(ecx); /* flag operand kept for a later jcc */
     ecx = MEM32(eax + 0x23C);
 
 loc_0015B3E0: ;
@@ -7655,7 +7670,8 @@ loc_0015BEBA: ;
  */
 void sub_0015BED0_gen(void)
 {
-    uint32_t _fs0 = 0, _fs1 = 0, _fs2 = 0; /* flag operands kept for a later jcc */
+    uint32_t _fj0 = 0; /* flag operands joined from predecessors */
+    uint32_t _fs0 = 0, _fs1 = 0; /* flag operands kept for a later jcc */
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
     #define fp_push(v) (g_fp_stack[--g_fp_top & 7] = (v))
@@ -7759,18 +7775,19 @@ loc_0015BF88: ;
     fp_push(MEMF(esi + 0x20)); /* fld float */
     fp_top() = fp_top() + (double)MEMF(esi + 0x14); /* fadd mem */
     MEMF(esi + 0x14) = (float)fp_top(); fp_popp(); /* fstp */
+    _fj0 = ((eax != 0)) ? 1u : 0u; /* condition for 0x0015BFC8 */
     if (((int32_t)eax >= 0)) goto loc_0015BFC8; /* jns: not sign (positive) */
 
 loc_0015BFC3: ;
     eax--;
     eax = eax | 0xFFFFFFFCu;
     eax++;
+    _fj0 = ((eax != 0)) ? 1u : 0u; /* condition for 0x0015BFC8 */
 
 loc_0015BFC8: ;
-    if ((eax != 0)) goto loc_0015BFCF; /* jne: not equal / not zero */
+    if ((_fj0)) goto loc_0015BFCF; /* jne: joined condition */
 
 loc_0015BFCA: ;
-    _fs2 = (uint32_t)(eax); /* flag operand kept for a later jcc */
     PUSH32(esp, 0); sub_0015BD80(); /* call 0x0015BD80 */
 
 loc_0015BFCF: ;
@@ -128939,6 +128956,7 @@ loc_00183872: ;
  */
 void sub_00183880_gen(void)
 {
+    uint32_t _fj0 = 0; /* flag operands joined from predecessors */
     uint32_t _fs0 = 0; /* flag operands kept for a later jcc */
     int _flags = 0; /* fallback flag var */
 
@@ -128966,6 +128984,7 @@ loc_001838A5: ;
     ecx = (uint32_t)((int32_t)ecx * (int32_t)0x68);
     edx = ZX8(MEM8(ecx + 0x59CF5B));
     /* cmp MEM32(edx * 4 + 0xC58C00), 7 - flags set for next jcc */
+    _fj0 = (CMP_NE(MEM32(edx * 4 + 0xC58C00), 7)) ? 1u : 0u; /* condition for 0x00183910 */
     goto loc_00183910;
 
 loc_001838C0: ;
@@ -128997,9 +129016,10 @@ loc_001838F6: ;
     edx = ZX8(MEM8(ecx + 0x59CF5B));
     ecx = MEM32(edx * 4 + 0xC58C00);
     /* test ecx, ecx - flags set for next jcc */
+    _fj0 = (TEST_NZ(ecx, ecx)) ? 1u : 0u; /* condition for 0x00183910 */
 
 loc_00183910: ;
-    if (TEST_NZ(ecx, ecx)) goto loc_00183917; /* jne: not equal / not zero */
+    if ((_fj0)) goto loc_00183917; /* jne: joined condition */
 
 loc_00183912: ;
     eax = 0x140;
@@ -129017,6 +129037,7 @@ loc_00183917: ;
  */
 void sub_00183894(void)
 {
+    uint32_t _fj0 = 0; /* flag operands joined from predecessors */
     int _flags = 0; /* fallback flag var */
 
 loc_00183894: ;
@@ -129032,6 +129053,7 @@ loc_001838A5: ;
     ecx = (uint32_t)((int32_t)ecx * (int32_t)0x68);
     edx = ZX8(MEM8(ecx + 0x59CF5B));
     /* cmp MEM32(edx * 4 + 0xC58C00), 7 - flags set for next jcc */
+    _fj0 = (CMP_NE(MEM32(edx * 4 + 0xC58C00), 7)) ? 1u : 0u; /* condition for 0x00183910 */
     goto loc_00183910;
 
 loc_001838C0: ;
@@ -129063,9 +129085,10 @@ loc_001838F6: ;
     edx = ZX8(MEM8(ecx + 0x59CF5B));
     ecx = MEM32(edx * 4 + 0xC58C00);
     /* test ecx, ecx - flags set for next jcc */
+    _fj0 = (TEST_NZ(ecx, ecx)) ? 1u : 0u; /* condition for 0x00183910 */
 
 loc_00183910: ;
-    if (TEST_NZ(ecx, ecx)) goto loc_00183917; /* jne: not equal / not zero */
+    if ((_fj0)) goto loc_00183917; /* jne: joined condition */
 
 loc_00183912: ;
     eax = 0x140;

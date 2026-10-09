@@ -2200,8 +2200,13 @@ def lift_basic_block(lifter, bb, flag_state=None):
 
         # Check if this instruction uses flags (jcc, setcc, cmovcc)
         if curr.is_cond_jump and last_flag_setter:
-            result = _make_condition(
-                curr.mnemonic, last_flag_setter, last_flag_ops)
+            if last_flag_setter == "joinbool":
+                # condition evaluated in each predecessor (translator flag join)
+                v = getattr(lifter, "_joinbool", {}).get(curr.address)
+                result = (f"({v})", "joined condition") if v else None
+            else:
+                result = _make_condition(
+                    curr.mnemonic, last_flag_setter, last_flag_ops)
             if not result:
                 # say which setter the fallback replaced (fallback audits)
                 stmts.append(f"/* unhandled flags: {last_flag_setter} -> {curr.mnemonic} */")

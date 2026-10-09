@@ -61243,6 +61243,7 @@ loc_002149AB: ;
  */
 void sub_002149AE(void)
 {
+    uint32_t _fj0 = 0; /* flag operands joined from predecessors */
     uint32_t _fs0 = 0, _fs1 = 0, _fs2 = 0, _fs3 = 0, _fs4 = 0, _fs5 = 0, _fs6 = 0, _fs7 = 0, _fs8 = 0, _fs9 = 0, _fs10 = 0, _fs11 = 0; /* flag operands kept for a later jcc */
     int _flags = 0; /* fallback flag var */
 
@@ -61316,15 +61317,17 @@ loc_00214A20: ;
 loc_00214A2F: ;
     eax = eax & 0xFFFFFDFFu;
     /* test HI8(eax), 4 - flags set for next jcc */
+    _fj0 = (TEST_NZ(HI8(eax), 4)) ? 1u : 0u; /* condition for 0x00214A40 */
     goto loc_00214A40;
 
 loc_00214A39: ;
     eax = eax & 0xFFFFFBFFu;
     /* test edx, eax - flags set for next jcc */
+    _fj0 = (TEST_NZ(edx, eax)) ? 1u : 0u; /* condition for 0x00214A40 */
 
 loc_00214A40: ;
     MEM32(esi + 0xC) = eax;
-    if (TEST_NZ(edx, eax)) goto loc_00214AA6; /* jne: not equal / not zero */
+    if ((_fj0)) goto loc_00214AA6; /* jne: joined condition */
 
 loc_00214A45: ;
     MEM32(esi + 0xC) = MEM32(esi + 0xC) | edx;

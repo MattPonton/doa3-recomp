@@ -639,3 +639,13 @@ back every frame. The pause trigger 0x8A2E0 also fires for a human player
 whose assigned pad (0x30E3F4[player]) is not in the open mask 0x73C8C8;
 0.0.54 logs its inputs ([PAUSE]) and counts array draws dropped for a
 non-finite vertex or clipped away entirely ([DRAW], every 5 s).
+
+Forty-eighth run (0.0.54): the pause trigger 0x8A2E0 reported player 1 with
+the pad open (mask 1), assigned (pad 0), claimed, and no START in its
+aggregate -- so the function itself was wrong. At 0x8A347 one `jne` is
+reached from `test [pad agg],0x10; jmp` and from a fall-through `cmp
+[0x5A27A0],1`: different flag setters, which the operand join cannot merge,
+so both paths compared the pause-UI byte (0 != 1: "pause"). Joins with
+different setters now evaluate the jcc condition in each predecessor into
+an _fjN boolean the jcc reads (223 sites). No draws were dropped or clipped
+away ([DRAW]), so the missing Azuchi room is never submitted.

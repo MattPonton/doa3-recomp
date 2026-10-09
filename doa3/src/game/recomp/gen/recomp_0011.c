@@ -1831,6 +1831,7 @@ loc_002179D1: ;
  */
 void sub_00217A3A(void)
 {
+    uint32_t _fj0 = 0; /* flag operands joined from predecessors */
     uint32_t _fs0 = 0, _fs1 = 0, _fs2 = 0; /* flag operands kept for a later jcc */
     uint32_t ebp;
     int _flags = 0; /* fallback flag var */
@@ -2096,6 +2097,7 @@ loc_00217CDB: ;
     MEM8(esp + eax * 2 + 0x65) = MEM8(esp + eax * 2 + 0x65) + LO8(ebx);
 
 loc_00217CDF: ;
+    _fj0 = ((MEM8(esp + eax * 2 + 0x65) == 0)) ? 1u : 0u; /* condition for 0x00217D4A */
     if (((uint32_t)(MEM8(esp + eax * 2 + 0x65)) < (uint32_t)(LO8(ebx)) || (MEM8(esp + eax * 2 + 0x65)) == 0)) goto loc_00217D4A; /* jbe: below or equal (unsigned <=) */
 
 loc_00217CE1: ;
@@ -2163,15 +2165,18 @@ loc_00217D2A: ;
 
 loc_00217D49: ;
     ebp--;
+    _fj0 = ((ebp == 0)) ? 1u : 0u; /* condition for 0x00217D4A */
 
 loc_00217D4A: ;
-    if ((ebp == 0)) goto loc_00217DAE; /* je: equal / zero */
+    if ((_fj0)) goto loc_00217DAE; /* je: joined condition */
 
 loc_00217D4D: ;
-    if (((int32_t)ebp < 0)) goto loc_00217DB2; /* js: sign (negative) */
+    /* unhandled flags: joinbool -> js */
+    if (_flags /* js: sign (negative) */) goto loc_00217DB2;
 
 loc_00217D50: ;
-    if (((int32_t)ebp < 0)) goto loc_00217D52; /* js: sign (negative) */
+    /* unhandled flags: joinbool -> js */
+    if (_flags /* js: sign (negative) */) goto loc_00217D52;
 
 loc_00217D52: ;
     MEM8(eax) = MEM8(eax) + LO8(eax);

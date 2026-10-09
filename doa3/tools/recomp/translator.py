@@ -526,6 +526,31 @@ class FunctionTranslator:
                 out_states[bb.start] = flag_state
             return stmts_of, out_states
 
+        def consumers(bb):
+            """The jcc instructions that read the incoming flags, or None if
+            something other than a jcc (setcc, cmov, adc ...) reads them."""
+            out = []
+            for insn in bb.instructions:
+                m = insn.mnemonic
+                if insn.is_cond_jump:
+                    out.append(insn)
+                    continue
+                if m.startswith(("set", "cmov")) or m in ("adc", "sbb", "rcl", "rcr"):
+                    return None
+                if m in LM.FLAG_SETTERS or m in LM._EFLAGS_SETTERS or m in LM._FLAGS_UNDEFINED \
+                        or insn.is_call:
+                    break
+            return out or None
+
+        def bool_conds(state, jccs):
+            conds = []
+            for j in jccs:
+                r = LM._make_condition(j.mnemonic, state[0], state[1]) if state and state[0] else None
+                if not r or "_flags" in r[0]:
+                    return None
+                conds.append(r[0])
+            return conds
+
         def plan(out_states):
             joins = {}
             for bb in readers:
@@ -536,17 +561,24 @@ class FunctionTranslator:
                 if all(k is not None and k == keys[0] for k in keys) and \
                         keys[0] == LM.flag_state_key(linear):
                     continue            # every path brings what the listing order gives
-                if any(st is None or st[0] not in LM.JOIN_SETTERS for st in states):
-                    continue
-                if len({st[0] for st in states}) != 1 or len({len(st[1]) for st in states}) != 1:
-                    continue
-                n_ops = len(states[0][1])
-                sizes = [{LM.operand_size(st[1][i]) for st in states} for i in range(n_ops)]
-                if any(len(sz) != 1 for sz in sizes):
-                    continue
-                joins[bb.start] = (states[0][0], [next(iter(sz)) for sz in sizes])
+                ok = not any(st is None or st[0] not in LM.JOIN_SETTERS for st in states) and \
+                    len({st[0] for st in states}) == 1 and len({len(st[1]) for st in states}) == 1
+                if ok:
+                    n_ops = len(states[0][1])
+                    sizes = [{LM.operand_size(st[1][i]) for st in states} for i in range(n_ops)]
+                    if all(len(sz) == 1 for sz in sizes):
+                        joins[bb.start] = ("ops", states[0][0], [next(iter(sz)) for sz in sizes])
+                        continue
+                # Different setters on different paths (3.1's battle pause
+                # trigger 0x8A347: `test [pad],0x10; jmp` and `cmp [ui],1`
+                # both feed one jne): evaluate the condition in each
+                # predecessor and let the jcc read the result.
+                jccs = consumers(bb)
+                if jccs and all(bool_conds(st, jccs) is not None for st in states):
+                    joins[bb.start] = ("bool", [j.address for j in jccs])
             return joins
 
+        self.lifter._joinbool = {}
         stmts_of, out_states = run({}, {})
         joins = plan(out_states)
         if not joins:
@@ -560,20 +592,33 @@ class FunctionTranslator:
                     LM._CARRY_JMP.add(last.address)
         def build(joins):
             overrides, var_of, n = {}, {}, 0
-            for t, (setter, sizes) in sorted(joins.items()):
+            self.lifter._joinbool = {}
+            for t, j in sorted(joins.items()):
+                if j[0] == "bool":
+                    for a in j[1]:
+                        v = f"_fj{n}"
+                        n += 1
+                        var_of.setdefault(t, []).append(v)
+                        self.lifter._joinbool[a] = v
+                    overrides[t] = ("joinbool", [])
+                    continue
                 ops = []
-                for sz in sizes:
+                for sz in j[2]:
                     v = f"_fj{n}"
                     n += 1
                     ops.append(Operand(type="reg", reg={1: f"LO8({v})", 2: f"LO16({v})"}.get(sz, v)))
                     var_of.setdefault(t, []).append(v)
-                overrides[t] = (setter, ops)
+                overrides[t] = (j[1], ops)
             return overrides, var_of, n
 
         def uniform(t, out_states):
             st = [out_states.get(p) for p in preds[t]]
-            return all(x is not None and x[0] == joins[t][0] and len(x[1]) == len(joins[t][1])
-                       and [LM.operand_size(o) for o in x[1]] == joins[t][1] for x in st)
+            j = joins[t]
+            if j[0] == "bool":
+                jccs = [i for i in by_start[t].instructions if i.address in set(j[1])]
+                return all(bool_conds(x, jccs) is not None for x in st)
+            return all(x is not None and x[0] == j[1] and len(x[1]) == len(j[2])
+                       and [LM.operand_size(o) for o in x[1]] == j[2] for x in st)
 
         for _ in range(4):
             overrides, var_of, join_n = build(joins)
@@ -595,8 +640,15 @@ class FunctionTranslator:
             return stmts_of, 0
         inserts = {}
         for t in joins:
+            j = joins[t]
             for p in preds[t]:
                 st = out_states[p]
+                if j[0] == "bool":
+                    jccs = [i for i in by_start[t].instructions if i.address in set(j[1])]
+                    for cond, v in zip(bool_conds(st, jccs), var_of[t]):
+                        inserts.setdefault(p, []).append(
+                            f"{v} = ({cond}) ? 1u : 0u; /* condition for 0x{t:08X} */")
+                    continue
                 for op, v in zip(st[1], var_of[t]):
                     inserts.setdefault(p, []).append(
                         f"{v} = (uint32_t)({LM._fmt_operand_read(op)}); /* flags into 0x{t:08X} */")
