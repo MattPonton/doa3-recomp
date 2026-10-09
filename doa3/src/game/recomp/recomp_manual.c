@@ -175,6 +175,18 @@ void doa3_fn_profile_tick(void)
         fprintf(stderr, "\n");
     }
     fflush(stderr);
+    {   /* every active function of the window, for offline comparison */
+        static FILE *s_pf;
+        if (!s_pf) s_pf = fopen("doa3_prof.txt", "w");
+        if (s_pf) {
+            fprintf(s_pf, "# t=%lu\n", (unsigned long)((now - s_t0) / 1000));
+            for (i = 0; i < s_nprof; i++)
+                if (*s_prof[i].cnt != s_prof[i].last)
+                    fprintf(s_pf, "%lu %X %u\n", (unsigned long)((now - s_t0) / 1000),
+                            s_prof[i].va, *s_prof[i].cnt - s_prof[i].last);
+            fflush(s_pf);
+        }
+    }
     for (i = 0; i < s_nprof; i++) {
         s_prof[i].prevd = *s_prof[i].cnt - s_prof[i].last;
         s_prof[i].last = *s_prof[i].cnt;
@@ -735,6 +747,7 @@ void esp_probe_report(uint32_t va, uint32_t esp_in, uint32_t esp_out, uint32_t e
 extern int xbox_fiber_current(void);
 static uint32_t s_fn_trace_va[32];
 static int      s_fn_trace_n[32], s_fn_trace_cnt;
+static unsigned s_fn_calls[32];
 void doa3_fn_trace(uint32_t va, uint32_t esp_in)
 {
     int i;
@@ -745,7 +758,9 @@ void doa3_fn_trace(uint32_t va, uint32_t esp_in)
          * whether the CRI middleware is set up at all (sub_000A5DC0). */
         /* ADX stereo decoder: it wrote PCM through guest 0x0825xxxx, which
          * wraps onto .data (the 128 MB view repeats). Whose pointer is it? */
-        if (!e) e = "19dc30";
+        /* Intro movie service 0xA4AB0: get current frame (0x19E3C0), blit
+         * (0xA4680 -> frame copy 0x19EA30), release frame (0x19E230). */
+        if (!e) e = "19e3c0,19e230,a4680,a4ab0";
 #endif
         g_fn_trace_on = 0;
         while (e && *e && s_fn_trace_cnt < 32) {
@@ -767,10 +782,11 @@ void doa3_fn_trace(uint32_t va, uint32_t esp_in)
         }
         /* the first 8 calls, then only calls with an argument past the end of
          * guest RAM (up to 64 lines in all) */
-        if (s_fn_trace_n[i] >= 64 || (s_fn_trace_n[i] >= 8 && !odd)) return;
+        s_fn_calls[i]++;
+        if (s_fn_trace_n[i] >= 64 || (s_fn_trace_n[i] >= 8 && !odd && (s_fn_calls[i] % 256u) != 0)) return;
         s_fn_trace_n[i]++;
-        fprintf(stderr, "[FN]%s sub_%08X(%08X, %08X, %08X, %08X, %08X, %08X, %08X, %08X) ecx=%08X edx=%08X -> eax=%08X fiber=%d\n",
-                odd ? "[PAST-RAM]" : "", va, a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7],
+        fprintf(stderr, "[FN]%s #%u sub_%08X(%08X, %08X, %08X, %08X, %08X, %08X, %08X, %08X) ecx=%08X edx=%08X -> eax=%08X fiber=%d\n",
+                odd ? "[PAST-RAM]" : "", s_fn_calls[i], va, a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7],
                 ecx, edx, eax, xbox_fiber_current());
         fflush(stderr);
         return;
