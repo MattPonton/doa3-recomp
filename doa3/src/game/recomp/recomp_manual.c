@@ -774,6 +774,27 @@ static void doa3_fn_nest_dump(uint32_t va, uint32_t e0, unsigned callno)
 void doa3_fn_trace(uint32_t va, uint32_t esp_in)
 {
     int i;
+#if defined(DOA3_XBE_ID_3_1)
+    {   /* Value watch by polling at every probed return: the movie's video
+         * output handler slot (sfd handle 0xC86480 + 6*0x610 + 0x31A0) is
+         * cleared mid-movie; name the function that returned when it changed. */
+        static uint32_t s_wv_va = 0xC8BA80u, s_wv_last;
+        static int s_wv_n;
+        uint32_t v = MEM32(s_wv_va);
+        if (v != s_wv_last && s_wv_n < 24) {
+            s_wv_n++;
+            fprintf(stderr, "[VWATCH] [%08X] %08X -> %08X at return of sub_%08X (fiber %d); recent:",
+                    s_wv_va, s_wv_last, v, va, xbox_fiber_current());
+            {   unsigned j, k = 0;
+                for (j = s_ring_n; j > 0 && k < 24; j--, k++)
+                    fprintf(stderr, " %X/%d", s_ring[(j - 1) & 8191].va, s_ring[(j - 1) & 8191].fib);
+            }
+            fprintf(stderr, "\n");
+            fflush(stderr);
+        }
+        s_wv_last = v;
+    }
+#endif
     if (g_fn_trace_on > 0) {
         unsigned r = s_ring_n++ & 8191;
         s_ring[r].va = va; s_ring[r].e0 = esp_in; s_ring[r].eax = eax;
