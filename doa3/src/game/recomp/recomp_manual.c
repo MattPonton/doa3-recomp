@@ -72,9 +72,27 @@ void doa3_apu_deliver_irq(void)
     static int s_delivering = 0;
     uint32_t obj, routine, ctx, dpc, a1, a2;
     int i;
+    extern unsigned char xbox_current_irql(void);
+    extern unsigned char xbox_set_irql(unsigned char irql);
+    unsigned char irql0;
     if (s_delivering) return;   /* an interrupt does not preempt its own service routine or DPC */
+    /* Raised IRQL masks the APU interrupt and DPCs, as on the Xbox's one CPU:
+     * leave the interrupt pending until the code that raised it lowers it. */
+    {   extern unsigned g_doa3_frames_presented;
+        static unsigned s_masked, s_warned;
+        if (xbox_current_irql() >= 2) {
+            if (++s_masked == 120 && s_warned++ < 4) {
+                fprintf(stderr, "[IRQL] APU interrupt masked for 120 presents: IRQL %u left raised (frame %u)\n",
+                        xbox_current_irql(), g_doa3_frames_presented);
+                fflush(stderr);
+            }
+            return;
+        }
+        s_masked = 0;
+    }
     if (!mcpx_apu_take_irq()) return;
     s_delivering = 1;
+    irql0 = xbox_set_irql(0x0B);    /* the APU's DIRQL (HalGetInterruptVector) */
     for (i = 0; xbox_kernel_get_isr(i, &obj, &routine, &ctx); i++) {
         recomp_func_t fn;
         if (routine < DOA3_SEC_DSOUND_VA || routine >= DOA3_SEC_DSOUND_END) continue;  /* was 3.0's 0x001C0000..0x001E0000 */
@@ -94,6 +112,7 @@ void doa3_apu_deliver_irq(void)
             
         }
     }
+    xbox_set_irql(2);               /* DPCs run at DISPATCH_LEVEL */
     while (xbox_kernel_pop_dpc(&dpc, &a1, &a2)) {
         uint32_t droutine = MEM32(dpc + 12), dctx = MEM32(dpc + 16);
         recomp_func_t fn = recomp_lookup_manual(droutine);
@@ -114,6 +133,7 @@ void doa3_apu_deliver_irq(void)
             
         }
     }
+    xbox_set_irql(irql0);
     s_delivering = 0;
 }
 
@@ -834,6 +854,62 @@ void sub_0019A330(void)
         fflush(stderr);
     }
     sub_0019A330_gen();
+}
+
+/* DirectSound's DPC voice service (0x1F3FA0, ecx = the APU object): walks
+ * three voice lists at +0x6C4/+0x6CC/+0x6D4 calling [obj->vtbl+0x14] on
+ * obj = node-0x4C, then drains +0x6DC (obj = node-0x54). On 3.1, right after
+ * mv_op.sfd, one node's object had a vtable whose slot 0x14 is AddRef
+ * 0x1F1816 (a COM vtable, 0x218090/0x2180B4), so the "service" call read
+ * a garbage `this` and wrote into host memory. Log every change to the lists
+ * (frame, node, object, vtable, slot 0x14) so the bad node's arrival shows. */
+void sub_001F3FA0_gen(void);
+void sub_001F3FA0(void)
+{
+    enum { MAXN = 64 };
+    static uint32_t s_prev[4][MAXN]; static int s_prevn[4];
+    static int s_logs;
+    uint32_t apu = ecx, k;
+    if (apu >= 0x1000 && apu < 0x08000000u && s_logs < 200) {
+        for (k = 0; k < 4; k++) {
+            uint32_t head = apu + 0x6C4 + k * 8, node = MEM32(head), cur[MAXN];
+            int n = 0, i, j, changed = 0;
+            uint32_t off = (k < 3) ? 0x4C : 0x54;
+            while (node != head && node >= 0x1000 && node < 0x08000000u && n < MAXN) {
+                cur[n++] = node;
+                node = MEM32(node);
+            }
+            if (n != s_prevn[k]) changed = 1;
+            for (i = 0; i < n && !changed; i++) if (cur[i] != s_prev[k][i]) changed = 1;
+            if (changed || (node != head)) {
+                s_logs++;
+                fprintf(stderr, "[DSVOICE] frame %u list %u (head %08X)%s: %d nodes:", g_doa3_frames_presented,
+                        k, head, node != head ? " BROKEN" : "", n);
+                for (i = 0; i < n; i++) {
+                    uint32_t obj = cur[i] - off, vt = MEM32(obj);
+                    int seen = 0;
+                    for (j = 0; j < s_prevn[k]; j++) if (s_prev[k][j] == cur[i]) seen = 1;
+                    fprintf(stderr, " %s%08X(vt %08X s14 %08X)", seen ? "" : "+", cur[i], vt,
+                            (vt >= 0x1000 && vt < 0x08000000u) ? MEM32(vt + 0x14) : 0);
+                }
+                if (node != head) fprintf(stderr, " ->%08X", node);
+                fprintf(stderr, "\n");
+                for (i = 0; i < n; i++) {
+                    uint32_t obj = cur[i] - off, vt = MEM32(obj), w;
+                    if (vt >= 0x1000 && vt < 0x08000000u && MEM32(vt + 0x14) == 0x1F1816u) {
+                        fprintf(stderr, "[DSVOICE]   node %08X obj %08X looks like a COM object:", cur[i], obj);
+                        for (w = 0; w < 0x80; w += 4)
+                            fprintf(stderr, "%s%08X", (w % 32) ? " " : "\n[DSVOICE]     ", MEM32(obj + w));
+                        fprintf(stderr, "\n");
+                    }
+                }
+                fflush(stderr);
+            }
+            memcpy(s_prev[k], cur, n * sizeof(uint32_t));
+            s_prevn[k] = n;
+        }
+    }
+    sub_001F3FA0_gen();
 }
 
 /* The movie's ADX decode chain at the end of the movie. ADXT [0xC86480+0x3E00]

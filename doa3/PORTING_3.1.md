@@ -502,3 +502,19 @@ fault from recompiled code at guest 0x08000000..0xF0000000 now restores the
 guard and skips the instruction, and the guard / native-crash handlers print
 the host call stack ([BT], exe offsets for DOA3.map) and the last probed
 returns ([RING]) to find where the bad pointer came from.
+
+Thirty-ninth run (0.0.45): same crash, with a stack this time: frame present
+-> doa3_apu_deliver_irq -> DSOUND DPC 0x1F4560/0x1F4496 -> voice service
+0x1F3FA0, which walks three voice lists (+0x6C4/+0x6CC/+0x6D4, obj =
+node-0x4C) calling [vtbl+0x14]. One node's object carried a COM vtable
+(0x218090/0x2180B4, slot 0x14 = AddRef 0x1F1816), so `this` came from
+the stack as garbage (0xF5../0xF9.. guest, host fiber stacks; the guard
+skip did not cover guest >= 0xF0000000). A sound effect was heard at the
+crash. Two fidelity gaps on that path: DirectSound reads its IRQL from the
+KPCR (`fs:[0x24]`, guest byte 0x24 here), which stayed 0 inside our DPCs,
+so the DPC took the DSound critical section like a thread would; and
+neither the APU interrupt delivery nor the worker timeslice looked at the
+emulated IRQL. 0.0.46 mirrors IRQL into guest byte 0x24, runs the ISR at
+DIRQL and DPCs at DISPATCH, holds the interrupt while IRQL >= DISPATCH, and
+skips timeslices there. The voice-service wrapper ([DSVOICE]) logs every
+change to the lists, so if the bad node is still there its arrival shows.

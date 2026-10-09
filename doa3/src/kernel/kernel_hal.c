@@ -29,6 +29,29 @@
 
 static __declspec(thread) KIRQL g_current_irql = PASSIVE_LEVEL;
 
+/* The guest reads its IRQL straight from the KPCR: `movzx eax, byte ptr
+ * fs:[0x24]` (DirectSound's lock helper 0x1F1358 on 3.1 takes its critical
+ * section only at PASSIVE). The lifter drops the fs: prefix, so that is
+ * guest byte 0x24 of the fake TIB/KPCR at VA 0 -- which stayed 0 even inside
+ * the DPCs we deliver. Mirror every IRQL change there. All fibers share one
+ * host thread, so like the Xbox's single CPU there is one IRQL. */
+static void irql_mirror(void)
+{
+    extern ptrdiff_t g_xbox_mem_offset;
+    if (g_xbox_mem_offset)
+        *(volatile unsigned char *)((uintptr_t)0x24 + g_xbox_mem_offset) = (unsigned char)g_current_irql;
+}
+
+KIRQL xbox_current_irql(void) { return g_current_irql; }
+
+KIRQL xbox_set_irql(KIRQL irql)
+{
+    KIRQL old = g_current_irql;
+    g_current_irql = irql;
+    irql_mirror();
+    return old;
+}
+
 /*
  * KfRaiseIrql - Raises IRQL to the specified level.
  * Returns the previous IRQL. Uses __fastcall (ECX = NewIrql).
@@ -44,6 +67,7 @@ KIRQL __fastcall xbox_KfRaiseIrql(KIRQL NewIrql)
     }
 
     g_current_irql = NewIrql;
+    irql_mirror();
     return old;
 }
 
@@ -60,6 +84,7 @@ VOID __fastcall xbox_KfLowerIrql(KIRQL NewIrql)
     }
 
     g_current_irql = NewIrql;
+    irql_mirror();
 }
 
 /*
@@ -69,6 +94,7 @@ KIRQL __stdcall xbox_KeRaiseIrqlToDpcLevel(void)
 {
     KIRQL old = g_current_irql;
     g_current_irql = DISPATCH_LEVEL;
+    irql_mirror();
     return old;
 }
 

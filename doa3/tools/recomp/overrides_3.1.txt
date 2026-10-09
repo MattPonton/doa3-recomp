@@ -13,3 +13,4 @@
 0x0019DC30  ADX stereo decoder: argument trace (writes past guest RAM)
 0x0019EA30  Sofdec frame copy + CSC: show the converted movie frame
 0x0019A380  CRI formatted-error sink: logged
+0x001F3FA0  DSOUND DPC voice service: check the voice lists before walking them

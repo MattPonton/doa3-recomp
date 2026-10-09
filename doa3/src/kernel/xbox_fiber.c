@@ -351,9 +351,11 @@ void xbox_fiber_timeslice(void)
 {
     extern int doa3_workers_may_run(void);
     static HANDLE s_timer;
+    extern unsigned char xbox_current_irql(void);
     if (!g_active || g_cur != 0) return;
     if (!s_timer) s_timer = CreateThread(NULL, 0, fib_slice_timer, NULL, 0, NULL);
     if (!g_fib_slice_due) return;
+    if (xbox_current_irql() >= 2) return;   /* no thread switch at DISPATCH_LEVEL */
     if (!doa3_workers_may_run()) return;
     g_fib_slice_due = 0;
     {   /* One lap per 4 ms tick that elapsed since the last slice, capped.
