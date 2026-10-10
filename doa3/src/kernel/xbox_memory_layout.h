@@ -258,9 +258,15 @@ uint32_t xbox_HeapReserveTop(uint32_t size, uint32_t alignment);
 uint32_t xbox_HeapAlloc(uint32_t size, uint32_t alignment);
 
 /**
- * Free a block from the Xbox heap. Currently a no-op (bump allocator).
+ * Free a block from the Xbox heap (returned to a coalescing free list).
+ * Unknown or repeated frees are ignored.
  */
 void xbox_HeapFree(uint32_t xbox_va);
+/** Size of the live block starting at xbox_va, or 0. */
+uint32_t xbox_HeapBlockSize(uint32_t xbox_va);
+/** Low-heap usage for diagnostics. */
+void xbox_HeapStats(uint32_t *bump_used, uint32_t *limit, uint32_t *live_n, uint32_t *live_bytes,
+                    uint32_t *free_n, uint32_t *free_bytes, uint32_t *largest_free, uint32_t *oom);
 
 /**
  * Get the file mapping handle for the Xbox memory region.

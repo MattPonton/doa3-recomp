@@ -3100,7 +3100,9 @@ recomp_func_t recomp_lookup_kernel(uint32_t xbox_va)
 #ifndef DOA3_XBE_ID_3_0
 
 /* ExAllocatePool / WithTag keep the block size in a 16-byte header so that
- * ExQueryPoolBlockSize can answer; freeing is a no-op (bump heap). */
+ * ExQueryPoolBlockSize can answer. ExFreePool returns the block to the heap:
+ * it used to be a no-op, and DirectSound allocates and frees pool blocks for
+ * every stream it creates, so the heap ran out after a few game modes. */
 static uint32_t kx_pool_alloc(uint32_t size)
 {
     uint32_t va = xbox_HeapAlloc(size + 16, 16);
@@ -3111,7 +3113,15 @@ static uint32_t kx_pool_alloc(uint32_t size)
 }
 static void kx_ExAllocatePool(void)        { g_eax = kx_pool_alloc(STACK_ARG(0)); }
 static void kx_ExAllocatePoolWithTag(void) { g_eax = kx_pool_alloc(STACK_ARG(0)); }
-static void kx_ExFreePool(void)            { g_eax = 0; }
+static void kx_ExFreePool(void)
+{
+    uint32_t p = STACK_ARG(0);
+    if (p >= 16 && BRIDGE_MEM32(p - 12) == 0x6C6F6F50u) {
+        BRIDGE_MEM32(p - 12) = 0;          /* a second free of the same block is ignored */
+        xbox_HeapFree(p - 16);
+    }
+    g_eax = 0;
+}
 static void kx_ExQueryPoolBlockSize(void)
 {
     uint32_t p = STACK_ARG(0);
@@ -3233,6 +3243,8 @@ static void kx_MmCreateKernelStack(void)
     uint32_t base = xbox_HeapAlloc(size + 0x1000, 0x1000);
     g_eax = base ? base + size + 0x1000 : 0;
 }
+/* MmQueryAllocationSize(BaseAddress) */
+static void kx_MmQueryAllocationSize(void) { g_eax = xbox_HeapBlockSize(STACK_ARG(0)); }
 static void kx_MmQueryAddressProtect(void) { g_eax = 0x04; }   /* PAGE_READWRITE */
 
 /* NtQueryVirtualMemory(BaseAddress, MEMORY_BASIC_INFORMATION *) */
@@ -3382,14 +3394,14 @@ static const KxOrd g_kx_ords[] = {
     KF(166, 20, bridge_MmAllocateContiguousMemoryEx),
     KF(168,  8, NULL),                          /* MmClaimGpuInstanceMemory: 0, as on 3.0 */
     KF(169,  8, kx_MmCreateKernelStack),
-    KF(170,  8, NULL),                          /* MmDeleteKernelStack */
+    KF(170,  8, NULL),                          /* MmDeleteKernelStack: stacks are kept */
     KF(171,  4, bridge_MmFreeContiguousMemory),
     KF(173,  4, bridge_MmGetPhysicalAddress),
     KF(175, 12, NULL),                          /* MmLockUnlockBufferPages */
     KF(176,  8, NULL),                          /* MmLockUnlockPhysicalPage */
     KF(178, 12, bridge_MmPersistContiguousMemory),
     KF(179,  4, kx_MmQueryAddressProtect),
-    KF(180,  4, NULL),                          /* MmQueryAllocationSize */
+    KF(180,  4, kx_MmQueryAllocationSize),
     KF(181,  4, bridge_MmQueryStatistics),
     KF(182, 12, bridge_MmSetAddressProtect),
     KF(184, 20, bridge_NtAllocateVirtualMemory),

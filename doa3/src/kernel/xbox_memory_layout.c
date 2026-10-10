@@ -611,223 +611,203 @@ static uint32_t g_heap_limit = XBOX_HEAP_BASE + XBOX_HEAP_SIZE;
 
 static int g_heap_alloc_count = 0;
 
-/* Side-table allocation tracker so xbox_HeapFree can actually RECYCLE blocks
- * (the pure bump version leaked every MmFreeContiguousMemory /
- * NtFreeVirtualMemory — the game re-allocates its ~5MB partition/stream
- * buffers each boot phase and exhausted the 45MB low heap). Freed blocks go
- * on a free list and are reused first-fit (exact-or-larger, <=2x waste).
+/* Block bookkeeping for the low heap.
+ *
+ * Live blocks sit in an open-addressing hash (VA -> size) and free blocks in
+ * a list kept sorted by address, so a free merges with both neighbours in
+ * one step and a free block that ends at the bump pointer hands its space
+ * straight back to it.
+ *
+ * The old tracker was a flat 512-entry table. Every allocation past the
+ * 512th went untracked, so its free was silently ignored; and ExFreePool was
+ * a no-op. Together those leaked DirectSound's per-stream pool blocks
+ * (0x10004 / 0x8004 bytes, one set per ADX stream) until the heap ran dry
+ * after a few modes, at which point ADXT_StartAfs failed with "can't open"
+ * and the BGM and voices went silent while one-shot effects still played.
  * No headers: Xbox code receives raw aligned VAs. */
-#define HEAP_TRACK_MAX 512
-static struct { uint32_t va, size; int free; } g_heap_track[HEAP_TRACK_MAX];
-static int g_heap_track_n = 0;
+#define HEAP_LIVE_CAP  65536u                 /* power of two */
+#define HEAP_FREE_CAP  16384
+static struct { uint32_t va, size; } g_heap_live[HEAP_LIVE_CAP];   /* va 0 = empty, 1 = tombstone */
+static uint32_t g_heap_live_n = 0, g_heap_live_used = 0;
+static struct { uint32_t va, size; } g_heap_free[HEAP_FREE_CAP];   /* sorted by va */
+static int g_heap_free_n = 0;
+static uint32_t g_heap_free_bytes = 0, g_heap_live_bytes = 0;
+static uint32_t g_heap_untracked = 0, g_heap_oom = 0;
 
-/* Add a free-list entry, recycling a slot retired by heap_coalesce (size 0)
- * before growing the table so repeated quit/reload cycles cannot exhaust
- * HEAP_TRACK_MAX. Returns 0 when there is no room. */
-static int heap_track_add_free(uint32_t va, uint32_t size)
+static uint32_t heap_hash(uint32_t va) { return (va >> 4) * 2654435761u; }
+
+static void heap_live_put(uint32_t va, uint32_t size)
 {
-    int k = -1;
-    for (int i = 0; i < g_heap_track_n; i++)
-        if (!g_heap_track[i].size) { k = i; break; }
-    if (k < 0) {
-        if (g_heap_track_n >= HEAP_TRACK_MAX) return 0;
-        k = g_heap_track_n++;
+    uint32_t i, tomb = 0xFFFFFFFFu;
+    if (g_heap_live_used >= HEAP_LIVE_CAP - HEAP_LIVE_CAP / 8) {   /* keep probes short */
+        g_heap_untracked++;
+        return;
     }
-    g_heap_track[k].va = va; g_heap_track[k].size = size; g_heap_track[k].free = 1;
+    for (i = heap_hash(va) & (HEAP_LIVE_CAP - 1);; i = (i + 1) & (HEAP_LIVE_CAP - 1)) {
+        if (g_heap_live[i].va == 0) break;
+        if (g_heap_live[i].va == 1) { if (tomb == 0xFFFFFFFFu) tomb = i; continue; }
+        if (g_heap_live[i].va == va) {
+            g_heap_live_bytes += size - g_heap_live[i].size;
+            g_heap_live[i].size = size;
+            return;
+        }
+    }
+    if (tomb != 0xFFFFFFFFu) i = tomb; else g_heap_live_used++;
+    g_heap_live[i].va = va; g_heap_live[i].size = size;
+    g_heap_live_n++; g_heap_live_bytes += size;
+}
+
+/* Removes va from the live set; returns its size, or 0 if it was not live. */
+static uint32_t heap_live_take(uint32_t va)
+{
+    for (uint32_t i = heap_hash(va) & (HEAP_LIVE_CAP - 1);; i = (i + 1) & (HEAP_LIVE_CAP - 1)) {
+        if (g_heap_live[i].va == 0) return 0;
+        if (g_heap_live[i].va == va) {
+            uint32_t s = g_heap_live[i].size;
+            g_heap_live[i].va = 1; g_heap_live[i].size = 0;
+            g_heap_live_n--; g_heap_live_bytes -= s;
+            return s;
+        }
+    }
+}
+
+uint32_t xbox_HeapBlockSize(uint32_t va)
+{
+    if (va < 2) return 0;
+    for (uint32_t i = heap_hash(va) & (HEAP_LIVE_CAP - 1);; i = (i + 1) & (HEAP_LIVE_CAP - 1)) {
+        if (g_heap_live[i].va == 0) return 0;
+        if (g_heap_live[i].va == va) return g_heap_live[i].size;
+    }
+}
+
+static void heap_free_remove(int k)
+{
+    g_heap_free_bytes -= g_heap_free[k].size;
+    memmove(&g_heap_free[k], &g_heap_free[k + 1],
+            (size_t)(g_heap_free_n - k - 1) * sizeof g_heap_free[0]);
+    g_heap_free_n--;
+}
+
+/* Inserts [va, va+size) into the free list, merging with its neighbours and
+ * giving a block that ends at the bump pointer back to the bump region.
+ * Returns 0 only when the list is full and nothing could be merged. */
+static int heap_free_insert(uint32_t va, uint32_t size)
+{
+    int lo = 0, hi = g_heap_free_n;
+    if (!size) return 1;
+    while (lo < hi) { int m = (lo + hi) / 2; if (g_heap_free[m].va < va) lo = m + 1; else hi = m; }
+    /* lo = first free block at or above va */
+    if (lo > 0 && g_heap_free[lo - 1].va + g_heap_free[lo - 1].size == va) {
+        va = g_heap_free[lo - 1].va; size += g_heap_free[lo - 1].size;
+        heap_free_remove(--lo);
+    }
+    if (lo < g_heap_free_n && va + size == g_heap_free[lo].va) {
+        size += g_heap_free[lo].size;
+        heap_free_remove(lo);
+    }
+    if (va + size == g_heap_next) {          /* top of the bump region: give it back */
+        g_heap_next = va;
+        return 1;
+    }
+    if (g_heap_free_n >= HEAP_FREE_CAP) return 0;
+    memmove(&g_heap_free[lo + 1], &g_heap_free[lo],
+            (size_t)(g_heap_free_n - lo) * sizeof g_heap_free[0]);
+    g_heap_free[lo].va = va; g_heap_free[lo].size = size;
+    g_heap_free_n++; g_heap_free_bytes += size;
     return 1;
+}
+
+void xbox_HeapStats(uint32_t *bump_used, uint32_t *limit, uint32_t *live_n, uint32_t *live_bytes,
+                    uint32_t *free_n, uint32_t *free_bytes, uint32_t *largest_free, uint32_t *oom)
+{
+    uint32_t big = 0;
+    for (int i = 0; i < g_heap_free_n; i++) if (g_heap_free[i].size > big) big = g_heap_free[i].size;
+    if (g_heap_limit - g_heap_next > big) big = g_heap_limit - g_heap_next;
+    *bump_used = g_heap_next - XBOX_HEAP_BASE; *limit = g_heap_limit - XBOX_HEAP_BASE;
+    *live_n = g_heap_live_n; *live_bytes = g_heap_live_bytes;
+    *free_n = (uint32_t)g_heap_free_n; *free_bytes = g_heap_free_bytes;
+    *largest_free = big; *oom = g_heap_oom;
 }
 
 uint32_t xbox_HeapAlloc(uint32_t size, uint32_t alignment)
 {
-    uint32_t result;
+    uint32_t result, gran;
 
-    if (alignment < 4) alignment = 4;
+    if (alignment < 16) alignment = 16;
 
-    /* Enforce minimum allocation size.
-     * The Xbox D3D8 code sometimes computes resource sizes from GPU
-     * capabilities that return 0 (since we don't have real NV2A hardware),
-     * resulting in zero-size allocations. With a bump allocator, these all
-     * return the same address, causing overlapping structures. Enforce a
-     * minimum of 4096 bytes so each allocation gets its own memory. */
     /* Zero-size requests must still get their own block: the Xbox D3D8 code
      * computes some resource sizes from GPU capabilities that read back 0
      * here, and with a bump allocator those would all share one address and
-     * overlap. That is what the 4096 floor was for -- but applying it to
-     * every small request wasted ~0.86 MB across 221 allocations, and the
-     * heap runs out by the character-select reset (49.5 MB of 50.75 MB),
-     * which is what starves the frame-buffer allocation. Keep the guard for
-     * the zero case and use a small granularity otherwise; every allocation
-     * still gets a distinct, non-overlapping block. */
+     * overlap. */
     if (size == 0) size = 4096;
     else if (size < 64) size = 64;
+    /* Small blocks round to 64 bytes, page-sized ones to a page, so split
+     * remainders stay reusable. */
+    gran = size >= 4096 ? 4096u : 64u;
+    size = (size + gran - 1) & ~(gran - 1);
 
-    /* Reuse a freed block first: BEST FIT over every free block that is big
-     * enough and naturally aligned, splitting the remainder back in.
-     *
-     * This used to refuse any block more than twice the request, so an
-     * ordinary allocation could not swallow a huge one. Without splitting
-     * that was the only protection available, but it also let the bump
-     * pointer keep advancing while large freed blocks sat unused -- and the
-     * bump never rewinds. By the character-select reset the heap stood at
-     * 51.3 MB of 52.1 MB with ~20 MB free but unusable, so the frame-buffer
-     * allocations failed and the surface descriptors were left empty. Best
-     * fit plus splitting bounds the waste without stranding memory. */
+    /* Best fit over the free list. A block whose start is not aligned can
+     * still hold an aligned sub-range: align up inside it, give the skipped
+     * head back, and split off any tail. */
     {
-        /* A free block whose START is not aligned can still hold an aligned
-         * sub-range; rejecting it outright stranded usable memory. Align up
-         * inside the block and require the aligned range to fit. */
         int best = -1;
         uint32_t best_va = 0;
-        for (int i = 0; i < g_heap_track_n; i++) {
-            uint32_t va, end;
-            if (!g_heap_track[i].free || !g_heap_track[i].size) continue;
-            va  = (g_heap_track[i].va + alignment - 1) & ~(alignment - 1);
-            end = g_heap_track[i].va + g_heap_track[i].size;
-            if (va < g_heap_track[i].va || va + size > end) continue;
-            if (best < 0 || g_heap_track[i].size < g_heap_track[best].size) {
+        for (int i = 0; i < g_heap_free_n; i++) {
+            uint32_t va = (g_heap_free[i].va + alignment - 1) & ~(alignment - 1);
+            uint32_t end = g_heap_free[i].va + g_heap_free[i].size;
+            if (va < g_heap_free[i].va || va > end || end - va < size) continue;
+            if (best < 0 || g_heap_free[i].size < g_heap_free[best].size) {
                 best = i; best_va = va;
+                if (g_heap_free[i].size == size) break;
             }
         }
         if (best >= 0) {
-            uint32_t take;
-            /* Split off any head skipped for alignment so it stays usable. */
-            if (best_va != g_heap_track[best].va &&
-                heap_track_add_free(g_heap_track[best].va, best_va - g_heap_track[best].va)) {
-                g_heap_track[best].size -= (best_va - g_heap_track[best].va);
-                g_heap_track[best].va    = best_va;
-            }
-            take = (size + 4095u) & ~4095u;
-            if (g_heap_track[best].size >= take + 0x10000u &&
-                heap_track_add_free(g_heap_track[best].va + take, g_heap_track[best].size - take)) {
-                g_heap_track[best].size = take;
-            }
-            g_heap_track[best].free = 0;
-            memset((void *)((uintptr_t)g_heap_track[best].va + g_memory_offset), 0,
-                   g_heap_track[best].size);
+            uint32_t bva = g_heap_free[best].va, bend = bva + g_heap_free[best].size;
+            heap_free_remove(best);
+            if (bend - (best_va + size) >= 64) heap_free_insert(best_va + size, bend - (best_va + size));
+            else size = bend - best_va;            /* sliver: keep it with the block */
+            if (best_va > bva) heap_free_insert(bva, best_va - bva);
+            memset((void *)((uintptr_t)best_va + g_memory_offset), 0, size);
+            heap_live_put(best_va, size);
             g_heap_alloc_count++;
-            return g_heap_track[best].va;
+            return best_va;
         }
     }
 
-    /* Align the next pointer */
     result = (g_heap_next + alignment - 1) & ~(alignment - 1);
-
-    if (result + size > g_heap_limit) {
-        /* The bump pointer is out of room. Before failing, take ANY free
-         * block that is big enough and correctly aligned -- best fit, so
-         * as little as possible is wasted.
-         *
-         * The tight-fit pass above deliberately refuses a block more than
-         * twice the request, so an ordinary allocation does not eat a huge
-         * one. That heuristic must not become an outright failure. Entering
-         * character select the game tears down its frame buffers (freeing
-         * 14 MB + 2.8 MB) and asks for a 5.9 MB multisampled one; the 14 MB
-         * block was the only fit and was rejected, so
-         * MmAllocateContiguousMemoryEx returned 0. sub_001B9260 then bails
-         * before filling the implicit surface descriptors at device+0x2150
-         * and +0x2168, leaving Format and Size zero -- and SetViewport
-         * clamps every viewport against a surface it then computes as one
-         * pixel wide. The 720x480 request became 1x1, the
-         * projection-viewport matrix collapsed, and transformed vertices
-         * came out with a negative w: the smeared geometry on that screen.
-         *
-         * This runs only where the allocator previously returned 0, so it
-         * cannot alter any allocation that already succeeds. */
-        int best = -1;
-        for (int i = 0; i < g_heap_track_n; i++) {
-            if (!g_heap_track[i].free) continue;
-            if (g_heap_track[i].size < size) continue;
-            if (g_heap_track[i].va & (alignment - 1)) continue;
-            if (best < 0 || g_heap_track[i].size < g_heap_track[best].size)
-                best = i;
-        }
-        if (best >= 0) {
-            /* Split the remainder back into the free list, otherwise a single
-             * oversized block satisfies one request and the rest is lost. The
-             * character-select reset asks for the 5.9 MB multisampled frame
-             * buffer TWICE; without splitting, the first took the whole 14 MB
-             * block and the second still failed. */
-            uint32_t take = (size + 4095u) & ~4095u;
-            if (g_heap_track[best].size >= take + 0x10000u &&
-                heap_track_add_free(g_heap_track[best].va + take, g_heap_track[best].size - take)) {
-                g_heap_track[best].size = take;
-            }
-            g_heap_track[best].free = 0;
-            memset((void *)((uintptr_t)g_heap_track[best].va + g_memory_offset), 0,
-                   g_heap_track[best].size);
-            g_heap_alloc_count++;
-            return g_heap_track[best].va;
-        }
-        fprintf(stderr, "xbox_HeapAlloc: out of memory (requested %u, used %u/%u)\n",
-                size, g_heap_next - XBOX_HEAP_BASE,
-                g_heap_limit - XBOX_HEAP_BASE);
+    if (result < g_heap_next || result + size < result || result + size > g_heap_limit) {
+        g_heap_oom++;
+        fprintf(stderr, "xbox_HeapAlloc: out of memory (requested %u, bump %u/%u, "
+                "live %u blocks %u bytes, free %d blocks %u bytes)\n",
+                size, g_heap_next - XBOX_HEAP_BASE, g_heap_limit - XBOX_HEAP_BASE,
+                g_heap_live_n, g_heap_live_bytes, g_heap_free_n, g_heap_free_bytes);
         return 0;
     }
-
-    g_heap_next = result + size;
+    if (result > g_heap_next) {
+        /* Alignment gap: claim the block first so the gap cannot merge back
+         * into the bump region, then keep the gap on the free list. */
+        uint32_t gap_va = g_heap_next, gap = result - g_heap_next;
+        g_heap_next = result + size;
+        heap_free_insert(gap_va, gap);
+    } else {
+        g_heap_next = result + size;
+    }
 
     /* Zero-fill the allocated block (Xbox memory is always zeroed) */
     memset((void *)((uintptr_t)result + g_memory_offset), 0, size);
-
-    if (g_heap_track_n < HEAP_TRACK_MAX) {
-        g_heap_track[g_heap_track_n].va = result;
-        g_heap_track[g_heap_track_n].size = size;
-        g_heap_track[g_heap_track_n].free = 0;
-        g_heap_track_n++;
-    }
-
+    heap_live_put(result, size);
     g_heap_alloc_count++;
-
     return result;
-}
-
-/* Merge every run of adjacent free blocks into one.
- *
- * The tracker is a flat list, so a block freed next to another stays a
- * separate entry and only the largest single entry can ever satisfy a big
- * request. Tearing down the frame buffers on the character-select reset frees
- * four blocks, two of which are contiguous (0x01278000 + 1474560 ==
- * 0x013E0000); without merging them the following 5.9 MB requests could not
- * all be met and the surface descriptors were left unfilled. */
-static void heap_coalesce(void)
-{
-    int merged = 1;
-    while (merged) {
-        merged = 0;
-        for (int i = 0; i < g_heap_track_n; i++) {
-            if (!g_heap_track[i].free || !g_heap_track[i].size) continue;
-            for (int j = 0; j < g_heap_track_n; j++) {
-                if (i == j || !g_heap_track[j].free || !g_heap_track[j].size) continue;
-                if (g_heap_track[i].va + g_heap_track[i].size != g_heap_track[j].va)
-                    continue;
-                g_heap_track[i].size += g_heap_track[j].size;
-                g_heap_track[j].size = 0;      /* retired: size 0 never matches */
-                g_heap_track[j].free = 0;
-                merged = 1;
-            }
-        }
-    }
 }
 
 void xbox_HeapFree(uint32_t xbox_va)
 {
-    if (!xbox_va) return;
-    for (int i = 0; i < g_heap_track_n; i++) {
-        /* Skip entries retired by heap_coalesce (size 0). They keep their
-         * old VA, and once the merged region has been split and handed out
-         * again a LIVE block sits at that same VA further down the list.
-         * Matching the retired entry first logged "freed 0 bytes" and left
-         * the real block allocated: quitting a fight from the pause menu
-         * leaked its 14.7 MB + 1.4 MB buffers this way, and the next mode's
-         * load then failed with out-of-memory on NOW LOADING. */
-        if (!g_heap_track[i].size) continue;
-        if (g_heap_track[i].va == xbox_va && !g_heap_track[i].free) {
-            g_heap_track[i].free = 1;
-            heap_coalesce();
-            return;
-        }
-    }
-    /* Unknown/duplicate free: ignore (matches previous no-op behavior). */
+    uint32_t size;
+    if (xbox_va < 2) return;
+    size = heap_live_take(xbox_va);
+    if (!size) return;                    /* unknown or double free: ignore */
+    if (!heap_free_insert(xbox_va, size))
+        fprintf(stderr, "xbox_HeapFree: free list full, %u bytes at %08X lost\n", size, xbox_va);
 }
 
 /* High heap (above the console's 64 MB): CPU-only allocations — see the

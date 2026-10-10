@@ -659,3 +659,15 @@ effects (title floor lights, torch flames, Christie's sheen, floor
 reflections), the Azuchi top-floor room (never submitted for drawing), no
 fade when a movie is skipped. Two more [ICALL] misses (0x10F6E0, 0xCE050)
 plus one similar entry (0x91AA0: 16-aligned prologue after padding) seeded.
+
+Fiftieth run (0.0.56): main menu visible; Options, Sparring, Watch and stage
+select all work. After Sparring then Story, BGM and voices were gone while
+sound effects played: "xbox_HeapAlloc: out of memory" (requests of 0x10014
+and 0x8014 = DirectSound pool blocks plus our 16-byte header), then
+"ADXT_StartAfs: can't open" and two [ICALL]s through null pointers left by
+failed allocations. ExFreePool was a no-op and the heap tracker was a flat
+512-entry table (later allocations untracked, so their frees were ignored),
+so every DirectSound stream leaked. 0.0.57: ExFreePool frees, the heap
+tracks live blocks in a 64K-entry hash and free blocks in a sorted,
+coalescing list that also hands blocks at the top back to the bump pointer;
+MmQueryAllocationSize answers from it. [HEAP] usage is logged every 10 s.

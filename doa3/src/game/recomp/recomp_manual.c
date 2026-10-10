@@ -1003,6 +1003,13 @@ void sub_001E27C0(void)
             s_next = GetTickCount() + 10000;
             fprintf(stderr, "[PB] control words so far: jump %u call %u return %u unknown %u\n",
                     s_pb_ctl[0], s_pb_ctl[1], s_pb_ctl[2], s_pb_ctl[3]);
+            {   extern void xbox_HeapStats(uint32_t *, uint32_t *, uint32_t *, uint32_t *,
+                                           uint32_t *, uint32_t *, uint32_t *, uint32_t *);
+                uint32_t bu, lim, ln, lb, fn, fb, big, oom;
+                xbox_HeapStats(&bu, &lim, &ln, &lb, &fn, &fb, &big, &oom);
+                fprintf(stderr, "[HEAP] bump %u KB of %u KB, live %u blocks %u KB, free %u blocks %u KB, largest %u KB, failures %u\n",
+                        bu >> 10, lim >> 10, ln, lb >> 10, fn, fb >> 10, big >> 10, oom);
+            }
         }
     }
     {   uint32_t chan = MEM32(dev + 0x2264);
