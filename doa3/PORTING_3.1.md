@@ -695,3 +695,11 @@ surfaces so the translator sends them offscreen; until now 3.1 fell back
 to the pitch rule, which put the 720-pitch reflection targets on the
 screen itself. The device's own buffers are purged from that list so a
 reused address cannot misroute the frame.
+0.0.59 result: character select visible; the three character panels are
+solid black with the fighters behind them (in Tag a 1-px sliver shows at
+each panel's left edge). The 0.0.58 trace of that screen: 88 colour-masked
+LINES and one colour-masked strip with depth on, the fighters (depth on,
+then stencil REPLACE 0xFE), then untextured blended strips with depth off.
+0.0.60 adds per-draw lines (@DRAW: host box, z range, colours, state) to
+the method trace and traces + screenshots one frame two seconds after each
+switch into supersampling (mtrace_aa_N.txt, aa_N.bmp).

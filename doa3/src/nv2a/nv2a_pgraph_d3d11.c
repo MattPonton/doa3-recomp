@@ -2298,6 +2298,37 @@ static void nv_sync_render_target(void)
     }
 }
 
+/* DOA3 DIAG: one line per submitted draw in the method trace (mtrace_*.txt):
+ * where it lands on the host target, its depth range, colours and the state
+ * it is drawn with, plus its first vertices. */
+static void nv_mtrace_draw(const char *path, const OutputVertex *o, uint32_t n)
+{
+    extern FILE *g_doa3_mtrace;
+    float x0 = 1e9f, x1 = -1e9f, y0 = 1e9f, y1 = -1e9f, z0 = 1e9f, z1 = -1e9f;
+    unsigned amin = 255, amax = 0;
+    uint32_t i;
+    if (!g_doa3_mtrace) return;
+    for (i = 0; i < n; i++) {
+        unsigned a = o[i].color >> 24;
+        if (o[i].x < x0) x0 = o[i].x;
+        if (o[i].x > x1) x1 = o[i].x;
+        if (o[i].y < y0) y0 = o[i].y;
+        if (o[i].y > y1) y1 = o[i].y;
+        if (o[i].z < z0) z0 = o[i].z;
+        if (o[i].z > z1) z1 = o[i].z;
+        if (a < amin) amin = a;
+        if (a > amax) amax = a;
+    }
+    fprintf(g_doa3_mtrace, "@DRAW %s mode%u n%u box(%.1f,%.1f)-(%.1f,%.1f) z[%.5f,%.5f] col0=%08X a[%02X,%02X] tex0=%08X%c zt=%d zf=%X zw=%d bl=%d %X/%X cm=%08X st=%d off=%d\n",
+            path, g_pg.draw_mode, n, x0, y0, x1, y1, z0, z1, n ? o[0].color : 0, amin, amax,
+            g_pg.tex[0].offset, g_pg.tex[0].enabled ? 'E' : '-', g_pg.depth_test, g_pg.depth_func,
+            g_pg.depth_mask, g_pg.blend_enable, g_pg.blend_sfactor, g_pg.blend_dfactor,
+            g_pg.color_mask, g_pg.stencil_enable, d3d8_OffscreenTargetActive());
+    for (i = 0; i < n && i < 4; i++)
+        fprintf(g_doa3_mtrace, "@   v%u %.2f %.2f z%.5f rhw%.5f %08X uv %.3f %.3f\n",
+                i, o[i].x, o[i].y, o[i].z, o[i].rhw, o[i].color, o[i].u, o[i].v);
+}
+
 /* Growable heap scratch for the array path's vertex batches. A 65K-vertex
  * batch is 1.8 MB and its clip output up to three times that: far too much
  * for _alloca on a fiber stack. Slot 0 = transformed batch, 1 = clipped. */
@@ -2718,6 +2749,14 @@ static void submit_array_draw(void)
     nv_batch_ctx_init(&ctx);
 
     if (!is_points && nv_gpu_ff_submit(dev, &ctx, prim, is_quads)) {
+        {   extern FILE *g_doa3_mtrace;
+            if (g_doa3_mtrace)
+                fprintf(g_doa3_mtrace, "@DRAW gpu mode%u idx%u tex0=%08X%c zt=%d zf=%X zw=%d bl=%d %X/%X cm=%08X st=%d off=%d\n",
+                        g_pg.draw_mode, n, g_pg.tex[0].offset, g_pg.tex[0].enabled ? 'E' : '-',
+                        g_pg.depth_test, g_pg.depth_func, g_pg.depth_mask, g_pg.blend_enable,
+                        g_pg.blend_sfactor, g_pg.blend_dfactor, g_pg.color_mask, g_pg.stencil_enable,
+                        d3d8_OffscreenTargetActive());
+        }
         g_doa3_drop[2]++;
         g_pg.idx_count = 0;
         g_pg.idx_dropped = 0;
@@ -2874,6 +2913,7 @@ static void submit_array_draw(void)
         dev->lpVtbl->SetVertexShader(dev,
             D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
         dev->lpVtbl->BeginScene(dev);
+        nv_mtrace_draw("array", out, out_n);
         dev->lpVtbl->DrawPrimitiveUP(dev, (D3DPRIMITIVETYPE)prim,
                                      prim_count, out, sizeof(OutputVertex));
         if (clipped) { extern void d3d8_ResetScissorRect(void); d3d8_ResetScissorRect(); }
@@ -3275,6 +3315,15 @@ static void submit_draw(void)
             D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
 
         int clipped = nv_apply_window_clip();
+        nv_mtrace_draw("inline", out, out_vert_count);
+        {   extern FILE *g_doa3_mtrace;
+            if (g_doa3_mtrace) {
+                uint32_t k;
+                fprintf(g_doa3_mtrace, "@   raw stride%u pos%d col%d uv%d:", stride, lay_pos, lay_col, lay_uv);
+                for (k = 0; k < stride * 2 && k < g_pg.inline_count; k++) fprintf(g_doa3_mtrace, " %08X", src[k]);
+                fprintf(g_doa3_mtrace, "\n");
+            }
+        }
         dev->lpVtbl->DrawPrimitiveUP(dev, (D3DPRIMITIVETYPE)g_pg.d3d_prim_type,
                                       prim_count, out, sizeof(OutputVertex));
         if (clipped) { extern void d3d8_ResetScissorRect(void); d3d8_ResetScissorRect(); }

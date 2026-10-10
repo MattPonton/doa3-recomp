@@ -231,6 +231,7 @@ void doa3_fn_profile_tick(void)
 volatile int g_doa3_in_pump = 0;
 
 uint32_t g_doa3_offrt_offs[64]; int g_doa3_offrt_n;   /* every texture surface seen */
+static unsigned g_doa3_aa_shot;   /* frame to screenshot with its method trace (multisampled screens) */
 
 uint32_t g_flg_a, g_flg_b;
 int g_flg_w = 4, g_flg_test;
@@ -950,6 +951,12 @@ static void d3d4134_capture_frame(unsigned frame)
             }
         }
     }
+    if (g_doa3_aa_shot && frame == g_doa3_aa_shot) {
+        extern void doa3_capture_backbuffer(const char *path);
+        char path[64];
+        sprintf(path, "aa_%05u.bmp", frame);
+        doa3_capture_backbuffer(path);
+    }
     for (k = 0; k < s_n; k++)
         if (frame >= s_lo[k] && frame <= s_hi[k]) {
             extern void doa3_capture_backbuffer(const char *path);
@@ -994,6 +1001,23 @@ static void doa3_mtrace_frame(unsigned next)
             g_doa3_mtrace = fopen(path, "w");
             return;
         }
+    /* Multisampled screens (character select): trace and screenshot one frame
+     * two seconds after each switch into 2x2 supersampling (at most 6). */
+    {   extern uint32_t doa3_aa_resolve_source(void);
+        static int s_prev, s_cnt; static unsigned s_at;
+        int on = doa3_aa_resolve_source() != 0;
+        if (on && !s_prev && s_cnt < 6) { s_at = next + 120; s_cnt++; }
+        s_prev = on;
+        if (s_at && next == s_at) {
+            char path[64];
+            s_at = 0;
+            g_doa3_aa_shot = next;
+            sprintf(path, "mtrace_aa_%05u.txt", next);
+            g_doa3_mtrace = fopen(path, "w");
+            fprintf(stderr, "[AA] tracing frame %u (multisampled screen) -> %s + aa_%05u.bmp\n", next, path, next);
+            return;
+        }
+    }
     /* In-engine screens: two consecutive frames every 25 s past frame 1500
      * (at most 40 files), to compare what changes between frames of the
      * same scene -- the 3D geometry differs from frame to frame. */
