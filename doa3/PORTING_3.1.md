@@ -815,3 +815,11 @@ alone (cICW 0x08200000, no vertex colour), take alpha from V0 instead of T0
 3.1 never emits). 0.0.71 sends every GPU fixed-function draw through the
 register combiners (DOA3_COMB_STAGE1_ONLY=1 for the 0.0.68 scope,
 DOA3_NO_COMBINERS=1 for none).
+0.0.71: big visual gain (Azuchi floor now right), but frame drops under 30
+(Aquarium even in stage select, DOATEC top tier, Tao, Iron Hell). Cause:
+d3d8_combiners' shader cache keyed on the whole NV2ACombinerState including
+the C0/C1/final constant colours, which are per-draw values (shadow
+opacity, fades) -- a new D3DCompile whenever one changed, with LRU thrash in
+a 128-entry cache. 0.0.72 keys the cache on the structure only (constants
+zeroed in the key; they go through the constant buffer as before) and logs
+"[COMB] pixel shader compile #N".

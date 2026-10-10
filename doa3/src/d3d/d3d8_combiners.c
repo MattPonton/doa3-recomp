@@ -97,15 +97,35 @@ static uint32_t fnv1a_hash(const void *data, size_t len)
     return h;
 }
 
+/* The shader depends on the combiner STRUCTURE only: the constant colours
+ * (C0/C1 per stage, final C0/C1) are uploaded through the constant buffer on
+ * every draw. Keying the cache on them as well compiled a new pixel shader
+ * whenever a factor changed -- shadow opacities, fades and the like change
+ * every frame -- and with D3DCompile in the draw path the frame rate fell
+ * under 30 on the busier stages. */
+static void combiner_state_key(const NV2ACombinerState *s, NV2ACombinerState *k)
+{
+    memcpy(k, s, sizeof *k);
+    memset(k->c0, 0, sizeof k->c0);
+    memset(k->c1, 0, sizeof k->c1);
+    k->final_c0 = 0;
+    k->final_c1 = 0;
+}
+
 static uint32_t combiner_state_hash(const NV2ACombinerState *state)
 {
-    return fnv1a_hash(state, sizeof(NV2ACombinerState));
+    NV2ACombinerState k;
+    combiner_state_key(state, &k);
+    return fnv1a_hash(&k, sizeof(NV2ACombinerState));
 }
 
 static BOOL combiner_state_equal(const NV2ACombinerState *a,
                                  const NV2ACombinerState *b)
 {
-    return memcmp(a, b, sizeof(NV2ACombinerState)) == 0;
+    NV2ACombinerState ka, kb;
+    combiner_state_key(a, &ka);
+    combiner_state_key(b, &kb);
+    return memcmp(&ka, &kb, sizeof(NV2ACombinerState)) == 0;
 }
 
 /* ================================================================
@@ -795,8 +815,11 @@ int d3d8_combiners_generate_hlsl(const NV2ACombinerState *state,
  * Shader Compilation & Cache
  * ================================================================ */
 
+static unsigned g_combiner_compiles;
 static ID3D11PixelShader *compile_combiner_shader(const NV2ACombinerState *state)
 {
+    if (++g_combiner_compiles <= 64 || (g_combiner_compiles % 256) == 0)
+        fprintf(stderr, "[COMB] pixel shader compile #%u (%d stages)\n", g_combiner_compiles, state->num_stages);
     /* 16KB should be more than enough for any combiner shader */
     char hlsl[16384];
     ID3DBlob *code = NULL;
