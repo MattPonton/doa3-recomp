@@ -712,3 +712,8 @@ feed, INLINE_ARRAY is unpacked from the SET_VERTEX_DATA_ARRAY_FORMAT slots
 (slot 0 = 4 floats here, slot 3 colour, slot 9 texcoord0), as the hardware
 does. User report: 0.0.59 (SetRenderTarget hook) also improved Azuchi's
 walls.
+0.0.61: character select fighters visible. Panel borders were 1 host pixel:
+the guest sets NV097_SET_LINE_WIDTH (0x0380, 6.3 fixed point, surface
+pixels; 0x10 / 0x20 here = 2 / 4 px of the 1440x960 surface) and D3D11
+lines are always 1 px. 0.0.62 draws inline lines as quads of the guest's
+width scaled to the host target.

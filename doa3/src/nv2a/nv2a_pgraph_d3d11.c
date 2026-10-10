@@ -225,6 +225,7 @@ static struct {
     uint32_t alpha_func;   /* NV097_SET_ALPHA_FUNC, GL constant 0x200..0x207 */
     uint32_t alpha_ref;    /* NV097_SET_ALPHA_REF, 0..255 */
     uint32_t color_mask;
+    uint32_t line_width;      /* NV097_SET_LINE_WIDTH, 6.3 fixed point surface pixels */
     uint32_t comb_factor0[8];
     /* from doa3_pb_tss_marker: 0xA3<<24 | stage1-off<<17 | op<<12 | arg1<<6 | arg2 */
     uint32_t gtss;
@@ -3336,6 +3337,46 @@ static void submit_draw(void)
             D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
 
         int clipped = nv_apply_window_clip();
+        /* Wide lines. D3D11 rasterises every line one pixel wide; the guest
+         * asks for SET_LINE_WIDTH in surface pixels (character select's
+         * panel borders: 0x10 = 2 px of the 1440x960 supersampled surface,
+         * i.e. one display pixel). Scaled to the host target those are 2-3
+         * pixels, so draw each segment as a quad of that width. */
+        if ((g_pg.d3d_prim_type == D3DPT_LINELIST || g_pg.d3d_prim_type == D3DPT_LINESTRIP) &&
+            g_pg.line_width && out_vert_count >= 2) {
+            unsigned gw = (g_pg.surface_clip_h >> 16) & 0xFFFF;
+            unsigned bw = d3d8_GetBackbufferWidth();
+            float t = (float)g_pg.line_width / 8.0f;
+            if (gw && bw && !d3d8_OffscreenTargetActive()) t *= (float)bw / (float)gw;
+            if (t > 1.25f) {
+                uint32_t nseg = (g_pg.d3d_prim_type == D3DPT_LINELIST) ? out_vert_count / 2 : out_vert_count - 1;
+                OutputVertex *q = (OutputVertex *)_alloca(nseg * 6 * sizeof(OutputVertex));
+                uint32_t k, m = 0;
+                for (k = 0; k < nseg; k++) {
+                    const OutputVertex *a = (g_pg.d3d_prim_type == D3DPT_LINELIST) ? &out[2 * k] : &out[k];
+                    const OutputVertex *b = a + 1;
+                    float dx = b->x - a->x, dy = b->y - a->y, len = sqrtf(dx * dx + dy * dy);
+                    float ux, uy, nx, ny;
+                    OutputVertex c[4];
+                    if (len < 1e-4f) { ux = 1.0f; uy = 0.0f; } else { ux = dx / len; uy = dy / len; }
+                    nx = -uy * t * 0.5f; ny = ux * t * 0.5f;
+                    ux *= t * 0.5f; uy *= t * 0.5f;          /* square caps close the box corners */
+                    c[0] = *a; c[0].x = a->x - ux + nx; c[0].y = a->y - uy + ny;
+                    c[1] = *a; c[1].x = a->x - ux - nx; c[1].y = a->y - uy - ny;
+                    c[2] = *b; c[2].x = b->x + ux + nx; c[2].y = b->y + uy + ny;
+                    c[3] = *b; c[3].x = b->x + ux - nx; c[3].y = b->y + uy - ny;
+                    q[m++] = c[0]; q[m++] = c[2]; q[m++] = c[3];
+                    q[m++] = c[0]; q[m++] = c[3]; q[m++] = c[1];
+                }
+                nv_mtrace_draw("inline-wideline", q, m);
+                dev->lpVtbl->DrawPrimitiveUP(dev, D3DPT_TRIANGLELIST, m / 3, q, sizeof(OutputVertex));
+                if (clipped) { extern void d3d8_ResetScissorRect(void); d3d8_ResetScissorRect(); }
+                if (got == 0) dev->lpVtbl->SetVertexShader(dev, prev_vs);
+                g_pg.stats.draw_calls++;
+                g_pg.stats.vertices_submitted += num_verts;
+                return;
+            }
+        }
         nv_mtrace_draw("inline", out, out_vert_count);
         {   extern FILE *g_doa3_mtrace;
             if (g_doa3_mtrace) {
@@ -3829,6 +3870,10 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
 
     case NV097_SET_DEPTH_MASK:
         g_pg.depth_mask = param ? 1 : 0;
+        return 1;
+
+    case 0x0380:   /* NV097_SET_LINE_WIDTH */
+        g_pg.line_width = param;
         return 1;
 
     case NV097_SET_BLEND_ENABLE:
