@@ -1012,6 +1012,9 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
  * resample. This gives us functional audio at the cost of quality.
  * ============================================================ */
 
+/* Voice rate extremes, reported and reset by the XAudio2 output meter. */
+float g_apu_rate_min = 1e9f, g_apu_rate_max = 0.0f;
+
 static int voice_resample(MCPXAPUState *d, uint16_t v, float samples[][2],
                           int requested_num, float rate)
 {
@@ -1090,6 +1093,8 @@ static void voice_process(MCPXAPUState *d,
                                         NV_PAVS_VOICE_CFG_ENV0_EF_PITCHSCALE);
     float rate = 1.0f / powf(2.0f, (p + ps * 32 * ef_value) / 4096.0f);
     dbg->rate = rate;
+    if (rate < g_apu_rate_min) g_apu_rate_min = rate;
+    if (rate > g_apu_rate_max) g_apu_rate_max = rate;
 
     /* Step amplitude envelope */
     float ea_value = voice_step_envelope(

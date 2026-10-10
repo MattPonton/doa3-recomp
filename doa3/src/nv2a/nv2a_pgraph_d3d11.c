@@ -1801,6 +1801,8 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, const NvDrawSummary *sum,
              * effect reads the other flip buffer): the last presented host
              * frame, not the never-written guest memory behind it. */
             int samples_fb = nv_samples_framebuffer(g_pg.tex[0].offset);
+            {   extern volatile int g_doa3_fbsample_seen;
+                if (samples_fb && g_pg.tex[0].enabled) g_doa3_fbsample_seen = 1; }
             /* Only when stage 0 is enabled: a disabled stage keeps whatever
              * offset was last set. The main menu's dim overlay and black
              * header band are untextured draws whose stale offset is a
@@ -2347,6 +2349,7 @@ static void nv_sync_render_target(void)
 static void nv_mtrace_draw(const char *path, const OutputVertex *o, uint32_t n)
 {
     extern FILE *g_doa3_mtrace;
+volatile int g_doa3_fbsample_seen;   /* a draw sampled a frame buffer this frame (Omega's after-image) */
     float x0 = 1e9f, x1 = -1e9f, y0 = 1e9f, y1 = -1e9f, z0 = 1e9f, z1 = -1e9f;
     unsigned amin = 255, amax = 0;
     uint32_t i;

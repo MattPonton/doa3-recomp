@@ -1012,6 +1012,24 @@ static void doa3_mtrace_frame(unsigned next)
             g_doa3_mtrace = fopen(path, "w");
             return;
         }
+    /* Frame-buffer sampling effects (Omega's after-image / blur): trace and
+     * screenshot the next frame the first time one is seen, then every 10 s
+     * while they continue (at most 6). */
+    {   extern volatile int g_doa3_fbsample_seen;
+        static int s_cnt; static unsigned s_last;
+        if (g_doa3_fbsample_seen) {
+            g_doa3_fbsample_seen = 0;
+            if (s_cnt < 6 && (!s_last || next - s_last >= 600)) {
+                char path[64];
+                s_cnt++; s_last = next;
+                g_doa3_aa_shot = next;
+                sprintf(path, "mtrace_fb_%05u.txt", next);
+                g_doa3_mtrace = fopen(path, "w");
+                fprintf(stderr, "[FBFX] frame-buffer sampling effect: tracing frame %u -> %s + aa_%05u.bmp\n", next, path, next);
+                return;
+            }
+        }
+    }
     /* Movie skipped or over: trace and screenshot a few frames after the host
      * presenter hands the screen back (the missing fade after mv_op). */
     {   extern int doa3_movie_host_owns_screen(void);

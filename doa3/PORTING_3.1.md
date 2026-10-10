@@ -823,3 +823,13 @@ opacity, fades) -- a new D3DCompile whenever one changed, with LRU thrash in
 a 128-entry cache. 0.0.72 keys the cache on the structure only (constants
 zeroed in the key; they go through the constant buffer as before) and logs
 "[COMB] pixel shader compile #N".
+0.0.72: performance fixed (23 shader compiles over a session). Omega: a
+camera blur / after-image effect looks wrong, and on his death (slow motion)
+the voice crackles and the audio turns choppy. 0.0.73 is diagnostic:
+draws that sample the frame buffer (the blur pass) set
+g_doa3_fbsample_seen, and the next frame is traced to mtrace_fb_N.txt with
+aa_N.bmp ("[FBFX]" in the log; at most 6, 600 frames apart). The XAudio2
+output meter now prints "[XA2] last 2 s: ..." for any window with starved
+buffers (host underrun -> gaps) or clipped samples (mix overflow ->
+crackle), with the min/max voice pitch rate seen in that window (slow
+motion should show rates above 1).

@@ -16,6 +16,8 @@
 
 #include "apu_xaudio2.h"
 
+extern float g_apu_rate_min, g_apu_rate_max;   /* apu_vp.c */
+
 #pragma comment(lib, "xaudio2.lib")
 #pragma comment(lib, "ole32.lib")
 
@@ -156,15 +158,21 @@ int xa2_submit_samples(const int16_t *samples, int num_samples)
 
     {   /* Output meter: is the APU mix actually carrying sound? Peak sample
          * and non-silent buffer count over each ~2 s window. */
-        static DWORD s_next = 0; static unsigned s_bufs = 0, s_loud = 0, s_starved = 0; static int s_peak = 0;
+        static DWORD s_next = 0; static unsigned s_bufs = 0, s_loud = 0, s_starved = 0, s_clip = 0; static int s_peak = 0;
         int i, n = copy_samples * XA2_CHANNELS;
-        for (i = 0; i < n; i++) { int v = samples[i]; if (v < 0) v = -v; if (v > s_peak) s_peak = v; }
+        for (i = 0; i < n; i++) { int v = samples[i]; if (v < 0) v = -v; if (v > s_peak) s_peak = v; if (v >= 32767) s_clip++; }
         s_bufs++; if (state.BuffersQueued == 0) s_starved++;
         if (s_peak > 64) s_loud++;
         if (GetTickCount() >= s_next) {
             s_next = GetTickCount() + 2000;
-            
-            s_bufs = s_loud = s_starved = 0; s_peak = 0;
+            /* Only report windows with trouble: host starvation (gaps) or
+             * clipped samples (crackle). */
+            if (s_starved || s_clip)
+                fprintf(stderr, "[XA2] last 2 s: %u buffers, %u starved, %u clipped samples, peak %d, "
+                        "voice rate %.3f..%.3f\n",
+                        s_bufs, s_starved, s_clip, s_peak, g_apu_rate_min, g_apu_rate_max);
+            g_apu_rate_min = 1e9f; g_apu_rate_max = 0.0f;
+            s_bufs = s_loud = s_starved = s_clip = 0; s_peak = 0;
         }
     }
 
