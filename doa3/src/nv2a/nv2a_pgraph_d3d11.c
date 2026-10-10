@@ -2912,9 +2912,16 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
      * specular). DOA3_NO_COMBINERS=1 returns to the old single-stage path. */
     {   static int s_off = -1;
         if (s_off < 0) { const char *e = getenv("DOA3_NO_COMBINERS"); s_off = (e && *e == '1'); }
-        /* First round: only draws that use a second texture stage (the env
-         * maps), so single-texture draws keep the tuned path for now. */
-        use_comb = !s_off && g_pg.tex[1].enabled && ((g_pg.shader_prog >> 5) & 0x1Fu) != 0u;
+        /* Every GPU fixed-function draw (0.0.71). The texture-stage
+         * approximation modulated every texture by the vertex colour, but
+         * DOA3 often combines T0 alone (lights, signs: cICW 0x08200000),
+         * takes alpha from V0 rather than T0 (aICW 0x00002014) or scales by
+         * a combiner factor (the Kowloon street's wet-road sheen) -- the
+         * DOATEC bridge lights and the full-strength street sheen.
+         * DOA3_COMB_STAGE1_ONLY=1 keeps the 0.0.68 scope (two-stage draws). */
+        static int s_s1 = -1;
+        if (s_s1 < 0) { const char *e = getenv("DOA3_COMB_STAGE1_ONLY"); s_s1 = (e && *e == '1'); }
+        use_comb = !s_off && (!s_s1 || (g_pg.tex[1].enabled && ((g_pg.shader_prog >> 5) & 0x1Fu) != 0u));
     }
     {   /* DOA3 DIAG: every distinct combiner configuration seen on this path. */
         static uint32_t s_seen[64][4]; static int s_n;

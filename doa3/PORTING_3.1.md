@@ -805,3 +805,13 @@ walking that table inverts it exactly -- DOA3's materials are P = 10, 13,
 final combiner reads V1 or V1+R0. capture_06132: a large dark translucent
 wedge from the top-left (Ice Cave); [PROJ] now counts projective texcoords
 with q < 0 (texture projected from behind the projector).
+0.0.70: specular/metal on characters matches hardware. No [PROJ] lines.
+DOATEC HK: bridge and walkway lights missing (scene_03600 vs 3.0), the
+street's wet sheen at full strength (scene_05580). The [COMB] census shows
+what the texture-stage approximation got wrong: many draws combine T0
+alone (cICW 0x08200000, no vertex colour), take alpha from V0 instead of T0
+(aICW 0x00002014), or scale by a combiner factor in a second stage
+(0x010C0000, C0 * R0 -- the sheen, which 3.0 handled through TSS markers
+3.1 never emits). 0.0.71 sends every GPU fixed-function draw through the
+register combiners (DOA3_COMB_STAGE1_ONLY=1 for the 0.0.68 scope,
+DOA3_NO_COMBINERS=1 for none).
