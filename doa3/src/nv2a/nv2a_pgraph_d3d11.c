@@ -1424,6 +1424,14 @@ static void nv_build_array_vertex(uint32_t index, OutputVertex *v,
              * The divide is per vertex: the floors are finely tessellated. */
             if ((g_pg.shader_prog & 0x1Fu) == 1u) {
                 float q = out[NV2A_VP_OUT_T0][3];
+                {   /* DOA3 DIAG: projective texcoords behind the projector */
+                    static DWORD s_nx; static unsigned s_neg, s_tot;
+                    s_tot++; if (q < 0.0f) s_neg++;
+                    if (GetTickCount() >= s_nx) {
+                        if (s_neg) fprintf(stderr, "[PROJ] last 5 s: %u of %u projective vertices with q < 0\n", s_neg, s_tot);
+                        s_nx = GetTickCount() + 5000; s_neg = s_tot = 0;
+                    }
+                }
                 if (q == q && (q > 1e-6f || q < -1e-6f) && q != 1.0f) { v->u /= q; v->v /= q; }
             }
             return;
@@ -2655,6 +2663,41 @@ static void nv_build_combiner_state(NV2ACombinerState *cs)
     }
 }
 
+/* Specular power from SET_SPECULAR_PARAMS[0]. The XDK's SetMaterial
+ * (sub_001E6B50 / sub_001E1D70) fits pow(x, Power) with coefficients
+ * interpolated from a table indexed by 3*log2(Power); param 0 comes from the
+ * table at 0x1EA158, reproduced here, so the table walk inverts it exactly
+ * (DOA3's materials come out at 10, 13, 15, 20 and 49). */
+static float nv_spec_power(float a)
+{
+    static const float tab[32] = {
+        0.0f, -0.0233529992f, -0.0951199979f, -0.170208007f, -0.251038015f, -0.336207986f,
+        -0.421539009f, -0.503633976f, -0.57959199f, -0.647660017f, -0.708580017f, -0.760208011f,
+        -0.803673029f, -0.840165019f, -0.87134397f, -0.896104991f, -0.916456997f, -0.933261991f,
+        -0.946506977f, -0.957755029f, -0.966165006f, -0.972847998f, -0.978412986f, -0.983217001f,
+        -0.986470997f, -0.988777995f, -0.991837025f, -0.993452013f, -0.994839013f, -0.995433986f,
+        -0.996689975f, -1.0f };
+    int i;
+    if (!(a < 0.0f)) return 1.0f;
+    for (i = 0; i < 31; i++)
+        if (a <= tab[i] && a >= tab[i + 1]) {
+            float d = tab[i + 1] - tab[i];
+            float t = (float)i + ((d != 0.0f) ? (a - tab[i]) / d : 0.0f);
+            return powf(2.0f, t / 3.0f);
+        }
+    return 128.0f;
+}
+
+/* Does the final combiner read the specular colour (V1, or the V1+R0 sum)? */
+static int nv_final_reads_v1(void)
+{
+    uint32_t w0 = NVREG(0x0288), w1 = NVREG(0x028C);
+    int k;
+    for (k = 0; k < 4; k++) { uint32_t r = (w0 >> (8 * k)) & 0xFu; if (r == 5u || r == 0xEu) return 1; }
+    for (k = 1; k < 4; k++) { uint32_t r = (w1 >> (8 * k)) & 0xFu; if (r == 5u || r == 0xEu) return 1; }
+    return 0;
+}
+
 /* Upload/bind the texture of stage `stage` (1-3) through the stage-0 cache
  * path: get_dynamic_texture reads tex[0], so swap the stage in and out. */
 static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev);
@@ -2820,6 +2863,15 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     cb.ambemis[3] = g_pg.material_alpha;
     cb.flags = (lit ? NV2AFF_FLAG_LIT : 0) | (ctx->ambient_only ? NV2AFF_FLAG_AMBIENT_ONLY : 0) |
                (has_color ? NV2AFF_FLAG_HAS_COLOR : 0);
+    /* Specular lighting (V1): SET_SPECULAR_ENABLE with lighting on. */
+    if (lit && g_pg.spec_enable) {
+        cb.spec[0] = nv_spec_power(g_pg.spec_params[0]);
+        cb.spec[1] = 1.0f;
+        for (k = 0; k < 4; k++) {
+            int j;
+            for (j = 0; j < 3; j++) { cb.light_spec[k][j] = g_pg.light[k].spec[j]; cb.light_half[k][j] = g_pg.light[k].half[j]; }
+        }
+    }
     if (g_pg.fog_enable) {
         /* NV2A fog (xemu's vsh fog): distance from the generator, factor
          * from the table mode with SET_FOG_PARAMS bias/scale. */
@@ -2894,6 +2946,8 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
         cb.flags &= ~NV2AFF_FLAG_FOLD;     /* the combiner applies its factors itself */
         d3d8_combiners_set_direct(&cs);
     }
+    dev->lpVtbl->SetRenderState(dev, D3DRS_SPECULARENABLE,
+                                (cb.spec[1] != 0.0f && nv_final_reads_v1()) ? TRUE : FALSE);
     {
         int clipped = nv_apply_window_clip();
         dev->lpVtbl->BeginScene(dev);
@@ -2902,6 +2956,7 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
                         &cb);
         if (clipped) { extern void d3d8_ResetScissorRect(void); d3d8_ResetScissorRect(); }
     }
+    dev->lpVtbl->SetRenderState(dev, D3DRS_SPECULARENABLE, FALSE);
     if (use_comb) {
         int st;
         d3d8_combiners_set_direct(NULL);

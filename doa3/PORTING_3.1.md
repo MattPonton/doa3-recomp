@@ -792,3 +792,16 @@ when a vertex had rhw <= 0 or z < 0; a vertex just in front of the eye
 off screen. 0.0.69 also clips when rhw > 100 or is NaN. [COMB] from 0.0.68
 shows the character configuration really has a third stage, R0 = V0 * R0
 (040C0000), so lighting is applied in the combiner.
+0.0.69: streaks not fixed. 0.0.68: Forest water better, still no shine on
+leather/metal (Bass's thigh ring, cmp_scene_0594). V1 was always 0: the GPU
+fixed-function shader computed no specular. 0.0.70 adds NV2A specular
+lighting: per light LSpec * att * pow(N.H, power), H from the light's
+INFINITE_HALF_VECTOR (directional) or L + V (local), gated by
+SET_SPECULAR_ENABLE. The power comes from SET_SPECULAR_PARAMS[0]: the XDK's
+SetMaterial (sub_001E6B50 -> sub_001E1D70) fits pow(x, P) with coefficients
+interpolated from a table indexed by 3*log2(P) (param 0 from 0x1EA158), so
+walking that table inverts it exactly -- DOA3's materials are P = 10, 13,
+15, 20, 49. The D3D8 pixel path adds V1 (SPECULARENABLE) only when the
+final combiner reads V1 or V1+R0. capture_06132: a large dark translucent
+wedge from the top-left (Ice Cave); [PROJ] now counts projective texcoords
+with q < 0 (texture projected from behind the projector).

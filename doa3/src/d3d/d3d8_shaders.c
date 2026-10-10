@@ -985,6 +985,9 @@ static const char g_nv2aff_vs_source[] =
     "    float4 FogParam;\n"
     "    float4 TexMat1[4];\n"
     "    float4 Tex1Mode;\n"
+    "    float4 LSpec[4];\n"
+    "    float4 LHalf[4];\n"
+    "    float4 Spec;\n"
     "};\n"
     "struct VS_IN {\n"
     "    float4 pos   : POSITION;\n"
@@ -1014,6 +1017,7 @@ static const char g_nv2aff_vs_source[] =
     "    o.pos = c;\n"
     "    o.clipd = float2(c.w - 0.01, c.z);\n"       /* W > near epsilon, Z >= 0 */
     "    float4 col = float4(1, 1, 1, 1);\n"
+    "    float4 specOut = float4(0, 0, 0, 0);\n"
     "    if (Flags & 4u) {\n"                        /* vertex colour */
     "        col = i.color;\n"
     "    } else if (Flags & 1u) {\n"                 /* NV2A fixed-function lighting */
@@ -1026,6 +1030,9 @@ static const char g_nv2aff_vs_source[] =
     "        float len = sqrt(dot(N, N));\n"
     "        if (len > 1e-12) N = N / len;\n"
     "        float3 rgb = AmbEmis.rgb;\n"
+    "        float3 srgb = float3(0, 0, 0);\n"
+    "        float plen = sqrt(dot(P, P));\n"
+    "        float3 V = (plen > 1e-12) ? -P / plen : float3(0, 0, 1);\n"
     "        [unroll] for (int l = 0; l < 4; l++) {\n"
     "            float type = LDir[l].w;\n"
     "            if (type == 0.0) continue;\n"
@@ -1043,8 +1050,16 @@ static const char g_nv2aff_vs_source[] =
     "            }\n"
     "            float ndotl = max(dot(N, L), 0.0);\n"
     "            rgb += att * (LAmb[l].rgb + LDif[l].rgb * ndotl);\n"
+    "            if (Spec.y != 0.0 && ndotl > 0.0) {\n"     /* NV2A specular: pow(N.H, power) */
+    "                float3 H = (type == 1.0) ? LHalf[l].xyz : (L + V);\n"
+    "                float hl = sqrt(dot(H, H));\n"
+    "                if (hl > 1e-12) H = H / hl;\n"
+    "                float ndoth = max(dot(N, H), 0.0);\n"
+    "                srgb += att * LSpec[l].rgb * pow(ndoth, Spec.x);\n"
+    "            }\n"
     "        }\n"
     "        col = quant(float4(rgb, AmbEmis.w));\n"
+    "        specOut = quant(float4(srgb, 0.0));\n"
     "    } else if (Flags & 2u) {\n"                 /* lighting on, every light off */
     "        col = quant(float4(AmbEmis.rgb, AmbEmis.w));\n"
     "    }\n"
@@ -1053,7 +1068,7 @@ static const char g_nv2aff_vs_source[] =
     "        col = floor((c8 * Fold + 127.0) / 255.0) / 255.0;\n"
     "    }\n"
     "    o.diffuse = col;\n"
-    "    o.specular = float4(0, 0, 0, 0);\n"
+    "    o.specular = specOut;\n"
     "    o.tex0 = i.uv;\n"
     "    {\n"                                      /* stage-1 texcoords: texgen, texture matrix, projection */
     "        float4 t1 = float4(i.uv1, 0, 1);\n"

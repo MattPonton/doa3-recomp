@@ -45,6 +45,9 @@ typedef struct {
     float    fog_param[4];    /* bias, scale, generator (0 spec-a,1 radial,2 planar,3 abs planar,6 fog-x), mode (0 lin,1 exp,2 exp2, +4 abs) */
     float    texmat1[4][4];   /* stage-1 texture matrix rows (out_j = dot(t, row j)) */
     float    tex1_mode[4];    /* x: texgen (0 attribute, 1 reflection map, 2 sphere map, 3 normal map, 4 eye pos), y: matrix on, z: projective divide */
+    float    light_spec[4][4]; /* per-light specular colour (material already folded in by D3D) */
+    float    light_half[4][4]; /* directional lights: eye-space half vector */
+    float    spec[4];          /* x: specular power, y: 1 = specular lighting on */
 } Nv2aFFConstants;
 
 /* d3d8_device.c: upload, bind and draw. `topology` is a D3D11_PRIMITIVE_TOPOLOGY. */
