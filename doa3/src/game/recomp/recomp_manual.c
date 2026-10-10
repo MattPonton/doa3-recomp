@@ -1055,7 +1055,7 @@ static void doa3_mtrace_frame(unsigned next)
      * (at most 40 files), to compare what changes between frames of the
      * same scene -- the 3D geometry differs from frame to frame. */
     {   static int s_auto;
-        if (next > 1500 && (next % 1500u) <= 1 && s_auto < 40) {
+        if (next > 1500 && (next % 1500u) <= 3 && s_auto < 48) {   /* four consecutive frames */
             char path[64];
             s_auto++;
             sprintf(path, "mtrace_%05u.txt", next);

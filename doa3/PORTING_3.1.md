@@ -731,3 +731,14 @@ checking that the stage is enabled. 0.0.64 requires it. Movie skip fade:
 ownership timeout 250 -> 100 ms, and [MVEND] traces/screenshots frames
 +1..+60 after the presenter releases the screen (mtrace_mvend_N.txt,
 mvend_N.bmp).
+0.0.64: menu header fixed; the Press Start fade-in now shows, the fade-out
+after skipping mv_op still does not. Stage atmosphere (X Octagon's green
+haze, Aquarium, Forest) missing: the translator ignored NV2A fog entirely.
+Azuchi's trace: SET_FOG_ENABLE 1 on 518 of 583 3D draws, MODE 0x2601
+(linear), GEN_MODE 2 (planar), colour FF000000, PARAMS 3.5 / -0.00025.
+0.0.65 tracks SET_FOG_* (0x29C/0x2A0/0x2A4/0x2A8, params 0x9C0, plane
+0x9D0) and computes the factor in the GPU fixed-function vertex shader the
+way xemu does (linear: bias + d*scale - 1; exp/exp2 with the 16/32 scale
+and -1.5); the pixel stage blends with D3DRS_FOGCOLOR. Auto method traces
+now take four consecutive frames, and gpu @DRAW lines carry stencil, fog,
+colour/lighting and stage-1 state (Azuchi's floor alternates dark/light).

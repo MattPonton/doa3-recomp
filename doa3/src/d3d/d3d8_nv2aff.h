@@ -26,6 +26,7 @@ typedef struct {
 #define NV2AFF_FLAG_AMBIENT_ONLY 0x02u
 #define NV2AFF_FLAG_HAS_COLOR    0x04u
 #define NV2AFF_FLAG_FOLD         0x08u   /* multiply the colour by `fold` (combiner factor) */
+#define NV2AFF_FLAG_FOG          0x10u   /* compute the NV2A fog factor into fog */
 
 /* Constant buffer, HLSL float4-packed. Keep in step with the shader. */
 typedef struct {
@@ -39,6 +40,8 @@ typedef struct {
     float    fold[4];         /* combiner factor r,g,b,a in 0..255 */
     uint32_t flags;
     uint32_t pad[3];
+    float    fog_plane[4];    /* NV097_SET_FOG_PLANE */
+    float    fog_param[4];    /* bias, scale, generator (0 spec-a,1 radial,2 planar,3 abs planar,6 fog-x), mode (0 lin,1 exp,2 exp2, +4 abs) */
 } Nv2aFFConstants;
 
 /* d3d8_device.c: upload, bind and draw. `topology` is a D3D11_PRIMITIVE_TOPOLOGY. */

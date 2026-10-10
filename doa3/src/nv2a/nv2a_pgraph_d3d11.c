@@ -226,6 +226,9 @@ static struct {
     uint32_t alpha_ref;    /* NV097_SET_ALPHA_REF, 0..255 */
     uint32_t color_mask;
     uint32_t line_width;      /* NV097_SET_LINE_WIDTH, 6.3 fixed point surface pixels */
+    uint32_t fog_enable, fog_mode, fog_gen, fog_color;   /* NV097_SET_FOG_* (0x2A4/0x29C/0x2A0/0x2A8) */
+    float    fog_param[3];    /* NV097_SET_FOG_PARAMS (0x9C0): bias, scale, - */
+    float    fog_plane[4];    /* NV097_SET_FOG_PLANE (0x9D0) */
     uint32_t comb_factor0[8];
     /* from doa3_pb_tss_marker: 0xA3<<24 | stage1-off<<17 | op<<12 | arg1<<6 | arg2 */
     uint32_t gtss;
@@ -1561,6 +1564,14 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, const NvDrawSummary *sum,
         }
     }
     dev->lpVtbl->SetRenderState(dev, D3DRS_LIGHTING, FALSE);
+    {   /* Fog. Only the GPU fixed-function path computes a per-vertex factor;
+         * every other path emits fog = 1, which this leaves untouched. The
+         * NV2A colour is ABGR, D3D's ARGB. */
+        uint32_t fc = g_pg.fog_color;
+        dev->lpVtbl->SetRenderState(dev, D3DRS_FOGENABLE, g_pg.fog_enable ? TRUE : FALSE);
+        dev->lpVtbl->SetRenderState(dev, D3DRS_FOGCOLOR,
+            (fc & 0xFF00FF00u) | ((fc & 0xFFu) << 16) | ((fc >> 16) & 0xFFu));
+    }
     /* Face culling. D3DCULL names the screen winding to discard, so the
      * mapping depends on which winding the game calls front-facing. Culling
      * both faces has no D3D equivalent, so that degenerates to no culling
@@ -2699,6 +2710,25 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     cb.ambemis[3] = g_pg.material_alpha;
     cb.flags = (lit ? NV2AFF_FLAG_LIT : 0) | (ctx->ambient_only ? NV2AFF_FLAG_AMBIENT_ONLY : 0) |
                (has_color ? NV2AFF_FLAG_HAS_COLOR : 0);
+    if (g_pg.fog_enable) {
+        /* NV2A fog (xemu's vsh fog): distance from the generator, factor
+         * from the table mode with SET_FOG_PARAMS bias/scale. */
+        int m;
+        switch (g_pg.fog_mode) {
+        case 0x0800: m = 1; break;          /* EXP       */
+        case 0x0801: m = 2; break;          /* EXP2      */
+        case 0x0802: m = 1 | 4; break;      /* EXP_ABS   */
+        case 0x0803: m = 2 | 4; break;      /* EXP2_ABS  */
+        case 0x0804: m = 0 | 4; break;      /* LINEAR_ABS*/
+        default:     m = 0; break;          /* LINEAR (0x2601) */
+        }
+        cb.flags |= NV2AFF_FLAG_FOG;
+        for (k = 0; k < 4; k++) cb.fog_plane[k] = g_pg.fog_plane[k];
+        cb.fog_param[0] = g_pg.fog_param[0];
+        cb.fog_param[1] = g_pg.fog_param[1];
+        cb.fog_param[2] = (float)g_pg.fog_gen;
+        cb.fog_param[3] = (float)m;
+    }
     if (post.fold) {
         uint32_t f = post.fold_factor;
         cb.flags |= NV2AFF_FLAG_FOLD;
@@ -2759,11 +2789,16 @@ static void submit_array_draw(void)
     if (!is_points && nv_gpu_ff_submit(dev, &ctx, prim, is_quads)) {
         {   extern FILE *g_doa3_mtrace;
             if (g_doa3_mtrace)
-                fprintf(g_doa3_mtrace, "@DRAW gpu mode%u idx%u tex0=%08X%c zt=%d zf=%X zw=%d bl=%d %X/%X cm=%08X st=%d off=%d\n",
+                fprintf(g_doa3_mtrace, "@DRAW gpu mode%u idx%u tex0=%08X%c zt=%d zf=%X zw=%d bl=%d %X/%X cm=%08X st=%d off=%d"
+                        " | sf=%X ref=%X rm=%X wm=%X op=%X/%X/%X fog=%u/%X/%u col=%d lit=%d tex1=%08X%c\n",
                         g_pg.draw_mode, n, g_pg.tex[0].offset, g_pg.tex[0].enabled ? 'E' : '-',
                         g_pg.depth_test, g_pg.depth_func, g_pg.depth_mask, g_pg.blend_enable,
                         g_pg.blend_sfactor, g_pg.blend_dfactor, g_pg.color_mask, g_pg.stencil_enable,
-                        d3d8_OffscreenTargetActive());
+                        d3d8_OffscreenTargetActive(),
+                        g_pg.stencil_func, g_pg.stencil_ref, g_pg.stencil_func_mask, g_pg.stencil_mask,
+                        g_pg.stencil_fail, g_pg.stencil_zfail, g_pg.stencil_zpass,
+                        g_pg.fog_enable, g_pg.fog_mode, g_pg.fog_gen, nv_attr_enabled(3), ctx.lit,
+                        g_pg.tex[1].offset, g_pg.tex[1].enabled ? 'E' : '-');
         }
         g_doa3_drop[2]++;
         g_pg.idx_count = 0;
@@ -3888,6 +3923,16 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
         g_pg.depth_mask = param ? 1 : 0;
         return 1;
 
+    case 0x029C: g_pg.fog_mode = param;   return 1;   /* NV097_SET_FOG_MODE */
+    case 0x02A0: g_pg.fog_gen = param;    return 1;   /* NV097_SET_FOG_GEN_MODE */
+    case 0x02A4: g_pg.fog_enable = param; return 1;   /* NV097_SET_FOG_ENABLE */
+    case 0x02A8: g_pg.fog_color = param;  return 1;   /* NV097_SET_FOG_COLOR (ABGR) */
+    case 0x09C0: case 0x09C4: case 0x09C8:            /* NV097_SET_FOG_PARAMS */
+        g_pg.fog_param[(method - 0x09C0) / 4] = u2f(param);
+        return 1;
+    case 0x09D0: case 0x09D4: case 0x09D8: case 0x09DC: /* NV097_SET_FOG_PLANE */
+        g_pg.fog_plane[(method - 0x09D0) / 4] = u2f(param);
+        return 1;
     case 0x0380:   /* NV097_SET_LINE_WIDTH */
         g_pg.line_width = param;
         return 1;
