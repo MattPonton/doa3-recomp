@@ -1770,7 +1770,12 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, const NvDrawSummary *sum,
              * effect reads the other flip buffer): the last presented host
              * frame, not the never-written guest memory behind it. */
             int samples_fb = nv_samples_framebuffer(g_pg.tex[0].offset);
-            if (g_pg.tex[0].offset &&
+            /* Only when stage 0 is enabled: a disabled stage keeps whatever
+             * offset was last set. The main menu's dim overlay and black
+             * header band are untextured draws whose stale offset is a
+             * render target (0x01ADD400); binding it textured them with that
+             * target's changing contents, so both blinked on and off. */
+            if (g_pg.tex[0].enabled && g_pg.tex[0].offset &&
                 (samples_fb || (!d3d8_OffscreenTargetActive() &&
                                 d3d8_HasOffscreenTexture(g_pg.tex[0].offset)))) {
                 int use_diffuse = !diffuse_all_zero;

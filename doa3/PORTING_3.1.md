@@ -723,3 +723,11 @@ removed in 0.0.63. Since 0.0.61 the main menu's black header band blinked:
 with the attribute layout its texcoord slot is read, and an untextured
 draw leaves stack garbage there (0x00D02590, 0x05137F5C). Texcoords are now
 zeroed when stage 0 is disabled and sanitised (NaN / huge -> 0) otherwise.
+0.0.63: corners right-angled. The main menu header still blinked, together
+with a full-screen dim (30000000) overlay: both are untextured draws whose
+disabled stage 0 still holds 0x01ADD400, which since 0.0.59 is a known
+render target -- the "sampled offscreen surface" path bound it without
+checking that the stage is enabled. 0.0.64 requires it. Movie skip fade:
+ownership timeout 250 -> 100 ms, and [MVEND] traces/screenshots frames
++1..+60 after the presenter releases the screen (mtrace_mvend_N.txt,
+mvend_N.bmp).

@@ -232,6 +232,7 @@ volatile int g_doa3_in_pump = 0;
 
 uint32_t g_doa3_offrt_offs[64]; int g_doa3_offrt_n;   /* every texture surface seen */
 static unsigned g_doa3_aa_shot;   /* frame to screenshot with its method trace (multisampled screens) */
+static unsigned g_doa3_mv_shot[8]; /* frames to screenshot after a movie releases the screen */
 
 uint32_t g_flg_a, g_flg_b;
 int g_flg_w = 4, g_flg_test;
@@ -951,6 +952,16 @@ static void d3d4134_capture_frame(unsigned frame)
             }
         }
     }
+    {   int q;
+        for (q = 0; q < 8; q++)
+            if (g_doa3_mv_shot[q] && frame == g_doa3_mv_shot[q]) {
+                extern void doa3_capture_backbuffer(const char *path);
+                char path[64];
+                g_doa3_mv_shot[q] = 0;
+                sprintf(path, "mvend_%05u.bmp", frame);
+                doa3_capture_backbuffer(path);
+            }
+    }
     if (g_doa3_aa_shot && frame == g_doa3_aa_shot) {
         extern void doa3_capture_backbuffer(const char *path);
         char path[64];
@@ -1001,6 +1012,28 @@ static void doa3_mtrace_frame(unsigned next)
             g_doa3_mtrace = fopen(path, "w");
             return;
         }
+    /* Movie skipped or over: trace and screenshot a few frames after the host
+     * presenter hands the screen back (the missing fade after mv_op). */
+    {   extern int doa3_movie_host_owns_screen(void);
+        static int s_prev, s_cnt; static unsigned s_base;
+        static const unsigned s_off[5] = { 1, 6, 15, 30, 60 };
+        int own = doa3_movie_host_owns_screen(), q;
+        if (s_prev && !own && s_cnt < 4) {
+            s_base = next; s_cnt++;
+            fprintf(stderr, "[MVEND] movie released the screen at frame %u: tracing +1,+6,+15,+30,+60\n", next);
+        }
+        s_prev = own;
+        if (s_base)
+            for (q = 0; q < 5; q++)
+                if (next == s_base + s_off[q]) {
+                    char path[64];
+                    g_doa3_mv_shot[q] = next;
+                    sprintf(path, "mtrace_mvend_%05u.txt", next);
+                    g_doa3_mtrace = fopen(path, "w");
+                    if (q == 4) s_base = 0;
+                    return;
+                }
+    }
     /* Multisampled screens (character select): trace and screenshot one frame
      * two seconds after each switch into 2x2 supersampling (at most 6). */
     {   extern uint32_t doa3_aa_resolve_source(void);

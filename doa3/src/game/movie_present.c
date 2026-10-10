@@ -649,7 +649,10 @@ int doa3_movie_host_owns_screen(void)
      * from boot, as 3.0's presenter does until its movie ends, dropped every
      * guest draw and flip forever -- the black screen. Own it only while
      * movie frames are arriving. */
-    return s_guest_movie_tick && GetTickCount() - s_guest_movie_tick < 250;
+    /* 100 ms is three missed 30 fps movie frames. It used to be 250 ms,
+     * which swallowed the first quarter second of the game's own frames
+     * after a skip -- the start of its fade out. */
+    return s_guest_movie_tick && GetTickCount() - s_guest_movie_tick < 100;
 #endif
 }
 
