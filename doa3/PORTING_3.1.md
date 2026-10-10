@@ -758,3 +758,12 @@ Azuchi floor: dark vs light frames submit the same draws (paused traces
 (e.g. tex1 0x02CCCB80, 0x017A6480) and the translator ignores stage 1
 entirely -- no second texture, no texgen, no register combiners. That is
 the likely root of the missing specular/env maps and probably the floor.
+0.0.66: the mv_op skip fade works. Ice Cave (trace 13500): the mirrored scene
+is rendered into the 256x256 target 0x019FF200, then the floor is drawn by a
+vertex program (TRANSFORM_EXECUTION_MODE 6, CPU path) with stage 0 in
+SHADER_STAGE_PROGRAM 2D_PROJECTIVE (0x1E70 = 1 / 0x21) and o[T0] = the
+projected position. The CPU path took T0.xy raw, without the divide by T0.w,
+so the reflection landed shifted and doubled. 0.0.67 tracks 0x1E70 and
+divides by q per vertex in that mode (q = 0 when unwritten -> left alone).
+Stage 1 texgen REFLECTION_MAP (0x3D0-0x3D8 = 0x8512) with its texture matrix
+enabled (0x424 = 1) is the character/water env map -- still unimplemented.

@@ -226,6 +226,7 @@ static struct {
     uint32_t alpha_ref;    /* NV097_SET_ALPHA_REF, 0..255 */
     uint32_t color_mask;
     uint32_t line_width;      /* NV097_SET_LINE_WIDTH, 6.3 fixed point surface pixels */
+    uint32_t shader_prog;     /* NV097_SET_SHADER_STAGE_PROGRAM (0x1E70): 5 bits per stage, 1 = 2D projective */
     uint32_t fog_enable, fog_mode, fog_gen, fog_color;   /* NV097_SET_FOG_* (0x2A4/0x29C/0x2A0/0x2A8) */
     float    fog_param[3];    /* NV097_SET_FOG_PARAMS (0x9C0): bias, scale, - */
     float    fog_plane[4];    /* NV097_SET_FOG_PLANE (0x9D0) */
@@ -1414,6 +1415,16 @@ static void nv_build_array_vertex(uint32_t index, OutputVertex *v,
             v->color = nv_pack_color(out[NV2A_VP_OUT_D0]);
             v->u = out[NV2A_VP_OUT_T0][0];
             v->v = out[NV2A_VP_OUT_T0][1];
+            /* Stage 0 in 2D-projective mode samples (s/q, t/q). The ice cave's
+             * and Azuchi's floors project the mirrored-scene render target
+             * onto the floor this way (o[T0] = projected position, q = w);
+             * taking s and t raw stretched the reflection into a shifted
+             * second picture. Plain textures carry q = 1 and are unchanged.
+             * The divide is per vertex: the floors are finely tessellated. */
+            if ((g_pg.shader_prog & 0x1Fu) == 1u) {
+                float q = out[NV2A_VP_OUT_T0][3];
+                if (q == q && (q > 1e-6f || q < -1e-6f) && q != 1.0f) { v->u /= q; v->v /= q; }
+            }
             return;
         }
     }
@@ -3923,6 +3934,7 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
         g_pg.depth_mask = param ? 1 : 0;
         return 1;
 
+    case 0x1E70: g_pg.shader_prog = param; return 1;  /* NV097_SET_SHADER_STAGE_PROGRAM */
     case 0x029C: g_pg.fog_mode = param;   return 1;   /* NV097_SET_FOG_MODE */
     case 0x02A0: g_pg.fog_gen = param;    return 1;   /* NV097_SET_FOG_GEN_MODE */
     case 0x02A4: g_pg.fog_enable = param; return 1;   /* NV097_SET_FOG_ENABLE */
