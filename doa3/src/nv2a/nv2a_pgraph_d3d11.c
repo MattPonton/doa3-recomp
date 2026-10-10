@@ -3039,8 +3039,8 @@ static void submit_draw(void)
      * movie and compositing it produces flashing shapes over the video, so
      * hold it back until the presenter hands the screen over. */
     {
-        extern int doa3_movie_host_owns_screen(void);
-        if (doa3_movie_host_owns_screen()) {
+        extern int doa3_movie_drop_guest_draws(void);
+        if (doa3_movie_drop_guest_draws()) {
             g_dbail[5]++;
             g_pg.inline_count = 0;
             return;

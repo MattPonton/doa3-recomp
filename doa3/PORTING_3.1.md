@@ -742,3 +742,19 @@ way xemu does (linear: bias + d*scale - 1; exp/exp2 with the 16/32 scale
 and -1.5); the pixel stage blends with D3DRS_FOGCOLOR. Auto method traces
 now take four consecutive frames, and gpu @DRAW lines carry stencil, fog,
 colour/lighting and stage-1 state (Azuchi's floor alternates dark/light).
+0.0.65: fog brought Forest, Aquarium and X Octagon close to hardware.
+Skipping mv_op: START arms the exit fade 0x53EB0 (counter 0x5A6970 60 -> 0
+over 60 frames) while the movie KEEPS playing; FUN_00053490 runs the fade
+(FUN_0006BF50) as ordinary 2D draws over the CSC'd movie frame. Our
+presenter dropped every guest draw and present while movie frames were
+arriving, so the fade never showed. 0.0.66 (non-3.0): guest draws are no
+longer dropped during a movie; the movie frame is drawn into the guest
+target, the game's own Present shows it with the game's 2D on top, and the
+clean movie frame is put back after each guest present
+(doa3_movie_composite_present / doa3_movie_after_guest_present). With no
+guest presents in the last 100 ms the presenter presents itself as before.
+Azuchi floor: dark vs light frames submit the same draws (paused traces
+07500 vs 04500). Many stage and character draws enable texture stage 1
+(e.g. tex1 0x02CCCB80, 0x017A6480) and the translator ignores stage 1
+entirely -- no second texture, no texgen, no register combiners. That is
+the likely root of the missing specular/env maps and probably the floor.

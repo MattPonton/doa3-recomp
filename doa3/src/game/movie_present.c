@@ -656,6 +656,41 @@ int doa3_movie_host_owns_screen(void)
 #endif
 }
 
+/* Movie compositing (non-3.0). On the console Sofdec colour-converts each
+ * frame into the back buffer and the game's own frame loop then draws its 2D
+ * over it before flipping: skipping the attract movie runs a 60-frame fade to
+ * black that way while the movie keeps playing. Here the movie frame is drawn
+ * into the guest target, the game's draws land on top of it, and the game's
+ * own Present shows the result. Without guest presents (none seen in the last
+ * 100 ms) the movie presents itself as before. */
+static DWORD s_guest_present_tick;
+int doa3_movie_drop_guest_draws(void)
+{
+#if defined(DOA3_XBE_ID_3_0)
+    return doa3_movie_host_owns_screen();
+#else
+    return 0;
+#endif
+}
+int doa3_movie_composite_present(void)
+{
+#if defined(DOA3_XBE_ID_3_0)
+    return 0;
+#else
+    if (!s_tex) return 0;
+    s_guest_present_tick = GetTickCount();
+    return 1;
+#endif
+}
+void doa3_movie_after_guest_present(void)
+{
+    ID3D11DeviceContext *ctx = d3d8_GetD3D11Context();
+    if (!ctx || !s_tex) return;
+    movie_draw_to_guest(ctx);
+    movie_restore_guest_viewport(ctx);
+    d3d8_RestoreDefaultTarget();
+}
+
 /* Show a frame the guest's Sofdec decoder has just colour-converted (32bpp,
  * from the frame-copy wrapper in recomp_manual.c). No host decoding. */
 void doa3_present_movie_guest(const void *src, int w, int h, int pitch)
@@ -676,7 +711,10 @@ void doa3_present_movie_guest(const void *src, int w, int h, int pitch)
         return;
     movie_upload(ctx, src, pitch);
     movie_draw_to_guest(ctx);
-    d3d8_PresentFrame();
+    /* The game is presenting frames of its own: let its Present show this
+     * one, with whatever it draws on top. */
+    if (!(s_guest_present_tick && GetTickCount() - s_guest_present_tick < 100))
+        d3d8_PresentFrame();
     movie_restore_guest_viewport(ctx);
     d3d8_RestoreDefaultTarget();
     s_guest_movie_tick = GetTickCount();

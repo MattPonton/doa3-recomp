@@ -879,9 +879,22 @@ static HRESULT __stdcall dev_Present(IDirect3DDevice8 *self, const RECT *src, co
      * it until the presenter hands the screen over. */
     {
         extern int doa3_movie_host_owns_screen(void);
+        extern int doa3_movie_composite_present(void);
+        extern void doa3_movie_after_guest_present(void);
         if (doa3_movie_host_owns_screen()) {
-            g_flip_blocked++;
-            return S_OK;
+            HRESULT hr;
+            if (!doa3_movie_composite_present()) {
+                g_flip_blocked++;
+                return S_OK;
+            }
+            /* The guest frame is the movie frame with the game's own 2D on
+             * top (the fade to black when the attract movie is skipped):
+             * present it, then put the clean movie frame back for the next
+             * guest frame so overlays do not accumulate. */
+            g_flip_guest++;
+            hr = d3d8_compose_and_present();
+            doa3_movie_after_guest_present();
+            return hr;
         }
     }
     g_flip_guest++;
