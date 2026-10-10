@@ -613,6 +613,14 @@ call; ported as-is, 3.1 got its input only through SetState into the
 feedback header (pad+0x2F) and a mirror at pad+0x19. Now GetState fills the
 state it is given from the host pad and SetState completes at once.
 
+Local rumble fix: SetState now forwards the packed feedback's motor words
+at +0x42/+0x44 through the same guest-port-to-XInput-slot map as input, then
+writes the Windows result to dwStatus. The layout is verified against
+sub_000A50A0 (feedback at pad+0x2F, motors at pad+0x71/+0x73) and the
+rumble worker at 0xBB500. Requests still complete synchronously. Close,
+focus loss, exit, and port remapping stop outstanding effects. The game's
+own per-player vibration option remains in control of which effects it sends.
+
 mv_op: START reaches mp_UpdatePlayerJoinAndStartInput as the attract input
 branch (0x5C9254 = 2; 0x5C9248 was already 1), so mp_UpdateTitleAttract
 should be running the exit fade 0x53EB0 (gated on 0x5A8B97 == 0, 60-frame
@@ -843,3 +851,253 @@ so a palette rewritten in place (palette-cycled animation) was never seen.
 The fingerprint now folds in the palette table's bytes, and textures up to
 16 KB are hashed whole (larger ones by 256 samples, was 64) so partial
 in-place rewrites are caught too.
+
+Local crossfade fix: the host previous-frame image stopped updating 120
+presents after its last use but remained valid. A later Sparring reset
+therefore captured an earlier moment in the fight. Keep the image current
+at every present; the 120-frame demand window now controls only the
+pre-HUD scene snapshot for after-image effects. The D3D11 WARP regression
+test in tests/frame_history reproduces the stale image before the fix and
+checks both a fresh capture after inactivity and the pre-HUD behavior.
+
+Local announcer balance adjustment: a fight capture aligned GET READY at
+frame 1800 with activity in stereo bins 0/1; positional bins 6/7 were quiet
+there but peaked at 1.84 during combat and clipped at the output. The stub
+DSP now applies -6.02 dB to its positional branch (6/8 left, 7/9 right),
+preserving stereo announcer/music gain and VP headroom compensation. This
+is an empirical balance adjustment, not verified Xbox DSP behavior;
+listening confirmation remains necessary. DOA3_MIX_TRACE=1 logs raw bin
+RMS/peaks and post-balance clipping every half second for up to 180 seconds.
+tests/audio_mix compiles the actual DSP stub and checks stereo levels,
+positional transients/routing, headroom, clipping and frame buffer writes.
+
+Local Survival announcer filter: the request trace at 0x1C7920 captured
+mode 5, phase 0, human flags 1/0: opening 0x8001/0x8002, then 0x8003
+with health 240/0 and a new 0x8002 with health 240/240. Filter that
+intermediate KO and its following Fight at the common streamed-voice
+request entry. Keep the opening call, player-loss/double KO, character
+voices, and other modes. GET READY and requests outside solo Survival
+reset the transition state. This is a targeted host behavior correction;
+the upstream cause of the extra requests is not yet established.
+DOA3_ANNOUNCER_TRACE=1 logs up to 160 requests and suppression decisions.
+tests/announcer replays the capture and checks successive opponents,
+restarts, side swapping, player defeat and mode changes.
+
+Local Escape > Debug > Unlock all unlockables: a reversible host override
+for 3.1 menu/selection queries, saved as [Debug] UnlockAll in the host INI.
+Costume counts at 0x59FB16..28 use the XBE's 0x29C70C limits mapped through
+0x2FF868; availability gates are 0x59FB3C/3D and 0x5A0B47, with ending
+access at 0x5A0B49..5B and the Theater menu gate at 0x5A0C72. No save
+bytes are changed. tools.recomp.debug_unlock_reads routes consumer reads
+through debug_settings.c and is part of postprocess, leaving the award
+routines at 0x83xxx/0x8Cxxx and every store untouched. Existing selection
+lists refresh on re-entry. Tests cover reversal, bounds, INI persistence,
+untouched stores/reward code, and idempotent generated-code patching.
+
+Local Zack costume 3 reflection fix: the Beach Practice capture at frame
+3000 programs stage-0 S/T/R as REFLECTION_MAP (0x03C0/4/8 = 0x8512),
+enables its matrix (0x0420 = 1), and uploads the environment-map transform
+u = 0.5*Rx + 0.5, v = -0.5*Ry + 0.5 at 0x06C0. The GPU FF shader used
+the mesh's ordinary UVs for stage 0 and only honored texgen/matrices on
+stage 1, making the environment image stick to the silver suit. Both
+stages now use the same texgen/matrix/projection shader routine, with
+independent constants and normal fetching for either reflective stage.
+tests/texgen executes the actual shader and input layout on D3D11 WARP,
+using stream output to check ordinary UVs, stage-0 reflections following
+the normal, independent/simultaneous stage-1 reflections, matrix projection,
+and switching back to ordinary materials. The baseline fails the silver
+reflection case (u = 0.125 instead of 0.98); the fixed shader passes all
+seven checks. In-game appearance still needs visual confirmation.
+
+Local Beach shoreline investigation: the Practice capture at frames
+3000..3003 binds two 128x256 DXT5 foam textures (0x020AFC80 and 0x020B7C80
+in that session), not palettised textures. Their stage-0 matrix is enabled
+and its V translation advances from 0.163402 to 0.168298; the vertex color
+and combiner factor handle the separate fade. The earlier palette-cache
+explanation above was not demonstrated for these shoreline draws. The
+stage-0 matrix support added for Zack also handles their scrolling. The
+foam uses negative V coordinates and zero Z/Q matrix rows; tests/texgen
+now includes those captured settings at two animation times. All nine
+shader checks pass. On 2026-10-10, the user confirmed that the shoreline
+waves move in Practice in the current executable, resolving the reported
+fade-only behavior. No additional renderer change was needed beyond the
+stage-0 texture-matrix support.
+
+Local Beach water reflection fix (2026-10-10): the sharp cut shapes were
+introduced by the later vertex-program reflection composite, not by the
+scrolling foam draws. The captured pass samples the mirrored scene at
+0x02188F80 and a separate mask at 0x020DE680 with texture program 0x21.
+Its two combiner stages retain T0.rgb and multiply T0.a by T1.a. The CPU
+vertex-program fallback previously discarded o[T1] and used a single-stage
+approximation, exposing the reflection mesh boundary. It now preserves
+both UV outputs through vertex reuse and clipping, binds the second
+texture, and uses the guest register combiners for two-stage 2D programs.
+The approximate vertex factor fold is skipped on that direct path so the
+combiner applies it only once. Other CPU draw paths keep their existing
+single-stage handling. Temporary water redraw diagnostics were removed.
+Release build succeeded. tests/reflection_mask exercises the production
+vertex shader, combiner generator/register decoder, and clip attributes
+on D3D11 WARP: independent mask UVs produce alpha 0/51/102/204 while
+reflection RGB remains unchanged. The user confirmed the cuts are fixed
+in Beach Practice in the rebuilt executable. Other stages have not yet
+been visually rechecked with this change.
+
+Local free camera (2026-10-10): Escape > Debug now exposes a temporary free
+camera, speed slider and reset-to-game-view button. WASD/mouse and E/Q move/look;
+the first connected XInput pad uses twin sticks and RT/LT, with Shift/LB boost
+and Ctrl/RB precision movement. Windows raw relative mouse input is consumed
+only while flying in the foreground. Escape, focus loss and closing the window
+release cursor confinement. Guest input and rumble are suppressed while enabled;
+the game continues simulating. Online sessions disable free camera.
+
+The 3.1 override at 00029E30 activates camera slots at 4DAE90 + index*C80.
+It temporarily substitutes eye/target (A8/B8) and zero roll (DC), calls the native
+00027720 view/projection builder, then invokes the original activation routine.
+This supplies the native render globals and D3D transforms, including the view
+used by reflection passes, instead of editing only the final GPU transform.
+Registers, guest stack and x87 state around the extra builder call are preserved.
+The camera object region A8..20F is restored afterwards so game camera scripts
+retain their trajectory; invalid slots and the upload-current-view sentinel
+7FFFFFFF pass through. Auxiliary slots remain independent of the selected view.
+The override is listed in overrides_3.1.txt and replaces its generated ESP probe.
+
+Release build succeeded. tests/free_camera exercises movement direction,
+frame-rate independence, normalized diagonal movement, elapsed-time cap, stick
+dead zones, pitch limit, reset and online gating. Its extracted production hook
+test checks pose injection and camera/ABI restoration against stub native calls.
+tests/input_rumble also checks captured guest input, raw pad access, release,
+keyboard fallback and the existing rumble behavior. Visual stage/culling and
+controller/mouse feel still need an in-game check; these tests do not emulate
+the native camera builder or render a stage.
+
+Local debug vision modes (2026-10-10): a final host override in
+d3d8_states_apply covers the five draw entry points, including CPU XYZRHW and
+GPU NV2A fixed-function vertices. d3d8_debug_views.c supplies wireframe,
+vertex COLOR0, UV0 checker and view-distance PS modes plus optional cull-none.
+It operates only on main-target, Z-enabled RGB draws; render-to-texture and
+alpha/depth-only mask draws are excluded. Debug PS output is opaque, respects
+the guest color write mask, and retains depth/stencil/scissor settings. Raster
+and blend objects are cached and released with the normal state subsystem.
+Every normal draw preparation rebinds its shaders and states, preventing the
+override from leaking into skipped draws or persisting after Normal is selected.
+Settings are temporary, host-only, and independent of free camera and saves.
+
+The Distance mode uses D3D11 pixel SV_Position.w directly (clip W for this
+perspective projection), not its reciprocal. tests/debug_views renders with
+the production module on D3D11 WARP and checks exact vertex-color, UV and
+distance pixels; wireframe coverage; offscreen/Z-disabled/alpha-mask exclusions;
+backface state; and restoration to normal. Release build and this test pass.
+The new modes have not yet been visually checked on a running game stage.
+
+Local performance review (2026-10-10): opt-in DOA3_PERF_CAPTURE writes
+performance_frames.csv, limited to 18,000 presented frames. It records frame
+interval, mode, movie ownership, foreground state and free camera; normal runs
+do not perform timer/file work. The review run used the existing DOA3_PROFILE
+CPU sampler and the user's normal 2562x1440 guest target. Filtering to mode 7
+(Practice), foreground, no movie, and excluding the first two seconds of that
+mode left 2,229 frames: 60.00 FPS average, median 16.6384 ms, p95 18.2228 ms,
+p99 24.3183 ms, maximum 46.656 ms. There were 18 frames above 25 ms, one above
+33.333 ms, and none above 50 ms. These are instrumented presentation intervals,
+not GPU timings or proof that every stage is equally fast. The window was closed
+normally before the 90-second sampler dump, so no native CPU hot-spot ranking
+was obtained. Only 16 combiner shaders compiled across boot/menus/fight; no
+evidence of repeated shader-cache eviction appeared in that run.
+
+The review found that the older call profiler defaulted ON and wrote
+doa3_prof.txt every five seconds even with regular logging disabled (about
+209 KB in this run). It is now explicitly opt-in with DOA3_PROF=1 and returns
+before its per-frame GetTickCount when disabled. Debug view constants are now
+uploaded only when mode/range changes, and non-wireframe color views avoid
+querying/rebinding an unchanged rasterizer. WARP checks cover changing the
+distance range, repeated draws and resource recreation with unchanged settings.
+
+An optional performance_benchmark target in tests/debug_views measures CPU-only
+draw preparation on hardware D3D11, without drawing or GPU timestamp queries.
+Before cleanup, median time for 10,000 preparations was 0.432 ms unchanged
+Normal, 3.346 ms alternating blend/depth/cull states, 0.866 ms vertex colors,
+and 0.992 ms wireframe. After cleanup those medians were 0.222/3.299/0.413/0.626
+ms respectively. The unchanged Normal control also varied, so these are small
+microbenchmark costs, not a claimed in-game FPS improvement. General remaining
+candidates are repeated blend/depth/raster state creation on state changes,
+and lighting/transform CB preparation before the NV2A FF path replaces those
+bindings. Their game-wide impact is unmeasured; no broad renderer rewrite was
+made. The isolated long frame has not been attributed to any of these costs.
+
+Local FOV control (2026-10-10): Escape > Debug > Camera controls exposes a
+15-120 degree vertical FOV slider independent of free-camera movement. The
+existing 00029E30 activation hook temporarily sets camera+D8, rebuilds using
+00027720, activates, and restores the source camera. The original builder
+uses tan(D8 * [250ED0]), where the 3.1 XBE constant is 0.5: D8 is radians.
+This keeps native projection, combined matrices and activation-time culling
+values consistent. FOV-only changes preserve the scripted eye, target and roll.
+Reset resumes the game's current scripted zoom; settings are session-only and
+the override is inactive online. Auxiliary slots retain their FOV while flying.
+The native-hook test covers independent FOV, FOV with free camera, reset,
+limits/invalid values, source-camera and ABI restoration, and online gating.
+
+Local combat diagnostics (2026-10-10): Escape > Debug > Combat diagnostics has
+independent hitbox, hurtbox, and observed strike-frame toggles. The read-only
+0007F1A0 wrapper samples after the native collision pass. 0007F220/0007F270
+test attack spheres (593040, 16-byte entries, 15 per side; radii at 5A2728)
+against body spheres (598C80, 16-byte entries, 16 per side; radii at 5969A0)
+and cylinders (596590, two padded XYZ endpoints per 32-byte entry; radii at
+59CE78). 0007EDE0 rejects projections beyond either endpoint; these are open
+cylinders, not capsules. Type arrays are 5A2638 (attacks, stride 30 per side)
+and 5A2818 (body, stride 32 per side). 5A2618 chooses the 30E404/30E41C stance
+mapping for type lookup; transformed geometry stays in collision order.
+00090FD0, 000910C0 and 00091150 build these world-space volumes from asset
+data. No visual skeleton bounds or guessed radii are used. Live reads with
+Helena/Ayane confirmed populated types, endpoints and world-unit radii.
+
+59CF58 + side*68 is the player state: +2E motion ID, +33 category, +39 strike
+collision enable, +3E contact result. 5A28E4 suppresses further contact after a
+hit; its volumes are amber while the move's enable flag remains set. Frame
+tracking uses 9B28A0 + side*2, incremented/reset by 000B9980. Categories 2/3
+are observed strikes. Duplicate frames are ignored, missing/start-in-progress
+samples marked partial, and a transition into another attack/reaction marked
+interrupted. Recovery is elapsed time since the final observed active frame,
+not a static move-table value, cancel window, or frame advantage. Throw range
+and the boss's separate projectile collision path are outside this viewer.
+
+ImGui draws outlines through the scene using the activated 598C30 combined
+matrix, homogeneous frustum clipping, and the presentation path's centered
+4:3/16:9 rectangle. This also follows independent FOV/free-camera changes.
+The capture leaves guest memory/registers untouched, returns immediately when
+disabled, expires stale data, and is disabled online. Host overlays are outside
+the clean screenshot capture. tests/combat_debug covers timing transitions,
+partial/interrupted/multi-window observations, clipping/invalid floats, both
+collision shape types, mirrored stance indexing, spent/inactive attacks, and
+off/online gating. Release build and the focused tests pass; visual alignment
+in a live fight still needs player confirmation.
+
+Hitbox fill update: strike spheres now use translucent triangle surfaces,
+clipped in homogeneous space before perspective division. Per-triangle fill
+antialiasing is disabled to avoid internal seams. Hurtboxes retain their
+wireframes and draw after the hitbox fills to remain legible at intersections.
+Contact/spent coloring is preserved. Release build passes.
+
+Performance overlay: a collapsed Performance section in Debug toggles a
+top-right host overlay. QPC samples consecutive doa3_ui_render calls at the
+presentation boundary, including host-only netplay hold frames. Metrics are
+therefore explicitly presentation cadence, not guest simulation or GPU time.
+A fixed 240-sample ring supplies a chronological graph, aggregate FPS
+(1000/mean interval), mean, nearest-rank P99 and maximum frame interval.
+Statistics refresh at 4 Hz; sampling/graph update each presentation. Enabling,
+disabling and resetting clear history/timestamps. Disabled mode does no timer,
+sorting or file work. No guest state or existing capture/profiler is changed.
+
+Training recording: Escape > Training is gated by offline modes 7/B; the
+recorder additionally requires solo Sparring, no Exercise/native pause/free
+camera, and a human/CPU pair. Native guard (C58E42), counter-action (C58E1B)
+and counter-hit (C58E43) controls are deliberately not duplicated or modified.
+11980's post-hook runs once per input-fiber iteration, after native maintenance
+and before input history/command decoding. It temporarily routes the CPU side
+through an isolated controller port with the recorded button bindings and raw
+stick axes. 1EF20 supplies native stick filtering and edges; its virtual-port
+history is kept separately. 12B60's post-hook restores routing, controller
+classification, port inputs and bindings after command commit, before the
+fiber yields. 1894B0 clears the three session-only 600-frame recordings.
+Escape, leaving the supported mode, native pause, or free camera stops the
+operation. Tests cover routing/restoration, edges, loop/end/capacity, both
+player sides, native-setting preservation, and mode/online gates. Release
+build and focused tests pass; live dummy playback needs player validation.

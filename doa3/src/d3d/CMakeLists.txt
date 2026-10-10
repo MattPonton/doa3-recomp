@@ -6,6 +6,8 @@ add_library(d3d8_compat STATIC
     d3d8_resources.c
     d3d8_shaders.c
     d3d8_states.c
+    d3d8_debug_views.c
+    d3d8_screenshot.c
     d3d8_combiners.c
     d3d8_vsh.c
 )

@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include "apu_xaudio2.h"
+#include "../game/audio_settings.h"
 
 extern float g_apu_rate_min, g_apu_rate_max;   /* apu_vp.c */
 
@@ -140,6 +141,7 @@ int xa2_submit_samples(const int16_t *samples, int num_samples)
     idx = g_xa2_next_buf;
     copy_samples = (num_samples > XA2_BUF_SAMPLES) ? XA2_BUF_SAMPLES : num_samples;
     memcpy(g_xa2_bufs[idx], samples, copy_samples * XA2_CHANNELS * sizeof(int16_t));
+    audio_apply_volume((int16_t *)g_xa2_bufs[idx], (size_t)copy_samples * XA2_CHANNELS);
 
     memset(&xbuf, 0, sizeof(xbuf));
     xbuf.AudioBytes = copy_samples * XA2_CHANNELS * sizeof(int16_t);
@@ -227,6 +229,7 @@ int xa2_movie_submit(const int16_t *samples, int num_samples, int end_of_stream)
     idx = g_xa2_movie_next_buf;
     memcpy(g_xa2_movie_bufs[idx], samples,
         (size_t)num_samples * XA2_CHANNELS * sizeof(int16_t));
+    audio_apply_volume((int16_t *)g_xa2_movie_bufs[idx], (size_t)num_samples * XA2_CHANNELS);
     memset(&xbuf, 0, sizeof(xbuf));
     xbuf.AudioBytes = num_samples * XA2_CHANNELS * sizeof(int16_t);
     xbuf.pAudioData = (const BYTE *)g_xa2_movie_bufs[idx];

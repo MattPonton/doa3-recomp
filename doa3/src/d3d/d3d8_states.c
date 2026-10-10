@@ -11,6 +11,7 @@
  */
 
 #include "d3d8_internal.h"
+#include "d3d8_debug_views.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -409,6 +410,7 @@ HRESULT d3d8_states_init(void)
 
 void d3d8_states_shutdown(void)
 {
+    d3d8_debug_views_shutdown();
     int i;
     if (g_blend_state)  { ID3D11BlendState_Release(g_blend_state); g_blend_state = NULL; }
     if (g_ds_state)     { ID3D11DepthStencilState_Release(g_ds_state); g_ds_state = NULL; }
@@ -449,4 +451,5 @@ void d3d8_states_apply(void)
         for (s = 0; s < 4; s++)
             d3d8_states_apply_sampler(s);
     }
+    d3d8_debug_views_apply();
 }

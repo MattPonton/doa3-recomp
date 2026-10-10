@@ -1,4 +1,8 @@
 #include "doa3_ui.h"
+#include "combat_overlay.h"
+#include "performance_overlay.h"
+#include "../game/combat_debug.h"
+#include "../game/training_dummy.h"
 
 #include "imgui.h"
 #include "backends/imgui_impl_win32.h"
@@ -12,6 +16,11 @@
 extern "C" {
 #include "pad_mapping.h"
 #include "../game/video_settings.h"
+#include "../game/audio_settings.h"
+#include "../game/debug_settings.h"
+#include "../game/free_camera.h"
+#include "../d3d/d3d8_debug_views.h"
+#include "../d3d/d3d8_screenshot.h"
 #include "../game/log_settings.h"
 #include "../online/netplay_session.h"
 #include "../online/netplay.h"
@@ -37,6 +46,7 @@ namespace {
 
 bool g_ready   = false;
 bool g_visible = false;
+bool g_screenshot_listening = false;
 
 /* Rebind capture state, mirroring MapperPanel's listening_/armed_ pair. */
 int  g_listening = -1;   /* row capturing a binding, or -1 */
@@ -248,6 +258,30 @@ void DrawVideoSection()
         video_set_scale(sc + 1);
 }
 
+/* Audio output settings. */
+
+void DrawAudioSection()
+{
+    switch (ResetSaveRow()) {
+    case 1:
+        audio_set_volume(100);
+        SetStatus("Audio settings reset to defaults");
+        break;
+    case 2:
+        SetStatus(audio_settings_save() ? "Saved doa3_settings.ini"
+                                       : "Could not write doa3_settings.ini");
+        break;
+    }
+
+    ImGui::Separator();
+    int volume = audio_get_volume();
+    if (ImGui::SliderInt("Master volume", &volume, 0, 100, "%d%%",
+                         ImGuiSliderFlags_AlwaysClamp))
+        audio_set_volume(volume);
+    ImGui::TextWrapped("Controls music, voices, sound effects, and movies. "
+                       "Changes apply immediately; choose Save to keep them for next time.");
+}
+
 /* ── General section ──────────────────────────────────────────────────────*/
 
 void DrawGeneralSection()
@@ -457,6 +491,170 @@ void DrawOnlineSection()
     }
 }
 
+void DrawDebugSection()
+{
+    switch (ResetSaveRow()) {
+    case 1:
+        debug_unlock_all_set(0);
+        combat_debug_set_flags(0);
+        ResetPerformanceOverlay();
+        free_camera_set_enabled(0);
+        free_camera_set_speed(300);
+        free_camera_reset_fov();
+        d3d8_debug_views_reset();
+        debug_hide_ui_set(0);
+        debug_screenshot_key_set(VK_F12);
+        g_screenshot_listening = false;
+        SetStatus("Debug settings reset to defaults");
+        break;
+    case 2:
+        SetStatus(debug_settings_save() ? "Saved doa3_settings.ini"
+                                        : "Could not write doa3_settings.ini");
+        break;
+    }
+    ImGui::Separator();
+    DrawCombatDebugMenu();
+    DrawPerformanceDebugMenu();
+    if (ImGui::CollapsingHeader("Vision modes")) {
+        int view = d3d8_debug_view_get();
+        if (ImGui::Combo("Render view", &view, "Normal\0Wireframe\0Vertex colors\0UV checker\0Distance\0"))
+            d3d8_debug_view_set(view);
+        const char *view_help[] = {
+            "Original game rendering.",
+            "Shows triangle edges to inspect meshes and intersecting surfaces.",
+            "Shows vertex lighting/colors without textures or fog.",
+            "Shows the first UV set: red = U, green = V, blue = checker squares.",
+            "Shows distance along the view direction: black is near, white is far."
+        };
+        ImGui::TextWrapped("%s", view_help[d3d8_debug_view_get()]);
+        if (view == D3D8_DEBUG_DISTANCE) {
+            float range = d3d8_debug_distance_get();
+            if (ImGui::SliderFloat("Distance range", &range, 10, 100000, "%.0f", ImGuiSliderFlags_Logarithmic))
+                d3d8_debug_distance_set(range);
+        }
+        bool backfaces = d3d8_debug_backfaces_get() != 0;
+        if (ImGui::Checkbox("Show backfaces", &backfaces)) d3d8_debug_backfaces_set(backfaces);
+        if (ImGui::Button("Restore normal rendering")) d3d8_debug_views_reset();
+        ImGui::TextWrapped("Views apply to depth-tested geometry. Transparency and cutouts may appear solid. "
+                           "Backfaces can only reveal geometry submitted by the game. These options are temporary.");
+        if (d3d8_debug_view_error()[0]) ImGui::TextWrapped("%s", d3d8_debug_view_error());
+    }
+    if (ImGui::CollapsingHeader("Unlockables")) {
+        bool unlock = debug_unlock_all_get() != 0;
+        if (ImGui::Checkbox("Unlock all unlockables", &unlock))
+            debug_unlock_all_set(unlock ? 1 : 0);
+        ImGui::TextWrapped("Unlocks characters, costumes and Theater movies. "
+                           "Re-enter character select or Theater to refresh the list.");
+        ImGui::Spacing();
+        ImGui::TextDisabled("Your earned unlocks and save data are preserved.");
+        ImGui::TextWrapped("Untick to use your normal unlocks. Choose Save to keep "
+                           "this setting for next time.");
+    }
+    if (ImGui::CollapsingHeader("Camera controls")) {
+        float fov = free_camera_fov();
+        if (ImGui::SliderFloat("Field of view", &fov, 15.0f, 120.0f, "%.1f degrees", ImGuiSliderFlags_AlwaysClamp))
+            free_camera_set_fov(fov);
+        if (ImGui::Button("Reset field of view")) free_camera_reset_fov();
+        ImGui::TextWrapped("Vertical field of view. Works with the normal camera or free camera. "
+                           "Temporary and unavailable during online play. Reset follows the game's camera zoom.");
+        ImGui::Separator();
+        bool camera = free_camera_enabled() != 0;
+        if (ImGui::Checkbox("Free camera", &camera)) {
+            if (!free_camera_set_enabled(camera ? 1 : 0))
+                SetStatus("Enter an offline 3D scene before enabling the camera.");
+        }
+        float speed = free_camera_speed();
+        if (ImGui::SliderFloat("Camera speed", &speed, 10.0f, 3000.0f, "%.0f", ImGuiSliderFlags_Logarithmic))
+            free_camera_set_speed(speed);
+        if (ImGui::Button("Reset to game camera")) free_camera_reset();
+        ImGui::TextWrapped("Close this menu to fly. WASD: move; mouse: look; E/Q: up/down. "
+                           "Shift: fast; Ctrl: slow.");
+        ImGui::TextWrapped("Controller: left stick moves, right stick looks, RT/LT moves up/down. "
+                           "LB: fast; RB: slow.");
+        ImGui::TextWrapped("Esc releases the mouse. Untick Free camera to restore the game view. "
+                           "Fighter controls are blocked while flying; the fight keeps running. "
+                           "Camera mode is temporary and unavailable during online play.");
+    }
+    if (ImGui::CollapsingHeader("Screenshots and UI")) {
+        bool hidden = debug_hide_ui_get() != 0;
+        if (ImGui::Checkbox("Hide UI", &hidden)) debug_hide_ui_set(hidden);
+        ImGui::TextWrapped("Hides game screen overlays, including HUD and menus. Some fades may also disappear. "
+                           "Escape always opens these settings so you can restore the UI.");
+        PadBinding key = { PADSRC_KEY, debug_screenshot_key_get() };
+        char name[80];
+        pad_binding_label(key, name, sizeof(name));
+        ImGui::Text("Screenshot hotkey: %s", name);
+        if (ImGui::Button(g_screenshot_listening ? "Press a key (Esc cancels)" : "Assign screenshot hotkey")) {
+            g_screenshot_listening = !g_screenshot_listening;
+            g_listening = -1;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Default: F12")) {
+            debug_screenshot_key_set(VK_F12); g_screenshot_listening = false;
+            SetStatus(debug_screenshot_key_save() ? "Screenshot key saved" : "Key changed; could not save settings");
+        }
+        if (ImGui::Button("Take screenshot")) d3d8_screenshot_request();
+        ImGui::TextWrapped("%s", d3d8_screenshot_status());
+        ImGui::TextWrapped("Captures the game at its render resolution without this settings menu. "
+                           "Use a key that is not assigned to fighter or camera controls. Hotkey changes save automatically.");
+    } else {
+        g_screenshot_listening = false;
+    }
+}
+
+void DrawTrainingSection()
+{
+    static int slot=0;
+    static bool loop=false;
+    TrainingStatus status;
+    training_status(&status);
+    ImGui::TextWrapped("Guard, counter-action and counter-hit settings are available in the game's Sparring pause menu.");
+    ImGui::Separator();
+    if (!training_available()) {
+        ImGui::TextDisabled("Available only in offline Sparring.");
+        return;
+    }
+    ImGui::TextUnformatted("Dummy input recording");
+    ImGui::Combo("Slot", &slot, "1\0" "2\0" "3\0");
+    ImGui::Text("Recorded: %d / %d frames (%.1f seconds)", status.length[slot],
+        TRAINING_MAX_FRAMES, status.length[slot]/60.0f);
+    ImGui::Checkbox("Loop playback", &loop);
+    bool ready=training_can_record()!=0;
+    ImGui::BeginDisabled(!ready);
+    if (ImGui::Button("Record dummy") && training_start(TRAINING_RECORD,slot,0)) {
+        g_visible=false;
+        pad_mapping_set_menu_open(0);
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!status.length[slot]);
+    if (ImGui::Button("Play") && training_start(TRAINING_PLAY,slot,loop)) {
+        g_visible=false;
+        pad_mapping_set_menu_open(0);
+    }
+    ImGui::EndDisabled();
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button("Clear slot")) training_clear(slot);
+    ImGui::TextWrapped("Record temporarily gives you control of the dummy. Press Escape to finish recording or stop playback. Each slot holds up to 10 seconds. Directions replay as recorded; positions are not reset.");
+    ImGui::TextWrapped("Recordings last for the current Sparring session. Recording again replaces the selected slot.");
+    if (!ready)
+        ImGui::TextWrapped("Enter a solo Sparring fight, close the game's pause menu, and turn off Exercise and free camera to record or play.");
+}
+
+void DrawTrainingBanner()
+{
+    TrainingStatus status;
+    training_status(&status);
+    if (status.mode==TRAINING_IDLE) return;
+    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x*.5f,12),ImGuiCond_Always,ImVec2(.5f,0));
+    ImGui::SetNextWindowBgAlpha(.8f);
+    if (ImGui::Begin("##training_recording",nullptr,ImGuiWindowFlags_NoDecoration |
+        ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings))
+        ImGui::Text("%s dummy | Slot %d | %.1fs | Escape: stop",
+            status.mode==TRAINING_RECORD ? "Recording" : "Playing",status.slot+1,status.frame/60.0f);
+    ImGui::End();
+}
+
 void DrawMenu()
 {
     const ImGuiViewport *vp = ImGui::GetMainViewport();
@@ -466,6 +664,7 @@ void DrawMenu()
     ImGui::SetNextWindowSize(ImVec2(560, 460), ImGuiCond_Appearing);
 
     bool open = true;
+    bool debug_visible = false;
     if (ImGui::Begin("Dead or Alive 3", &open, ImGuiWindowFlags_NoCollapse)) {
         if (ImGui::BeginTabBar("##tabs")) {
             if (ImGui::BeginTabItem("Online")) {
@@ -480,15 +679,31 @@ void DrawMenu()
                 DrawVideoSection();
                 ImGui::EndTabItem();
             }
+            if (ImGui::BeginTabItem("Audio")) {
+                DrawAudioSection();
+                ImGui::EndTabItem();
+            }
             if (ImGui::BeginTabItem("General")) {
                 DrawGeneralSection();
                 ImGui::EndTabItem();
             }
+            if (ImGui::BeginTabItem("Debug")) {
+                debug_visible = true;
+                DrawDebugSection();
+                ImGui::EndTabItem();
+            }
+            ImGui::BeginDisabled(!training_available());
+            if (ImGui::BeginTabItem("Training")) {
+                DrawTrainingSection();
+                ImGui::EndTabItem();
+            }
+            ImGui::EndDisabled();
 
             ImGui::EndTabBar();
         }
     }
     ImGui::End();
+    if (!debug_visible || !open) g_screenshot_listening = false;
 
     if (!open) {
         g_visible = false;
@@ -546,20 +761,27 @@ extern "C" int doa3_ui_visible(void) { return g_visible ? 1 : 0; }
 extern "C" void doa3_ui_toggle(void)
 {
     g_visible = !g_visible;
+    if (g_visible) training_stop();
     g_listening = -1;
     g_armed = false;
     g_pending_vk = 0;
+    g_screenshot_listening = false;
     /* Keyboard sources are suppressed while the menu owns the keyboard. */
     pad_mapping_set_menu_open(g_visible ? 1 : 0);
+    if (g_visible) free_camera_release_mouse();
 }
 
 extern "C" int doa3_ui_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
+    if (msg == WM_KILLFOCUS || (msg == WM_ACTIVATEAPP && !wp)) g_screenshot_listening = false;
     /* Escape: cancel a listening row first, otherwise toggle the overlay. It is
      * handled here rather than as a bindable key so the menu can always be
      * closed, whatever the mapping says. */
     if (msg == WM_KEYDOWN && wp == VK_ESCAPE && !(lp & (1 << 30))) {
-        if (g_visible && g_listening >= 0) {
+        if (g_visible && g_screenshot_listening) {
+            g_screenshot_listening = false;
+            SetStatus("Screenshot binding cancelled");
+        } else if (g_visible && g_listening >= 0) {
             g_listening = -1;
             g_armed = false;
             SetStatus("Rebind cancelled");
@@ -567,6 +789,23 @@ extern "C" int doa3_ui_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             doa3_ui_toggle();
         }
         return 1;
+    }
+
+    if ((msg == WM_KEYDOWN && wp != VK_SNAPSHOT && !(lp & (1 << 30))) ||
+        (msg == WM_KEYUP && wp == VK_SNAPSHOT)) {
+        if (g_visible && g_screenshot_listening) {
+            if (debug_screenshot_key_set((int)wp)) {
+                g_screenshot_listening = false;
+                SetStatus(debug_screenshot_key_save() ? "Screenshot key saved" : "Key changed; could not save settings");
+            } else SetStatus("Choose a single key other than Escape or a modifier");
+            return 1;
+        }
+        if (!g_visible && (int)wp == debug_screenshot_key_get() &&
+            !(GetAsyncKeyState(VK_CONTROL) & 0x8000) && !(GetAsyncKeyState(VK_MENU) & 0x8000) &&
+            !(GetAsyncKeyState(VK_LWIN) & 0x8000) && !(GetAsyncKeyState(VK_RWIN) & 0x8000)) {
+            d3d8_screenshot_request();
+            return 1;
+        }
     }
 
     if (!g_ready || !g_visible) return 0;
@@ -595,9 +834,17 @@ extern "C" int doa3_ui_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 
 extern "C" void doa3_ui_render(void)
 {
+    TickPerformanceOverlay();
+    free_camera_tick(d3d8_GetHWND(), g_visible ? 1 : 0);
+    TrainingStatus training;
+    training_status(&training);
+    if (!training_available() && training.mode!=TRAINING_IDLE) {
+        training_stop();
+        training_status(&training);
+    }
     /* Nothing to do on a normal frame unless the menu is open or online play
      * has something to say over the game. */
-    if (!g_visible && !NetplayBannerPending()) return;
+    if (!g_visible && !NetplayBannerPending() && !combat_debug_flags() && !PerformanceOverlayEnabled() && training.mode==TRAINING_IDLE) return;
     if (!g_ready && !doa3_ui_init()) return;
 
     ID3D11DeviceContext *ctx = d3d8_GetD3D11Context();
@@ -617,6 +864,9 @@ extern "C" void doa3_ui_render(void)
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
 
+    DrawCombatDebugOverlay();
+    DrawPerformanceOverlay();
+    DrawTrainingBanner();
     if (g_visible) DrawMenu();
     DrawNetplayBanner();
 

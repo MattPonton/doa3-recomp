@@ -25,11 +25,93 @@
 #include <windows.h>
 #include "online/netplay_session.h"
 #include "online/netplay.h"
+#include "input/xinput_xbox.h"
+#include "../free_camera.h"
+#include "../combat_debug.h"
+#include "../training_dummy.h"
 
 extern uint32_t xbox_HeapAlloc(uint32_t size, uint32_t alignment);
 extern void xbox_fiber_yield(void);
 extern int  xbox_fiber_active(void);
 extern void xbox_fiber_wake(uint32_t event_va);
+
+#if defined(DOA3_XBE_ID_3_1)
+/* The input fiber decodes both players, runs commands, then yields. Keep the
+ * virtual dummy input confined to that interval, including command commit. */
+void sub_00011980_gen(void);
+void sub_00012B60_gen(void);
+void sub_001894B0_gen(void);
+void sub_00011980(void) { sub_00011980_gen(); training_input_begin(); }
+void sub_00012B60(void) { sub_00012B60_gen(); training_input_end(); }
+void sub_001894B0(void) { training_reset(); sub_001894B0_gen(); }
+
+/* Observe the actual collision pass after its existing game logic completes.
+ * The helper never touches guest registers, x87 state, or guest memory. */
+void sub_0007F1A0_gen(void);
+void sub_0007F1A0(void)
+{
+    sub_0007F1A0_gen();
+    combat_debug_capture();
+}
+
+/* FREE_CAMERA_HOOK_BEGIN
+ * 3.1 camera slots: base 4DAE90, stride C80; eye A8, target B8,
+ * view 150, projection 190, combined 1D0. Reuse the game's builder so
+ * its handedness, projection, angle-based culling and reflection globals agree.
+ * Restore the source camera after activation: scripts keep their normal camera
+ * trajectory and disabling free camera resumes it without feeding back our pose.
+ */
+void sub_00027720_gen(void);
+void sub_00029E30_gen(void);
+void sub_00029E30(void)
+{
+    uint32_t camera;
+    float eye[3], target[3], override_eye[3], override_target[3];
+    unsigned char backup[0x210 - 0xA8];
+    if (ebx >= 5) { sub_00029E30_gen(); return; }
+    camera = 0x4DAE90u + ebx * 0xC80u;
+    if (!MEM8(camera + 0xABC)) { sub_00029E30_gen(); return; }
+    for (int i = 0; i < 3; ++i) {
+        eye[i] = MEMF(camera + 0xA8 + 4*i);
+        target[i] = MEMF(camera + 0xB8 + 4*i);
+    }
+    int override_pose = free_camera_view(ebx, eye, target, override_eye, override_target);
+    float original_fov = MEMF(camera + 0xD8);
+    float fov = free_camera_projection_fov(ebx, original_fov);
+    if (!override_pose && memcmp(&fov, &original_fov, sizeof(fov)) == 0) {
+        sub_00029E30_gen();
+        return;
+    }
+    memcpy(backup, (void *)XBOX_PTR(camera + 0xA8), sizeof(backup));
+    if (override_pose) {
+        for (int i = 0; i < 3; ++i) {
+            MEMF(camera + 0xA8 + 4*i) = override_eye[i];
+            MEMF(camera + 0xB8 + 4*i) = override_target[i];
+        }
+        MEMF(camera + 0xDC) = 0; /* No scripted camera roll while flying. */
+    }
+    /* Native builder uses tan(D8 * 0.5); D8 is vertical FOV in radians.
+     * Rebuild projection and culling together, then restore scripted values. */
+    MEMF(camera + 0xD8) = fov;
+    {
+        uint32_t regs[] = {eax, ecx, edx, ebx, esi, edi, esp, g_seh_ebp};
+        double fp[8];
+        int top = g_fp_top;
+        uint16_t cw = g_x87_cw;
+        memcpy(fp, g_fp_stack, sizeof(fp));
+        eax = camera;
+        PUSH32(esp, 0);
+        sub_00027720_gen();
+        eax = regs[0]; ecx = regs[1]; edx = regs[2]; ebx = regs[3];
+        esi = regs[4]; edi = regs[5]; esp = regs[6]; g_seh_ebp = regs[7];
+        memcpy(g_fp_stack, fp, sizeof(fp));
+        g_fp_top = top; g_x87_cw = cw;
+    }
+    sub_00029E30_gen();
+    memcpy((void *)XBOX_PTR(camera + 0xA8), backup, sizeof(backup));
+}
+/* FREE_CAMERA_HOOK_END */
+#endif
 
 /* ======================================================================
  * Shared helpers, carried over from upstream (version-neutral).
@@ -158,7 +240,8 @@ uint64_t doa3_guest_rdtsc(void)
  * one. doa3_fn_profile_tick() (once per presented frame) prints, every 5 s,
  * the functions called most in that window: "[PROF] t=..s va:calls ...".
  * Comparing a window where something works with one where it has stalled
- * shows what stopped running. DOA3_PROF=0 turns the lines off. */
+ * shows what stopped running. Opt in with DOA3_PROF=1; normal gameplay must
+ * not sort counters or flush doa3_prof.txt every five seconds. */
 static struct { uint32_t va; unsigned *cnt; unsigned last, prevd; } s_prof[6000];
 static int s_nprof;
 void doa3_fn_register(uint32_t va, unsigned *count)
@@ -172,11 +255,13 @@ void doa3_fn_profile_tick(void)
 {
     static int s_on = -1, s_dumps;
     static DWORD s_t0, s_last;
-    DWORD now = GetTickCount();
+    DWORD now;
     enum { TOP = 40 };
     int top[TOP], ntop = 0, i, k;
-    if (s_on < 0) { const char *e = getenv("DOA3_PROF"); s_on = !(e && *e == '0'); s_t0 = s_last = now; }
-    if (!s_on || now - s_last < 5000 || s_dumps >= 60) return;
+    if (s_on < 0) { const char *e = getenv("DOA3_PROF"); s_on = e && *e == '1'; s_t0 = s_last = GetTickCount(); }
+    if (!s_on || s_dumps >= 60) return;
+    now = GetTickCount();
+    if (now - s_last < 5000) return;
     s_last = now; s_dumps++;
     for (i = 0; i < s_nprof; i++) {
         unsigned d = *s_prof[i].cnt - s_prof[i].last;
@@ -518,6 +603,9 @@ void doa3_netplay_force_pads(uint32_t mask)
 
 void sub_00211898(void)   /* XInputClose(handle), stdcall ret 4 */
 {
+    XBOX_VIBRATION off = { 0, 0 };
+    uint32_t port = MEM32(esp + 4) - 0x0AD00001u;
+    if (port < XBOX_MAX_CONTROLLERS) xbox_InputSetState(port, &off);
     fprintf(stderr, "[XPP] XInputClose(0x%08X)\n", MEM32(esp + 4));
     eax = 0;
     esp += 8;
@@ -570,9 +658,8 @@ void sub_00211A96(void)   /* XInputGetState(handle, pState) -> 0, ret 8 */
     int16_t lx = 0, ly = 0, rx = 0, ry = 0;
     int i;
     {
-        extern DWORD xbox_InputGetState(DWORD, void *);
         uint8_t raw[32] = {0};
-        if (xbox_InputGetState(port, raw) == 0) {
+        if (xbox_InputGetState(port, (XBOX_INPUT_STATE *)raw) == 0) {
             buttons = *(uint16_t *)(raw + 4);
             memcpy(an, raw + 6, 8);
             lx = *(int16_t *)(raw + 14); ly = *(int16_t *)(raw + 16);
@@ -602,11 +689,23 @@ void sub_00211A96(void)   /* XInputGetState(handle, pState) -> 0, ret 8 */
     esp += 12;
 }
 
-void sub_00211B07(void)   /* XInputSetState(handle, pFeedback) -> 0, ret 8 */
+void sub_00211B07(void)   /* XInputSetState(handle, pFeedback), ret 8 */
 {
+    uint32_t port = MEM32(esp + 4) - 0x0AD00001u;
     uint32_t fb = MEM32(esp + 8);
-    if (fb) MEM32(fb) = 0;        /* XINPUT_FEEDBACK_HEADER.dwStatus: done */
-    eax = 0;
+    {
+        static int trace = -1;
+        static unsigned next_frame;
+        if (trace < 0) trace = getenv("DOA3_RUMBLE_TRACE") != NULL;
+        if (trace && port == 0 && g_doa3_frames_presented >= next_frame) {
+            next_frame = g_doa3_frames_presented + 300;
+            fprintf(stderr, "[RUMBLE-GAME] frame=%u option=%u pending=%u/%u feedback=%u/%u timer=%u\n",
+                    g_doa3_frames_presented, MEM8(0x59D0D6), MEM16(0x9B28B0), MEM16(0x9B28B2),
+                    fb ? MEM16(fb + 0x42) : 0, fb ? MEM16(fb + 0x44) : 0, MEM32(0x73C744));
+            fflush(stderr);
+        }
+    }
+    eax = xbox_InputSetFeedback(port, fb ? (void *)&MEM8(fb) : NULL);
     esp += 12;
 }
 /* mp_UpdatePlayerJoinAndStartInput (0x88910, once per frame). START in the
@@ -1211,6 +1310,40 @@ void sub_0018C9D3(void)          /* SwitchToFiber(handle), stdcall ret 4 */
     if ((h & 0xFFFF0000u) == XFIBER_TAG_4134) xbox_fiber_switch_direct((int)(h & 0xFFFF));
     else xbox_fiber_yield_back();
 }
+#include "game/announcer_policy.h"
+
+/* Filter Survival transitions at the common streamed-voice request entry.
+ * Both direct calls and the game's sound wrappers reach this function. */
+void sub_001C7920_gen(void);
+void sub_001C7920(void)
+{
+    static Doa3AnnouncerState state;
+    static int trace = -1;
+    static unsigned reports;
+    bool suppressed = doa3_announcer_suppress(&state, (uint16_t)eax,
+        MEM8(0x5A2858), MEM8(0x596A74), MEM8(0x59CF58), MEM8(0x59CFC0),
+        MEM16(0x59CF78), MEM16(0x59CFE0));
+    if (trace < 0)
+        trace = GetEnvironmentVariableA("DOA3_ANNOUNCER_TRACE", NULL, 0) != 0;
+    if (trace && reports < 160 && (eax & 0xFFFFu) >= 0x8000u &&
+        (eax & 0xFFFFu) <= 0x800Eu) {
+        extern unsigned g_doa3_frames_presented;
+        ++reports;
+        fprintf(stderr, "[ANNOUNCER] frame=%u clip=%04X mode=%u phase=%u human=%u/%u hp=%u/%u start=%u active=%u end=%u wins=%u/%u bl=%u suppressed=%u\n",
+                g_doa3_frames_presented, eax & 0xFFFFu, MEM8(0x5A2858),
+                MEM8(0x596A74), MEM8(0x59CF58), MEM8(0x59CFC0),
+                MEM16(0x59CF78), MEM16(0x59CFE0), MEM8(0x5A0EC8),
+                MEM8(0x9B3722), MEM8(0x9B379C), MEM8(0x59CFB8),
+                MEM8(0x59D020), LO8(ebx), suppressed ? 1u : 0u);
+        fflush(stderr);
+    }
+    if (suppressed)
+        esp += 4; /* Guest cdecl return: consume only the return address. */
+    else
+        sub_001C7920_gen();
+    if (g_fib_slice_due) xbox_fiber_timeslice();
+}
+
 /* DirectSound effects-image download (0xA5C60; 0x9F640 on 3.0). The audio
  * init sub_000A5DC0 runs DirectSoundCreate, then this (dsstdfx.bin into the
  * DSP), then the CRI middleware setup (sub_001C79F0: ADX threads, the AFS

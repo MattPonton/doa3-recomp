@@ -708,6 +708,8 @@ static HRESULT d3d8_compose_and_present(void)
     ID3D11DeviceContext *ctx = s->d3d11_context;
     HRESULT hr;
     if (!s->swap_chain || !ctx) return E_FAIL;
+    { extern void d3d8_screenshot_capture(ID3D11Texture2D *source);
+      d3d8_screenshot_capture(s->default_tex); }
     d3d8_keep_prev_frame();
 
     swap_resize_if_needed();
@@ -1108,7 +1110,7 @@ typedef struct { ID3D11Texture2D *tex; ID3D11ShaderResourceView *srv; UINT w, h;
 static FbCopy g_fbcopy;      /* the current frame as of the sampling draw */
 static FbCopy g_prevframe;   /* the last presented frame */
 static int    g_prevframe_valid;
-static volatile LONG g_prevframe_want;   /* presents left to keep copying */
+static volatile LONG g_prevframe_want;   /* presents left to prefer the pre-HUD scene */
 
 static int fbcopy_ensure(FbCopy *c)
 {
@@ -1149,7 +1151,8 @@ int d3d8_BindFramebufferCopy(UINT stage)
  * i.e. the last one presented. Omega's after-image effect blends exactly
  * that over the new frame (it samples the other flip buffer: 0xEE8000 while
  * rendering into 0x1050000, and vice versa), so keep a copy of each
- * presented frame while the effect is in use. Before the first copy exists
+ * presented frame even while the effect is idle: a later Sparring reset
+ * must not reuse the image saved by an earlier transition. Before the first copy exists
  * the current frame stands in for it. */
 int d3d8_BindPrevFrame(UINT stage)
 {
@@ -1166,7 +1169,8 @@ int d3d8_BindPrevFrame(UINT stage)
  * which compounded the smear until the fight looked like it was crawling.
  * The pgraph translator calls this right before the first 2D screen-space
  * draw of a frame (HUD, text, fades, the effect's own overlay pass); the
- * present-time copy below only runs for a frame that had no such draw. */
+ * present-time copy below runs when no such snapshot was taken, including
+ * while the effect is idle, so the first capture of a new effect is fresh. */
 static int g_prevframe_snapped;
 
 void d3d8_SnapshotSceneForAfterImage(void)
@@ -1184,8 +1188,11 @@ static void d3d8_keep_prev_frame(void)
 {
     int snapped = g_prevframe_snapped;
     g_prevframe_snapped = 0;            /* next frame takes a fresh snapshot */
-    if (g_prevframe_want <= 0) return;
-    InterlockedDecrement(&g_prevframe_want);
+    if (g_prevframe_want > 0) InterlockedDecrement(&g_prevframe_want);
+    /* Always retain the latest screen. Previously this stopped after 120
+     * presents but left g_prevframe_valid set, so a reset minutes later
+     * sampled an old moment in the fight. The demand window only controls
+     * the pre-HUD capture used by the continuous after-image effect. */
     if (snapped || !fbcopy_ensure(&g_prevframe)) return;
     ID3D11DeviceContext_CopyResource(g_device_state.d3d11_context,
                                      (ID3D11Resource *)g_prevframe.tex,

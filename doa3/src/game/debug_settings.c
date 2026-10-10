@@ -1,0 +1,71 @@
+#include "debug_settings.h"
+#include "video_settings.h"
+#include <windows.h>
+
+static volatile LONG g_unlock_all;
+static int g_hide_ui, g_screenshot_key = VK_F12;
+int debug_hide_ui_get(void) { return g_hide_ui; }
+void debug_hide_ui_set(int enabled) { g_hide_ui = !!enabled; }
+int debug_screenshot_key_get(void) { return g_screenshot_key; }
+int debug_screenshot_key_set(int key)
+{
+    if (key < VK_BACK || key > 0xFE || key == VK_ESCAPE ||
+        key == VK_SHIFT || key == VK_CONTROL || key == VK_MENU ||
+        (key >= VK_LSHIFT && key <= VK_RMENU) || key == VK_LWIN || key == VK_RWIN) return 0;
+    g_screenshot_key = key;
+    return 1;
+}
+int debug_screenshot_key_save(void)
+{
+    char value[16];
+    wsprintfA(value, "%d", g_screenshot_key);
+    return WritePrivateProfileStringA("Debug", "ScreenshotKey", value, doa3_settings_ini_path()) != 0;
+}
+
+int debug_unlock_all_get(void)
+{
+    return (int)InterlockedCompareExchange(&g_unlock_all, 0, 0);
+}
+
+void debug_unlock_all_set(int enabled)
+{
+    InterlockedExchange(&g_unlock_all, enabled != 0);
+}
+
+int debug_settings_load(void)
+{
+    const char *path = doa3_settings_ini_path();
+    debug_unlock_all_set(GetPrivateProfileIntA("Debug", "UnlockAll", 0, path) != 0);
+    g_screenshot_key = VK_F12;
+    debug_screenshot_key_set(GetPrivateProfileIntA("Debug", "ScreenshotKey", VK_F12, path));
+    g_hide_ui = 0;
+    return GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES;
+}
+
+int debug_settings_save(void)
+{
+    int result = WritePrivateProfileStringA("Debug", "UnlockAll",
+        debug_unlock_all_get() ? "1" : "0", doa3_settings_ini_path()) != 0;
+    return debug_screenshot_key_save() && result;
+}
+
+uint8_t doa3_debug_unlock_read8(uint32_t address, uint8_t saved_value)
+{
+    /* DOA3 3.1 costume limits at 0x29C70C, mapped to save indices by
+     * 0x2FF868. Unused model slots retain the save's default count of 2.
+     * Do not invent extra costume numbers: they index real asset tables. */
+    static const uint8_t costume_counts[19] = {
+        4, 3, 3, 3, 3, 5, 3, 3, 3, 3, 4, 3, 2, 3, 3, 4, 2, 3, 3
+    };
+    if (!debug_unlock_all_get()) return saved_value;
+    if (address >= 0x59FB16u && address < 0x59FB29u) {
+        uint8_t count = costume_counts[address - 0x59FB16u];
+        return saved_value > count ? saved_value : count;
+    }
+    /* Ein/access prerequisites, endings in Theater, and its menu gate. */
+    if (address == 0x59FB3Cu || address == 0x59FB3Du ||
+        address == 0x5A0B47u || address == 0x5A0C72u ||
+        (address >= 0x5A0B49u && address < 0x5A0B5Cu))
+        return saved_value ? saved_value : 1;
+    return saved_value;
+}

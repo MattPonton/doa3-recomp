@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.20)
+project(announcer_test C)
+enable_testing()
+add_executable(announcer_test announcer_test.c)
+target_include_directories(announcer_test PRIVATE ../../src/game)
+add_test(NAME announcer COMMAND announcer_test)

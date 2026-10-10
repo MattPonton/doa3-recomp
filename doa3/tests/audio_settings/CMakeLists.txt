@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.20)
+project(audio_settings_test C)
+enable_testing()
+add_executable(audio_settings_test audio_settings_test.c ../../src/game/audio_settings.c)
+target_include_directories(audio_settings_test PRIVATE ../../src/game)
+add_test(NAME audio_settings COMMAND audio_settings_test)

@@ -170,11 +170,12 @@ static uint32_t nv2a_blend_to_d3d(uint32_t nv) {
 #define MAX_IDX 65536
 #define INLINE_VERT_DWORDS 5  /* X, Y, U, V, Color */
 
-/* RwIm2DVertex-compatible output vertex (28 bytes) */
+/* XYZRHW/diffuse/UV0 prefix; UV1 is used by two-texture vertex programs. */
 typedef struct {
     float x, y, z, rhw;
     uint32_t color;
     float u, v;
+    float u1, v1;
 } OutputVertex;
 
 static struct {
@@ -1433,6 +1434,12 @@ static void nv_build_array_vertex(uint32_t index, OutputVertex *v,
             v->color = nv_pack_color(out[NV2A_VP_OUT_D0]);
             v->u = out[NV2A_VP_OUT_T0][0];
             v->v = out[NV2A_VP_OUT_T0][1];
+            v->u1 = out[NV2A_VP_OUT_T1][0];
+            v->v1 = out[NV2A_VP_OUT_T1][1];
+            if (((g_pg.shader_prog >> 5) & 0x1Fu) == 1u) {
+                float q = out[NV2A_VP_OUT_T1][3];
+                if (isfinite(q) && fabsf(q) > 1e-6f) { v->u1 /= q; v->v1 /= q; }
+            }
             /* Stage 0 in 2D-projective mode samples (s/q, t/q). The ice cave's
              * and Azuchi's floors project the mirrored-scene render target
              * onto the floor this way (o[T0] = projected position, q = w);
@@ -1995,7 +2002,7 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, const NvDrawSummary *sum,
  * vertex edits the state code asked for. Same values in the same order as
  * when the edits lived inside nv_apply_draw_state. */
 static void nv_apply_draw_state_cpu(IDirect3DDevice8 *dev, OutputVertex *out,
-                                    uint32_t out_vert_count)
+                                    uint32_t out_vert_count, int direct_combiners)
 {
     NvDrawSummary sum;
     NvPostOps post;
@@ -2015,7 +2022,7 @@ static void nv_apply_draw_state_cpu(IDirect3DDevice8 *dev, OutputVertex *out,
             out[i].v /= post.uv_div_h;
         }
     }
-    if (post.fold) {
+    if (post.fold && !direct_combiners) {
         uint32_t f = post.fold_factor;
         for (i = 0; i < out_vert_count; i++) {
             uint32_t c = out[i].color, r = 0, sh;
@@ -2037,7 +2044,7 @@ static void nv_apply_draw_state_cpu(IDirect3DDevice8 *dev, OutputVertex *out,
  * near plane Zc >= 0 (Sutherland-Hodgman, attributes interpolated in clip
  * space where they are linear), and re-project the pieces. Batches that lie
  * entirely in front are drawn untouched. */
-typedef struct { float X, Y, Z, W; float r, g, b, a; float u, v; } ClipVert;
+typedef struct { float X, Y, Z, W; float r, g, b, a; float u, v, u1, v1; } ClipVert;
 
 static void nv_clip_from_out(const OutputVertex *o, ClipVert *c)
 {
@@ -2045,7 +2052,7 @@ static void nv_clip_from_out(const OutputVertex *o, ClipVert *c)
     c->X = o->x * W; c->Y = o->y * W; c->Z = o->z * W; c->W = W;
     c->a = (float)((o->color >> 24) & 255); c->r = (float)((o->color >> 16) & 255);
     c->g = (float)((o->color >> 8) & 255);  c->b = (float)(o->color & 255);
-    c->u = o->u; c->v = o->v;
+    c->u = o->u; c->v = o->v; c->u1 = o->u1; c->v1 = o->v1;
 }
 
 static void nv_clip_to_out(const ClipVert *c, OutputVertex *o)
@@ -2056,7 +2063,7 @@ static void nv_clip_to_out(const ClipVert *c, OutputVertex *o)
     if (a < 0) a = 0; if (a > 255) a = 255; if (r < 0) r = 0; if (r > 255) r = 255;
     if (g < 0) g = 0; if (g > 255) g = 255; if (b < 0) b = 0; if (b > 255) b = 255;
     o->color = ((uint32_t)a << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
-    o->u = c->u; o->v = c->v;
+    o->u = c->u; o->v = c->v; o->u1 = c->u1; o->v1 = c->v1;
 }
 
 static void nv_clip_lerp(const ClipVert *a, const ClipVert *b, float t, ClipVert *o)
@@ -2482,13 +2489,13 @@ static void nv_apply_point_state(IDirect3DDevice8 *dev, const OutputVertex *out,
     unsigned char saved[sizeof g_pg.tex[0]];
     uint32_t cop, ca1, ca2, aop, aa1, aa2;
     if (!(g_pg.point_smooth && g_pg.tex[3].offset)) {
-        nv_apply_draw_state_cpu(dev, out, out_n);
+        nv_apply_draw_state_cpu(dev, out, out_n, 0);
         return;
     }
     memcpy(saved, &g_pg.tex[0], sizeof saved);
     memcpy(&g_pg.tex[0], &g_pg.tex[3], sizeof saved);
     g_pg.tex[0].enabled = 1;
-    nv_apply_draw_state_cpu(dev, out, out_n);
+    nv_apply_draw_state_cpu(dev, out, out_n, 0);
     memcpy(&g_pg.tex[0], saved, sizeof saved);
     if (g_pg.tss3_valid) {
         cop = nv_xbox_texop((g_pg.tss3_color >> 12) & 0x1F); ca1 = (g_pg.tss3_color >> 6) & 0x3F; ca2 = g_pg.tss3_color & 0x3F;
@@ -2753,7 +2760,7 @@ static int nv_attr_enabled(int slot)
 static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int prim, int is_quads)
 {
     uint32_t n = g_pg.idx_count, i, lo = 0, nv = 0, ni = 0, need_idx;
-    int has_color, has_uv, has_uv1, need_nrm, tex1_gen, lit, all_zero = 1, k;
+    int has_color, has_uv, has_uv1, need_nrm, tex_gen[2], lit, all_zero = 1, k;
     Nv2aFFConstants cb;
     int use_comb = 0;
     uint32_t bound_mask = 0;
@@ -2771,10 +2778,13 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     has_color = nv_attr_enabled(3);
     has_uv    = nv_attr_enabled(9);
     has_uv1   = nv_attr_enabled(10);
-    {   /* Stage-1 texgen: S mode drives it (S/T/R are set together). */
-        uint32_t tg = NVREG(0x03D0);
-        tex1_gen = (tg == 0x8512u) ? 1 : (tg == 0x2402u) ? 2 : (tg == 0x8511u) ? 3 : (tg == 0x2400u) ? 4 : 0;
-        need_nrm = (tex1_gen >= 1 && tex1_gen <= 3) && g_pg.tex[1].enabled;
+    need_nrm = 0;
+    for (k = 0; k < 2; k++) {
+        /* S drives texgen: DOA3 sets S/T/R together. Zack's silver suit
+         * uses stage 0, while most layered environment maps use stage 1. */
+        uint32_t tg = NVREG(0x03C0 + 16 * k);
+        tex_gen[k] = (tg == 0x8512u) ? 1 : (tg == 0x2402u) ? 2 : (tg == 0x8511u) ? 3 : (tg == 0x2400u) ? 4 : 0;
+        need_nrm |= (tex_gen[k] >= 1 && tex_gen[k] <= 3) && g_pg.tex[k].enabled;
     }
     if (!has_color && lit) {
         /* The colour summary (is every colour 0?) needs the lit colours'
@@ -2919,13 +2929,15 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
         cb.fold[2] = (float)(f & 0xFF);         cb.fold[3] = (float)(f >> 24);
     }
 
-    {   /* Stage-1 texture coordinates: texgen, texture matrix (rows c[0x4C..0x4F],
-         * SET_TEXTURE_MATRIX1 = 0x0700), 2D-projective divide. */
+    for (k = 0; k < 2; k++) {
+        /* Each stage has independent texgen, matrix and projection state. */
+        float *mode = k ? cb.tex1_mode : cb.tex0_mode;
+        float (*matrix)[4] = k ? cb.texmat1 : cb.texmat0;
         int r;
-        cb.tex1_mode[0] = (float)tex1_gen;
-        cb.tex1_mode[1] = NVREG(0x0424) ? 1.0f : 0.0f;
-        cb.tex1_mode[2] = (((g_pg.shader_prog >> 5) & 0x1Fu) == 1u) ? 1.0f : 0.0f;
-        for (r = 0; r < 4; r++) { int c; for (c = 0; c < 4; c++) cb.texmat1[r][c] = u2f(NVREG(0x0700 + 16 * r + 4 * c)); }
+        mode[0] = (float)tex_gen[k];
+        mode[1] = NVREG(0x0420 + 4 * k) ? 1.0f : 0.0f;
+        mode[2] = (((g_pg.shader_prog >> (5 * k)) & 0x1Fu) == 1u) ? 1.0f : 0.0f;
+        for (r = 0; r < 4; r++) { int c; for (c = 0; c < 4; c++) matrix[r][c] = u2f(NVREG(0x06C0 + 64 * k + 16 * r + 4 * c)); }
     }
     /* Register combiners: the pixel stage from the NV2A's own combiner
      * registers instead of the D3D8 texture-stage approximation, with the
@@ -3012,6 +3024,7 @@ static void submit_array_draw(void)
     int is_quads = (g_pg.draw_mode == 8);
     int is_points = (g_pg.draw_mode == 1);
     NvBatchCtx ctx;
+    int program_combiners = 0;
 
     if (n < (uint32_t)(is_points ? 1 : 3)) { g_pg.idx_count = 0; return; }
 
@@ -3032,6 +3045,12 @@ static void submit_array_draw(void)
     if (!dev) { g_pg.idx_count = 0; return; }
 
     nv_batch_ctx_init(&ctx);
+    /* Programmed reflections use T1 to mask transparency. The single-stage
+     * approximation exposes their mesh boundaries. Preserve both outputs
+     * and use the guest combiners for programs with two 2D texture stages. */
+    program_combiners = ctx.run_program && !is_points &&
+        g_pg.tex[0].enabled && g_pg.tex[1].enabled &&
+        g_pg.shader_prog == 0x21u;
 
     if (!is_points && nv_gpu_ff_submit(dev, &ctx, prim, is_quads)) {
         {   extern FILE *g_doa3_mtrace;
@@ -3168,7 +3187,7 @@ static void submit_array_draw(void)
     if (is_points)
         nv_apply_point_state(dev, out, out_n);
     else
-        nv_apply_draw_state_cpu(dev, out, out_n);
+        nv_apply_draw_state_cpu(dev, out, out_n, program_combiners);
     g_pg.gtss_valid = 0;
     g_pg.tss3_valid = 0;
     g_pg.tss1_valid = 0;
@@ -3200,12 +3219,26 @@ static void submit_array_draw(void)
     {   DWORD prev_vs = 0;
         int clipped = nv_apply_window_clip();
         HRESULT got = dev->lpVtbl->GetVertexShader(dev, &prev_vs);
+        if (program_combiners) {
+            NV2ACombinerState cs;
+            IDirect3DTexture8 *mask = nv_stage_texture(dev, 1);
+            nv_build_combiner_state(&cs);
+            if (!mask) cs.tex_mode[1] = NV2A_TEXMODE_NONE;
+            dev->lpVtbl->SetTexture(dev, 1, (IDirect3DBaseTexture8 *)mask);
+            nv_apply_tex_address(dev, 1);
+            d3d8_combiners_set_direct(&cs);
+        }
         dev->lpVtbl->SetVertexShader(dev,
-            D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
+            D3DFVF_XYZRHW | D3DFVF_DIFFUSE |
+            (program_combiners ? D3DFVF_TEX2 : D3DFVF_TEX1));
         dev->lpVtbl->BeginScene(dev);
         nv_mtrace_draw("array", out, out_n);
         dev->lpVtbl->DrawPrimitiveUP(dev, (D3DPRIMITIVETYPE)prim,
                                      prim_count, out, sizeof(OutputVertex));
+        if (program_combiners) {
+            d3d8_combiners_set_direct(NULL);
+            dev->lpVtbl->SetTexture(dev, 1, NULL);
+        }
         if (clipped) { extern void d3d8_ResetScissorRect(void); d3d8_ResetScissorRect(); }
         if (got == 0) dev->lpVtbl->SetVertexShader(dev, prev_vs);
     }
@@ -3464,7 +3497,7 @@ static void submit_draw(void)
         return;
     }
 
-    /* Convert inline vertices to OutputVertex (28 bytes) */
+    /* Convert inline vertices to the shared screen-space format. */
     OutputVertex *out = (OutputVertex *)_alloca(out_vert_count * sizeof(OutputVertex));
 
     /* Helper to convert one inline vertex */
@@ -3590,10 +3623,16 @@ static void submit_draw(void)
 
     g_nv_draw_has_uv = (lay_uv >= 0);
     g_nv_draw_inline = 1;
-    nv_apply_draw_state_cpu(dev, out, out_vert_count);
+    nv_apply_draw_state_cpu(dev, out, out_vert_count, 0);
     g_pg.gtss_valid = 0;
     g_pg.tss1_valid = 0;
     g_nv_draw_inline = 0;
+    {
+        extern int debug_hide_ui_get(void);
+        /* Same inline/depth classification as the pre-HUD scene snapshot.
+         * Keep array/depth-tested geometry and offscreen reflection/mask draws. */
+        if (debug_hide_ui_get() && !g_pg.depth_test && !d3d8_OffscreenTargetActive()) return;
+    }
     nv_fit_to_backbuffer(out, out_vert_count, 1);
     /* Begin scene if needed */
     dev->lpVtbl->BeginScene(dev);

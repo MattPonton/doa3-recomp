@@ -29,6 +29,11 @@ set(GAME_SOURCES
     doa3.rc                  # window/taskbar/exe icon
     movie_present.c
     video_settings.c
+    audio_settings.c
+    debug_settings.c
+    free_camera.c
+    combat_debug.c
+    training_dummy.c
     log_settings.c           # log files on/off (Esc menu, doa3_settings.ini)
     xiso_extract.c           # first-run install of the game files from a disc image
     recomp/recomp_manual.c

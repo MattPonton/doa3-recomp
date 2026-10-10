@@ -29,6 +29,11 @@
 #include "ui/doa3_setup.h"
 #include "xiso_extract.h"
 #include "video_settings.h"
+#include "audio_settings.h"
+#include "debug_settings.h"
+#include "free_camera.h"
+#include "d3d/d3d8_screenshot.h"
+#include "input/xinput_xbox.h"
 #include "log_settings.h"
 
 #include "xbe_layout.h"  /* DOA3_ENTRY_POINT and the rest of the version layout */
@@ -45,7 +50,9 @@ static IDirectSound8 *g_dsound;   /* host DirectSound (mirrors burnout3) */
 
 static LRESULT CALLBACK doa3_wndproc(HWND h, UINT m, WPARAM w, LPARAM l)
 {
-    if (m == WM_CLOSE)   { DestroyWindow(h); return 0; }
+    if (free_camera_wndproc(h, m, w, l)) return 1;
+    if (m == WM_ACTIVATEAPP) xbox_InputSetActive(w != 0);
+    if (m == WM_CLOSE)   { xbox_InputStopRumble(); d3d8_screenshot_shutdown(); DestroyWindow(h); return 0; }
     if (m == WM_DESTROY) { PostQuitMessage(0); return 0; }
     /* The Esc overlay gets first refusal on input: it opens/closes itself and,
      * while visible, keeps keyboard and mouse out of the game. */
@@ -90,6 +97,8 @@ static int doa3_init_graphics(void)
     unsigned gw, gh;
 
     video_settings_load();
+    audio_settings_load();
+    debug_settings_load();
     {   /* online play: settings and winsock (no sockets until the user hosts or joins) */
         extern void netplay_init(void);
         netplay_init();
@@ -275,6 +284,42 @@ static void doa3_watchdog_start(void)
     }
 }
 
+/* Opt-in, bounded frame capture for performance investigations. No per-frame
+ * timer/file work in normal runs. Buffered output is flushed every 300 frames. */
+static void doa3_perf_frame(void)
+{
+    static int enabled = -1;
+    static FILE *file;
+    static LARGE_INTEGER frequency, first, previous;
+    static unsigned count;
+    LARGE_INTEGER now;
+    if (enabled < 0) {
+        enabled = getenv("DOA3_PERF_CAPTURE") != NULL;
+        if (enabled) {
+            file = fopen("performance_frames.csv", "w");
+            if (!file) { enabled = 0; return; }
+            setvbuf(file, NULL, _IOFBF, 65536);
+            fputs("seconds,frame_ms,mode,movie,foreground,free_camera\n", file);
+            QueryPerformanceFrequency(&frequency);
+            QueryPerformanceCounter(&first); previous = first;
+        }
+        return;
+    }
+    if (!enabled) return;
+    QueryPerformanceCounter(&now);
+    {
+        extern int doa3_movie_host_owns_screen(void);
+        fprintf(file, "%.6f,%.6f,%u,%d,%d,%d\n",
+            (double)(now.QuadPart-first.QuadPart)/frequency.QuadPart,
+            1000.0*(now.QuadPart-previous.QuadPart)/frequency.QuadPart,
+            MEM32(0x5A2858), doa3_movie_host_owns_screen(),
+            GetForegroundWindow() == g_hwnd, free_camera_enabled());
+    }
+    previous = now;
+    if (++count % 300 == 0) fflush(file);
+    if (count >= 18000) { fclose(file); file = NULL; enabled = 0; }
+}
+
 void doa3_present_frame(void)
 {
     InterlockedIncrement(&g_doa3_heartbeat);
@@ -297,6 +342,7 @@ void doa3_present_frame(void)
     if (g_d3d_device)
         g_d3d_device->lpVtbl->Present(g_d3d_device, NULL, NULL, NULL, NULL);
     if (getenv("DOA3_THROTTLE")) Sleep(15);   /* legacy rig knob */
+    doa3_perf_frame();
 
     /* item 101: presents are vsync-OFF (a blocking Present held the ONE
      * thread hosting every decode fiber at the monitor rate: the loop ran 40
@@ -1250,6 +1296,7 @@ static DWORD WINAPI diag_sampler(LPVOID p)
 static void doa3_atexit(void)
 {
     extern void netplay_shutdown(void);
+    xbox_InputStopRumble();
     fprintf(stderr, "[EXIT] process exiting via exit()/CRT (g_esp=0x%08X)\n", g_esp);
     fflush(stderr);
     netplay_shutdown();   /* tell the other player, close the router port */

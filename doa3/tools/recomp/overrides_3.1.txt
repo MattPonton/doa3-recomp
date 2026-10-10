@@ -1,5 +1,10 @@
 # Guest functions replaced by hand-written code in src/game/recomp/recomp_manual.c
 # (tools.recomp.apply_overrides renames the generated body to sub_X_gen).
+0x00011980  Training recording: provide dummy input before native command decoding
+0x00012B60  Training recording: restore input routing before the input fiber yields
+0x001894B0  Sparring initialization: clear session-only input recordings
+0x00029E30  Camera activation: optional host free camera through native view/projection setup
+0x0007F1A0  Collision pass: read-only hit/hurt volume and observed strike timing capture
 0x001E27C0  CDevice::KickOff (D3D 4134): translate the push buffer, report the GPU caught up
 0x0018C934  XAPI CreateFiber  -> host coroutine (xbox_fiber.c)
 0x0018C9C0  XAPI DeleteFiber
@@ -21,9 +26,10 @@
 0x00211898  XAPI XInputClose
 0x002118A4  XAPI XInputGetCapabilities -> gamepad
 0x00211A96  XAPI XInputGetState -> host pad
-0x00211B07  XAPI XInputSetState (rumble) -> done at once
+0x00211B07  XAPI XInputSetState (rumble) -> host motors, synchronous completion
 0x000D7490  attract movie (mv_op) player: log which pad's aggregate gates the skip
 0x00088910  mp_UpdatePlayerJoinAndStartInput: log START handling in the attract loop
 0x00053EB0  title-attract exit fade (START during mv_op): log its gate
 0x0008A2E0  battle pause trigger (which player asked to pause): log why
 0x001DC8E0  D3DDevice_SetRenderTarget: record offscreen (render-to-texture) surfaces for the translator
+0x001C7920  Streamed voice requests: suppress intermediate Survival KO/Fight; opt-in state trace

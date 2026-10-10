@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.20)
+project(combat_debug_test C)
+enable_testing()
+add_executable(combat_debug_test combat_debug_test.c ../../src/game/combat_debug.c)
+target_include_directories(combat_debug_test PRIVATE ../../src/game ../../src)
+add_test(NAME combat_debug COMMAND combat_debug_test)

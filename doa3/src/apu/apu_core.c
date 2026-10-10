@@ -22,6 +22,7 @@
 #include "apu_state.h"
 #include "apu.h"
 #include "apu_xaudio2.h"
+#include "../game/audio_settings.h"
 #include "fpconv.h"
 
 /* ============================================================
@@ -366,6 +367,7 @@ void mcpx_apu_monitor_frame(MCPXAPUState *d)
     }
 
     /* Submit to waveOut */
+    audio_apply_volume(out, WAVEOUT_BUF_SAMPLES * 2);
     hdr->dwFlags &= ~WHDR_DONE;
     waveOutWrite(g_waveout.hwo, hdr, sizeof(WAVEHDR));
 

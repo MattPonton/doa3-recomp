@@ -16,6 +16,7 @@
 
 #include <stdint.h>
 #include <windows.h>
+#include <xinput.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -105,6 +106,15 @@ DWORD xbox_InputGetState(DWORD dwPort, XBOX_INPUT_STATE *pState);
  * Set controller vibration.
  */
 DWORD xbox_InputSetState(DWORD dwPort, const XBOX_VIBRATION *pVibration);
+
+/* Packed Xbox feedback packet: status at +0, motor speeds at +0x42/+0x44.
+ * Completes synchronously and writes the result back to the packet. */
+DWORD xbox_InputSetFeedback(DWORD dwPort, void *feedback);
+void xbox_InputStopRumble(void);
+void xbox_InputSetActive(BOOL active);
+/* Free camera reads the physical pad while guest input remains neutral. */
+void xbox_InputSetCaptured(BOOL captured);
+DWORD xbox_InputGetRawState(XINPUT_STATE *state);
 
 /**
  * Check if a controller is connected.

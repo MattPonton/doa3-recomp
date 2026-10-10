@@ -5,6 +5,7 @@
 
 #define RECOMP_GENERATED_CODE
 #include "recomp_funcs.h"
+#include "debug_settings.h"
 #include <math.h>
 
 /**
@@ -71445,7 +71446,7 @@ loc_0006541C: ;
     goto loc_00065593;
 
 loc_0006543F: ;
-    SET_LO8(ecx, MEM8(0x5A0B47));
+    SET_LO8(ecx, doa3_debug_unlock_read8(0x5A0B47, MEM8(0x5A0B47)));
     ebx = 0; /* xor self */
     MEM32(esp + 0x4C) = ebx;
     eax = 0x59D2BC;
@@ -71529,7 +71530,7 @@ loc_000654E2: ;
     goto loc_0006557E;
 
 loc_000654F7: ;
-    SET_LO8(ecx, MEM8(0x5A0B47));
+    SET_LO8(ecx, doa3_debug_unlock_read8(0x5A0B47, MEM8(0x5A0B47)));
     ebx = 0; /* xor self */
     MEM32(esp + 0x4C) = ebx;
     eax = 0x59DAC0;
@@ -72391,7 +72392,7 @@ loc_00065EFC: ;
     goto loc_000660A9;
 
 loc_00065F20: ;
-    SET_LO8(edx, MEM8(0x5A0B47));
+    SET_LO8(edx, doa3_debug_unlock_read8(0x5A0B47, MEM8(0x5A0B47)));
     ecx = 0; /* xor self */
     MEM32(esp + 0x14) = ecx;
     eax = 0x59E4A4;
@@ -72492,7 +72493,7 @@ loc_00065FDA: ;
     goto loc_0006608C;
 
 loc_00065FEF: ;
-    SET_LO8(edx, MEM8(0x5A0B47));
+    SET_LO8(edx, doa3_debug_unlock_read8(0x5A0B47, MEM8(0x5A0B47)));
     ecx = 0; /* xor self */
     MEM32(esp + 0x14) = ecx;
     eax = 0x59ED8C;
@@ -74162,7 +74163,7 @@ loc_000676CF: ;
 
 loc_000676DF: ;
     /* cmp MEM8(0x5A0B47), 1 - flags set for next jcc */
-    _fs1 = (uint32_t)(MEM8(0x5A0B47)); /* flag operand kept for a later jcc */
+    _fs1 = (uint32_t)(doa3_debug_unlock_read8(0x5A0B47, MEM8(0x5A0B47))); /* flag operand kept for a later jcc */
     MEM32(esp + 0x50) = esi;
     if (CMP_EQ(LO8(_fs1), 1)) goto loc_00067711; /* je: equal / zero */
 
@@ -74263,7 +74264,7 @@ loc_000677E6: ;
 
 loc_000677EE: ;
     /* cmp MEM8(0x5A0B47), 1 - flags set for next jcc */
-    _fs5 = (uint32_t)(MEM8(0x5A0B47)); /* flag operand kept for a later jcc */
+    _fs5 = (uint32_t)(doa3_debug_unlock_read8(0x5A0B47, MEM8(0x5A0B47))); /* flag operand kept for a later jcc */
     MEM32(esp + 0x54) = 0x13;
     if (CMP_EQ(LO8(_fs5), 1)) goto loc_0006780A; /* je: equal / zero */
 
@@ -142805,7 +142806,7 @@ loc_0007DE5D: ;
 loc_0007DE6D: ;
     ecx = ZX8(MEM8(esp + 0x30));
     edx = ZX8(MEM8(ecx + 0x2FF868));
-    SET_LO8(ecx, MEM8(edx + 0x59FB16));
+    SET_LO8(ecx, doa3_debug_unlock_read8(edx + 0x59FB16, MEM8(edx + 0x59FB16)));
     esp = esp + 8;
     if (CMP_AE(LO8(eax), LO8(ecx))) goto loc_0007DE9B; /* jae: above or equal (unsigned >=) */
 
@@ -142902,7 +142903,7 @@ loc_0007DEE0: ;
     MEM16(esp + 0x18) = LO16(eax);
     PUSH32(esp, ebp);
     MEM8(esp + 0x1E) = LO8(eax);
-    SET_LO8(eax, MEM8(0x5A0B47));
+    SET_LO8(eax, doa3_debug_unlock_read8(0x5A0B47, MEM8(0x5A0B47)));
     /* test LO8(eax), LO8(eax) - flags set for next jcc */
     PUSH32(esp, esi);
     PUSH32(esp, edi);

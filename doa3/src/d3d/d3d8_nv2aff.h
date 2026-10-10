@@ -48,6 +48,8 @@ typedef struct {
     float    light_spec[4][4]; /* per-light specular colour (material already folded in by D3D) */
     float    light_half[4][4]; /* directional lights: eye-space half vector */
     float    spec[4];          /* x: specular power, y: 1 = specular lighting on */
+    float    texmat0[4][4];   /* stage-0 texture matrix, same convention as stage 1 */
+    float    tex0_mode[4];    /* same texgen/matrix/projection controls as tex1_mode */
 } Nv2aFFConstants;
 
 /* d3d8_device.c: upload, bind and draw. `topology` is a D3D11_PRIMITIVE_TOPOLOGY. */

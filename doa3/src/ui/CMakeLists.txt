@@ -5,6 +5,8 @@ set(IMGUI_DIR ${CMAKE_SOURCE_DIR}/third_party/imgui)
 
 add_library(doa3_ui STATIC
     doa3_ui.cpp
+    combat_overlay.cpp
+    performance_overlay.cpp
     doa3_setup.cpp
     ${IMGUI_DIR}/imgui.cpp
     ${IMGUI_DIR}/imgui_draw.cpp
