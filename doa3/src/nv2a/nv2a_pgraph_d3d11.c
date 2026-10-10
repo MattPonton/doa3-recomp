@@ -24,6 +24,7 @@
 #include "../d3d/d3d8_swizzle.h"
 #include "nv2a_vertex_program.h"
 #include "../d3d/d3d8_nv2aff.h"
+#include "../d3d/d3d8_combiners.h"
 extern IDirect3DDevice8 *xbox_GetD3DDevice(void);
 
 /* Global.txd texture lookup */
@@ -2585,6 +2586,90 @@ static void nv_vreuse_build(uint32_t index, uint32_t lo, OutputVertex *out,
  * draws, points and lines, the frame-buffer-sampling (Omega) draws, batches
  * whose vertex colour summary cannot be derived from the inputs, and
  * anything with a failed or non-finite fetch. */
+/* Raw value of every NV097 method last written (index = method >> 2). */
+static uint32_t g_nvreg[0x800];
+#define NVREG(m) g_nvreg[(m) >> 2]
+
+/* NV2A register combiners, decoded straight from the pushbuffer registers
+ * (xemu's psh.c layout). Each input byte: bits 3:0 register, bit 4 alpha
+ * replicate, bits 7:5 mapping. Output words: 3:0 CD dst, 7:4 AB dst,
+ * 11:8 SUM dst, 12 CD dot, 13 AB dot, 14 mux, 17:15 op. */
+static void nv_comb_input(uint32_t b, NV2ACombinerInput *in, int final)
+{
+    uint32_t r = b & 0xFu;
+    if (final && r == 0xEu)      r = NV2A_REG_V1R0_SUM;    /* SPEC_R0_SUM */
+    else if (final && r == 0xFu) r = NV2A_REG_EF_PROD;
+    in->reg = (NV2ACombinerRegister)r;
+    in->alpha_rep = (int)((b >> 4) & 1u);
+    in->mapping = (NV2AInputMapping)((b >> 5) & 7u);
+}
+static void nv_comb_output(uint32_t w, NV2ACombinerOutput *o, int alpha)
+{
+    uint32_t op = (w >> 15) & 7u;
+    o->cd_dst  = (NV2ACombinerRegister)(w & 0xFu);
+    o->ab_dst  = (NV2ACombinerRegister)((w >> 4) & 0xFu);
+    o->sum_dst = (NV2ACombinerRegister)((w >> 8) & 0xFu);
+    o->cd_dot  = alpha ? 0 : (int)((w >> 12) & 1u);
+    o->ab_dot  = alpha ? 0 : (int)((w >> 13) & 1u);
+    o->mux_sum = (int)((w >> 14) & 1u);
+    o->output_map = (op == 6u) ? NV2A_OUT_SHIFTRIGHT_1 : (op <= 4u ? (NV2AOutputMapping)op : NV2A_OUT_IDENTITY);
+}
+static void nv_build_combiner_state(NV2ACombinerState *cs)
+{
+    uint32_t ctl = NVREG(0x1E60), n = ctl & 0xFFu, i, k;
+    memset(cs, 0, sizeof *cs);
+    if (n < 1) n = 1;
+    if (n > 8) n = 8;
+    cs->num_stages = (int)n;
+    for (i = 0; i < n; i++) {
+        uint32_t ci = NVREG(0x0AC0 + 4 * i), ai = NVREG(0x0260 + 4 * i);
+        for (k = 0; k < 4; k++) {
+            nv_comb_input((ci >> (24 - 8 * k)) & 0xFFu, &cs->stages[i].rgb_input[k], 0);
+            nv_comb_input((ai >> (24 - 8 * k)) & 0xFFu, &cs->stages[i].alpha_input[k], 0);
+        }
+        nv_comb_output(NVREG(0x1E40 + 4 * i), &cs->stages[i].rgb_output, 0);
+        nv_comb_output(NVREG(0x0AA0 + 4 * i), &cs->stages[i].alpha_output, 1);
+        /* CONTROL bit 12 / 16: one factor 0 / factor 1 for every stage */
+        cs->c0[i] = NVREG(0x0A60 + 4 * ((ctl & 0x1000u) ? 0 : i));
+        cs->c1[i] = NVREG(0x0A80 + 4 * ((ctl & 0x10000u) ? 0 : i));
+    }
+    {
+        uint32_t w0 = NVREG(0x0288), w1 = NVREG(0x028C);
+        nv_comb_input((w0 >> 24) & 0xFFu, &cs->final_input[0], 1);
+        nv_comb_input((w0 >> 16) & 0xFFu, &cs->final_input[1], 1);
+        nv_comb_input((w0 >>  8) & 0xFFu, &cs->final_input[2], 1);
+        nv_comb_input( w0        & 0xFFu, &cs->final_input[3], 1);
+        nv_comb_input((w1 >> 24) & 0xFFu, &cs->final_input[4], 1);
+        nv_comb_input((w1 >> 16) & 0xFFu, &cs->final_input[5], 1);
+        nv_comb_input((w1 >>  8) & 0xFFu, &cs->final_input[6], 1);
+    }
+    cs->final_c0 = NVREG(0x1E20);
+    cs->final_c1 = NVREG(0x1E24);
+    for (i = 0; i < 4; i++) {
+        uint32_t m = (g_pg.shader_prog >> (5 * i)) & 0x1Fu;
+        cs->tex_mode[i] = (g_pg.tex[i].enabled && m == 1u) ? NV2A_TEXMODE_2D : NV2A_TEXMODE_NONE;
+    }
+}
+
+/* Upload/bind the texture of stage `stage` (1-3) through the stage-0 cache
+ * path: get_dynamic_texture reads tex[0], so swap the stage in and out. */
+static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev);
+static IDirect3DTexture8 *nv_stage_texture(IDirect3DDevice8 *dev, int stage)
+{
+    IDirect3DTexture8 *t;
+    unsigned char save0[sizeof g_pg.tex[0]];
+    IDirect3DTexture8 *sdt = g_pg.dyn_tex;
+    uint32_t so = g_pg.dyn_src_off, sw = g_pg.dyn_w, sh = g_pg.dyn_h, sf = g_pg.dyn_fmt, sl = g_pg.dyn_levels;
+    int sv = g_pg.dyn_src_valid;
+    memcpy(save0, &g_pg.tex[0], sizeof save0);
+    memcpy(&g_pg.tex[0], &g_pg.tex[stage], sizeof save0);
+    t = get_dynamic_texture(dev);
+    memcpy(&g_pg.tex[0], save0, sizeof save0);
+    g_pg.dyn_tex = sdt; g_pg.dyn_src_off = so; g_pg.dyn_w = sw; g_pg.dyn_h = sh;
+    g_pg.dyn_fmt = sf; g_pg.dyn_levels = sl; g_pg.dyn_src_valid = sv;
+    return t;
+}
+
 static Nv2aFFVertex *s_gv;  static uint32_t s_gv_cap;
 static uint16_t     *s_gi;  static uint32_t s_gi_cap;
 static uint16_t     *s_gs;  static uint32_t s_gs_cap;   /* source index -> packed slot */
@@ -2600,8 +2685,10 @@ static int nv_attr_enabled(int slot)
 static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int prim, int is_quads)
 {
     uint32_t n = g_pg.idx_count, i, lo = 0, nv = 0, ni = 0, need_idx;
-    int has_color, has_uv, lit, all_zero = 1, k;
+    int has_color, has_uv, has_uv1, need_nrm, tex1_gen, lit, all_zero = 1, k;
     Nv2aFFConstants cb;
+    int use_comb = 0;
+    uint32_t bound_mask = 0;
     NvDrawSummary sum;
     NvPostOps post;
     static int s_flip = -1;
@@ -2615,6 +2702,12 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     lit       = ctx->lit && nv_attr_enabled(2);
     has_color = nv_attr_enabled(3);
     has_uv    = nv_attr_enabled(9);
+    has_uv1   = nv_attr_enabled(10);
+    {   /* Stage-1 texgen: S mode drives it (S/T/R are set together). */
+        uint32_t tg = NVREG(0x03D0);
+        tex1_gen = (tg == 0x8512u) ? 1 : (tg == 0x2402u) ? 2 : (tg == 0x8511u) ? 3 : (tg == 0x2400u) ? 4 : 0;
+        need_nrm = (tex1_gen >= 1 && tex1_gen <= 3) && g_pg.tex[1].enabled;
+    }
     if (!has_color && lit) {
         /* The colour summary (is every colour 0?) needs the lit colours'
          * alpha to be non-zero to be decidable without lighting on the CPU. */
@@ -2642,8 +2735,10 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
                 g_gpuff_stat[3]++;              /* the CPU path drops such a batch too */
                 return 1;
             }
-            if (lit) { if (!nv_fetch_attr(2, idx, tmp, NULL)) return 0; v->nrm[0] = tmp[0]; v->nrm[1] = tmp[1]; v->nrm[2] = tmp[2]; }
+            if (lit || (need_nrm && nv_attr_enabled(2))) { if (!nv_fetch_attr(2, idx, tmp, NULL)) return 0; v->nrm[0] = tmp[0]; v->nrm[1] = tmp[1]; v->nrm[2] = tmp[2]; }
             else     { v->nrm[0] = v->nrm[1] = v->nrm[2] = 0.0f; }
+            if (has_uv1) { if (!nv_fetch_attr(10, idx, tmp, NULL)) return 0; v->uv1[0] = tmp[0]; v->uv1[1] = tmp[1]; }
+            else         { v->uv1[0] = v->uv1[1] = 0.0f; }
             if (has_color) { if (!nv_fetch_attr(3, idx, tmp, &colour)) return 0; if (colour) all_zero = 0; }
             v->color = colour;
             if (has_uv) { if (!nv_fetch_attr(9, idx, tmp, NULL)) return 0; v->uv[0] = tmp[0]; v->uv[1] = tmp[1]; }
@@ -2747,6 +2842,54 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
         cb.fold[2] = (float)(f & 0xFF);         cb.fold[3] = (float)(f >> 24);
     }
 
+    {   /* Stage-1 texture coordinates: texgen, texture matrix (rows c[0x4C..0x4F],
+         * SET_TEXTURE_MATRIX1 = 0x0700), 2D-projective divide. */
+        int r;
+        cb.tex1_mode[0] = (float)tex1_gen;
+        cb.tex1_mode[1] = NVREG(0x0424) ? 1.0f : 0.0f;
+        cb.tex1_mode[2] = (((g_pg.shader_prog >> 5) & 0x1Fu) == 1u) ? 1.0f : 0.0f;
+        for (r = 0; r < 4; r++) { int c; for (c = 0; c < 4; c++) cb.texmat1[r][c] = u2f(NVREG(0x0700 + 16 * r + 4 * c)); }
+    }
+    /* Register combiners: the pixel stage from the NV2A's own combiner
+     * registers instead of the D3D8 texture-stage approximation, with the
+     * second texture bound when stage 1 is on (character and water env maps,
+     * specular). DOA3_NO_COMBINERS=1 returns to the old single-stage path. */
+    {   static int s_off = -1;
+        if (s_off < 0) { const char *e = getenv("DOA3_NO_COMBINERS"); s_off = (e && *e == '1'); }
+        /* First round: only draws that use a second texture stage (the env
+         * maps), so single-texture draws keep the tuned path for now. */
+        use_comb = !s_off && g_pg.tex[1].enabled && ((g_pg.shader_prog >> 5) & 0x1Fu) != 0u;
+    }
+    {   /* DOA3 DIAG: every distinct combiner configuration seen on this path. */
+        static uint32_t s_seen[64][4]; static int s_n;
+        uint32_t key[4] = { NVREG(0x0AC0) ^ (NVREG(0x0AC4) * 3u) ^ (NVREG(0x0AC8) * 7u), NVREG(0x0260) ^ (NVREG(0x0264) * 3u),
+                            NVREG(0x0288), NVREG(0x028C) ^ (NVREG(0x1E60) << 20) ^ (g_pg.shader_prog << 8) ^ (g_pg.tex[1].enabled << 31) };
+        int q, found = 0;
+        for (q = 0; q < s_n; q++) if (!memcmp(s_seen[q], key, sizeof key)) { found = 1; break; }
+        if (!found && s_n < 64) {
+            memcpy(s_seen[s_n++], key, sizeof key);
+            fprintf(stderr, "[COMB] #%d ctl %X cICW %08X %08X %08X aICW %08X %08X %08X cOCW %X %X %X aOCW %X %X %X final %08X %08X prog %X tex1 %c gen %X matEn %X spec %X lit %d c0 %08X%s\n",
+                    s_n, NVREG(0x1E60), NVREG(0x0AC0), NVREG(0x0AC4), NVREG(0x0AC8), NVREG(0x0260), NVREG(0x0264), NVREG(0x0268),
+                    NVREG(0x1E40), NVREG(0x1E44), NVREG(0x1E48), NVREG(0x0AA0), NVREG(0x0AA4), NVREG(0x0AA8),
+                    NVREG(0x0288), NVREG(0x028C), g_pg.shader_prog, g_pg.tex[1].enabled ? 'E' : '-', NVREG(0x03D0), NVREG(0x0424),
+                    NVREG(0x03B8), lit, NVREG(0x0A60), use_comb ? " [combiner path]" : "");
+        }
+    }
+    if (use_comb) {
+        NV2ACombinerState cs;
+        int st;
+        nv_build_combiner_state(&cs);
+        for (st = 1; st < 4; st++) {
+            IDirect3DTexture8 *t = NULL;
+            if (cs.tex_mode[st] != NV2A_TEXMODE_NONE) t = nv_stage_texture(dev, st);
+            if (!t) { cs.tex_mode[st] = NV2A_TEXMODE_NONE; continue; }
+            dev->lpVtbl->SetTexture(dev, st, (IDirect3DBaseTexture8 *)t);
+            nv_apply_tex_address(dev, st);
+            bound_mask |= 1u << st;
+        }
+        cb.flags &= ~NV2AFF_FLAG_FOLD;     /* the combiner applies its factors itself */
+        d3d8_combiners_set_direct(&cs);
+    }
     {
         int clipped = nv_apply_window_clip();
         dev->lpVtbl->BeginScene(dev);
@@ -2754,6 +2897,12 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
                         (prim == D3DPT_TRIANGLESTRIP) ? 5 /* D3D11 TRIANGLESTRIP */ : 4 /* TRIANGLELIST */,
                         &cb);
         if (clipped) { extern void d3d8_ResetScissorRect(void); d3d8_ResetScissorRect(); }
+    }
+    if (use_comb) {
+        int st;
+        d3d8_combiners_set_direct(NULL);
+        for (st = 1; st < 4; st++)
+            if (bound_mask & (1u << st)) dev->lpVtbl->SetTexture(dev, st, NULL);
     }
     g_gpuff_stat[0]++;
     g_gpuff_stat[2] += nv;
@@ -3714,6 +3863,7 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
         g_pg.stats.methods_ignored++;
         return 0;
     }
+    g_nvreg[method >> 2] = param;     /* raw shadow of every 3D-class register */
     me = &s_mtab[method >> 2];
     f = me->mask;
 

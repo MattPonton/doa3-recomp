@@ -767,3 +767,21 @@ so the reflection landed shifted and doubled. 0.0.67 tracks 0x1E70 and
 divides by q per vertex in that mode (q = 0 when unwritten -> left alone).
 Stage 1 texgen REFLECTION_MAP (0x3D0-0x3D8 = 0x8512) with its texture matrix
 enabled (0x424 = 1) is the character/water env map -- still unimplemented.
+0.0.67: Ice Cave reflection better; occasional vertex explosion there
+(present before 0.0.67, not yet captured). 0.0.68: first NV2A register
+combiner support. The translator keeps a raw shadow of every NV097 register
+(g_nvreg) and decodes the combiners from it (colour/alpha ICW 0x0AC0/0x0260,
+OCW 0x1E40/0x0AA0, final 0x0288/0x028C, control 0x1E60, factors
+0x0A60/0x0A80, final factors 0x1E20/0x1E24, stage modes from 0x1E70) into
+d3d8_combiners' NV2ACombinerState, handed over with
+d3d8_combiners_set_direct for GPU fixed-function draws that enable texture
+stage 1. Stage 1 is uploaded through the stage-0 cache (nv_stage_texture)
+and bound; the NV2A FF vertex shader now generates stage-1 coordinates
+(REFLECTION/SPHERE/NORMAL map, eye position, or texcoord set 1) through the
+stage-1 texture matrix (0x0700, enable 0x0424) and the 2D-projective
+divide. The combiner PS takes the fog factor (FOG.a) from the VS; mux now
+selects CD when R0.a >= 0.5 (was inverted); the final combiner reads its own
+constants. Azuchi character/stage example: stage 0 R0 = T0, stage 1
+R0 = lerp(R0, T1, T1.a), final = fog lerp of (V1 + R0). V1 (FF specular
+lighting) is still 0. [COMB] logs each distinct configuration.
+DOA3_NO_COMBINERS=1 restores the old path.

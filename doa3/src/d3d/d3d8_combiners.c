@@ -386,9 +386,11 @@ static void emit_mapped_input(char *buf, int bufsize, int *off,
 
     /* For per-stage C0/C1, use the stage-indexed constant */
     if (input->reg == NV2A_REG_C0) {
-        snprintf(base_expr, sizeof(base_expr), "c0[%d]", stage_idx);
+        if (stage_idx < 0) snprintf(base_expr, sizeof(base_expr), "fc0");   /* final combiner */
+        else snprintf(base_expr, sizeof(base_expr), "c0[%d]", stage_idx);
     } else if (input->reg == NV2A_REG_C1) {
-        snprintf(base_expr, sizeof(base_expr), "c1[%d]", stage_idx);
+        if (stage_idx < 0) snprintf(base_expr, sizeof(base_expr), "fc1");
+        else snprintf(base_expr, sizeof(base_expr), "c1[%d]", stage_idx);
     } else {
         snprintf(base_expr, sizeof(base_expr), "%s", rn);
     }
@@ -526,6 +528,7 @@ int d3d8_combiners_generate_hlsl(const NV2ACombinerState *state,
     EMIT("    float2 tc1     : TEXCOORD1;\n");
     EMIT("    float2 tc2     : TEXCOORD2;\n");
     EMIT("    float2 tc3     : TEXCOORD3;\n");
+    EMIT("    float  fog     : TEXCOORD4;\n");
     EMIT("};\n\n");
 
     /* ---- Main function ---- */
@@ -536,7 +539,8 @@ int d3d8_combiners_generate_hlsl(const NV2ACombinerState *state,
     EMIT("    float4 r_zero = float4(0, 0, 0, 0);\n");
     EMIT("    float4 r_c0   = c0[0];\n");
     EMIT("    float4 r_c1   = c1[0];\n");
-    EMIT("    float4 r_fog  = fog_color;\n");
+    /* FOG: rgb = fog colour, a = the interpolated fog factor (1 = no fog). */
+    EMIT("    float4 r_fog  = float4(fog_color.rgb, input.fog);\n");
 
     /* Vertex colors: Xbox D3DCOLOR is BGRA in memory, the vertex shader
      * should have already swizzled to RGBA. */
@@ -618,7 +622,7 @@ int d3d8_combiners_generate_hlsl(const NV2ACombinerState *state,
         /* Sum or mux */
         if (rgb_out->mux_sum) {
             /* MUX: select AB if R0.a >= 0.5, else CD */
-            EMIT("        float3 sum_rgb = (r_r0.a >= 0.5) ? ab_rgb : cd_rgb;\n");
+            EMIT("        float3 sum_rgb = (r_r0.a >= 0.5) ? cd_rgb : ab_rgb;\n");
         } else {
             EMIT("        float3 sum_rgb = ab_rgb + cd_rgb;\n");
         }
@@ -666,7 +670,7 @@ int d3d8_combiners_generate_hlsl(const NV2ACombinerState *state,
         EMIT("        float cd_a = c_a * d_a;\n");
 
         if (alpha_out->mux_sum) {
-            EMIT("        float sum_a = (r_r0.a >= 0.5) ? ab_a : cd_a;\n");
+            EMIT("        float sum_a = (r_r0.a >= 0.5) ? cd_a : ab_a;\n");
         } else {
             EMIT("        float sum_a = ab_a + cd_a;\n");
         }
@@ -711,14 +715,14 @@ int d3d8_combiners_generate_hlsl(const NV2ACombinerState *state,
     /* E * F product */
     EMIT("    {\n");
     EMIT("        float4 e_val = float4(");
-    emit_mapped_input(buf, bufsize, &off, &state->final_input[4], ".rgb", state->num_stages - 1);
+    emit_mapped_input(buf, bufsize, &off, &state->final_input[4], ".rgb", -1);
     EMIT(", ");
-    emit_mapped_input(buf, bufsize, &off, &state->final_input[4], ".a", state->num_stages - 1);
+    emit_mapped_input(buf, bufsize, &off, &state->final_input[4], ".a", -1);
     EMIT(");\n");
     EMIT("        float4 f_val = float4(");
-    emit_mapped_input(buf, bufsize, &off, &state->final_input[5], ".rgb", state->num_stages - 1);
+    emit_mapped_input(buf, bufsize, &off, &state->final_input[5], ".rgb", -1);
     EMIT(", ");
-    emit_mapped_input(buf, bufsize, &off, &state->final_input[5], ".a", state->num_stages - 1);
+    emit_mapped_input(buf, bufsize, &off, &state->final_input[5], ".a", -1);
     EMIT(");\n");
     EMIT("        r_ef = e_val * f_val;\n");
     EMIT("    }\n");
@@ -729,7 +733,7 @@ int d3d8_combiners_generate_hlsl(const NV2ACombinerState *state,
     /* Final combiner: result.rgb = D + A*B + (1-A)*C */
     /* Use last stage index for C0/C1 references in final combiner */
     {
-        int fc_stage = state->num_stages > 0 ? state->num_stages - 1 : 0;
+        int fc_stage = -1;   /* final combiner constants are fc0/fc1 */
 
         EMIT("    float4 result;\n");
         EMIT("    {\n");
@@ -979,6 +983,18 @@ void d3d8_combiners_mark_dirty(void)
     g_dirty = TRUE;
 }
 
+/* Direct mode: the pgraph translator hands over a combiner state decoded from
+ * the NV2A combiner registers for the next draw (no D3D8 pixel shader token
+ * involved). Fog is then done by the final combiner itself, so the generic
+ * post-combiner fog blend is switched off. */
+static NV2ACombinerState g_direct_state;
+static BOOL g_direct_on = FALSE;
+void d3d8_combiners_set_direct(const NV2ACombinerState *st)
+{
+    if (st) { memcpy(&g_direct_state, st, sizeof g_direct_state); g_direct_on = TRUE; }
+    else g_direct_on = FALSE;
+}
+
 BOOL d3d8_combiners_prepare_draw(void)
 {
     ID3D11DeviceContext *ctx;
@@ -989,7 +1005,7 @@ BOOL d3d8_combiners_prepare_draw(void)
     int i;
 
     /* Not using combiner shaders - fall back to fixed-function */
-    if (g_ps_token == 0)
+    if (g_ps_token == 0 && !g_direct_on)
         return FALSE;
 
     ctx = d3d8_GetD3D11Context();
@@ -999,13 +1015,13 @@ BOOL d3d8_combiners_prepare_draw(void)
     rs = d3d8_GetRenderStates();
 
     /* Rebuild combiner state from token + render states if dirty */
-    if (g_dirty) {
+    if (!g_direct_on && g_dirty) {
         d3d8_combiners_parse_token(g_ps_token, rs, &g_combiner_state);
         g_dirty = FALSE;
     }
 
     /* Get or compile the pixel shader for this combiner state */
-    ps = d3d8_combiners_get_shader(&g_combiner_state);
+    ps = d3d8_combiners_get_shader(g_direct_on ? &g_direct_state : &g_combiner_state);
     if (!ps) {
         fprintf(stderr, "NV2A combiners: Failed to get shader, "
                 "falling back to FFP\n");
@@ -1025,15 +1041,16 @@ BOOL d3d8_combiners_prepare_draw(void)
     if (SUCCEEDED(hr)) {
         NV2APSConstants *cb = (NV2APSConstants *)mapped.pData;
 
+        const NV2ACombinerState *cs = g_direct_on ? &g_direct_state : &g_combiner_state;
         /* Per-stage constants */
         for (i = 0; i < NV2A_MAX_COMBINER_STAGES; i++) {
-            d3dcolor_to_float4(g_combiner_state.c0[i], cb->c0[i]);
-            d3dcolor_to_float4(g_combiner_state.c1[i], cb->c1[i]);
+            d3dcolor_to_float4(cs->c0[i], cb->c0[i]);
+            d3dcolor_to_float4(cs->c1[i], cb->c1[i]);
         }
 
         /* Final combiner constants */
-        d3dcolor_to_float4(g_combiner_state.final_c0, cb->final_c0);
-        d3dcolor_to_float4(g_combiner_state.final_c1, cb->final_c1);
+        d3dcolor_to_float4(cs->final_c0, cb->final_c0);
+        d3dcolor_to_float4(cs->final_c1, cb->final_c1);
 
         /* Fog color from render state */
         d3dcolor_to_float4(rs[D3DRS_FOGCOLOR], cb->fog_color);
@@ -1042,7 +1059,7 @@ BOOL d3d8_combiners_prepare_draw(void)
         cb->alpha_ref = rs[D3DRS_ALPHAREF] / 255.0f;
         cb->alpha_func = rs[D3DRS_ALPHAFUNC];
         cb->alpha_test_enable = rs[D3DRS_ALPHATESTENABLE] ? 1 : 0;
-        cb->fog_enable = rs[D3DRS_FOGENABLE] ? 1 : 0;
+        cb->fog_enable = (!g_direct_on && rs[D3DRS_FOGENABLE]) ? 1 : 0;
 
         ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource *)g_combiner_cb, 0);
     }

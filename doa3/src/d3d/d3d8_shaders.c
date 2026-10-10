@@ -983,12 +983,15 @@ static const char g_nv2aff_vs_source[] =
     "    uint3  _pad;\n"
     "    float4 FogPlane;\n"
     "    float4 FogParam;\n"
+    "    float4 TexMat1[4];\n"
+    "    float4 Tex1Mode;\n"
     "};\n"
     "struct VS_IN {\n"
     "    float4 pos   : POSITION;\n"
     "    float3 nrm   : NORMAL;\n"
     "    float4 color : COLOR0;\n"
     "    float2 uv    : TEXCOORD0;\n"
+    "    float2 uv1   : TEXCOORD1;\n"
     "};\n"
     "struct VS_OUT {\n"
     "    float4 pos      : SV_POSITION;\n"
@@ -1052,7 +1055,31 @@ static const char g_nv2aff_vs_source[] =
     "    o.diffuse = col;\n"
     "    o.specular = float4(0, 0, 0, 0);\n"
     "    o.tex0 = i.uv;\n"
-    "    o.tex1 = i.uv;\n"
+    "    {\n"                                      /* stage-1 texcoords: texgen, texture matrix, projection */
+    "        float4 t1 = float4(i.uv1, 0, 1);\n"
+    "        uint tg = (uint)Tex1Mode.x;\n"
+    "        if (tg != 0u) {\n"
+    "            float3 Pe, Ne;\n"
+    "            [unroll] for (int k1 = 0; k1 < 3; k1++) {\n"
+    "                Pe[k1] = dot(MV[k1].xyz, i.pos.xyz) + MV[k1].w * i.pos.w;\n"
+    "                Ne[k1] = dot(MV[k1].xyz, i.nrm);\n"
+    "            }\n"
+    "            float nl = sqrt(dot(Ne, Ne));\n"
+    "            if (nl > 1e-12) Ne = Ne / nl;\n"
+    "            float pl = sqrt(dot(Pe, Pe));\n"
+    "            float3 U = (pl > 1e-12) ? Pe / pl : float3(0, 0, -1);\n"
+    "            float3 R = U - 2.0 * dot(Ne, U) * Ne;\n"
+    "            if (tg == 1u)      t1 = float4(R, 1);\n"
+    "            else if (tg == 2u) { float m = 2.0 * sqrt(R.x * R.x + R.y * R.y + (R.z + 1.0) * (R.z + 1.0));\n"
+    "                                 t1 = (m > 1e-12) ? float4(R.x / m + 0.5, R.y / m + 0.5, 0, 1) : float4(0.5, 0.5, 0, 1); }\n"
+    "            else if (tg == 3u) t1 = float4(Ne, 1);\n"
+    "            else               t1 = float4(Pe, 1);\n"
+    "        }\n"
+    "        if (Tex1Mode.y != 0.0)\n"
+    "            t1 = float4(dot(TexMat1[0], t1), dot(TexMat1[1], t1), dot(TexMat1[2], t1), dot(TexMat1[3], t1));\n"
+    "        if (Tex1Mode.z != 0.0 && abs(t1.w) > 1e-6) t1.xy = t1.xy / t1.w;\n"
+    "        o.tex1 = t1.xy;\n"
+    "    }\n"
     "    o.tex2 = i.uv;\n"
     "    o.tex3 = i.uv;\n"
     "    o.fog = 1.0;\n"
@@ -1088,6 +1115,7 @@ long d3d8_Nv2aFF_Init(void)
         { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0 },
         { "COLOR",    0, DXGI_FORMAT_B8G8R8A8_UNORM,     0, 28, D3D11_INPUT_PER_VERTEX_DATA, 0 },
         { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,       0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        { "TEXCOORD", 1, DXGI_FORMAT_R32G32_FLOAT,       0, 40, D3D11_INPUT_PER_VERTEX_DATA, 0 },
     };
 
     hr = D3DCompile(g_nv2aff_vs_source, strlen(g_nv2aff_vs_source), "vs_nv2aff",
@@ -1102,7 +1130,7 @@ long d3d8_Nv2aFF_Init(void)
     hr = ID3D11Device_CreateVertexShader(d3d8_GetD3D11Device(),
         ID3D10Blob_GetBufferPointer(blob), ID3D10Blob_GetBufferSize(blob), NULL, &g_nv2aff_vs);
     if (SUCCEEDED(hr))
-        hr = ID3D11Device_CreateInputLayout(d3d8_GetD3D11Device(), elems, 4,
+        hr = ID3D11Device_CreateInputLayout(d3d8_GetD3D11Device(), elems, 5,
             ID3D10Blob_GetBufferPointer(blob), ID3D10Blob_GetBufferSize(blob), &g_nv2aff_layout);
     ID3D10Blob_Release(blob);
     if (FAILED(hr)) return hr;

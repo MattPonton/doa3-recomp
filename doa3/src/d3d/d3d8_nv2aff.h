@@ -20,6 +20,7 @@ typedef struct {
     float    nrm[3];
     uint32_t color;      /* D3DCOLOR (A8R8G8B8) */
     float    uv[2];
+    float    uv1[2];     /* texcoord set 1 (stage 1 without texgen) */
 } Nv2aFFVertex;
 
 #define NV2AFF_FLAG_LIT          0x01u
@@ -42,6 +43,8 @@ typedef struct {
     uint32_t pad[3];
     float    fog_plane[4];    /* NV097_SET_FOG_PLANE */
     float    fog_param[4];    /* bias, scale, generator (0 spec-a,1 radial,2 planar,3 abs planar,6 fog-x), mode (0 lin,1 exp,2 exp2, +4 abs) */
+    float    texmat1[4][4];   /* stage-1 texture matrix rows (out_j = dot(t, row j)) */
+    float    tex1_mode[4];    /* x: texgen (0 attribute, 1 reflection map, 2 sphere map, 3 normal map, 4 eye pos), y: matrix on, z: projective divide */
 } Nv2aFFConstants;
 
 /* d3d8_device.c: upload, bind and draw. `topology` is a D3D11_PRIMITIVE_TOPOLOGY. */

@@ -317,6 +317,9 @@ int d3d8_combiners_generate_hlsl(const NV2ACombinerState *state,
  */
 ID3D11PixelShader *d3d8_combiners_get_shader(const NV2ACombinerState *state);
 
+/** Use `st` (decoded from NV2A registers) for the next draws; NULL ends it. */
+void d3d8_combiners_set_direct(const NV2ACombinerState *st);
+
 /**
  * Prepare for a draw call using register combiners.
  *
