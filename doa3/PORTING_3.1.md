@@ -717,3 +717,9 @@ the guest sets NV097_SET_LINE_WIDTH (0x0380, 6.3 fixed point, surface
 pixels; 0x10 / 0x20 here = 2 / 4 px of the 1440x960 surface) and D3D11
 lines are always 1 px. 0.0.62 draws inline lines as quads of the guest's
 width scaled to the host target.
+0.0.62: borders thicker, but top/bottom edges overshot the sides (the
+square caps; the guest's segments already overlap at the corners) -- caps
+removed in 0.0.63. Since 0.0.61 the main menu's black header band blinked:
+with the attribute layout its texcoord slot is read, and an untextured
+draw leaves stack garbage there (0x00D02590, 0x05137F5C). Texcoords are now
+zeroed when stage 0 is disabled and sanitised (NaN / huge -> 0) otherwise.

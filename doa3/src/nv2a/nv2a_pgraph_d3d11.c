@@ -2942,6 +2942,10 @@ uint32_t g_dbail_lastic, g_dbail_lastst;
  * far end inside the range instead of turning depth clipping off for the
  * whole device, which would change the 3D path as well. 0.9999 still sorts
  * behind the 3D scene (the portrait sits around z = 0.82). */
+static float nv_sane_uv(float f)
+{
+    return (f == f && f > -1e6f && f < 1e6f) ? f : 0.0f;
+}
 static float nv_clamp_screen_z(float z)
 {
     if (!(z == z)) return 0.0f;            /* NaN */
@@ -3193,8 +3197,11 @@ static void submit_draw(void)
          * and slid as it turned). Honour it, guarded; 2D quads carry 1.0. */ \
         {   float _rw = (lay_pos >= 4) ? u2f(src[_b + 3]) : 1.0f; \
             out[dst_idx].rhw = (_rw > 0.0f && _rw < 1e6f) ? _rw : 1.0f; } \
-        out[dst_idx].u     = (lay_uv >= 0) ? u2f(src[_b + lay_uv]) : 0.0f; \
-        out[dst_idx].v     = (lay_uv >= 0) ? u2f(src[_b + lay_uv + 1]) : 0.0f; \
+        /* Untextured draws leave stack garbage in the texcoord slot (the \
+         * main menu's black header band: 0x00D02590, 0x05137F5C); a NaN or \
+         * huge value there blanked the whole quad on some frames. */ \
+        out[dst_idx].u     = (lay_uv >= 0 && g_pg.tex[0].enabled) ? nv_sane_uv(u2f(src[_b + lay_uv])) : 0.0f; \
+        out[dst_idx].v     = (lay_uv >= 0 && g_pg.tex[0].enabled) ? nv_sane_uv(u2f(src[_b + lay_uv + 1])) : 0.0f; \
         out[dst_idx].color = (lay_col >= 0) ? src[_b + lay_col] : 0xFFFFFFFFu; \
     } while(0)
 
@@ -3359,8 +3366,12 @@ static void submit_draw(void)
                     float ux, uy, nx, ny;
                     OutputVertex c[4];
                     if (len < 1e-4f) { ux = 1.0f; uy = 0.0f; } else { ux = dx / len; uy = dy / len; }
+                    /* No end caps: the guest already overlaps its segments at
+                     * the corners (character select's top edge starts 3.5 px
+                     * left of the side edge); capping them made the top and
+                     * bottom edges overshoot the sides. */
                     nx = -uy * t * 0.5f; ny = ux * t * 0.5f;
-                    ux *= t * 0.5f; uy *= t * 0.5f;          /* square caps close the box corners */
+                    ux = 0.0f; uy = 0.0f;
                     c[0] = *a; c[0].x = a->x - ux + nx; c[0].y = a->y - uy + ny;
                     c[1] = *a; c[1].x = a->x - ux - nx; c[1].y = a->y - uy - ny;
                     c[2] = *b; c[2].x = b->x + ux + nx; c[2].y = b->y + uy + ny;
