@@ -3243,6 +3243,13 @@ static void kx_MmCreateKernelStack(void)
     uint32_t base = xbox_HeapAlloc(size + 0x1000, 0x1000);
     g_eax = base ? base + size + 0x1000 : 0;
 }
+/* AvGet/SetSavedDataAddress: D3D keeps a copy of the displayed frame here
+ * across display-mode changes (PersistDisplay) and frees the previous copy
+ * through AvGetSavedDataAddress before saving a new one. Returning 0 leaked
+ * a 720x480x4 block on every mode change. */
+static uint32_t s_av_saved_data;
+static void kx_AvGetSavedDataAddress(void) { g_eax = s_av_saved_data; }
+static void kx_AvSetSavedDataAddress(void) { s_av_saved_data = STACK_ARG(0); g_eax = 0; }
 /* MmQueryAllocationSize(BaseAddress) */
 static void kx_MmQueryAllocationSize(void) { g_eax = xbox_HeapBlockSize(STACK_ARG(0)); }
 static void kx_MmQueryAddressProtect(void) { g_eax = 0x04; }   /* PAGE_READWRITE */
@@ -3337,10 +3344,10 @@ enum { KX_FUNC = 0, KX_DATA = 1 };
 #define KF(o, bytes, f) { o, bytes, KX_FUNC, f, 0 }
 #define KD(o, ofs)      { o, 0, KX_DATA, NULL, ofs }
 static const KxOrd g_kx_ords[] = {
-    KF(  1,  0, NULL),                          /* AvGetSavedDataAddress */
+    KF(  1,  0, kx_AvGetSavedDataAddress),
     KF(  2, 16, NULL),                          /* AvSendTVEncoderOption */
     KF(  3, 24, bridge_AvSetDisplayMode),
-    KF(  4,  4, NULL),                          /* AvSetSavedDataAddress */
+    KF(  4,  4, kx_AvSetSavedDataAddress),
     KF(  5,  0, NULL),                          /* DbgBreakPoint */
     KF(  8,  0, bridge_DbgPrint),               /* cdecl */
     KF( 14,  4, kx_ExAllocatePool),

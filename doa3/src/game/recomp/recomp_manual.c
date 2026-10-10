@@ -230,7 +230,7 @@ void doa3_fn_profile_tick(void)
 
 volatile int g_doa3_in_pump = 0;
 
-uint32_t g_doa3_offrt_offs[8]; int g_doa3_offrt_n;   /* every texture surface seen */
+uint32_t g_doa3_offrt_offs[64]; int g_doa3_offrt_n;   /* every texture surface seen */
 
 uint32_t g_flg_a, g_flg_b;
 int g_flg_w = 4, g_flg_test;
@@ -329,16 +329,90 @@ static void doa3_port_todo_once(const char *what)
     fprintf(stderr, "[%s] %s: not ported to this XBE yet\n", DOA3_XBE_VERSION, what);
 }
 
-/* Guest display size (the D3D device's back-buffer width/height fields).
- * 3.0 read them from 0x0090F4A8/0x0090F4AC. Returning 0 makes the NV2A
- * translator fall back to SET_SURFACE_CLIP, which is right until 2x2
- * supersampling is enabled at character select.
- * TODO(3.1): locate the fields in this build's device object. */
+#if defined(DOA3_XBE_ID_3_1)
+/* The 4134 D3D device is static at 0x1EB3A0 (g_pDevice 0x1EDE80). Surface
+ * pointers in it: +0x2070 render target, +0x2074 depth, +0x2078 buffer
+ * count, +0x207C back buffer (the 2x2 supersampled one while multisampling),
+ * +0x2080/+0x2084 the display buffers. Surface: +4 Data, +0xC Format,
+ * +0x10 Size (width-1 bits 0-11, height-1 bits 12-23). Device flag +8 bit
+ * 0x4000 = multisampled back buffer, resolved at Swap (sub_001E11A0). */
+#define D3D31_DEV() MEM32(0x001EDE80u)
+
+/* Guest display size: the display buffer's own surface size. On character
+ * select the game turns on 2x2 supersampling and the back buffer becomes
+ * 1440x960, while the 2D overlay keeps arriving in display pixels. */
 int doa3_guest_display_size(unsigned *w, unsigned *h)
 {
-    (void)w; (void)h;
-    return 0;
+    uint32_t dev = D3D31_DEV(), s, sz, dw, dh;
+    if (!dev) return 0;
+    s = MEM32(dev + 0x2080);
+    if (!s) return 0;
+    sz = MEM32(s + 0x10);
+    if (!sz) return 0;
+    dw = (sz & 0xFFFu) + 1; dh = ((sz >> 12) & 0xFFFu) + 1;
+    if (dw < 64u || dw > 4096u || dh < 64u || dh > 4096u) return 0;
+    *w = dw; *h = dh;
+    return 1;
 }
+
+/* While multisampling, Swap points the render target at the display buffer,
+ * binds the supersampled back buffer as texture 0 and draws a filter quad
+ * over the screen. The translator renders the back buffer straight into the
+ * host swap chain, so that quad would sample guest memory nobody wrote (all
+ * black) and cover the frame: character select came out black. This names
+ * the surface such a draw samples so the translator can skip it. */
+uint32_t doa3_aa_resolve_source(void)
+{
+    uint32_t dev = D3D31_DEV(), s;
+    if (!dev || !(MEM32(dev + 8) & 0x4000u)) return 0;
+    s = MEM32(dev + 0x207C);
+    return s ? (MEM32(s + 4) & 0x03FFFFFFu) : 0;
+}
+
+/* D3DDevice_SetRenderTarget(pRenderTarget, pZBuffer), ret 8.
+ * Records every surface the game renders into that is not one of the
+ * device's own back/display buffers (the stage reflection targets), so the
+ * translator sends those to an offscreen host target and later draws that
+ * sample them read it. 3.0's equivalent hook is sub_001B1350. */
+void sub_001DC8E0_gen(void);
+void sub_001DC8E0(void)
+{
+    uint32_t arg = MEM32(esp + 4), dev = D3D31_DEV();
+    sub_001DC8E0_gen();
+    if (!arg && dev) arg = MEM32(dev + 0x2070);
+    if (dev) {
+        /* The device's own buffers are never offscreen targets, even when
+         * their memory once held one (mode changes free and reallocate):
+         * drop their current offsets from the list. */
+        int b, k;
+        for (b = 0; b < 3; b++) {
+            uint32_t fs = MEM32(dev + 0x207C + 4u * (uint32_t)b), fd;
+            if (fs < 0x1000 || fs >= 0x08000000u) continue;
+            fd = MEM32(fs + 4) & 0x03FFFFFFu;
+            for (k = 0; k < g_doa3_offrt_n; k++)
+                if (g_doa3_offrt_offs[k] == fd) {
+                    g_doa3_offrt_offs[k] = g_doa3_offrt_offs[--g_doa3_offrt_n];
+                    k--;
+                }
+        }
+    }
+    if (dev && arg >= 0x1000 && arg < 0x08000000u &&
+        arg != MEM32(dev + 0x207C) && arg != MEM32(dev + 0x2080) && arg != MEM32(dev + 0x2084)) {
+        uint32_t data = MEM32(arg + 4) & 0x03FFFFFFu;
+        int k, seen = 0;
+        for (k = 0; k < g_doa3_offrt_n; k++) if (g_doa3_offrt_offs[k] == data) seen = 1;
+        if (!seen && data && g_doa3_offrt_n < 64) {
+            uint32_t sz = MEM32(arg + 0x10);
+            g_doa3_offrt_offs[g_doa3_offrt_n++] = data;
+            fprintf(stderr, "[RTT] offscreen target #%d: surface %08X data %08X size %ux%u format %08X\n",
+                    g_doa3_offrt_n, arg, data, (sz & 0xFFFu) + 1, ((sz >> 12) & 0xFFFu) + 1, MEM32(arg + 0xC));
+        }
+    }
+}
+#else
+int doa3_guest_display_size(unsigned *w, unsigned *h) { (void)w; (void)h; return 0; }
+uint32_t doa3_aa_resolve_source(void) { return 0; }
+#endif
 
 /* CRI server pump, called from the vblank-wait bridge (kernel_bridge.c).
  * On hardware the ADX/Sofdec servers run from the vsync interrupt; 3.0

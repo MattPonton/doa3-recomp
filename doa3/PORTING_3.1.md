@@ -677,3 +677,21 @@ each page to its slop heap. The new allocator kept the alignment gaps and
 64-byte granules reusable, so a later pool block landed inside that slop and
 overwrote its list links. 0.0.58: page-aligned requests always take whole
 pages, as the console's Mm* allocators do.
+
+Fifty-first run (0.0.58): no more audio loss. [HEAP] still climbed by
+1.35 MB per display-mode change: D3D's PersistDisplay copy of the frame
+(720x480x4) is freed through AvGetSavedDataAddress, which returned 0.
+0.0.59: AvGet/SetSavedDataAddress keep the address.
+Character select (black): it turns on 2x2 supersampling (device flag
++8 & 0x4000). Swap (sub_001E11A0) then targets the display buffer, binds
+the 1440x960 back buffer (dev+0x207C) as texture 0 and draws a filter quad
+over the screen; the translator renders the back buffer straight into the
+host swap chain, so that quad sampled unwritten guest memory and covered
+the frame in black. The translator now skips that quad
+(doa3_aa_resolve_source). doa3_guest_display_size reads the display
+buffer's surface size (dev+0x2080). The SetRenderTarget hook (3.0
+sub_001B1350) is ported as sub_001DC8E0: it records render-to-texture
+surfaces so the translator sends them offscreen; until now 3.1 fell back
+to the pitch rule, which put the 720-pitch reflection targets on the
+screen itself. The device's own buffers are purged from that list so a
+reused address cannot misroute the frame.

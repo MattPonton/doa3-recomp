@@ -26,3 +26,4 @@
 0x00088910  mp_UpdatePlayerJoinAndStartInput: log START handling in the attract loop
 0x00053EB0  title-attract exit fade (START during mv_op): log its gate
 0x0008A2E0  battle pause trigger (which player asked to pause): log why
+0x001DC8E0  D3DDevice_SetRenderTarget: record offscreen (render-to-texture) surfaces for the translator

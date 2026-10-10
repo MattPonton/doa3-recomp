@@ -2262,7 +2262,7 @@ static void nv_sync_render_target(void)
      * surface and then classed the frame buffer itself as offscreen. */
     unsigned pw = (g_pg_surf_pitch & 0xFFFF) / 4;
     unsigned h  = (g_pg.surface_clip_v >> 16) & 0xFFFF;
-    extern uint32_t g_doa3_offrt_offs[8]; extern int g_doa3_offrt_n;
+    extern uint32_t g_doa3_offrt_offs[64]; extern int g_doa3_offrt_n;
     if (pw < 16 || pw > 2048) return;             /* pitch not programmed yet */
     if (g_doa3_offrt_n) {
         /* Colour-offset routing: the SetRenderTarget wrapper records every
@@ -2272,7 +2272,7 @@ static void nv_sync_render_target(void)
          * including both flip buffers, which rotate at Swap without a
          * SetRenderTarget call -- is the swap chain. */
         int k, is_fb = 1;
-        for (k = 0; k < g_doa3_offrt_n; k++) if (g_doa3_offrt_offs[k] == g_pg_surf_coff) is_fb = 0;
+        for (k = 0; k < g_doa3_offrt_n; k++) if ((g_doa3_offrt_offs[k] & 0x03FFFFFFu) == (g_pg_surf_coff & 0x03FFFFFFu)) is_fb = 0;
         if (is_fb) {
             /* remember the flip buffers (see nv_samples_framebuffer) */
             int seen = 0;
@@ -2906,9 +2906,31 @@ static float nv_clamp_screen_z(float z)
     if (z > 0.9999f) return 0.9999f;
     return z;
 }
+/* The multisample resolve at Swap (see doa3_aa_resolve_source): a quad
+ * textured with the supersampled back buffer, drawn onto the display buffer.
+ * Here the back buffer's content already IS the host frame; skip it. */
+static int nv_is_aa_resolve(void)
+{
+    extern uint32_t doa3_aa_resolve_source(void);
+    uint32_t src;
+    if (!g_pg.tex[0].enabled || !g_pg.tex[0].offset || d3d8_OffscreenTargetActive()) return 0;
+    src = doa3_aa_resolve_source();
+    if (!src || ((g_pg.tex[0].offset ^ src) & 0x03FFFFFFu)) return 0;
+    {   static int s_n;
+        if (s_n < 4) { s_n++;
+            fprintf(stderr, "[AA] multisample resolve quad skipped (texture %08X, target %08X)\n",
+                    g_pg.tex[0].offset, g_pg_surf_coff); }
+    }
+    return 1;
+}
 static void submit_draw(void)
 {
     nv_sync_render_target();
+    if (nv_is_aa_resolve()) {
+        g_pg.idx_count = 0;
+        g_pg.inline_count = 0;
+        return;
+    }
     /* Vertex-array draws take precedence: the game issues these with no
      * INLINE_ARRAY data at all, so the inline path below would see an
      * empty buffer and drop them. */
