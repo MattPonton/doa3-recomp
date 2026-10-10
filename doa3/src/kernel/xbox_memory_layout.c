@@ -742,8 +742,13 @@ uint32_t xbox_HeapAlloc(uint32_t size, uint32_t alignment)
     if (size == 0) size = 4096;
     else if (size < 64) size = 64;
     /* Small blocks round to 64 bytes, page-sized ones to a page, so split
-     * remainders stay reusable. */
-    gran = size >= 4096 ? 4096u : 64u;
+     * remainders stay reusable. Page-aligned requests (the Mm* and Nt*
+     * allocators) always cover whole pages, as on the console: DirectSound
+     * relies on that. It asks for 4- and 16-byte blocks with page alignment
+     * and hands the rest of the page to its "slop" heap; with a 64-byte
+     * block the next allocation landed inside that slop, and the slop list
+     * links were overwritten (an endless walk in sub_001F6D91 at boot). */
+    gran = (size >= 4096 || alignment >= 4096) ? 4096u : 64u;
     size = (size + gran - 1) & ~(gran - 1);
 
     /* Best fit over the free list. A block whose start is not aligned can

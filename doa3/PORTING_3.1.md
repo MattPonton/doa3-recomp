@@ -671,3 +671,9 @@ so every DirectSound stream leaked. 0.0.57: ExFreePool frees, the heap
 tracks live blocks in a 64K-entry hash and free blocks in a sorted,
 coalescing list that also hands blocks at the top back to the bump pointer;
 MmQueryAllocationSize answers from it. [HEAP] usage is logged every 10 s.
+0.0.57 hung at boot in sub_001F6D91 (DirectSound slop-heap walk). DSound
+allocates 4- and 16-byte blocks with page alignment and gives the rest of
+each page to its slop heap. The new allocator kept the alignment gaps and
+64-byte granules reusable, so a later pool block landed inside that slop and
+overwrote its list links. 0.0.58: page-aligned requests always take whole
+pages, as the console's Mm* allocators do.
