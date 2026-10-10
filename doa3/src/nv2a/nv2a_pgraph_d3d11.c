@@ -2126,7 +2126,11 @@ static int nv_batch_needs_clip(const OutputVertex *out, uint32_t n)
 {
     uint32_t i;
     for (i = 0; i < n; i++)
-        if (out[i].rhw <= 0.0f || out[i].z < 0.0f) return 1;
+        /* rhw > 100 is W < 0.01: in front of the eye but nearer than the
+         * clipper's epsilon. Those passed unclipped, and divided by their
+         * tiny W they landed far off screen: the long translucent streaks
+         * across the Ice Cave (vertex-program draws, screen-space output). */
+        if (out[i].rhw <= 0.0f || out[i].rhw > 100.0f || out[i].z < 0.0f || !(out[i].rhw == out[i].rhw)) return 1;
     return 0;
 }
 

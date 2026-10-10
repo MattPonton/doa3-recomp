@@ -785,3 +785,10 @@ constants. Azuchi character/stage example: stage 0 R0 = T0, stage 1
 R0 = lerp(R0, T1, T1.a), final = fog lerp of (V1 + R0). V1 (FF specular
 lighting) is still 0. [COMB] logs each distinct configuration.
 DOA3_NO_COMBINERS=1 restores the old path.
+Ice Cave streaks (capture_02270/02307): long translucent triangles across
+the frame. CPU-path batches were only sent through the near-plane clipper
+when a vertex had rhw <= 0 or z < 0; a vertex just in front of the eye
+(0 < W < 0.01, rhw > 100) skipped clipping and its divide by W threw it far
+off screen. 0.0.69 also clips when rhw > 100 or is NaN. [COMB] from 0.0.68
+shows the character configuration really has a third stage, R0 = V0 * R0
+(040C0000), so lighting is applied in the combiner.
