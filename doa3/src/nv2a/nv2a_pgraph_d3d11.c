@@ -995,9 +995,11 @@ void pgraph_d3d11_set_inline_hint(uint32_t nverts, uint32_t declared_dw)
     g_pg.hint_declared_dw = declared_dw;
 }
 
+static int g_pg_cpu_layout_seen;   /* a CPU-side DrawVerticesUP hook supplies layouts (3.0) */
 void pgraph_d3d11_set_vertex_layout(uint32_t stride_dw, int pos_dw,
                                     int uv_off, int color_off)
 {
+    g_pg_cpu_layout_seen = 1;
     if (stride_dw >= 2 && stride_dw <= 16) {
         g_pg.vert_stride = stride_dw;
         g_pg.layout_pos_dw = pos_dw;
@@ -3011,6 +3013,25 @@ static void submit_draw(void)
     int      lay_col = g_pg.layout_color_off;
     int      lay_pos = g_pg.layout_pos_dw;
 
+    /* With no CPU-side layout feed (3.1 has no DrawVerticesUP hook), the
+     * layout in force is a stale default -- 2-dword position, texcoord at
+     * dword 2 -- and the XYZRHW vertices character select pushes had their z
+     * and rhw read as a texcoord and their depth forced to 0. Its window
+     * backing quads (z = 1.0, depth test and write on) then stamped the near
+     * plane over each window and every fighter behind failed the test: three
+     * black panels. Unpack INLINE_ARRAY the way the hardware does, from the
+     * SET_VERTEX_DATA_ARRAY_FORMAT slots. */
+    int attr_layout = 0;
+    if (!g_pg_cpu_layout_seen && g_pg.inline_count) {
+        int a_pos = 2, a_uv = -1, a_col = -1;
+        uint32_t adw = nv_inline_layout_from_attrs(&a_pos, &a_uv, &a_col);
+        if (adw >= 2 && adw <= 16 && (g_pg.inline_count % adw) == 0) {
+            stride = adw; lay_pos = a_pos; lay_uv = a_uv; lay_col = a_col;
+            g_pg.hint_verts = 0;
+            attr_layout = 1;
+        }
+    }
+    if (!attr_layout)
     {   /* The guest's own vertex count, when it gave us one: an exact
          * division beats every other source. */
         uint32_t hv = g_pg.hint_verts;

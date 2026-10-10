@@ -703,3 +703,12 @@ then stencil REPLACE 0xFE), then untextured blended strips with depth off.
 0.0.60 adds per-draw lines (@DRAW: host box, z range, colours, state) to
 the method trace and traces + screenshots one frame two seconds after each
 switch into supersampling (mtrace_aa_N.txt, aa_N.bmp).
+0.0.60 trace (mtrace_aa_04522): the window backing quads (FF0D0D0D) are
+drawn before the fighters with depth test and write on, as XYZRHW at
+z = 1.0 -- but the translator read them with a 2-dword position (stale
+default layout: 3.1 has no DrawVerticesUP hook feeding 0xAC layout
+markers) and wrote depth 0 over each window. 0.0.61: without a CPU layout
+feed, INLINE_ARRAY is unpacked from the SET_VERTEX_DATA_ARRAY_FORMAT slots
+(slot 0 = 4 floats here, slot 3 colour, slot 9 texcoord0), as the hardware
+does. User report: 0.0.59 (SetRenderTarget hook) also improved Azuchi's
+walls.
