@@ -5,7 +5,7 @@
 #define DOA3_VERSION_H
 #define DOA3_VER_MAJOR  0
 #define DOA3_VER_MINOR  0
-#define DOA3_VER_UPDATE 73
+#define DOA3_VER_UPDATE 74
 #define DOA3_VER_BUILD  0
-#define DOA3_VER_STR    "0.0.73"
+#define DOA3_VER_STR    "0.0.74"
 #endif

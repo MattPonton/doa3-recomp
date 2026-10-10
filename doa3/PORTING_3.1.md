@@ -833,3 +833,13 @@ output meter now prints "[XA2] last 2 s: ..." for any window with starved
 buffers (host underrun -> gaps) or clipped samples (mix overflow ->
 crackle), with the min/max voice pitch rate seen in that window (slow
 motion should show rates above 1).
+0.0.73 failed to link: g_doa3_fbsample_seen's definition had landed inside
+nv_mtrace_draw's body (a local), leaving the extern unresolved. 0.0.74
+moves it to file scope (checked with llvm-nm on the objects this time).
+Beach: the shoreline wave overlay fades in and out but its image never
+animates. The texture cache keys palettised textures on the palette
+REGISTER and re-uploads only when a fingerprint of the texel bytes changes,
+so a palette rewritten in place (palette-cycled animation) was never seen.
+The fingerprint now folds in the palette table's bytes, and textures up to
+16 KB are hashed whole (larger ones by 256 samples, was 64) so partial
+in-place rewrites are caught too.
