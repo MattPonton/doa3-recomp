@@ -1,11 +1,70 @@
 /**
  * Dead or Alive 3 - Recompiled code chunk 11
- * Functions: 29 (0x0021743D - 0xE9D2ECA9)
+ * Functions: 32 (0x0021741E - 0xE9D2ECA9)
  */
 
 #define RECOMP_GENERATED_CODE
 #include "recomp_funcs.h"
 #include <math.h>
+
+/**
+ * sub_0021741E
+ * Original: 0x0021741E - 0x00217421 (3 bytes, 1 insns)
+ * CC: cdecl, 0 params, returns int_or_void
+ * Frame: fpo_leaf
+ */
+void sub_0021741E(void)
+{
+
+loc_0021741E: ;
+    esp += 8; return; /* ret 4 */
+
+}
+
+/**
+ * sub_00217421
+ * Original: 0x00217421 - 0x00217440 (31 bytes, 9 insns)
+ * CC: cdecl, 0 params, returns int_or_void
+ * Frame: fpo_leaf
+ */
+void sub_00217421_gen(void)
+{
+    int _flags = 0; /* fallback flag var */
+
+loc_00217421: ;
+    SET_LO16(eax, MEM16(esp + 4));
+    if (CMP_AE(MEM16(0xC6B9C6), LO16(eax))) goto loc_00217433; /* jae: above or equal (unsigned >=) */
+
+loc_0021742F: ;
+    eax = 0; /* xor self */
+    goto loc_0021743D;
+
+loc_00217433: ;
+    MEM16(0xC6B9C6) = MEM16(0xC6B9C6) - LO16(eax);
+    eax = 0; /* xor self */
+    eax++;
+
+loc_0021743D: ;
+    esp += 8; return; /* ret 4 */
+
+}
+
+/**
+ * sub_00217433
+ * Original: 0x00217433 - 0x00217440 (13 bytes, 4 insns)
+ * CC: cdecl, 0 params, returns int_or_void
+ * Frame: fpo_leaf
+ */
+void sub_00217433(void)
+{
+
+loc_00217433: ;
+    MEM16(0xC6B9C6) = MEM16(0xC6B9C6) - LO16(eax);
+    eax = 0; /* xor self */
+    eax++;
+    esp += 8; return; /* ret 4 */
+
+}
 
 /**
  * sub_0021743D

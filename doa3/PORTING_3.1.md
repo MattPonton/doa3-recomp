@@ -649,3 +649,13 @@ so both paths compared the pause-UI byte (0 != 1: "pause"). Joins with
 different setters now evaluate the jcc condition in each predecessor into
 an _fjN boolean the jcc reads (223 sites). No draws were dropped or clipped
 away ([DRAW]), so the missing Azuchi room is never submitted.
+
+Forty-ninth run (0.0.55): first full playthrough. Boot, both movie skips,
+Nine Lives with wall hits and tier drops through to its end, Press Start,
+Story mode (Hayate) through every fight, the boss, the ending movie (skipped),
+"Now Saving" (HDD/E/TDATA/54430001/DOA3SAVE.DAT) and back to Press Start.
+Still open: character select draws black, missing glow/specular/reflection
+effects (title floor lights, torch flames, Christie's sheen, floor
+reflections), the Azuchi top-floor room (never submitted for drawing), no
+fade when a movie is skipped. Two more [ICALL] misses (0x10F6E0, 0xCE050)
+plus one similar entry (0x91AA0: 16-aligned prologue after padding) seeded.
