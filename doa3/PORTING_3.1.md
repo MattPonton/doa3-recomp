@@ -1295,3 +1295,58 @@ deterministic replay or button-to-photon measurements. A subsequent thread
 sample no longer showed the default function trace, and combiner lookup
 dropped from roughly 5% to 1% of wall-time samples. Texture validation is
 the next significant renderer cost, but its animation checks are preserved.
+
+### 0.0.75: four local controller configurations
+
+Escape > Controls now selects Player 1–4, with independent bindings, an
+input-device dropdown (Automatic, None, Keyboard, Controller 1–4), and an
+Xbox controller-type dropdown (Duke, Controller S, Fight Stick). Save writes
+all four players into `[Player1]` through `[Player4]` in `doa3_input.ini`.
+Reset affects only the selected player's bindings. Old unsectioned mapping
+files populate all four mappings to preserve their former shared behavior.
+
+Explicit devices reserve their Windows XInput slot before Automatic ports
+are assigned. Selecting a device already explicitly assigned elsewhere moves
+it to the selected player; no physical pad drives two local ports. Explicit
+slots remain reserved across unplug/reconnect. Windows can renumber XInput
+devices after reconnect/restart, so these are slot assignments, not persistent
+hardware identities. The controller capture listens only to the selected
+player's assigned device. Keyboard may be selected on any port; Player 1's
+Automatic setting retains the legacy bound-key overlay/fallback.
+
+Type changes report original Xbox subtypes 0x01/0x02/0x20 through the guest
+capabilities wrapper, and changed local ports reopen to refresh capabilities.
+Bindings remain intact when type changes. These values describe the emulated
+Xbox device, not Windows XInput's different subtype numbering. Reference:
+https://xboxdevwiki.net/Xbox_Input_Devices
+
+Tests exercise four simultaneous simulated pads, per-player input and packet
+routing, independent bindings, keyboard isolation and menu suppression,
+explicit/automatic assignment, duplicate prevention, disconnection/reconnection,
+rumble shutdown/routing, all three subtypes, persistence, invalid settings,
+and legacy mapping migration. The existing fresh-polling and rumble tests pass.
+
+### 0.0.75: Tao statue polygon offset
+
+A Tao Practice capture showed a blended, depth-writing statue-area pass
+enabling polygon offset with slope -0.5 and bias -2. The translator stored
+those registers but never applied them; the D3D11 rasterizer always used
+zero bias. Successive captures showed speckled changes on the statues even
+with the fighters standing still. This is evidence of a missing separation
+between nearly coplanar surfaces; live confirmation of the fix is pending.
+
+Both CPU and GPU draws now translate the guest solid-polygon offset to the
+D3D11 rasterizer. Disabling it restores zero bias, and independent points
+and lines do not inherit polygon bias. The rasterizer compares its complete
+descriptor so offset changes cannot reuse a stale state. Constant bias is
+converted from the guest D16/D24 range to the host D24 buffer; slope is
+scaled by render height to compensate for increased resolution. A single
+slope factor approximates anisotropic widescreen stretching. Guest point/
+line polygon fill modes remain outside the currently supported solid path.
+
+The standalone `tests/polygon_offset` WARP test extracts the production
+translation and rasterizer code. It renders nearly coplanar surfaces at
+native and 3x resolution, checking positive/negative constant and slope
+bias, Tao's values, and reset on the following draw. It also checks D16
+conversion, non-finite input handling, and primitive/enable gating.
+Reference: https://learn.microsoft.com/en-us/windows/win32/direct3d11/d3d10-graphics-programming-guide-output-merger-stage-depth-bias
