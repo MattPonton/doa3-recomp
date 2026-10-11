@@ -7,10 +7,14 @@ static DWORD connected = (1u << 2) | (1u << 3);
 static DWORD set_result = ERROR_SUCCESS, calls;
 static XINPUT_VIBRATION motors[4];
 static int keyboard;
+static DWORD clock_ms = 100, get_calls[4], packet_number;
+DWORD input_test_clock(void) { return clock_ms; }
 
 DWORD WINAPI XInputGetState(DWORD slot, XINPUT_STATE *state)
 {
     memset(state, 0, sizeof(*state));
+    ++get_calls[slot];
+    state->dwPacketNumber = ++packet_number;
     state->Gamepad.sThumbLX = 12345;
     return (connected & (1u << slot)) ? ERROR_SUCCESS : ERROR_DEVICE_NOT_CONNECTED;
 }
@@ -49,6 +53,24 @@ int main(void)
     packet[0x44] = 0xCD; packet[0x45] = 0xAB;
     memcpy(before, storage, sizeof(storage));
     xbox_InputInit();
+    /* Even during the first second of system uptime, initialization probes
+     * every slot. Repeated enumeration must not resample a connected pad. */
+    for (unsigned i=0; i<4; ++i) CHECK(get_calls[i]==1);
+    for (unsigned i=0; i<1000; ++i) CHECK(xbox_InputHostMask()==3);
+    for (unsigned i=0; i<4; ++i) CHECK(get_calls[i]==1);
+    {
+        XBOX_INPUT_STATE first, second;
+        CHECK(xbox_InputGetState(0,&first)==ERROR_SUCCESS);
+        CHECK(xbox_InputGetState(0,&second)==ERROR_SUCCESS);
+        CHECK(second.dwPacketNumber==first.dwPacketNumber+1);
+        CHECK(get_calls[2]==3); /* Input is fresh even within the same ms. */
+        CHECK(xbox_InputHostMask()==3 && get_calls[2]==3);
+        clock_ms+=249;
+        CHECK(xbox_InputHostMask()==3 && get_calls[2]==3 && get_calls[3]==1);
+        ++clock_ms;
+        CHECK(xbox_InputHostMask()==3 && get_calls[2]==4 && get_calls[3]==2);
+        CHECK(get_calls[0]==1 && get_calls[1]==1);
+    }
     CHECK(xbox_InputHostMask() == 3);
     {
         XBOX_INPUT_STATE guest;
@@ -95,12 +117,17 @@ int main(void)
 
     CHECK(xbox_InputSetFeedback(1, packet) == ERROR_SUCCESS);
     connected = 1u << 3;
+    {
+        XBOX_INPUT_STATE guest;
+        CHECK(xbox_InputGetState(0,&guest)==ERROR_DEVICE_NOT_CONNECTED);
+    }
     CHECK(xbox_InputHostMask() == 1);
     CHECK(motors[3].wLeftMotorSpeed == 0 && motors[3].wRightMotorSpeed == 0);
     CHECK(xbox_InputSetFeedback(0, packet) == ERROR_SUCCESS);
     CHECK(motors[3].wLeftMotorSpeed == 0x1234);
     xbox_InputStopRumble();
     connected = 0;
+    clock_ms+=250; /* Idle discovery also detects an unplug. */
     CHECK(xbox_InputHostMask() == 0);
     keyboard = 1;
     {
@@ -115,6 +142,27 @@ int main(void)
     previous_calls = calls;
     CHECK(xbox_InputSetFeedback(0, packet) == ERROR_SUCCESS);
     CHECK(calls == previous_calls);
-    puts("Rumble packet, motor routing, stop, focus, unplug, and error checks passed.");
+    /* Reconnect is discovered without caching button state or spinning on
+     * empty slots, and free-camera raw reads update disconnect status too. */
+    keyboard=0;
+    connected=1;
+    CHECK(xbox_InputHostMask()==0);
+    clock_ms+=1000;
+    CHECK(xbox_InputHostMask()==1);
+    {
+        XINPUT_STATE raw;
+        CHECK(xbox_InputGetRawState(&raw)==ERROR_SUCCESS);
+        connected=0;
+        CHECK(xbox_InputGetRawState(&raw)==ERROR_DEVICE_NOT_CONNECTED);
+        CHECK(xbox_InputHostMask()==0);
+    }
+    clock_ms=0xFFFFFFF0u;
+    xbox_InputHostMask();
+    DWORD prior=get_calls[0];
+    clock_ms+=32; /* DWORD uptime wrap must preserve the probe interval. */
+    xbox_InputHostMask(); CHECK(get_calls[0]==prior);
+    clock_ms+=1000;
+    xbox_InputHostMask(); CHECK(get_calls[0]==prior+1);
+    puts("Fresh polling, discovery throttle, reconnect, clock wrap, rumble, routing, focus and capture passed.");
     return 0;
 }

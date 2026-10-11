@@ -20,10 +20,10 @@
 
 #pragma comment(lib, "xinput.lib")
 
-/* Host slots. connected is refreshed by every XInputGetState; an EMPTY slot
- * is re-probed only once a second, because XInputGetState on a disconnected
- * index is slow enough that polling four empty slots per frame stalls. */
-static struct { BOOL connected; DWORD last_probe; } s_slot[XBOX_MAX_CONTROLLERS];
+/* Guest reads always fetch fresh input. Device discovery can reuse connection
+ * information from those reads instead of polling the same pad a second time.
+ * Idle connected slots are checked every 250ms, empty slots every second. */
+static struct { BOOL connected, probed; DWORD last_probe; } s_slot[XBOX_MAX_CONTROLLERS];
 /* Guest port -> host slot, -1 = no controller. */
 static int   s_port_slot[XBOX_MAX_CONTROLLERS] = { -1, -1, -1, -1 };
 static DWORD s_kb_packet;
@@ -57,11 +57,22 @@ static void probe_slots(void)
     DWORD i;
     for (i = 0; i < XBOX_MAX_CONTROLLERS; i++) {
         XINPUT_STATE st;
-        if (!s_slot[i].connected && (now - s_slot[i].last_probe) < 1000)
+        DWORD interval = s_slot[i].connected ? 250 : 1000;
+        if (s_slot[i].probed && (now - s_slot[i].last_probe) < interval)
             continue;
+        s_slot[i].probed = TRUE;
         s_slot[i].last_probe = now;
         s_slot[i].connected = (XInputGetState(i, &st) == ERROR_SUCCESS);
     }
+}
+
+static DWORD read_slot(int slot, XINPUT_STATE *state)
+{
+    DWORD result = XInputGetState((DWORD)slot, state);
+    s_slot[slot].connected = result == ERROR_SUCCESS;
+    s_slot[slot].probed = TRUE;
+    s_slot[slot].last_probe = GetTickCount();
+    return result;
 }
 
 static void rebuild_map(void)
@@ -111,7 +122,9 @@ DWORD xbox_InputGetRawState(XINPUT_STATE *state)
     rebuild_map();
     memset(state, 0, sizeof(*state));
     if (!s_active || s_port_slot[0] < 0) return ERROR_DEVICE_NOT_CONNECTED;
-    return XInputGetState((DWORD)s_port_slot[0], state);
+    DWORD result = read_slot(s_port_slot[0], state);
+    if (result != ERROR_SUCCESS) rebuild_map();
+    return result;
 }
 
 DWORD xbox_InputGetState(DWORD dwPort, XBOX_INPUT_STATE *pState)
@@ -124,7 +137,7 @@ DWORD xbox_InputGetState(DWORD dwPort, XBOX_INPUT_STATE *pState)
     }
 
     slot = s_port_slot[dwPort];
-    if (slot >= 0 && XInputGetState((DWORD)slot, &xi_state) == ERROR_SUCCESS) {
+    if (slot >= 0 && read_slot(slot, &xi_state) == ERROR_SUCCESS) {
         memset(pState, 0, sizeof(XBOX_INPUT_STATE));
         pState->dwPacketNumber = xi_state.dwPacketNumber;
         pad_mapping_apply_port(&xi_state, &pState->Gamepad, dwPort == 0);
@@ -134,8 +147,6 @@ DWORD xbox_InputGetState(DWORD dwPort, XBOX_INPUT_STATE *pState)
     if (slot >= 0) {
         /* Unplugged since the last poll: drop it now, XGetDeviceChanges
          * reports the removal on its next call. */
-        s_slot[slot].connected = FALSE;
-        s_slot[slot].last_probe = GetTickCount();
         rebuild_map();
     }
 

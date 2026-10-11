@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.20)
+project(presentation_test C)
+enable_testing()
+add_executable(presentation_test presentation_test.c ../../src/d3d/d3d8_presentation.c)
+target_include_directories(presentation_test PRIVATE ../../src/d3d)
+target_link_libraries(presentation_test PRIVATE d3d11 dxgi dxguid user32)
+add_test(NAME presentation COMMAND presentation_test)

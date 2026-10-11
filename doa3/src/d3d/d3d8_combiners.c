@@ -81,19 +81,23 @@ static uint32_t g_frame_counter = 0;
 /* ================================================================
  * Hashing
  *
- * FNV-1a over the combiner state structure. This is fast enough
- * for our purposes and produces good distribution.
+ * Word-wise FNV-style hash over the canonical state. These keys consist
+ * of 32-bit fields; byte-wise hashing imposed four dependent multiplies
+ * per field on every draw. Equality still checks every canonical byte.
  * ================================================================ */
 
-static uint32_t fnv1a_hash(const void *data, size_t len)
+static uint32_t combiner_key_hash(const void *data, size_t len)
 {
     const uint8_t *p = (const uint8_t *)data;
     uint32_t h = 0x811C9DC5u;
     size_t i;
-    for (i = 0; i < len; i++) {
-        h ^= p[i];
+    for (i = 0; i + 4 <= len; i += 4) {
+        uint32_t word;
+        memcpy(&word, p + i, sizeof word);
+        h ^= word;
         h *= 0x01000193u;
     }
+    for (; i < len; i++) h = (h ^ p[i]) * 0x01000193u;
     return h;
 }
 
@@ -110,22 +114,6 @@ static void combiner_state_key(const NV2ACombinerState *s, NV2ACombinerState *k)
     memset(k->c1, 0, sizeof k->c1);
     k->final_c0 = 0;
     k->final_c1 = 0;
-}
-
-static uint32_t combiner_state_hash(const NV2ACombinerState *state)
-{
-    NV2ACombinerState k;
-    combiner_state_key(state, &k);
-    return fnv1a_hash(&k, sizeof(NV2ACombinerState));
-}
-
-static BOOL combiner_state_equal(const NV2ACombinerState *a,
-                                 const NV2ACombinerState *b)
-{
-    NV2ACombinerState ka, kb;
-    combiner_state_key(a, &ka);
-    combiner_state_key(b, &kb);
-    return memcmp(&ka, &kb, sizeof(NV2ACombinerState)) == 0;
 }
 
 /* ================================================================
@@ -866,9 +854,13 @@ static ID3D11PixelShader *compile_combiner_shader(const NV2ACombinerState *state
 
 ID3D11PixelShader *d3d8_combiners_get_shader(const NV2ACombinerState *state)
 {
-    uint32_t hash = combiner_state_hash(state);
-    uint32_t idx = hash & (COMBINER_CACHE_SIZE - 1);
+    NV2ACombinerState key;
+    uint32_t hash, idx;
     int probe;
+
+    combiner_state_key(state, &key);
+    hash = combiner_key_hash(&key, sizeof key);
+    idx = hash & (COMBINER_CACHE_SIZE - 1);
 
     /* Linear probe lookup */
     for (probe = 0; probe < COMBINER_CACHE_SIZE; probe++) {
@@ -882,13 +874,13 @@ ID3D11PixelShader *d3d8_combiners_get_shader(const NV2ACombinerState *state)
 
             entry->in_use = TRUE;
             entry->hash = hash;
-            memcpy(&entry->state, state, sizeof(NV2ACombinerState));
+            memcpy(&entry->state, &key, sizeof key);
             entry->shader = ps;
             entry->last_used_frame = g_frame_counter;
             return ps;
         }
 
-        if (entry->hash == hash && combiner_state_equal(&entry->state, state)) {
+        if (entry->hash == hash && memcmp(&entry->state, &key, sizeof key) == 0) {
             /* Cache hit */
             entry->last_used_frame = g_frame_counter;
             return entry->shader;
@@ -913,15 +905,14 @@ ID3D11PixelShader *d3d8_combiners_get_shader(const NV2ACombinerState *state)
         }
 
         entry = &g_cache[lru_slot];
+        ps = compile_combiner_shader(state);
+        if (!ps) return NULL;
         if (entry->shader) {
             ID3D11PixelShader_Release(entry->shader);
         }
 
-        ps = compile_combiner_shader(state);
-        if (!ps) return NULL;
-
         entry->hash = hash;
-        memcpy(&entry->state, state, sizeof(NV2ACombinerState));
+        memcpy(&entry->state, &key, sizeof key);
         entry->shader = ps;
         entry->last_used_frame = g_frame_counter;
         return ps;

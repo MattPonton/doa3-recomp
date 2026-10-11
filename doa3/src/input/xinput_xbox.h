@@ -91,8 +91,8 @@ void xbox_InputInit(void);
 
 /**
  * Bitmask of guest ports that currently have a device (bit n = port n).
- * Re-probes empty host slots at most once a second, so it is cheap enough to
- * call every frame from XGetDeviceChanges.
+ * Reuses connection status from fresh input reads. Idle connected slots are
+ * checked every 250ms; empty slots at most once a second.
  */
 DWORD xbox_InputHostMask(void);
 

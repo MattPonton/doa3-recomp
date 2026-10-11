@@ -65,6 +65,7 @@ void sub_000B7180(void)
 void sub_000B9980(void)
 {
     sub_000B9980_gen();
+    { extern void doa3_perf_logic_sample(void); doa3_perf_logic_sample(); }
     combat_debug_logic_tick();
 }
 
@@ -691,6 +692,8 @@ void sub_00211A96(void)   /* XInputGetState(handle, pState) -> 0, ret 8 */
     {
         uint8_t raw[32] = {0};
         if (xbox_InputGetState(port, (XBOX_INPUT_STATE *)raw) == 0) {
+            extern void doa3_perf_input_sample(unsigned port);
+            doa3_perf_input_sample(port);
             buttons = *(uint16_t *)(raw + 4);
             memcpy(an, raw + 6, 8);
             lx = *(int16_t *)(raw + 14); ly = *(int16_t *)(raw + 16);
@@ -1813,6 +1816,21 @@ static void doa3_fn_nest_dump(uint32_t va, uint32_t e0, unsigned callno)
 void doa3_fn_trace(uint32_t va, uint32_t esp_in)
 {
     int i;
+    /* Startup bring-up tracing is opt-in. The generated wrappers stop
+     * entering this function once the first call resolves the setting. */
+    if (g_fn_trace_on < 0) {
+        const char *e = getenv("DOA3_TRACE_FN");
+        g_fn_trace_on = 0;
+        while (e && *e && s_fn_trace_cnt < 32) {
+            char *end;
+            unsigned long v = strtoul(e, &end, 16);
+            if (end == e) break;
+            s_fn_trace_va[s_fn_trace_cnt++] = (uint32_t)v;
+            e = (*end == ',') ? end + 1 : end;
+        }
+        g_fn_trace_on = s_fn_trace_cnt > 0;
+    }
+    if (!g_fn_trace_on) return;
 #if defined(DOA3_XBE_ID_3_1)
     {   /* Value watch by polling at every probed return. The movie's
          * get-frame handler (0x1A4C80) delivers only while the sfd handle's
@@ -1865,28 +1883,6 @@ void doa3_fn_trace(uint32_t va, uint32_t esp_in)
         unsigned r = s_ring_n++ & 8191;
         s_ring[r].va = va; s_ring[r].e0 = esp_in; s_ring[r].eax = eax;
         s_ring[r].fib = xbox_fiber_current();
-    }
-    if (g_fn_trace_on < 0) {
-        const char *e = getenv("DOA3_TRACE_FN");
-#if defined(DOA3_XBE_ID_3_1)
-        /* Default while bringing 3.1 up: the audio/CRI init path that decides
-         * whether the CRI middleware is set up at all (sub_000A5DC0). */
-        /* ADX stereo decoder: it wrote PCM through guest 0x0825xxxx, which
-         * wraps onto .data (the 128 MB view repeats). Whose pointer is it? */
-        /* Intro movie service 0xA4AB0: get current frame (0x19E3C0), blit
-         * (0xA4680 -> frame copy 0x19EA30), release frame (0x19E230). */
-        if (!e) e = "19e3c0,19e230,a4680,a4ab0,1a81e0,1a8220";
-#endif
-        g_fn_trace_on = 0;
-        while (e && *e && s_fn_trace_cnt < 32) {
-            char *end;
-            unsigned long v = strtoul(e, &end, 16);
-            if (end == e) break;
-            s_fn_trace_va[s_fn_trace_cnt++] = (uint32_t)v;
-            e = (*end == ',') ? end + 1 : end;
-        }
-        g_fn_trace_on = s_fn_trace_cnt > 0;
-        if (!g_fn_trace_on) return;
     }
     for (i = 0; i < s_fn_trace_cnt; i++) {
         uint32_t a[8]; int k, odd = 0;

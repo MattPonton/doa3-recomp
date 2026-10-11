@@ -286,38 +286,64 @@ static void doa3_watchdog_start(void)
 
 /* Opt-in, bounded frame capture for performance investigations. No per-frame
  * timer/file work in normal runs. Buffered output is flushed every 300 frames. */
+static int s_perf_enabled = -1;
+static LARGE_INTEGER s_perf_input, s_perf_logic, s_perf_logic_input, s_perf_present;
+static unsigned s_perf_input_reads;
+void doa3_perf_input_sample(unsigned port)
+{
+    if (s_perf_enabled == 1 && port == 0) {
+        QueryPerformanceCounter(&s_perf_input);
+        ++s_perf_input_reads;
+    }
+}
+void doa3_perf_logic_sample(void)
+{
+    if (s_perf_enabled == 1) {
+        QueryPerformanceCounter(&s_perf_logic);
+        s_perf_logic_input = s_perf_input;
+    }
+}
 static void doa3_perf_frame(void)
 {
-    static int enabled = -1;
     static FILE *file;
     static LARGE_INTEGER frequency, first, previous;
     static unsigned count;
     LARGE_INTEGER now;
-    if (enabled < 0) {
-        enabled = getenv("DOA3_PERF_CAPTURE") != NULL;
-        if (enabled) {
+    if (s_perf_enabled < 0) {
+        s_perf_enabled = getenv("DOA3_PERF_CAPTURE") != NULL;
+        if (s_perf_enabled) {
             file = fopen("performance_frames.csv", "w");
-            if (!file) { enabled = 0; return; }
+            if (!file) { s_perf_enabled = 0; return; }
             setvbuf(file, NULL, _IOFBF, 65536);
-            fputs("seconds,frame_ms,mode,movie,foreground,free_camera\n", file);
+            fputs("seconds,frame_ms,mode,movie,foreground,free_camera,input_age_ms,input_to_logic_ms,present_ms,logic_input_age_ms,input_reads\n", file);
             QueryPerformanceFrequency(&frequency);
             QueryPerformanceCounter(&first); previous = first;
         }
         return;
     }
-    if (!enabled) return;
+    if (!s_perf_enabled) return;
     QueryPerformanceCounter(&now);
     {
         extern int doa3_movie_host_owns_screen(void);
-        fprintf(file, "%.6f,%.6f,%u,%d,%d,%d\n",
+        fprintf(file, "%.6f,%.6f,%u,%d,%d,%d,%.6f,%.6f,%.6f,%.6f,%u\n",
             (double)(now.QuadPart-first.QuadPart)/frequency.QuadPart,
             1000.0*(now.QuadPart-previous.QuadPart)/frequency.QuadPart,
             MEM32(0x5A2858), doa3_movie_host_owns_screen(),
-            GetForegroundWindow() == g_hwnd, free_camera_enabled());
+            GetForegroundWindow() == g_hwnd, free_camera_enabled(),
+            s_perf_input.QuadPart ? 1000.0*(now.QuadPart-s_perf_input.QuadPart)/frequency.QuadPart : -1.0,
+            s_perf_logic_input.QuadPart && s_perf_logic.QuadPart >= s_perf_logic_input.QuadPart ?
+                1000.0*(s_perf_logic.QuadPart-s_perf_logic_input.QuadPart)/frequency.QuadPart : -1.0,
+            s_perf_present.QuadPart ? 1000.0*(now.QuadPart-s_perf_present.QuadPart)/frequency.QuadPart : -1.0,
+            s_perf_logic_input.QuadPart ? 1000.0*(now.QuadPart-s_perf_logic_input.QuadPart)/frequency.QuadPart : -1.0,
+            s_perf_input_reads);
     }
     previous = now;
+    /* Keep the last poll across presents: some guest tasks consume a sample
+     * after a flip. Preserve that age instead of hiding it as missing data. */
+    s_perf_logic.QuadPart = s_perf_logic_input.QuadPart = s_perf_present.QuadPart = 0;
+    s_perf_input_reads = 0;
     if (++count % 300 == 0) fflush(file);
-    if (count >= 18000) { fclose(file); file = NULL; enabled = 0; }
+    if (count >= 18000) { fclose(file); file = NULL; s_perf_enabled = 0; }
 }
 
 void doa3_present_frame(void)
@@ -339,6 +365,7 @@ void doa3_present_frame(void)
         TranslateMessage(&msg);
         DispatchMessageA(&msg);
     }
+    if (s_perf_enabled == 1) QueryPerformanceCounter(&s_perf_present);
     if (g_d3d_device)
         g_d3d_device->lpVtbl->Present(g_d3d_device, NULL, NULL, NULL, NULL);
     if (getenv("DOA3_THROTTLE")) Sleep(15);   /* legacy rig knob */

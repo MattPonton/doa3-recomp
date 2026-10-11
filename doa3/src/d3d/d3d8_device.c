@@ -16,6 +16,7 @@
  */
 
 #include "d3d8_internal.h"
+#include "d3d8_presentation.h"
 #include "d3d8_nv2aff.h"
 static ID3D11Buffer *g_nv2aff_idx_ring;   /* NV2A FF index ring, see d3d8_DrawNv2aFF */
 static UINT          g_nv2aff_idx_off;
@@ -41,6 +42,7 @@ typedef struct D3D8DeviceState {
     ID3D11Device            *d3d11_device;
     ID3D11DeviceContext     *d3d11_context;
     IDXGISwapChain          *swap_chain;
+    UINT                    swap_flags;
 
     /* Default render targets: the GUEST frame. This is an offscreen texture
      * of the aspect's guest size (640x480 or 854x480), not the swap chain;
@@ -286,7 +288,6 @@ static HRESULT d3d11_create_device_and_swap_chain(
     D3DPRESENT_PARAMETERS *pp)
 {
     DXGI_SWAP_CHAIN_DESC scd;
-    D3D_FEATURE_LEVEL feature_level;
     UINT create_flags = 0;
     HRESULT hr;
 
@@ -319,24 +320,15 @@ static HRESULT d3d11_create_device_and_swap_chain(
     scd.Windowed = pp->Windowed;
     scd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 
-    hr = D3D11CreateDeviceAndSwapChain(
-        NULL,
-        D3D_DRIVER_TYPE_HARDWARE,
-        NULL,
-        create_flags,
-        NULL, 0,
-        D3D11_SDK_VERSION,
-        &scd,
-        &state->swap_chain,
-        &state->d3d11_device,
-        &feature_level,
-        &state->d3d11_context
-    );
+    hr = d3d8_create_presentation(D3D_DRIVER_TYPE_HARDWARE, create_flags,
+        getenv("DOA3_LEGACY_PRESENT") == NULL, &scd, &state->swap_chain,
+        &state->d3d11_device, &state->d3d11_context);
 
     if (FAILED(hr)) {
         return hr;
     }
 
+    state->swap_flags = scd.Flags;
     state->hwnd = pp->hDeviceWindow;
     state->swap_w = scd.BufferDesc.Width;
     state->swap_h = scd.BufferDesc.Height;
@@ -660,14 +652,19 @@ static void swap_resize_if_needed(void)
     h = (UINT)(rc.bottom - rc.top);
     if (!w || !h) return;                       /* minimised */
     if (w == s->swap_w && h == s->swap_h && s->swap_rtv) return;
+    /* A previous startup/present path may still have the backbuffer bound.
+     * Release that context reference before ResizeBuffers, then restore the
+     * guest target so the compose step saves the expected scene state. */
+    ID3D11DeviceContext_OMSetRenderTargets(s->d3d11_context, 0, NULL, NULL);
     if (s->swap_rtv) { ID3D11RenderTargetView_Release(s->swap_rtv); s->swap_rtv = NULL; }
-    hr = IDXGISwapChain_ResizeBuffers(s->swap_chain, 0, w, h, DXGI_FORMAT_UNKNOWN, 0);
+    hr = IDXGISwapChain_ResizeBuffers(s->swap_chain, 0, w, h, DXGI_FORMAT_UNKNOWN, s->swap_flags);
     if (FAILED(hr)) {
     } else {
         s->swap_w = w;
         s->swap_h = h;
     }
     d3d11_create_swap_rtv(s);
+    d3d8_RestoreDefaultTarget();
 }
 
 /* The aspect or internal-resolution setting changed: rebuild the guest target
@@ -801,7 +798,7 @@ static HRESULT d3d8_compose_and_present(void)
         if (dsv) ID3D11DepthStencilView_Release(dsv);
     }
 
-    hr = IDXGISwapChain_Present(s->swap_chain, 0, 0);
+    hr = d3d8_present_swap_chain(s->swap_chain, s->swap_flags);
     d3d8_apply_target_size_change();
     return hr;
 }
@@ -2035,7 +2032,7 @@ static HRESULT __stdcall d3d8_CreateDevice(IDirect3D8 *self, UINT Adapter, DWORD
         const FLOAT black[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
         ID3D11DeviceContext_ClearRenderTargetView(g_device_state.d3d11_context,
                                                   g_device_state.swap_rtv, black);
-        IDXGISwapChain_Present(g_device_state.swap_chain, 0, 0);
+        d3d8_present_swap_chain(g_device_state.swap_chain, g_device_state.swap_flags);
     }
 
     d3d8_init_default_states(&g_device_state);

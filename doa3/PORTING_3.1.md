@@ -1196,3 +1196,102 @@ These samples are deterministic test fixtures, alongside interruption,
 trade, mirrored-player, reset, and render-independence coverage. Set
 `DOA3_FRAME_DATA_TRACE=1` to log resolved contacts and completed measurements
 for live verification without modifying game state.
+
+### Input latency audit
+
+Gameplay input already polls XInput/GetAsyncKeyState at each guest read;
+there is no host-side frame cache to remove. The guest frame completion path
+presents before its 60Hz pacing wait. Preserve that ordering and the native
+simulation/input semantics. A local 40-call XInput check on the connected
+wireless controller measured approximately 0.0015ms median API time (0.41ms
+maximum in that sample); this measures API overhead, not radio or button-to-screen
+latency.
+
+Device enumeration now reuses connection status from fresh gameplay/raw
+reads. Idle connected slots are checked every 250ms and empty slots every
+second. Actual button/stick reads remain unthrottled. Initial discovery also
+works before one second of system uptime. The deterministic input test covers
+fresh packet reads, no repeated discovery polling, idle discovery, immediate
+disconnect through guest/raw reads, reconnect, clock wrap, port routing,
+keyboard fallback, input capture, and rumble.
+
+The existing bitblt D3D11 swap chain now requests a device-level maximum
+frame latency of 1 through IDXGIDevice1, then reads the value back and logs
+it. DXGI's default maximum is 3. Failure logs a diagnostic and leaves the
+device usable. Present(0,0), the swap-chain model, game speed, and netplay
+input delay remain unchanged. This bounds avoidable render queueing; it is
+not a claim of a fixed millisecond saving or a complete display-latency
+measurement. API reference:
+https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgidevice1-setmaximumframelatency
+
+The live build read back a queue limit of 1; Practice remained at approximately
+16.67ms average frame time. The user reported normal controls, rumble, and
+smoothness. This is a pacing/regression check, not an external input-to-display
+measurement or a controlled same-scene comparison with the older build.
+
+### Flip presentation and input timing follow-up
+
+The host now prefers `DXGI_SWAP_EFFECT_FLIP_DISCARD` with two buffers and
+`DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING` when windowed and the DXGI factory
+reports tearing support. This avoids the legacy compositor copy and enables
+lower-latency presentation on supported desktops. Present remains interval 0
+and the device queue limit remains 1. This is not a waitable swap chain, so
+the device-level latency setting still applies. Exclusive fullscreen omits
+the present tearing flag; automatic DXGI Alt+Enter is disabled in favor of
+the existing windowed/borderless settings. ResizeBuffers preserves swap flags.
+
+Unsupported systems or failed flip creation retry the compatibility blit
+path. `DOA3_LEGACY_PRESENT=1` explicitly selects that path for comparisons.
+Both paths are implemented in `d3d8_presentation.c`. The hidden-window WARP
+test exercised both actual presentation models, queue readback, repeated
+presentation, and resizing. The live hardware build selected flip discard;
+the user confirmed Practice and windowed/borderless switching appeared normal.
+Reference: https://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/for-best-performance--use-dxgi-flip-model
+
+`DOA3_PERF_CAPTURE=1` additionally logs port-0 input-read age at present
+return, read-to-logic-completion time, time spent in the host Present path,
+age of the latest input available at logic completion, and reads per frame.
+Negative timings mean no applicable sample. These are CPU timestamps, not
+controller-radio, GPU-completion, scanout, or button-to-photon measurements.
+The last input timestamp survives a present so a delayed logic sample cannot
+hide a frame-boundary wait. Logging remains opt-in and bounded to 18000 frames.
+
+In 1247 foreground Practice samples after warm-up, mean frame time was
+16.667ms, median read-to-logic completion 0.071ms, and median input age at
+present return 9.847ms. There was exactly one port-0 read per frame, and the
+logic-associated input age matched the latest read's age: no additional
+whole-frame input buffer appeared in that capture. Host Present's median
+duration was 0.059ms. These results locate most remaining CPU-side delay
+after game logic; they do not establish a measured end-to-end latency saving
+over the older presentation path.
+
+### CPU render-path follow-up
+
+A live Beach Practice thread sample found substantial time in texture
+signatures, combiner shader lookup, and the old function-return tracing.
+The trace was still enabled by default for 3.1 startup diagnostics, polling
+15 guest words and maintaining a return ring throughout gameplay. It is now
+opt-in through `DOA3_TRACE_FN` for all versions; the generated wrappers skip
+the trace after its first environment check when unset. To restore the old
+intro trace, use `DOA3_TRACE_FN=19e3c0,19e230,a4680,a4ab0,1a81e0,1a8220`.
+
+Combiner lookup canonicalizes its key once and stores that canonical key.
+It hashes four bytes per iteration instead of one and still compares the
+entire key on a hash match. Animated constant colors remain excluded from
+the shader key and are uploaded as before. Texture signatures, palette
+animation checks, shader generation, and the 60 Hz game clock are unchanged.
+The cache test covers constant changes, every structural byte, forced hash
+collisions, eviction, and failed compilation without losing a live entry.
+
+The rebuilt release passed the cache test and the user's Beach Practice
+visual/audio check. Before the second sampling profiler ran, 1501 foreground
+Practice frames after warm-up had median input-to-Present-return 8.480ms,
+versus 9.227ms in 513 foreground Beach samples immediately before these
+edits (about 0.75ms / 8% lower). The earlier 9.847ms capture used for the
+initial discussion is a separate run. Mean frame time remained 16.680ms.
+The p95 input age increased from 10.817ms to 12.543ms in these short runs;
+there is no demonstrated improvement to worst-case latency. They are not
+deterministic replay or button-to-photon measurements. A subsequent thread
+sample no longer showed the default function trace, and combiner lookup
+dropped from roughly 5% to 1% of wall-time samples. Texture validation is
+the next significant renderer cost, but its animation checks are preserved.

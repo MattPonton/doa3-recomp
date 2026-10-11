@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(input_rumble_test C)
 enable_testing()
-add_executable(input_rumble_test input_rumble_test.c ../../src/input/xinput_device.c)
+add_executable(input_rumble_test input_rumble_test.c input_device_test.c)
 target_include_directories(input_rumble_test PRIVATE ../../src/input)
 add_test(NAME input_rumble COMMAND input_rumble_test)
 
