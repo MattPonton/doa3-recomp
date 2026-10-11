@@ -54,6 +54,20 @@ void sub_0007F1A0(void)
     combat_debug_capture();
 }
 
+void sub_000B7180_gen(void);
+void sub_000B9980_gen(void);
+void sub_000B7180(void)
+{
+    CombatContact contact = combat_debug_contact_begin();
+    sub_000B7180_gen();
+    combat_debug_contact_end(contact);
+}
+void sub_000B9980(void)
+{
+    sub_000B9980_gen();
+    combat_debug_logic_tick();
+}
+
 /* Observe stage-object geometry only when the game queries it. Do not call
  * the guest helpers from the overlay: some stage implementations update state. */
 void sub_000E8E60_gen(void);

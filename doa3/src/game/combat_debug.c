@@ -5,12 +5,26 @@
 #include <windows.h>
 #include <math.h>
 #include <string.h>
+#include <stdio.h>
 
 static unsigned s_flags;
 static SRWLOCK s_lock = SRWLOCK_INIT;
 static CombatSnapshot s_snapshot;
 static ULONGLONG s_captured;
 static unsigned s_characters;
+static CombatExchange s_exchange[2];
+static unsigned s_exchange_identity;
+static ULONGLONG s_logic_time;
+static int s_trace = -1;
+
+static void trace_exchange(unsigned side, const CombatExchange *e)
+{
+    if (s_trace < 0) s_trace = GetEnvironmentVariableA("DOA3_FRAME_DATA_TRACE", NULL, 0) != 0;
+    if (s_trace) fprintf(stderr,
+        "[FRAME-DATA] P%u move=%04X reaction=%04X kind=%s status=%u recovery=%d/%d gap=%+d\n",
+        side+1, e->move, e->reaction, e->kind==COMBAT_CONTACT_BLOCK ? "block" : "hit",
+        e->status, e->attacker_ready, e->defender_ready, e->advantage);
+}
 static struct {
     CombatHazardObject shape;
     ULONGLONG updated;
@@ -28,6 +42,10 @@ unsigned combat_debug_flags(void) { return netplay_active() ? 0 : s_flags; }
 void combat_debug_set_flags(unsigned flags)
 {
     AcquireSRWLockExclusive(&s_lock);
+    if ((s_flags ^ flags) & COMBAT_FRAMES) {
+        memset(s_exchange, 0, sizeof(s_exchange));
+        s_logic_time = 0;
+    }
     if (!s_flags || !flags) {
         memset(&s_snapshot, 0, sizeof(s_snapshot));
         s_captured = 0;
@@ -38,6 +56,122 @@ void combat_debug_set_flags(unsigned flags)
         s_floors.updated = 0;
     s_flags = flags & (COMBAT_HITBOXES | COMBAT_HURTBOXES | COMBAT_FRAMES | COMBAT_HAZARDS);
     ReleaseSRWLockExclusive(&s_lock);
+}
+
+void combat_debug_exchange_start(CombatExchange *e, unsigned move,
+    unsigned reaction, unsigned kind)
+{
+    memset(e, 0, sizeof(*e));
+    e->move = move; e->reaction = reaction; e->kind = kind;
+    e->status = COMBAT_EXCHANGE_PENDING;
+    e->attacker_ready = e->defender_ready = -1;
+}
+
+void combat_debug_exchange_update(CombatExchange *e,
+    unsigned attack_move, unsigned attack_category,
+    unsigned defend_move, unsigned defend_category, int early_guard)
+{
+    if (e->status != COMBAT_EXCHANGE_PENDING) return;
+    /* Follow one strike and one reaction to neutral. A string, hold, fall,
+     * wake-up, or guard cancel is not the same recovery measurement. */
+    if (e->elapsed >= 300 ||
+        (e->attacker_ready < 0 && attack_category != 0 &&
+            (attack_move != e->move || (attack_category != 2 && attack_category != 3))) ||
+        (e->defender_ready < 0 && defend_category != 0 &&
+            (defend_move != e->reaction || early_guard ||
+             (e->kind == COMBAT_CONTACT_BLOCK ? defend_category != 7 :
+              (defend_category != 8 && defend_category != 9))))) {
+        e->status = COMBAT_EXCHANGE_UNSUPPORTED;
+        return;
+    }
+    if (e->attacker_ready < 0 && attack_category == 0)
+        e->attacker_ready = (int)e->elapsed;
+    if (e->defender_ready < 0 && defend_category == 0)
+        e->defender_ready = (int)e->elapsed;
+    if (e->attacker_ready >= 0 && e->defender_ready >= 0) {
+        e->advantage = e->defender_ready - e->attacker_ready;
+        e->status = COMBAT_EXCHANGE_COMPLETE;
+    }
+    ++e->elapsed;
+}
+
+/* B7180 consumes collision contacts and resolves the reaction; sampling just
+ * 7F1A0 would still see the defender's state from before the hit/block. */
+CombatContact combat_debug_contact_begin(void)
+{
+    CombatContact c = {0};
+#if defined(DOA3_XBE_ID_3_1)
+    if (!(combat_debug_flags() & COMBAT_FRAMES)) return c;
+    for (unsigned i=0; i<2; ++i) {
+        unsigned p = 0x59CF58 + i*0x68, category = MEM8(p+0x33);
+        c.move[i] = MEM16(p+0x2E);
+        if (MEM8(p+0x3E) == 1 && (category == 2 || category == 3)) c.mask |= 1u<<i;
+    }
+#endif
+    return c;
+}
+
+void combat_debug_contact_end(CombatContact c)
+{
+#if defined(DOA3_XBE_ID_3_1)
+    if (!(combat_debug_flags() & COMBAT_FRAMES) || !c.mask) return;
+    AcquireSRWLockExclusive(&s_lock);
+    for (unsigned i=0; i<2; ++i) if (c.mask & (1u<<i)) {
+        unsigned p = 0x59CF58 + (i^1)*0x68, category = MEM8(p+0x33);
+        CombatExchange *e = &s_exchange[i];
+        combat_debug_exchange_start(e, c.move[i], MEM16(p+0x2E),
+            category == 7 ? COMBAT_CONTACT_BLOCK : COMBAT_CONTACT_HIT);
+        if (c.mask == 3 || !MEM8(p+0x3C) ||
+            (category != 7 && category != 8 && category != 9))
+            e->status = COMBAT_EXCHANGE_UNSUPPORTED;
+        trace_exchange(i, e);
+        /* A fresh contact interrupts the other side's unfinished exchange. */
+        if (s_exchange[i^1].status == COMBAT_EXCHANGE_PENDING)
+            s_exchange[i^1].status = COMBAT_EXCHANGE_UNSUPPORTED;
+    }
+    ReleaseSRWLockExclusive(&s_lock);
+#endif
+}
+
+/* B9980 runs once after reaction resolution and both category handlers.
+ * Count simulation steps, never render frames or elapsed wall-clock time. */
+void combat_debug_logic_tick(void)
+{
+#if defined(DOA3_XBE_ID_3_1)
+    AcquireSRWLockExclusive(&s_lock);
+    unsigned phase = MEM8(0x596A37);
+    unsigned identity = MEM8(0x59CF59) | (MEM8(0x59CFC1)<<8) |
+        (MEM8(0xC59865)<<16) | (MEM8(0x5A2858)<<24);
+    ULONGLONG now = GetTickCount64();
+    int enabled = (combat_debug_flags() & COMBAT_FRAMES) && !MEM8(0xC59866);
+    if (!enabled || (phase != 1 && phase != 2) || identity != s_exchange_identity ||
+        (s_logic_time && now-s_logic_time > 1000))
+        memset(s_exchange, 0, sizeof(s_exchange));
+    s_exchange_identity = identity; s_logic_time = now;
+    if (enabled && (phase == 1 || phase == 2)) {
+        for (unsigned i=0; i<2; ++i) {
+            unsigned a=0x59CF58+i*0x68, d=0x59CF58+(i^1)*0x68;
+            CombatExchange *e = &s_exchange[i];
+            if (e->status != COMBAT_EXCHANGE_PENDING) continue;
+            unsigned attack_frame=MEM16(0x9B28A0+i*2), defend_frame=MEM16(0x9B28A0+(i^1)*2);
+            if (!MEM16(a+0x20) || !MEM16(d+0x20)) {
+                e->status = COMBAT_EXCHANGE_UNSUPPORTED;
+                trace_exchange(i, e);
+                continue;
+            }
+            /* Same-ID string restarts also interrupt natural recovery. */
+            if (e->elapsed &&
+                ((e->attacker_ready < 0 && MEM8(a+0x33) != 0 && attack_frame < e->attack_frame) ||
+                 (e->defender_ready < 0 && MEM8(d+0x33) != 0 && defend_frame < e->defend_frame)))
+                e->status = COMBAT_EXCHANGE_UNSUPPORTED;
+            combat_debug_exchange_update(e, MEM16(a+0x2E), MEM8(a+0x33),
+                MEM16(d+0x2E), MEM8(d+0x33), MEM8(d+0x33)==7 && MEM8(d+0x48)==1);
+            e->attack_frame=attack_frame; e->defend_frame=defend_frame;
+            if (e->status != COMBAT_EXCHANGE_PENDING) trace_exchange(i, e);
+        }
+    }
+    ReleaseSRWLockExclusive(&s_lock);
+#endif
 }
 
 void combat_debug_timing_update(CombatFighter *f, unsigned move,
@@ -376,6 +510,7 @@ int combat_debug_snapshot(CombatSnapshot *out)
     int valid = s_captured && GetTickCount64() - s_captured < 250;
     if (valid) {
         *out = s_snapshot;
+        memcpy(out->exchange, s_exchange, sizeof(s_exchange));
         /* Activated view-projection survives the free-camera source restore. */
         for (unsigned i = 0; i < 16; ++i) out->matrix[i] = MEMF(0x598C30 + i * 4);
     }

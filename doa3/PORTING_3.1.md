@@ -1164,3 +1164,35 @@ bindings are restored; resources resize with the scene and release on UI
 shutdown. The WARP graphics test verifies hidden/visible geometry, unchanged
 color/depth/stencil, state restoration, near clipping, resize, category gating,
 and repeated presentation. Live stage appearance still needs user validation.
+
+### Observed hit/block recovery
+
+Read-only wrappers at `B7180` and `B9980` now measure strike recovery gaps.
+The former saves attacker contact bits/move IDs before resolving collisions,
+then accepts new defender reactions in category 7 (block) or 8/9 (hit). The
+latter samples after both fighter category handlers and motion counters have
+updated. Measurements count native logic steps, not presents or milliseconds.
+Each side's last result remains visible beside its strike timing; positive
+means the attacker returned to neutral first.
+
+This measures natural return to category 0. The UI labels hit results
+**Hit recovery gap**, since defensive holds and stun escapes may be possible
+earlier. It does not claim these are guaranteed punishment windows. Attack
+strings, same-ID restarts, changing reactions/falls, early guard-cancel states
+(`player+48`), trades, KOs, and measurements exceeding 300 ticks are rejected.
+Tag/netplay, match phase changes, character/stage/mode changes, long capture
+gaps, and toggling frame data reset the measurements. Existing S/A/R timing
+and volume capture remain at `7F1A0`.
+
+The read-only Helena/Ayane Practice capture showed 008A reaction starting at
+attack frame 13, defender neutral at attack frame 24, and attacker neutral
+after frame 26: -3 frames on hit and block. The rebuilt hooks confirmed -3
+for repeated single jabs on hit and block. Completed logic-step traces for
+008D measured 26 ticks to attacker neutral, 33 on hit and 18 on block (+7/-8);
+0122 measured 20/41 on hit (+21) and 20/15 on block (-5). External polling
+occasionally mixed phases of the same tick, which is why the completed
+logic-step observation is used in the overlay and kick test fixtures.
+These samples are deterministic test fixtures, alongside interruption,
+trade, mirrored-player, reset, and render-independence coverage. Set
+`DOA3_FRAME_DATA_TRACE=1` to log resolved contacts and completed measurements
+for live verification without modifying game state.

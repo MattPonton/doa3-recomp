@@ -259,11 +259,30 @@ void DrawCombatDebugOverlay()
                 timing("Current",f.current);
                 ImGui::Separator();
                 timing("Previous",f.previous);
+                ImGui::Separator();
+                const CombatExchange &e = snapshot.exchange[side];
+                if (e.status == COMBAT_EXCHANGE_NONE) {
+                    ImGui::TextDisabled("Hit / block: waiting for contact");
+                } else {
+                    ImGui::Text("Last contact: move %04X", e.move);
+                    const char *label = e.kind == COMBAT_CONTACT_BLOCK ?
+                        "Block advantage" : "Hit recovery gap";
+                    if (e.status == COMBAT_EXCHANGE_COMPLETE) {
+                        ImVec4 color = e.advantage > 0 ? ImVec4(.4f,1.f,.55f,1.f) :
+                            e.advantage < 0 ? ImVec4(1.f,.5f,.4f,1.f) : ImVec4(1.f,1.f,1.f,1.f);
+                        ImGui::TextColored(color, "%s: %+d f", label, e.advantage);
+                    } else if (e.status == COMBAT_EXCHANGE_PENDING) {
+                        ImGui::TextDisabled("%s: measuring...", label);
+                    } else {
+                        ImGui::TextDisabled("Recovery: interrupted / unsupported");
+                    }
+                }
             }
             ImGui::EndTable();
         }
         ImGui::TextDisabled("S = first active frame, A/R = active/recovery duration. Base timing excludes cancels.");
         ImGui::TextDisabled("Timeline: blue startup / red active / yellow recovery / gray missing. Ticks = 10 frames.");
+        ImGui::TextDisabled("+ means attacker recovers first. Natural recovery only; holds/cancels/stun escapes excluded.");
     }
     ImGui::End();
 }

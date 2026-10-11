@@ -34,6 +34,19 @@ typedef struct CombatFighter {
     CombatTiming current, previous;
 } CombatFighter;
 
+enum { COMBAT_EXCHANGE_NONE, COMBAT_EXCHANGE_PENDING,
+    COMBAT_EXCHANGE_COMPLETE, COMBAT_EXCHANGE_UNSUPPORTED };
+enum { COMBAT_CONTACT_HIT = 1, COMBAT_CONTACT_BLOCK = 2 };
+/* Natural recovery only: does not predict holds, cancels, or stun escapes. */
+typedef struct CombatExchange {
+    unsigned move, reaction, kind, status, elapsed;
+    unsigned attack_frame, defend_frame;
+    int attacker_ready, defender_ready, advantage;
+} CombatExchange;
+typedef struct CombatContact {
+    unsigned mask, move[2];
+} CombatContact;
+
 typedef struct CombatHazardWall {
     float points[4][3];
     unsigned type;
@@ -46,6 +59,7 @@ typedef struct CombatSnapshot {
     CombatVolume volumes[62];
     unsigned count;
     CombatFighter fighter[2];
+    CombatExchange exchange[2];
     float matrix[16];
     CombatHazardWall walls[512];
     CombatHazardWall floors[4096];
@@ -58,6 +72,14 @@ unsigned combat_debug_boundary_flag(unsigned type);
 void combat_debug_set_flags(unsigned flags);
 /* Called once at the native collision pass; does not modify guest state. */
 void combat_debug_capture(void);
+CombatContact combat_debug_contact_begin(void);
+void combat_debug_contact_end(CombatContact contact);
+void combat_debug_logic_tick(void);
+void combat_debug_exchange_start(CombatExchange *exchange, unsigned move,
+    unsigned reaction, unsigned kind);
+void combat_debug_exchange_update(CombatExchange *exchange,
+    unsigned attacker_move, unsigned attacker_category,
+    unsigned defender_move, unsigned defender_category, int early_guard);
 int combat_debug_snapshot(CombatSnapshot *out);
 /* Observe results from the game's stage-object collision queries. */
 void combat_debug_hazard_object(unsigned index, unsigned address, int valid);

@@ -13,6 +13,50 @@ static void position(unsigned address, float x, float y, float z)
 
 int main(void)
 {
+    CombatExchange e;
+    /* Helena/Ayane live capture: jab reaction starts at attack frame 13.
+     * Ayane is neutral at frame 24; Helena is neutral after frame 26. */
+    for (unsigned kind=COMBAT_CONTACT_HIT; kind<=COMBAT_CONTACT_BLOCK; ++kind) {
+        unsigned reaction=kind==COMBAT_CONTACT_BLOCK ? 0x4000 : 0x401E;
+        unsigned category=kind==COMBAT_CONTACT_BLOCK ? 7 : 9;
+        combat_debug_exchange_start(&e,0x8A,reaction,kind);
+        for (unsigned tick=0; tick<=14; ++tick)
+            combat_debug_exchange_update(&e,tick<14 ? 0x8A : 0,tick<14 ? 3 : 0,
+                tick<11 ? reaction : 0,tick<11 ? category : 0,0);
+        CHECK(e.status==COMBAT_EXCHANGE_COMPLETE && e.advantage==-3);
+        CHECK(e.attacker_ready==14 && e.defender_ready==11);
+    }
+    /* Completed logic-step trace, kick 008D: 26 ticks to attacker neutral,
+     * 33 on hit / 18 on block. External polling can mix phases of a tick. */
+    for (unsigned kind=COMBAT_CONTACT_HIT; kind<=COMBAT_CONTACT_BLOCK; ++kind) {
+        unsigned end=kind==COMBAT_CONTACT_BLOCK ? 18 : 33;
+        unsigned reaction=kind==COMBAT_CONTACT_BLOCK ? 0x4004 : 0x4081;
+        combat_debug_exchange_start(&e,0x8D,reaction,kind);
+        for (unsigned tick=0; tick<=33; ++tick)
+            combat_debug_exchange_update(&e,tick<26 ? 0x8D : 0,tick<26 ? 3 : 0,
+                tick<end ? reaction : 0,tick<end ? (kind==COMBAT_CONTACT_BLOCK ? 7 : 8) : 0,0);
+        CHECK(e.status==COMBAT_EXCHANGE_COMPLETE && e.advantage==(kind==COMBAT_CONTACT_BLOCK ? -8 : 7));
+    }
+    combat_debug_exchange_start(&e,42,100,COMBAT_CONTACT_BLOCK);
+    combat_debug_exchange_update(&e,0,0,0,0,0);
+    CHECK(e.status==COMBAT_EXCHANGE_COMPLETE && e.advantage==0);
+    combat_debug_exchange_start(&e,42,100,COMBAT_CONTACT_HIT);
+    combat_debug_exchange_update(&e,43,3,100,9,0); /* attack string */
+    CHECK(e.status==COMBAT_EXCHANGE_UNSUPPORTED);
+    combat_debug_exchange_start(&e,42,100,COMBAT_CONTACT_HIT);
+    combat_debug_exchange_update(&e,42,3,101,9,0); /* fall/another reaction */
+    CHECK(e.status==COMBAT_EXCHANGE_UNSUPPORTED);
+    combat_debug_exchange_start(&e,42,100,COMBAT_CONTACT_BLOCK);
+    combat_debug_exchange_update(&e,42,3,100,7,1); /* early guard cancel */
+    CHECK(e.status==COMBAT_EXCHANGE_UNSUPPORTED);
+    combat_debug_exchange_start(&e,42,100,COMBAT_CONTACT_HIT);
+    combat_debug_exchange_update(&e,42,3,100,12,0); /* wake-up */
+    CHECK(e.status==COMBAT_EXCHANGE_UNSUPPORTED);
+    combat_debug_exchange_start(&e,42,100,COMBAT_CONTACT_HIT);
+    for (unsigned tick=0; tick<=300; ++tick)
+        combat_debug_exchange_update(&e,42,3,100,8,0);
+    CHECK(e.status==COMBAT_EXCHANGE_UNSUPPORTED);
+
     CombatFighter f={0};
     for (unsigned i=1; i<=20; ++i)
         combat_debug_timing_update(&f, 42, i, 2,
@@ -260,6 +304,62 @@ int main(void)
     combat_debug_set_flags(COMBAT_FRAMES);
     combat_debug_capture(); combat_debug_snapshot(&snapshot);
     CHECK(snapshot.wall_count==0 && snapshot.object_count==0 && snapshot.floor_count==0);
+    /* Guest hook integration: contacts belong to the attacker; reaction state
+     * only becomes available after B7180. Both sides share one logic clock. */
+    MEM8(0x596A37)=2; MEM8(0xC59866)=0;
+    MEM16(0x59CF78)=MEM16(0x59CFE0)=300;
+    combat_debug_logic_tick();
+    MEM16(0x59CF86)=0x8A; MEM8(0x59CF8B)=3; MEM8(0x59CF96)=1;
+    MEM8(0x59CFFE)=0;
+    CombatContact contact=combat_debug_contact_begin();
+    CHECK(contact.mask==1 && contact.move[0]==0x8A);
+    MEM16(0x59CFEE)=0x4000; MEM8(0x59CFF3)=7; MEM8(0x59CFFC)=1;
+    MEM8(0x59D008)=0;
+    combat_debug_contact_end(contact);
+    for (unsigned tick=0; tick<=14; ++tick) {
+        if (tick==11) { MEM8(0x59CFF3)=0; MEM16(0x59CFEE)=0; }
+        if (tick==14) { MEM8(0x59CF8B)=0; MEM16(0x59CF86)=0; }
+        combat_debug_logic_tick();
+    }
+    combat_debug_capture(); CHECK(combat_debug_snapshot(&snapshot));
+    CHECK(snapshot.exchange[0].status==COMBAT_EXCHANGE_COMPLETE);
+    CHECK(snapshot.exchange[0].kind==COMBAT_CONTACT_BLOCK && snapshot.exchange[0].advantage==-3);
+    CHECK(snapshot.exchange[1].status==COMBAT_EXCHANGE_NONE);
+    /* Repeated renders do not advance the simulation measurement. */
+    unsigned elapsed=snapshot.exchange[0].elapsed;
+    combat_debug_capture(); combat_debug_snapshot(&snapshot);
+    CHECK(snapshot.exchange[0].elapsed==elapsed);
+    MEM8(0x596A37)=4; combat_debug_logic_tick(); combat_debug_snapshot(&snapshot);
+    CHECK(snapshot.exchange[0].status==COMBAT_EXCHANGE_NONE);
+    MEM8(0x596A37)=2;
+    /* Mirrored attacker P2, plus a same-ID restart before recovery ends. */
+    MEM16(0x59CFEE)=42; MEM8(0x59CFF3)=3; MEM8(0x59CFFE)=1;
+    MEM8(0x59CF96)=0;
+    contact=combat_debug_contact_begin(); CHECK(contact.mask==2);
+    MEM16(0x59CF86)=100; MEM8(0x59CF8B)=9; MEM8(0x59CF94)=1;
+    combat_debug_contact_end(contact);
+    MEM16(0x9B28A2)=13; MEM16(0x9B28A0)=1; combat_debug_logic_tick();
+    combat_debug_snapshot(&snapshot);
+    CHECK(snapshot.exchange[1].status==COMBAT_EXCHANGE_PENDING);
+    MEM16(0x9B28A2)=1; combat_debug_logic_tick(); combat_debug_snapshot(&snapshot);
+    CHECK(snapshot.exchange[1].status==COMBAT_EXCHANGE_UNSUPPORTED);
+    combat_debug_set_flags(COMBAT_HITBOXES);
+    combat_debug_set_flags(COMBAT_FRAMES);
+    combat_debug_capture(); combat_debug_snapshot(&snapshot);
+    CHECK(snapshot.exchange[1].status==COMBAT_EXCHANGE_NONE);
+    /* Throws/holds are not mislabeled as successful strikes; trades rejected. */
+    MEM8(0x59CF8B)=4; MEM8(0x59CF96)=1;
+    CHECK(combat_debug_contact_begin().mask==2);
+    MEM8(0x59CF8B)=3;
+    contact=combat_debug_contact_begin(); CHECK(contact.mask==3);
+    MEM8(0x59CF8B)=9; MEM8(0x59CFF3)=9;
+    MEM8(0x59CF94)=MEM8(0x59CFFC)=1;
+    combat_debug_contact_end(contact); combat_debug_snapshot(&snapshot);
+    CHECK(snapshot.exchange[0].status==COMBAT_EXCHANGE_UNSUPPORTED);
+    CHECK(snapshot.exchange[1].status==COMBAT_EXCHANGE_UNSUPPORTED);
+    MEM8(0xC59866)=1; combat_debug_logic_tick(); combat_debug_snapshot(&snapshot);
+    CHECK(snapshot.exchange[0].status==COMBAT_EXCHANGE_NONE);
+    MEM8(0xC59866)=0;
     combat_debug_set_flags(COMBAT_HAZARDS);
     online=1;
     CHECK(!combat_debug_flags() && !combat_debug_snapshot(&snapshot));
