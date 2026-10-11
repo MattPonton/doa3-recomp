@@ -39609,7 +39609,7 @@ loc_001C7A81: ;
     PUSH32(esp, 0); sub_00191F80(); /* call 0x00191F80 */
 
 loc_001C7A86: ;
-    if (CMP_NE(MEM32(0x73C0A4), esi)) goto loc_001C7B3B; /* jne: not equal / not zero */
+    goto loc_001C7B3B; /* Host: always mount the D: originals. */ /* jne: not equal / not zero */
 
 loc_001C7A92: ;
     eax = MEM32(0x5CF36C);

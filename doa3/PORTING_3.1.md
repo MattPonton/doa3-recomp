@@ -1350,3 +1350,32 @@ native and 3x resolution, checking positive/negative constant and slope
 bias, Tao's values, and reset on the following draw. It also checks D16
 conversion, non-finite input handling, and primitive/enable gating.
 Reference: https://learn.microsoft.com/en-us/windows/win32/direct3d11/d3d10-graphics-programming-guide-output-merger-stage-depth-bias
+
+### Direct AFS archive loading
+
+The PC build already stores the source archives in `HDD/D`. The original
+Xbox startup nevertheless validates and sometimes copies them into `HDD/Z`.
+`tools/recomp/direct_afs.py` now skips the 3.1 cache validator A4300 and
+clears the copy-request flag at 73C0A4. The existing 874BE boot check then
+skips spawning the 1C67C0 copying thread. This also avoids the validator's
+cache-file deletion and timestamp/size checks.
+
+The CRI initialization branch at 1C7A86 always takes its native direct-source
+path (1C7B3B): it excludes the Z: archive names and mounts D:\loadfile.afs,
+D:\bgm.afs and D:\voice.afs. Merely clearing the flag would instead select
+the cached-file mounting branch, so both changes are required. Native
+streaming, buffers, missing-source errors, save paths and host I/O remain
+unchanged. Existing Z: copies are left on disk but are no longer loaded.
+The patch is version-gated and reapplied by the postprocess pipeline.
+
+`tests/direct_afs` executes the native initialization and installer gate
+with a simulated guest memory buffer and CRI call stubs. It verifies three
+D: mounts, exclusion of the cached paths, no installer start, guest stack
+preservation, fresh-generation patching and idempotence.
+
+The release startup check reached the intro and subsequent asset/music
+loads using the D: archive handles, without starting the copy worker.
+Existing Z: archive sizes and modification times stayed unchanged. CRI
+still enumerates its registered drive backends and opens Z: files to query
+metadata during initialization; these are not archive-content loads or
+cache copies.

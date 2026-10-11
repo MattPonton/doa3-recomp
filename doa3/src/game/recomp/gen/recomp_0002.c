@@ -105149,6 +105149,10 @@ void sub_000A4300_gen(void)
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
 
 loc_000A4300: ;
+    /* Host D: is already on disk; no Xbox cache validation/copy. */
+    MEM32(0x73C0A4) = 0;
+    eax = 0;
+    esp += 4; return; /* direct AFS source */
     esp = esp - 0x70;
     PUSH32(esp, ebx);
     PUSH32(esp, esi);
