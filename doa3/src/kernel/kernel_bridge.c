@@ -29,6 +29,7 @@
 #include "xbox_memory_layout.h"
 #include "xbox_fiber.h"
 #include "xbox_det.h"
+#include "../game/save_compat.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -179,8 +180,13 @@ static void kernel_data_init(void)
     /* XboxHDKey (ordinal 323) - 16 bytes of zeros (no key) */
     memset((void*)((uintptr_t)(XBOX_KERNEL_DATA_BASE + KDATA_HD_KEY) + g_xbox_mem_offset), 0, 16);
 
-    /* XboxSignatureKey (ordinal 325) - 16 bytes of zeros */
+    /* Initialize the mapped export before deriving DOA3's per-title key. */
     memset((void*)((uintptr_t)(XBOX_KERNEL_DATA_BASE + KDATA_SIGNATURE_KEY) + g_xbox_mem_offset), 0, 16);
+    {
+        unsigned header_size = BRIDGE_MEM32(0x10108);
+        if (header_size >= 0x11c && header_size <= 0x10000)
+            doa3_save_keys_init((const void *)((uintptr_t)0x10000 + g_xbox_mem_offset), header_size);
+    }
 
     /* XboxLANKey (ordinals 326, 355) - 16 bytes of zeros */
     memset((void*)((uintptr_t)(XBOX_KERNEL_DATA_BASE + KDATA_LAN_KEY) + g_xbox_mem_offset), 0, 16);

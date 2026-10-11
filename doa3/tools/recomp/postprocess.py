@@ -19,6 +19,7 @@ STEPS = [
     ("hardware busy-wait self-spins", [sys.executable, "tools/recomp/fix_selfspins.py"]),
     ("reversible Debug unlock menu reads", [sys.executable, "-m", "tools.recomp.debug_unlock_reads"]),
     ("direct AFS archive loading", [sys.executable, "-m", "tools.recomp.direct_afs"]),
+    ("save signature compatibility", [sys.executable, "-m", "tools.recomp.save_compat"]),
 ]
 
 

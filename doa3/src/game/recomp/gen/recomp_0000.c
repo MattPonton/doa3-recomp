@@ -48782,7 +48782,10 @@ loc_0002139E: ;
     esi = esp + 0x28;
     edx = 0; /* xor self */
     { uint32_t _ca=0,_cb=0; while (ecx != 0) { _ca=MEM32(esi); _cb=MEM32(edi); esi+=4; edi+=4; ecx--; if (!(_ca == _cb)) break; } g_str_a=_ca; g_str_b=_cb; } /* repe cmpsd */
-    if ((g_str_a != g_str_b)) goto loc_0002151D; /* jne: not equal / not zero */
+    if ((g_str_a != g_str_b)) {
+        extern int doa3_save_accept_compatible(const void *, size_t);
+        if (!doa3_save_accept_compatible(XBOX_PTR(ebp), 0x3C48)) goto loc_0002151D;
+    } /* Verified alternate signature; native format checks remain. */
 
 loc_000213B7: ;
     PUSH32(esp, 0x8000);

@@ -31,6 +31,7 @@ set(GAME_SOURCES
     video_settings.c
     audio_settings.c
     debug_settings.c
+    save_compat.c
     free_camera.c
     combat_debug.c
     training_dummy.c
