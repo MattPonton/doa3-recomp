@@ -57,7 +57,8 @@ static void probe_slots(void)
 {
     DWORD now = GetTickCount();
     DWORD i;
-    ds4_probe();
+    if (ds4_probe())
+        for (i = 4; i < XBOX_HOST_CONTROLLERS; ++i) s_slot[i].probed = FALSE;
     for (i = 0; i < XBOX_HOST_CONTROLLERS; i++) {
         XINPUT_STATE st;
         DWORD interval = s_slot[i].connected ? 250 : 1000;

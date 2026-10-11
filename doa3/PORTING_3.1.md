@@ -1444,3 +1444,21 @@ arguments are an XBE path and a save path; it validates and re-signs the save
 in memory without writing to either file. Both the supplied Japanese 3.1
 console save and the existing PC save passed this check. Release compilation
 passed; loading the supplied save through the game UI remains unconfirmed.
+
+### Controller discovery and periodic frame hitches
+
+DirectInput device enumeration formerly ran on the game thread once per
+second. A standalone measurement on the development machine took 48-64 ms
+for each recurring scan, even without a detected DS4; the four XInput slot
+checks took about 0.2 ms. Discovery now runs at startup and in response to
+Windows `WM_DEVICECHANGE` / `DBT_DEVNODES_CHANGED` notifications. Notifications
+only queue a scan, with a 250 ms minimum interval to coalesce bursts. Ordinary
+input reads stay fresh; a completed scan immediately refreshes host-slot
+connection state. Controller attachment can still incur an enumeration cost,
+but elapsed time alone no longer triggers it.
+
+The same benchmark after the change measured 0.000-0.001 ms for idle discovery
+checks after the initial scan. This is discovery timing, not total game frame
+time. Tests cover idle discovery, notification bursts, timer wrap, failed-scan
+recovery and immediate routing after reconnection. Live gameplay confirmation
+of the performance graph remains pending.

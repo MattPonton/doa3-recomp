@@ -12,6 +12,7 @@
  */
 
 #include <windows.h>
+#include <dbt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,6 +35,7 @@
 #include "free_camera.h"
 #include "d3d/d3d8_screenshot.h"
 #include "input/xinput_xbox.h"
+#include "input/ds4_device.h"
 #include "log_settings.h"
 
 #include "xbe_layout.h"  /* DOA3_ENTRY_POINT and the rest of the version layout */
@@ -50,6 +52,10 @@ static IDirectSound8 *g_dsound;   /* host DirectSound (mirrors burnout3) */
 
 static LRESULT CALLBACK doa3_wndproc(HWND h, UINT m, WPARAM w, LPARAM l)
 {
+    if (m == WM_DEVICECHANGE && w == DBT_DEVNODES_CHANGED) {
+        ds4_devices_changed();
+        return TRUE;
+    }
     if (free_camera_wndproc(h, m, w, l)) return 1;
     if (m == WM_ACTIVATEAPP) xbox_InputSetActive(w != 0);
     if (m == WM_CLOSE)   { xbox_InputStopRumble(); d3d8_screenshot_shutdown(); DestroyWindow(h); return 0; }

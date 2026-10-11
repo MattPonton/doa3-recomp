@@ -6,6 +6,7 @@
 #include <string.h>
 
 static IDirectInput8A *s_input;
+static volatile LONG s_discovery_pending = 1;
 static struct {
     GUID id;
     int known, seen;
@@ -110,7 +111,13 @@ static BOOL CALLBACK found_pad(const DIDEVICEINSTANCEA *info, void *context)
     return DIENUM_CONTINUE;
 }
 
-void ds4_probe(void)
+void ds4_devices_changed(void)
+{
+    /* The window callback only queues discovery; never enumerate inside it. */
+    InterlockedExchange(&s_discovery_pending, 1);
+}
+
+int ds4_probe(void)
 {
     static int initialized, probed;
     static DWORD last;
@@ -118,14 +125,18 @@ void ds4_probe(void)
     if (!initialized) {
         initialized = 1;
         if (FAILED(DirectInput8Create(GetModuleHandle(NULL), DIRECTINPUT_VERSION,
-            &IID_IDirectInput8A, (void **)&s_input, NULL))) return;
+            &IID_IDirectInput8A, (void **)&s_input, NULL))) return 0;
         atexit(shutdown_ds4);
     }
-    if (!s_input || (probed && now - last < 1000)) return;
+    /* EnumDevices can block for several frames even with no DS4 attached.
+     * Coalesce hotplug bursts, but never rescan merely because time passed. */
+    if (!s_input || (probed && now - last < 250)) return 0;
+    if (!InterlockedExchange(&s_discovery_pending, 0)) return 0;
     probed = 1; last = now;
     for (int i = 0; i < 4; ++i) s_pads[i].seen = 0;
     if (SUCCEEDED(IDirectInput8_EnumDevices(s_input, DI8DEVCLASS_GAMECTRL, found_pad, NULL, DIEDFL_ATTACHEDONLY)))
         for (int i = 0; i < 4; ++i) if (!s_pads[i].seen) close_pad(i);
+    return 1;
 }
 
 DWORD ds4_read(int slot, XINPUT_STATE *state)

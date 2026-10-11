@@ -1,4 +1,5 @@
 #include "pad_mapping.h"
+#include "ds4_device.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -149,7 +150,9 @@ int main(void)
     CHECK(pad_mapping_load("player_mapping_test.ini") && pad_mapping_device(0) == 4);
     ds4_test_mask = 0;
     CHECK(xbox_InputGetState(0,&guest) == ERROR_DEVICE_NOT_CONNECTED && xbox_InputAssignedSlot(0) == -1);
-    ds4_test_mask = 1; clock_ms += 1000;
+    /* A hotplug rescan refreshes the slot immediately, without waiting for
+     * the disconnected-slot polling interval. */
+    ds4_test_mask = 1; ds4_devices_changed();
     CHECK(xbox_InputHostMask() == 15 && xbox_InputAssignedSlot(0) == 4);
     connected = 0; clock_ms += 1000;
     pad_mapping_reset_defaults();
