@@ -12,6 +12,9 @@
 
 #include "d3d8_internal.h"
 #include "d3d8_debug_views.h"
+#include "d3d8_polygon_offset.h"
+#include <math.h>
+#include <limits.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -27,7 +30,32 @@ static ID3D11SamplerState      *g_sampler_states[4] = { NULL, NULL, NULL, NULL }
 /* Last known render state hash for dirty detection */
 static DWORD g_last_blend_hash = 0;
 static DWORD g_last_ds_hash = 0;
-static DWORD g_last_raster_hash = 0;
+static D3D11_RASTERIZER_DESC g_last_raster_desc;
+static int g_polygon_bias;
+static float g_polygon_slope;
+
+void d3d8_SetPolygonOffset(int enabled, float slope, float bias,
+                          int depth16, float raster_scale)
+{
+    double units;
+    g_polygon_bias = 0;
+    g_polygon_slope = 0.0f;
+    if (!enabled) return;
+    /* NV2A bias is in guest depth units; all host targets use D24_UNORM.
+     * Scaling the slope preserves its size when rendering above native
+     * resolution. The vertical scale is exact for uniform scaling; a single
+     * D3D slope factor approximates anisotropic widescreen stretching. */
+    if (isfinite(bias)) {
+        units = (double)bias * (depth16 ? 16777215.0 / 65535.0 : 1.0);
+        units = round(units);
+        g_polygon_bias = units >= INT_MAX ? INT_MAX :
+                         units <= INT_MIN ? INT_MIN : (int)units;
+    }
+    if (isfinite(slope) && isfinite(raster_scale) && raster_scale > 0.0f) {
+        float scaled = slope * raster_scale;
+        if (isfinite(scaled)) g_polygon_slope = scaled;
+    }
+}
 
 /* ================================================================
  * D3D8 → D3D11 enum translation
@@ -125,12 +153,6 @@ static DWORD hash_ds_states(const DWORD *rs)
            (rs[D3DRS_STENCILMASK] << 18);
 }
 
-static DWORD hash_raster_states(const DWORD *rs)
-{
-    return rs[D3DRS_CULLMODE] ^
-           (rs[D3DRS_FILLMODE] << 4);
-}
-
 /* ================================================================
  * State object creation
  * ================================================================ */
@@ -215,17 +237,8 @@ static void update_depth_stencil_state(const DWORD *rs)
 
 static void update_rasterizer_state(const DWORD *rs)
 {
-    DWORD hash = hash_raster_states(rs);
     D3D11_RASTERIZER_DESC rd;
     HRESULT hr;
-
-    if (hash == g_last_raster_hash && g_raster_state) return;
-    g_last_raster_hash = hash;
-
-    if (g_raster_state) {
-        ID3D11RasterizerState_Release(g_raster_state);
-        g_raster_state = NULL;
-    }
 
     memset(&rd, 0, sizeof(rd));
 
@@ -251,8 +264,19 @@ static void update_rasterizer_state(const DWORD *rs)
     rd.ScissorEnable = TRUE;
     rd.MultisampleEnable = FALSE;
     rd.AntialiasedLineEnable = FALSE;
+    rd.DepthBias = g_polygon_bias;
+    rd.SlopeScaledDepthBias = g_polygon_slope;
+
+    /* Compare the complete descriptor: changing only polygon offset must
+     * invalidate the rasterizer, including the next unbiased draw. */
+    if (g_raster_state && !memcmp(&rd, &g_last_raster_desc, sizeof(rd))) return;
+    if (g_raster_state) {
+        ID3D11RasterizerState_Release(g_raster_state);
+        g_raster_state = NULL;
+    }
 
     hr = ID3D11Device_CreateRasterizerState(d3d8_GetD3D11Device(), &rd, &g_raster_state);
+    if (SUCCEEDED(hr)) g_last_raster_desc = rd;
 }
 
 /* ================================================================
@@ -423,7 +447,8 @@ void d3d8_states_shutdown(void)
     }
     g_last_blend_hash = 0;
     g_last_ds_hash = 0;
-    g_last_raster_hash = 0;
+    memset(&g_last_raster_desc, 0, sizeof(g_last_raster_desc));
+    d3d8_SetPolygonOffset(0, 0, 0, 0, 1);
 }
 
 void d3d8_states_apply(void)

@@ -25,6 +25,7 @@
 #include "nv2a_vertex_program.h"
 #include "../d3d/d3d8_nv2aff.h"
 #include "../d3d/d3d8_combiners.h"
+#include "../d3d/d3d8_polygon_offset.h"
 extern IDirect3DDevice8 *xbox_GetD3DDevice(void);
 
 /* Global.txd texture lookup */
@@ -1568,6 +1569,27 @@ typedef struct {
     float    uv_div_w, uv_div_h;   /* divide every texcoord by these (0 = none) */
 } NvPostOps;
 
+/* Raw value of every NV097 method last written (index = method >> 2). */
+static uint32_t g_nvreg[0x800];
+#define NVREG(m) g_nvreg[(m) >> 2]
+
+static void nv_apply_polygon_offset(void)
+{
+    unsigned gh = (g_pg.surface_clip_v >> 16) & 0xFFFF;
+    unsigned bh = d3d8_GetBackbufferHeight();
+    /* The supported polygon path uses solid fill. Polygon offset does not
+     * apply to independent point/line primitives (modes 1..4), even when
+     * points are expanded to host triangles. Debug wireframe keeps the
+     * source polygon's offset. */
+    int enabled = g_pg.draw_mode >= 5 && g_pg.draw_mode <= 10 &&
+                  NVREG(NV097_SET_POLY_OFFSET_FILL_ENABLE) != 0;
+    d3d8_SetPolygonOffset(enabled,
+        u2f(NVREG(NV097_SET_POLYGON_OFFSET_SCALE_FACTOR)),
+        u2f(NVREG(NV097_SET_POLYGON_OFFSET_BIAS)),
+        ((g_pg.surface_fmt >> 4) & 0xF) == 1,
+        gh && bh ? (float)bh / (float)gh : 1.0f);
+}
+
 static void nv_apply_draw_state(IDirect3DDevice8 *dev, const NvDrawSummary *sum,
                                 NvPostOps *post)
 {
@@ -1593,6 +1615,7 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, const NvDrawSummary *sum,
      * transformed z/w in [0,1], so the compat layer's depth buffer works. */
     dev->lpVtbl->SetRenderState(dev, D3DRS_ZENABLE, g_pg.depth_test ? TRUE : FALSE);
     dev->lpVtbl->SetRenderState(dev, D3DRS_ZWRITEENABLE, g_pg.depth_mask ? TRUE : FALSE);
+    nv_apply_polygon_offset();
     {
         DWORD zf = (g_pg.depth_func >= 0x200 && g_pg.depth_func <= 0x207)
                  ? (g_pg.depth_func - 0x200) + 1 : 4 /*LESSEQUAL*/;
@@ -2626,10 +2649,6 @@ static void nv_vreuse_build(uint32_t index, uint32_t lo, OutputVertex *out,
  * draws, points and lines, the frame-buffer-sampling (Omega) draws, batches
  * whose vertex colour summary cannot be derived from the inputs, and
  * anything with a failed or non-finite fetch. */
-/* Raw value of every NV097 method last written (index = method >> 2). */
-static uint32_t g_nvreg[0x800];
-#define NVREG(m) g_nvreg[(m) >> 2]
-
 /* NV2A register combiners, decoded straight from the pushbuffer registers
  * (xemu's psh.c layout). Each input byte: bits 3:0 register, bit 4 alpha
  * replicate, bits 7:5 mapping. Output words: 3:0 CD dst, 7:4 AB dst,
