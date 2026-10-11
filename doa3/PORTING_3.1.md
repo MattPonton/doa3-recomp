@@ -1379,3 +1379,68 @@ Existing Z: archive sizes and modification times stayed unchanged. CRI
 still enumerates its registered drive backends and opens Z: files to query
 metadata during initialization; these are not archive-content loads or
 cache copies.
+
+### 0.0.76: automatic diagnostic captures are opt-in
+
+Normal launches no longer generate boot-glitch, periodic scene, draw-count,
+movie, character-select or framebuffer-effect screenshots and method traces.
+Set `DOA3_AUTO_CAPTURE=1` before launching to enable those developer diagnostics.
+The disabled frame monitor returns before any GPU readback or allocation.
+Manual PNG screenshots (the assigned hotkey and Debug menu button) remain
+available. Explicit `DOA3_CAPTURE_FRAMES`, `DOA3_MTRACE` and `DOA3_PMSHOTS`
+diagnostic requests still work independently. Existing captures are retained.
+
+### 0.0.76: native USB DualShock 4 support
+
+`src/input/ds4_device.c` enumerates Sony DS4 devices through DirectInput 8,
+alongside the existing XInput path. Host slots 0-3 keep their previous XInput
+meaning; slots 4-7 are PS4 devices. All eight are eligible for the four guest
+players, including explicit assignments, automatic routing, saved bindings,
+reconnect handling, free camera and input capture. The controls menu labels
+the two device families separately. Overlay navigation now reads player 1's
+assigned device instead of ImGui's hardcoded XInput slot 0.
+
+Cross/Circle/Square/Triangle map to A/B/X/Y, Share/Options to Back/Start,
+and L1/R1 to White/Black. Both sticks, stick clicks, diagonal d-pad states
+and independent analog triggers are supported. This mapping is limited to
+Sony product IDs 054C:05C4, 054C:09CC and 054C:0BA0; it does not guess mappings
+for unrelated DirectInput devices. Device identities remain stable during
+the process lifetime, including reconnection of the same instance.
+
+`ds4_rumble.c` opens the device's HID path for USB motor output. It checks
+for the 32-byte USB report format and sends report 05 with only the motor
+validity bit set, preserving lightbar and audio state. Low/high-frequency
+Xbox motors map to the DS4's large/small motors. A worker coalesces updates
+and performs overlapped USB writes so gameplay never waits on a motor write.
+Focus loss, controller reassignment, UI capture and normal device teardown
+stop vibration. Bluetooth rumble is not implemented; input remains usable
+when the HID output handle is unavailable. No additional driver or downloaded
+runtime is required for supported USB hardware.
+
+The input tests cover DS4 button/axis/hat conversion, USB motor report bytes,
+mixed Xbox/PS4 routing, persistence, disconnect/reconnect and vibration stops.
+Live hardware validation remains pending. The optional `ds4_controller_check`
+target reports detection and button/axis values without generating inputs
+or requesting vibration.
+Protocol references: [SDL's DS4 implementation](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_ps4.c)
+and [Windows controller mappings](https://github.com/libsdl-org/SDL/blob/main/src/joystick/SDL_gamepad_db.h).
+
+### 0.0.76: Japanese 3.1 console-save signatures
+
+The kernel now initializes the title's signature key from the loaded XBE
+certificate instead of leaving the export zeroed. New saves use the retail
+title-derived HMAC-SHA1 key. The native 3.1 loader retains its format checks
+and accepts an alternate signature only after verifying all 20 digest bytes.
+Supported alternatives are the zero-root title-derived scheme found in the
+supplied console save and the plain-zero key used by older PC builds.
+Imported title-derived saves retain their signing scheme during the session;
+legacy PC saves migrate to retail signing when next saved. No input file is
+rewritten by validation, and corrupt or truncated saves remain rejected.
+
+`tests/save_compat` checks certificate bounds, title-key derivation against
+independent Python HMAC vectors, all three signatures, corruption rejection,
+and regeneration patch boundaries/idempotence. The optional test executable
+arguments are an XBE path and a save path; it validates and re-signs the save
+in memory without writing to either file. Both the supplied Japanese 3.1
+console save and the existing PC save passed this check. Release compilation
+passed; loading the supplied save through the game UI remains unconfirmed.
