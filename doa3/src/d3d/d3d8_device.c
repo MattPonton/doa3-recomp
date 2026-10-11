@@ -20,6 +20,7 @@
 static ID3D11Buffer *g_nv2aff_idx_ring;   /* NV2A FF index ring, see d3d8_DrawNv2aFF */
 static UINT          g_nv2aff_idx_off;
 #include "ui/doa3_ui.h"
+#include "ui/combat_world.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -714,6 +715,9 @@ static HRESULT d3d8_compose_and_present(void)
 
     swap_resize_if_needed();
     if (s->swap_rtv && s->default_srv && blit_init()) {
+        ID3D11ShaderResourceView *scene_srv = combat_world_render(s->d3d11_device,
+            ctx, s->default_tex, s->default_dsv);
+        if (!scene_srv) scene_srv = s->default_srv;
         /* save */
         ID3D11InputLayout *il = NULL; D3D11_PRIMITIVE_TOPOLOGY topo;
         ID3D11VertexShader *vs = NULL; ID3D11PixelShader *ps = NULL;
@@ -760,7 +764,7 @@ static HRESULT d3d8_compose_and_present(void)
         ID3D11DeviceContext_IASetPrimitiveTopology(ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         ID3D11DeviceContext_VSSetShader(ctx, g_blit_vs, NULL, 0);
         ID3D11DeviceContext_PSSetShader(ctx, g_blit_ps, NULL, 0);
-        ID3D11DeviceContext_PSSetShaderResources(ctx, 0, 1, &s->default_srv);
+        ID3D11DeviceContext_PSSetShaderResources(ctx, 0, 1, &scene_srv);
         ID3D11DeviceContext_PSSetSamplers(ctx, 0, 1, &g_blit_smp);
         ID3D11DeviceContext_Draw(ctx, 3, 0);
         {   /* unbind the guest texture before it is a render target again */

@@ -1101,3 +1101,66 @@ Escape, leaving the supported mode, native pause, or free camera stops the
 operation. Tests cover routing/restoration, edges, loop/end/capacity, both
 player sides, native-setting preservation, and mode/online gates. Release
 build and focused tests pass; live dummy playback needs player validation.
+
+Stage hazard overlay: `Combat diagnostics` adds a session-only orange fill
+for stage collision boundaries and objects. DC7D0 reads X/Z vertices at
+9B80F8 and eight-byte edge records at 9B8104 (count 9B810C); types below 8
+and FE are excluded by the native boundary query. The overlay uses those
+same edges, including ordinary walls, with a 3m display height because the
+records do not specify a vertical ceiling. Bases follow DBE20's packed
+height field at 9B8110, X/Z origin 9B80E0/9B80FC, spacing 9B80E8,
+dimensions 9B80F4/9B8100 and base height 9B80EC.
+
+E8E60's post-hook observes the native stage-object output (base at +0,
+X/Z radii +10/+18, height +14, leaning axis +28/+2C/+30). E8F60's
+post-hook removes disabled/broken objects. No extra guest calls are made:
+some stage helpers update state. Geometry is keyed by stage/layer and
+expires after 200ms without a native query. The viewer shows the shared
+wall and object collision paths, not every stage-specific scripted effect.
+Disabled/online modes skip capture; counts, pointers and floating-point
+values are bounded before use. Focused fixtures cover boundary filtering,
+packed terrain heights, tilted objects, invalid geometry and stage changes.
+
+Slippery ground is filled blue using A9AD0's actual hit-reaction predicate:
+DC6E0 reads `(cell >> 12) & 7`; material 6 is slippery, and stage 44 also
+treats material 0 as slippery. B7871 uses this to select alternate hit
+reactions. Beach (47) was checked live: its 316x153 grid contains 1458
+material-6 cells and 131 high-bit variants (E), on the water side of the
+arena. The overlay follows the packed height samples, with a 2cm display
+offset. Coplanar runs merge, nonplanar cells remain separate; the cache
+refreshes every 250ms and immediately after stage/grid changes or toggling.
+There is a 4096-quad limit with a visible truncation warning. The finite
+map is displayed; stage 44's out-of-map default material is not an infinite
+highlight. Tests cover dry/slippery separation, the stage exception,
+high-bit masking, merging, nonplanar heights, and invalid grids.
+
+Purple distinguishes special boundary classes C/D, 10/11, 14/15, and 18
+from the remaining orange boundaries. AB240/AB2E0 treat these separately
+with stage/layer exceptions. Purple means a special reaction boundary,
+not a guarantee that any particular attack causes a fall. Stage-specific
+scripted transitions outside the shared edge/object data are not yet
+visualized. Frame-data bottom-right inset is now 204px (48px higher).
+Live Danger Zone (3D), layer 0, has four straight type-C edges at X/Z
++/-10 (endpoints +/-6), four diagonal type-A corner edges, and four FE
+helper edges. The shared overlay therefore marks the straight walls
+purple, corners orange, and omits the FE helpers. Its floor materials
+are 0/8, so the slippery-ground overlay correctly remains empty.
+
+The Stage hazards submenu now selects slippery ground, special boundaries,
+ordinary walls, and collidable objects independently. Disabled categories
+skip their capture work; object and floor caches reset only when their own
+selection changes. Tests cover each category alone, combined selections,
+and preserving object observations when toggling another category.
+
+Hazards now render with D3D11 scene-depth testing before the final window
+scaling pass, rather than as ImGui screen fills. `combat_world.cpp` transforms
+the same world geometry with the activated camera matrix, keeps homogeneous
+coordinates for hardware clipping, and uses LESS_EQUAL with depth writes and
+stencil disabled. Characters and foreground scenery therefore occlude the
+highlights. Hit/hurt volumes retain their existing screen-overlay behavior.
+A private color copy avoids modifying the guest frame, reflection/crossfade
+history, or accumulating tint on repeated presentations. All changed pipeline
+bindings are restored; resources resize with the scene and release on UI
+shutdown. The WARP graphics test verifies hidden/visible geometry, unchanged
+color/depth/stencil, state restoration, near clipping, resize, category gating,
+and repeated presentation. Live stage appearance still needs user validation.

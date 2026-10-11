@@ -54,6 +54,23 @@ void sub_0007F1A0(void)
     combat_debug_capture();
 }
 
+/* Observe stage-object geometry only when the game queries it. Do not call
+ * the guest helpers from the overlay: some stage implementations update state. */
+void sub_000E8E60_gen(void);
+void sub_000E8F60_gen(void);
+void sub_000E8E60(void)
+{
+    unsigned index = ecx, output = eax;
+    sub_000E8E60_gen();
+    combat_debug_hazard_object(index, output, eax != 0);
+}
+void sub_000E8F60(void)
+{
+    unsigned index = eax;
+    sub_000E8F60_gen();
+    combat_debug_hazard_disabled(index, eax != 0);
+}
+
 /* FREE_CAMERA_HOOK_BEGIN
  * 3.1 camera slots: base 4DAE90, stride C80; eye A8, target B8,
  * view 150, projection 190, combined 1D0. Reuse the game's builder so

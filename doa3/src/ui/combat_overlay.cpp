@@ -1,4 +1,5 @@
 #include "combat_overlay.h"
+#include "combat_world.h"
 #include "imgui.h"
 #include "../game/combat_debug.h"
 #include "../game/video_settings.h"
@@ -12,15 +13,33 @@ void DrawCombatDebugMenu()
     bool hit = (flags & COMBAT_HITBOXES) != 0;
     bool hurt = (flags & COMBAT_HURTBOXES) != 0;
     bool frames = (flags & COMBAT_FRAMES) != 0;
+    bool slippery = (flags & COMBAT_SLIPPERY_GROUND) != 0;
+    bool special = (flags & COMBAT_SPECIAL_BOUNDARIES) != 0;
+    bool walls = (flags & COMBAT_WALLS) != 0;
+    bool objects = (flags & COMBAT_STAGE_OBJECTS) != 0;
     ImGui::BeginDisabled(netplay_active() != 0);
     bool changed = ImGui::Checkbox("Show hitboxes", &hit);
     changed |= ImGui::Checkbox("Show hurtboxes", &hurt);
     changed |= ImGui::Checkbox("Show attack frame data", &frames);
+    if (ImGui::TreeNode("Stage hazards")) {
+        changed |= ImGui::Checkbox("Slippery ground (blue)", &slippery);
+        changed |= ImGui::Checkbox("Special boundaries (purple)", &special);
+        ImGui::TextDisabled("Ledges, breakable barriers, and stage reactions");
+        changed |= ImGui::Checkbox("Ordinary walls (orange)", &walls);
+        changed |= ImGui::Checkbox("Collidable objects (orange)", &objects);
+        ImGui::TreePop();
+    }
     if (changed) combat_debug_set_flags((hit ? COMBAT_HITBOXES : 0) |
-        (hurt ? COMBAT_HURTBOXES : 0) | (frames ? COMBAT_FRAMES : 0));
+        (hurt ? COMBAT_HURTBOXES : 0) | (frames ? COMBAT_FRAMES : 0) |
+        (slippery ? COMBAT_SLIPPERY_GROUND : 0) |
+        (special ? COMBAT_SPECIAL_BOUNDARIES : 0) |
+        (walls ? COMBAT_WALLS : 0) | (objects ? COMBAT_STAGE_OBJECTS : 0));
     ImGui::EndDisabled();
     ImGui::TextWrapped("Red/pink solid spheres: hitboxes. Green/cyan wireframes: hurtboxes. Amber: an attack already registered contact. Volumes draw through characters and scenery.");
-    ImGui::TextWrapped("Frame data measures strikes as you play: first active frame, active-frame count, and time after the last active frame. Cancels and interruptions shorten the observation. It does not report frame advantage or throw range.");
+    ImGui::TextWrapped("Frame data shows base startup (first active frame), active duration, and recovery alongside observed strike frames. The timeline uses blue for startup, red for active, yellow for recovery, and gray for missing samples. Cancels shorten the observation, not the base timing. Hit/block advantage is not yet measured.");
+    ImGui::TextWrapped("Hazards: blue ground shows slippery surfaces. Purple marks special boundaries used by ledges, breakable barriers, and other stage reactions; their behavior depends on the stage and floor level. Orange shows other boundaries and collidable objects, including ordinary walls. Boundary panels have a 3m display height. Object volumes use the game's collision dimensions.");
+    ImGui::TextWrapped("Hazards respect scene depth, so characters and foreground scenery hide them.");
+    if (*combat_world_error()) ImGui::TextWrapped("%s", combat_world_error());
     ImGui::TextDisabled("Session only. Unavailable during online play.");
 }
 
@@ -164,14 +183,36 @@ void shape(const View &view, const CombatVolume &v)
 void timing(const char *label, const CombatTiming &t)
 {
     if (!t.valid) { ImGui::TextDisabled("%s: waiting for a strike", label); return; }
-    ImGui::Text("%s: move %04X%s", label, t.move,
-        t.interrupted ? " (interrupted/chained)" : (t.partial ? " (partial)" : ""));
+    ImGui::Text("%s: move %04X%s%s", label, t.move,
+        t.interrupted ? " (cancelled/interrupted)" : "", t.partial ? " (partial)" : "");
+    if (t.base_valid)
+        ImGui::Text("Base S / A / R: %u / %u / %u",
+            t.base_startup + 1, t.base_active, t.base_recovery);
+    else ImGui::TextDisabled("Base S / A / R: unavailable");
     if (t.first_active) {
-        if (t.partial) ImGui::Text("First observed active: %u", t.first_active);
-        else ImGui::Text("Startup / first active: %u", t.first_active);
-        ImGui::Text("Active: %u   Last active: %u", t.active_frames, t.last_active);
-        ImGui::Text("Recovery observed: %u%s", t.frame-t.last_active, t.ended ? "" : " (counting)");
+        ImGui::Text("Observed first / last active: %u / %u", t.first_active, t.last_active);
+        ImGui::Text("Active: %u (%u windows)   Recovery: %u",
+            t.active_frames, t.active_windows, t.recovery_frames);
     } else ImGui::Text("Elapsed: %u   No active frames yet", t.frame);
+    ImGui::TextDisabled("Observed through frame %u%s", t.frame, t.ended ? "" : " (live)");
+    const ImU32 colors[] = {IM_COL32(80,150,245,255), IM_COL32(245,75,80,255),
+        IM_COL32(240,200,65,255), IM_COL32(90,90,100,255)};
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    const float width = 320.f, height = 10.f;
+    unsigned count = t.frame < COMBAT_TIMELINE_FRAMES ? t.frame : COMBAT_TIMELINE_FRAMES;
+    unsigned extent = count < 60 ? 60 : count;
+    float step = width / extent;
+    ImDrawList *draw = ImGui::GetWindowDrawList();
+    draw->AddRectFilled(p, ImVec2(p.x+width,p.y+height), IM_COL32(35,35,40,255));
+    for (unsigned i=0; i<count; ++i) {
+        unsigned phase = t.timeline[i] < COMBAT_UNKNOWN ? t.timeline[i] : COMBAT_UNKNOWN;
+        draw->AddRectFilled(ImVec2(p.x+i*step,p.y), ImVec2(p.x+(i+1)*step,p.y+height), colors[phase]);
+    }
+    for (unsigned i=10; i<extent; i+=10)
+        draw->AddLine(ImVec2(p.x+i*step,p.y), ImVec2(p.x+i*step,p.y+height), IM_COL32(0,0,0,100));
+    ImGui::Dummy(ImVec2(width,height));
+    if (t.frame > COMBAT_TIMELINE_FRAMES)
+        ImGui::TextDisabled("Timeline: first %u frames", COMBAT_TIMELINE_FRAMES);
 }
 }
 
@@ -189,6 +230,9 @@ void DrawCombatDebugOverlay()
     View view = {snapshot.matrix, ImGui::GetBackgroundDrawList(),
         std::floor((display.x-w)*.5f), std::floor((display.y-h)*.5f), w, h};
     view.draw->PushClipRect(ImVec2(view.x,view.y), ImVec2(view.x+w,view.y+h), true);
+    if ((flags & COMBAT_HAZARDS) && snapshot.hazards_truncated)
+        view.draw->AddText(ImVec2(view.x+12,view.y+12), IM_COL32(255,190,80,255),
+            "Stage hazard display limit reached");
     // Fill attacks first so body wireframes remain legible where they overlap.
     for (int attack=1; attack>=0; --attack)
         for (unsigned i=0; i<snapshot.count; ++i) {
@@ -198,7 +242,7 @@ void DrawCombatDebugOverlay()
         }
     view.draw->PopClipRect();
     if (!(flags & COMBAT_FRAMES)) return;
-    ImGui::SetNextWindowPos(ImVec2(view.x+12,view.y+h-12), ImGuiCond_Always, ImVec2(0,1));
+    ImGui::SetNextWindowPos(ImVec2(view.x+w-12,view.y+h-204), ImGuiCond_Always, ImVec2(1,1));
     ImGui::SetNextWindowBgAlpha(.8f);
     if (ImGui::Begin("Attack frame data", nullptr, ImGuiWindowFlags_NoDecoration |
         ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs |
@@ -208,8 +252,9 @@ void DrawCombatDebugOverlay()
                 ImGui::TableNextColumn();
                 const CombatFighter &f=snapshot.fighter[side];
                 ImGui::Text("P%u   Move %04X   Frame %u",side+1,f.move,f.frame);
-                ImGui::Text("%s   HP %u%s", f.active ? "Active" : (f.current.valid ?
-                    (f.current.last_active ? "Recovery" : "Startup") : "Neutral / other"),
+                ImGui::Text("%s   HP %u%s", !f.current.valid ? "Neutral / other" :
+                    (f.phase == COMBAT_ACTIVE ? "Active" : f.phase == COMBAT_RECOVERY ?
+                    "Recovery" : f.phase == COMBAT_STARTUP ? "Startup" : "Unknown phase"),
                     f.health, f.contact ? "   Contact" : "");
                 timing("Current",f.current);
                 ImGui::Separator();
@@ -217,7 +262,8 @@ void DrawCombatDebugOverlay()
             }
             ImGui::EndTable();
         }
-        ImGui::TextDisabled("Observed strike timing; cancels shorten recovery. No frame advantage.");
+        ImGui::TextDisabled("S = first active frame, A/R = active/recovery duration. Base timing excludes cancels.");
+        ImGui::TextDisabled("Timeline: blue startup / red active / yellow recovery / gray missing. Ticks = 10 frames.");
     }
     ImGui::End();
 }

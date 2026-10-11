@@ -1,5 +1,6 @@
 #include "doa3_ui.h"
 #include "combat_overlay.h"
+#include "combat_world.h"
 #include "performance_overlay.h"
 #include "../game/combat_debug.h"
 #include "../game/training_dummy.h"
@@ -749,6 +750,7 @@ extern "C" int doa3_ui_init(void)
 
 extern "C" void doa3_ui_shutdown(void)
 {
+    combat_world_shutdown();
     if (!g_ready) return;
     g_ready = false;
     ImGui_ImplDX11_Shutdown();

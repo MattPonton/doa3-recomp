@@ -6,6 +6,7 @@ set(IMGUI_DIR ${CMAKE_SOURCE_DIR}/third_party/imgui)
 add_library(doa3_ui STATIC
     doa3_ui.cpp
     combat_overlay.cpp
+    combat_world.cpp
     performance_overlay.cpp
     doa3_setup.cpp
     ${IMGUI_DIR}/imgui.cpp
@@ -24,6 +25,7 @@ target_include_directories(doa3_ui PUBLIC
 target_link_libraries(doa3_ui PRIVATE
     input_compat
     d3d11
+    d3dcompiler
     dxgi
     xinput
     user32

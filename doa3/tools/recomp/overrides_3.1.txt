@@ -5,6 +5,8 @@
 0x001894B0  Sparring initialization: clear session-only input recordings
 0x00029E30  Camera activation: optional host free camera through native view/projection setup
 0x0007F1A0  Collision pass: read-only hit/hurt volume and observed strike timing capture
+0x000E8E60  Read-only capture of stage-object collision geometry for hazard overlay
+0x000E8F60  Observe disabled/broken stage collision objects for hazard overlay
 0x001E27C0  CDevice::KickOff (D3D 4134): translate the push buffer, report the GPU caught up
 0x0018C934  XAPI CreateFiber  -> host coroutine (xbox_fiber.c)
 0x0018C9C0  XAPI DeleteFiber
