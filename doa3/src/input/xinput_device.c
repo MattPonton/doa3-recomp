@@ -3,12 +3,9 @@
  *
  * Translates Xbox controller API calls to Windows XInput.
  *
- * Host XInput user slots 0..3 are packed onto guest ports 0..n-1 in order, so
- * one controller is always player 1 whatever index it enumerates at (a
- * wireless receiver or a virtual pad can leave slot 0 empty). Port 0 can also
- * be driven from the keyboard through the mapping (pad_mapping.c): it reports
- * present with no controller attached once any key is bound, and the keyboard
- * overlays the controller on port 0 when both exist.
+ * Each guest port selects Automatic, None, Keyboard, or an explicit XInput
+ * slot. Explicit devices are reserved before automatic ports are packed.
+ * Player 1's Automatic mode retains the legacy keyboard overlay/fallback.
  */
 
 #include "xinput_xbox.h"
@@ -30,6 +27,7 @@ static DWORD s_kb_packet;
 static BOOL s_active = TRUE;
 static BOOL s_captured;
 static BOOL s_rumbling[XBOX_MAX_CONTROLLERS];
+static DWORD s_reconfigured;
 
 static void stop_slot(int slot)
 {
@@ -77,12 +75,27 @@ static DWORD read_slot(int slot, XINPUT_STATE *state)
 
 static void rebuild_map(void)
 {
-    int p = 0, i;
+    int p, i;
+    DWORD reserved = 0;
     int previous[XBOX_MAX_CONTROLLERS];
     memcpy(previous, s_port_slot, sizeof(previous));
     for (i = 0; i < XBOX_MAX_CONTROLLERS; i++) s_port_slot[i] = -1;
-    for (i = 0; i < XBOX_MAX_CONTROLLERS; i++)
-        if (s_slot[i].connected) s_port_slot[p++] = i;
+    for (p = 0; p < XBOX_MAX_CONTROLLERS; ++p) {
+        i = pad_mapping_device(p);
+        if (i >= 0 && i < 4 && !(reserved & (1u << i))) {
+            reserved |= 1u << i; /* Reserve even while disconnected. */
+            if (s_slot[i].connected) s_port_slot[p] = i;
+        }
+    }
+    for (p = 0; p < XBOX_MAX_CONTROLLERS; ++p) {
+        if (pad_mapping_device(p) != PAD_DEVICE_AUTO) continue;
+        for (i = 0; i < XBOX_MAX_CONTROLLERS; ++i) {
+            if (!s_slot[i].connected || (reserved & (1u << i))) continue;
+            s_port_slot[p] = i;
+            reserved |= 1u << i;
+            break;
+        }
+    }
     /* A connected pad can move to a different guest port after hot-unplug.
      * Do not leave it playing the old player's effect. */
     for (i = 0; i < XBOX_MAX_CONTROLLERS; i++)
@@ -91,7 +104,51 @@ static void rebuild_map(void)
 
 static int port_has_keyboard(DWORD dwPort)
 {
-    return dwPort == 0 && pad_mapping_has_key_binding();
+    int device = pad_mapping_device((int)dwPort);
+    return device == PAD_DEVICE_KEYBOARD ||
+        (device == PAD_DEVICE_AUTO && dwPort == 0 && pad_mapping_player_has_key(0));
+}
+
+void xbox_InputConfigurationChanged(void)
+{
+    static int devices[4] = {-1,-1,-1,-1}, types[4];
+    int previous[4];
+    memcpy(previous, s_port_slot, sizeof previous);
+    rebuild_map();
+    for (int p = 0; p < 4; ++p) {
+        int device = pad_mapping_device(p), type = pad_mapping_type(p);
+        if (devices[p] != device || types[p] != type || previous[p] != s_port_slot[p]) {
+            s_reconfigured |= 1u << p;
+            stop_slot(previous[p]);
+        }
+        devices[p] = device;
+        types[p] = type;
+    }
+}
+DWORD xbox_InputTakeReconfiguredMask(void)
+{
+    DWORD mask = s_reconfigured;
+    s_reconfigured = 0;
+    return mask;
+}
+DWORD xbox_InputPhysicalMask(void)
+{
+    DWORD mask = 0;
+    probe_slots();
+    rebuild_map();
+    for (int i = 0; i < 4; ++i) if (s_slot[i].connected) mask |= 1u << i;
+    return mask;
+}
+int xbox_InputAssignedSlot(int player)
+{
+    return player >= 0 && player < 4 ? s_port_slot[player] : -1;
+}
+BYTE xbox_InputGuestSubtype(int player)
+{
+    /* Original Xbox XID subtypes, not Windows XInput subtype values. */
+    static const BYTE subtypes[] = { 0x01, 0x02, 0x20 };
+    int type = pad_mapping_type(player);
+    return subtypes[type >= 0 && type < PAD_TYPE_COUNT ? type : 0];
 }
 
 void xbox_InputInit(void)
@@ -140,7 +197,7 @@ DWORD xbox_InputGetState(DWORD dwPort, XBOX_INPUT_STATE *pState)
     if (slot >= 0 && read_slot(slot, &xi_state) == ERROR_SUCCESS) {
         memset(pState, 0, sizeof(XBOX_INPUT_STATE));
         pState->dwPacketNumber = xi_state.dwPacketNumber;
-        pad_mapping_apply_port(&xi_state, &pState->Gamepad, dwPort == 0);
+        pad_mapping_apply_player((int)dwPort, &xi_state, &pState->Gamepad, port_has_keyboard(dwPort));
         if (s_captured) memset(&pState->Gamepad, 0, sizeof(pState->Gamepad));
         return ERROR_SUCCESS;
     }
@@ -150,15 +207,14 @@ DWORD xbox_InputGetState(DWORD dwPort, XBOX_INPUT_STATE *pState)
         rebuild_map();
     }
 
-    /* No controller on this port. Port 0 can still be the keyboard, but ONLY
-     * once the user has bound a key: with nothing bound we report the slot
-     * empty rather than a pad that is not there. */
+    /* Explicit Keyboard remains present for binding; Automatic only exposes
+     * a keyboard fallback on player 1 when keys are bound. */
     if (!port_has_keyboard(dwPort))
         return ERROR_DEVICE_NOT_CONNECTED;
 
     memset(pState, 0, sizeof(XBOX_INPUT_STATE));
     pState->dwPacketNumber = ++s_kb_packet;
-    pad_mapping_apply_port(NULL, &pState->Gamepad, 1);
+    pad_mapping_apply_player((int)dwPort, NULL, &pState->Gamepad, 1);
     if (s_captured) memset(&pState->Gamepad, 0, sizeof(pState->Gamepad));
     return ERROR_SUCCESS;
 }
@@ -240,7 +296,7 @@ DWORD xbox_InputGetCapabilities(DWORD dwPort, DWORD dwFlags, XBOX_INPUT_CAPABILI
     memset(pCaps, 0, sizeof(XBOX_INPUT_CAPABILITIES));
     if (slot < 0) {
         if (!port_has_keyboard(dwPort)) return ERROR_DEVICE_NOT_CONNECTED;
-        pCaps->SubType = XINPUT_DEVSUBTYPE_GAMEPAD;
+        pCaps->SubType = xbox_InputGuestSubtype((int)dwPort);
         return ERROR_SUCCESS;
     }
 
@@ -248,7 +304,7 @@ DWORD xbox_InputGetCapabilities(DWORD dwPort, DWORD dwFlags, XBOX_INPUT_CAPABILI
     if (result != ERROR_SUCCESS) return result;
 
     pCaps->Type = xi_caps.Type;
-    pCaps->SubType = xi_caps.SubType;
+    pCaps->SubType = xbox_InputGuestSubtype((int)dwPort);
     pCaps->Flags = xi_caps.Flags;
 
     return ERROR_SUCCESS;

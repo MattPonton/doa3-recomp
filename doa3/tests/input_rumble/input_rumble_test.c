@@ -1,4 +1,5 @@
 #include "xinput_xbox.h"
+#include "pad_mapping.h"
 #include <xinput.h>
 #include <stdio.h>
 #include <string.h>
@@ -31,12 +32,17 @@ DWORD WINAPI XInputSetState(DWORD slot, XINPUT_VIBRATION *vibration)
     return set_result;
 }
 int pad_mapping_has_key_binding(void) { return keyboard; }
+int pad_mapping_player_has_key(int p) { return p == 0 && keyboard; }
+int pad_mapping_device(int p) { (void)p; return PAD_DEVICE_AUTO; }
+int pad_mapping_type(int p) { (void)p; return PAD_TYPE_DUKE; }
 void pad_mapping_apply_port(const void *state, XBOX_GAMEPAD *pad, int use_keyboard)
 {
     (void)state; (void)use_keyboard;
     memset(pad, 0, sizeof(*pad));
     pad->sThumbLX = 12345;
 }
+void pad_mapping_apply_player(int p, const void *state, XBOX_GAMEPAD *pad, int keys)
+{ (void)p; pad_mapping_apply_port(state, pad, keys); }
 
 #define CHECK(condition) do { if (!(condition)) { \
     fprintf(stderr, "Failed at line %d: %s\n", __LINE__, #condition); return 1; \

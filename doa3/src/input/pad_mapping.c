@@ -6,7 +6,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-static PadMapping g_map;
+static PadMapping g_maps[4];
+static int g_devices[4] = {-1,-1,-1,-1};
+static int g_types[4];
 static int        g_menu_open = 0;
 static int        g_use_keys  = 1;   /* set per call by pad_mapping_apply_port */
 static int        g_initialised = 0;
@@ -52,7 +54,7 @@ static WORD ctl_xbox_bit(int c)
 
 /* ── Defaults: the translation this layer did before it was remappable ──── */
 
-void pad_mapping_reset_defaults(void)
+static void reset_mapping(PadMapping *m)
 {
     static const struct { int ctl, kind, code; } d[] = {
         { PADCTL_DPAD_UP,    PADSRC_PAD_BUTTON,  XINPUT_GAMEPAD_DPAD_UP },
@@ -84,31 +86,62 @@ void pad_mapping_reset_defaults(void)
         { PADCTL_RY_POS,     PADSRC_PAD_AXIS,    PADAXIS_RY_POS },
     };
     size_t i;
-    memset(&g_map, 0, sizeof(g_map));
+    memset(m, 0, sizeof(*m));
     for (i = 0; i < sizeof(d) / sizeof(d[0]); i++) {
-        g_map.b[d[i].ctl].kind = d[i].kind;
-        g_map.b[d[i].ctl].code = d[i].code;
+        m->b[d[i].ctl].kind = d[i].kind;
+        m->b[d[i].ctl].code = d[i].code;
+    }
+}
+
+void pad_mapping_reset_defaults(void)
+{
+    for (int p = 0; p < 4; ++p) {
+        reset_mapping(&g_maps[p]);
+        g_devices[p] = PAD_DEVICE_AUTO;
+        g_types[p] = PAD_TYPE_DUKE;
     }
     g_initialised = 1;
 }
 
-PadMapping *pad_mapping_get(void)
+PadMapping *pad_mapping_get_player(int player)
 {
     if (!g_initialised) pad_mapping_reset_defaults();
-    return &g_map;
+    return &g_maps[player >= 0 && player < 4 ? player : 0];
+}
+PadMapping *pad_mapping_get(void) { return pad_mapping_get_player(0); }
+void pad_mapping_reset_player(int player) { reset_mapping(pad_mapping_get_player(player)); }
+int pad_mapping_device(int p) { pad_mapping_get(); return p >= 0 && p < 4 ? g_devices[p] : PAD_DEVICE_NONE; }
+int pad_mapping_type(int p) { pad_mapping_get(); return p >= 0 && p < 4 ? g_types[p] : PAD_TYPE_DUKE; }
+void pad_mapping_set_device(int p, int device)
+{
+    pad_mapping_get();
+    if (p < 0 || p >= 4 || device < PAD_DEVICE_KEYBOARD || device > 3) return;
+    /* A physical controller can belong to only one explicit assignment. */
+    if (device >= 0) for (int i = 0; i < 4; ++i)
+        if (i != p && g_devices[i] == device) g_devices[i] = PAD_DEVICE_NONE;
+    g_devices[p] = device;
+    xbox_InputConfigurationChanged();
+}
+void pad_mapping_set_type(int p, int type)
+{
+    pad_mapping_get();
+    if (p < 0 || p >= 4 || type < 0 || type >= PAD_TYPE_COUNT || g_types[p] == type) return;
+    g_types[p] = type;
+    xbox_InputConfigurationChanged();
 }
 
 void pad_mapping_set_menu_open(int open) { g_menu_open = open ? 1 : 0; }
 int  pad_mapping_menu_open(void)         { return g_menu_open; }
 
-int pad_mapping_has_key_binding(void)
+int pad_mapping_player_has_key(int player)
 {
     int i;
-    PadMapping *m = pad_mapping_get();
+    PadMapping *m = pad_mapping_get_player(player);
     for (i = 0; i < PADCTL_COUNT; i++)
         if (m->b[i].kind == PADSRC_KEY) return 1;
     return 0;
 }
+int pad_mapping_has_key_binding(void) { return pad_mapping_player_has_key(0); }
 
 /* ── Labels ────────────────────────────────────────────────────────────── */
 
@@ -189,14 +222,18 @@ const char *pad_mapping_default_path(void)
 int pad_mapping_save(const char *path)
 {
     FILE *f = NULL;
-    int i;
-    PadMapping *m = pad_mapping_get();
+    int i, p;
+    pad_mapping_get();
     if (!path) path = pad_mapping_default_path();
     if (fopen_s(&f, path, "wb") != 0 || !f) return 0;
     fprintf(f, "# DOA3 pad mapping. Control = kind:code\n");
     fprintf(f, "# kind 0=unbound 1=pad button 2=pad trigger 3=pad axis 4=key(VK)\n");
-    for (i = 0; i < PADCTL_COUNT; i++)
-        fprintf(f, "%s=%d:%d\n", pad_ctl_key(i), m->b[i].kind, m->b[i].code);
+    for (p = 0; p < 4; ++p) {
+        PadMapping *m = pad_mapping_get_player(p);
+        fprintf(f, "[Player%d]\nDevice=%d\nType=%d\n", p + 1, g_devices[p], g_types[p]);
+        for (i = 0; i < PADCTL_COUNT; i++)
+            fprintf(f, "%s=%d:%d\n", pad_ctl_key(i), m->b[i].kind, m->b[i].code);
+    }
     fclose(f);
     return 1;
 }
@@ -205,6 +242,7 @@ int pad_mapping_load(const char *path)
 {
     FILE *f = NULL;
     char line[256];
+    int player = -1; /* Legacy unsectioned bindings apply to all pads. */
     PadMapping *m;
     if (!path) path = pad_mapping_default_path();
     if (fopen_s(&f, path, "rb") != 0 || !f) return 0;
@@ -216,11 +254,27 @@ int pad_mapping_load(const char *path)
 
     while (fgets(line, sizeof(line), f)) {
         char *eq, *colon;
-        int i, kind, code;
+        int i, kind, code, value;
+        if (line[0] == '[') {
+            player = -2;
+            if (sscanf_s(line, "[Player%d]", &value) == 1 && value >= 1 && value <= 4) player = value - 1;
+            continue;
+        }
+        if (player == -2) continue;
         if (line[0] == '#' || line[0] == ';') continue;
         eq = strchr(line, '=');
         if (!eq) continue;
         *eq = 0;
+        if (player >= 0 && sscanf_s(eq + 1, "%d", &value) == 1) {
+            if (!strcmp(line, "Device")) {
+                if (value >= PAD_DEVICE_KEYBOARD && value <= 3) g_devices[player] = value;
+                continue;
+            }
+            if (!strcmp(line, "Type")) {
+                if (value >= 0 && value < PAD_TYPE_COUNT) g_types[player] = value;
+                continue;
+            }
+        }
         colon = strchr(eq + 1, ':');
         if (!colon) continue;
         *colon = 0;
@@ -229,13 +283,20 @@ int pad_mapping_load(const char *path)
         if (kind < PADSRC_NONE || kind > PADSRC_KEY) continue;
         for (i = 0; i < PADCTL_COUNT; i++) {
             if (strcmp(line, pad_ctl_key(i)) == 0) {
-                m->b[i].kind = kind;
-                m->b[i].code = code;
+                for (int p = 0; p < 4; ++p) if (player == -1 || p == player) {
+                    m = pad_mapping_get_player(p);
+                    m->b[i].kind = kind;
+                    m->b[i].code = code;
+                }
                 break;
             }
         }
     }
     fclose(f);
+    for (int p = 0; p < 4; ++p) if (g_devices[p] >= 0)
+        for (int q = p + 1; q < 4; ++q)
+            if (g_devices[q] == g_devices[p]) g_devices[q] = PAD_DEVICE_NONE;
+    xbox_InputConfigurationChanged();
     return 1;
 }
 
@@ -314,8 +375,13 @@ void pad_mapping_apply(const void *xinput_state, XBOX_GAMEPAD *out)
 
 void pad_mapping_apply_port(const void *xinput_state, XBOX_GAMEPAD *out, int use_keyboard)
 {
+    pad_mapping_apply_player(0, xinput_state, out, use_keyboard);
+}
+
+void pad_mapping_apply_player(int player, const void *xinput_state, XBOX_GAMEPAD *out, int use_keyboard)
+{
     const XINPUT_STATE *xi = (const XINPUT_STATE *)xinput_state;
-    PadMapping *m = pad_mapping_get();
+    PadMapping *m = pad_mapping_get_player(player);
     int i;
 
     if (!out) return;

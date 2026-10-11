@@ -95,6 +95,12 @@ void xbox_InputInit(void);
  * checked every 250ms; empty slots at most once a second.
  */
 DWORD xbox_InputHostMask(void);
+/* UI discovery and assignment; physical indices are Windows XInput slots. */
+DWORD xbox_InputPhysicalMask(void);
+int xbox_InputAssignedSlot(int player);
+void xbox_InputConfigurationChanged(void);
+DWORD xbox_InputTakeReconfiguredMask(void);
+BYTE xbox_InputGuestSubtype(int player);
 
 /**
  * Get the state of a controller.

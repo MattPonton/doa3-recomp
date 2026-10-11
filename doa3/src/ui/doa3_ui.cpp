@@ -53,6 +53,7 @@ bool g_screenshot_listening = false;
 int  g_listening = -1;   /* row capturing a binding, or -1 */
 bool g_armed     = false; /* skip the frame the click started on */
 int  g_pending_vk = 0;    /* VK grabbed by the wndproc while listening */
+int  g_input_player = 0;
 
 char g_status[128] = { 0 };
 
@@ -64,15 +65,20 @@ void SetStatus(const char *s) { _snprintf_s(g_status, sizeof(g_status), _TRUNCAT
  * sources are polled here. */
 bool CaptureBinding(PadBinding &out)
 {
-    if (g_pending_vk) {
+    int device = pad_mapping_device(g_input_player);
+    bool keyboard = device == PAD_DEVICE_KEYBOARD || (device == PAD_DEVICE_AUTO && g_input_player == 0);
+    if (g_pending_vk && keyboard) {
         out.kind = PADSRC_KEY;
         out.code = g_pending_vk;
         g_pending_vk = 0;
         return true;
     }
+    g_pending_vk = 0;
 
     XINPUT_STATE xi;
+    int assigned = xbox_InputAssignedSlot(g_input_player);
     for (DWORD port = 0; port < 4; ++port) {
+        if ((int)port != assigned) continue;
         if (XInputGetState(port, &xi) != ERROR_SUCCESS) continue;
 
         static const int kButtons[] = {
@@ -131,13 +137,54 @@ int ResetSaveRow()
 
 void DrawControlsSection()
 {
-    PadMapping *m = pad_mapping_get();
+    static const char *players[] = { "Player 1", "Player 2", "Player 3", "Player 4" };
+    static const char *types[] = { "Duke", "Controller S", "Fight Stick" };
+    DWORD physical = xbox_InputPhysicalMask();
+    ImGui::SetNextItemWidth(180.0f);
+    if (ImGui::Combo("Player", &g_input_player, players, 4)) {
+        g_listening = -1; g_armed = false; g_pending_vk = 0;
+        g_status[0] = 0;
+    }
+    PadMapping *m = pad_mapping_get_player(g_input_player);
+    char device_labels[7][64];
+    strcpy_s(device_labels[0], "Automatic");
+    strcpy_s(device_labels[1], "None");
+    strcpy_s(device_labels[2], "Keyboard");
+    for (int i = 0; i < 4; ++i)
+        _snprintf_s(device_labels[i + 3], sizeof device_labels[i + 3], _TRUNCATE,
+            "Controller %d (%s)", i + 1, physical & (1u << i) ? "connected" : "disconnected");
+    const int devices[] = { PAD_DEVICE_AUTO, PAD_DEVICE_NONE, PAD_DEVICE_KEYBOARD, 0, 1, 2, 3 };
+    int selected = 0;
+    for (int i = 0; i < 7; ++i) if (devices[i] == pad_mapping_device(g_input_player)) selected = i;
+    ImGui::SetNextItemWidth(270.0f);
+    if (ImGui::BeginCombo("Input device", device_labels[selected])) {
+        for (int i = 0; i < 7; ++i) if (ImGui::Selectable(device_labels[i], i == selected)) {
+            pad_mapping_set_device(g_input_player, devices[i]);
+            g_listening = -1; g_pending_vk = 0;
+            SetStatus("Device changed; Save to keep settings");
+        }
+        ImGui::EndCombo();
+    }
+    int type = pad_mapping_type(g_input_player);
+    ImGui::SetNextItemWidth(270.0f);
+    if (ImGui::Combo("Xbox controller type", &type, types, PAD_TYPE_COUNT)) {
+        pad_mapping_set_type(g_input_player, type);
+        g_listening = -1; g_pending_vk = 0;
+        SetStatus("Controller type changed; Save to keep settings");
+    }
+    int slot = xbox_InputAssignedSlot(g_input_player);
+    if (slot >= 0) ImGui::TextDisabled("Using Controller %d", slot + 1);
+    else if (pad_mapping_device(g_input_player) == PAD_DEVICE_KEYBOARD)
+        ImGui::TextDisabled("Using keyboard; bind keys below");
+    else ImGui::TextDisabled("No physical controller assigned");
+    ImGui::TextWrapped("Each player has separate bindings. Assigning a controller moves it from any other explicit assignment. "
+                       "Automatic uses an available controller; Player 1 can also use bound keys.");
 
     switch (ResetSaveRow()) {
     case 1:
-        pad_mapping_reset_defaults();
+        pad_mapping_reset_player(g_input_player);
         g_listening = -1;
-        SetStatus("Mapping reset to defaults");
+        SetStatus("This player's bindings reset to defaults");
         break;
     case 2:
         SetStatus(pad_mapping_save(NULL) ? "Saved doa3_input.ini"

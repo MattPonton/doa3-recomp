@@ -1,0 +1,116 @@
+#include "pad_mapping.h"
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+#define CHECK(x) do { if (!(x)) { fprintf(stderr,"line %d: %s\n",__LINE__,#x); exit(1); } } while(0)
+static DWORD connected = 15, clock_ms = 100;
+static XINPUT_STATE states[4];
+static XINPUT_VIBRATION motors[4];
+static int pressed_key;
+DWORD input_test_clock(void) { return clock_ms; }
+SHORT player_test_key(int key) { return key == pressed_key ? (SHORT)0x8000 : 0; }
+DWORD WINAPI XInputGetState(DWORD p, XINPUT_STATE *state)
+{
+    *state = states[p];
+    return connected & (1u << p) ? ERROR_SUCCESS : ERROR_DEVICE_NOT_CONNECTED;
+}
+DWORD WINAPI XInputGetCapabilities(DWORD p, DWORD flags, XINPUT_CAPABILITIES *caps)
+{
+    (void)flags;
+    memset(caps,0,sizeof(*caps));
+    return connected & (1u << p) ? ERROR_SUCCESS : ERROR_DEVICE_NOT_CONNECTED;
+}
+DWORD WINAPI XInputSetState(DWORD p, XINPUT_VIBRATION *vib)
+{
+    motors[p] = *vib;
+    return connected & (1u << p) ? ERROR_SUCCESS : ERROR_DEVICE_NOT_CONNECTED;
+}
+static void write_ini(const char *text)
+{
+    FILE *f = NULL;
+    CHECK(!fopen_s(&f,"player_mapping_test.ini","wb") && f);
+    fputs(text,f); fclose(f);
+}
+int main(void)
+{
+    XBOX_INPUT_STATE guest;
+    XBOX_INPUT_CAPABILITIES caps;
+    XBOX_VIBRATION vib = {1234,5678};
+    const WORD buttons[] = {XINPUT_GAMEPAD_A,XINPUT_GAMEPAD_B,XINPUT_GAMEPAD_X,XINPUT_GAMEPAD_Y};
+    pad_mapping_reset_defaults();
+    for (int p=0;p<4;++p) { states[p].Gamepad.wButtons=buttons[p]; states[p].dwPacketNumber=100+p; }
+    xbox_InputInit();
+    CHECK(xbox_InputHostMask()==15);
+    for (int p=0;p<4;++p) {
+        CHECK(xbox_InputGetState(p,&guest)==ERROR_SUCCESS);
+        CHECK(guest.Gamepad.bAnalogButtons[p]==255 && guest.dwPacketNumber==100+p);
+    }
+    /* Explicit slot reserves its device ahead of all automatic players. */
+    pad_mapping_set_device(3,0);
+    CHECK(xbox_InputAssignedSlot(3)==0 && xbox_InputAssignedSlot(0)==1);
+    CHECK(xbox_InputGetState(3,&guest)==ERROR_SUCCESS && guest.Gamepad.bAnalogButtons[0]==255);
+    CHECK(xbox_InputSetState(3,&vib)==ERROR_SUCCESS && motors[0].wLeftMotorSpeed==1234);
+    pad_mapping_set_device(2,0);
+    CHECK(pad_mapping_device(3)==PAD_DEVICE_NONE);
+    CHECK(xbox_InputAssignedSlot(3)==-1 && xbox_InputAssignedSlot(2)==0);
+    CHECK(motors[0].wLeftMotorSpeed==0);
+    /* Four explicit slots do not slide when one is removed. */
+    for (int p=0;p<4;++p) pad_mapping_set_device(p,p);
+    connected &= ~2u;
+    CHECK(xbox_InputGetState(1,&guest)==ERROR_DEVICE_NOT_CONNECTED);
+    CHECK(xbox_InputHostMask()==13 && xbox_InputAssignedSlot(2)==2 && xbox_InputAssignedSlot(3)==3);
+    connected |= 2u; clock_ms+=1000;
+    CHECK(xbox_InputHostMask()==15 && xbox_InputAssignedSlot(1)==1);
+    /* Separate bindings and keyboard ownership. */
+    pad_mapping_get_player(1)->b[PADCTL_A]=(PadBinding){PADSRC_PAD_BUTTON,XINPUT_GAMEPAD_B};
+    CHECK(xbox_InputGetState(1,&guest)==ERROR_SUCCESS && guest.Gamepad.bAnalogButtons[0]==255);
+    CHECK(pad_mapping_get_player(0)->b[PADCTL_A].code==XINPUT_GAMEPAD_A);
+    pad_mapping_set_device(1,PAD_DEVICE_KEYBOARD);
+    pad_mapping_get_player(1)->b[PADCTL_A]=(PadBinding){PADSRC_KEY,'J'};
+    pressed_key='J';
+    CHECK(xbox_InputGetState(1,&guest)==ERROR_SUCCESS && guest.Gamepad.bAnalogButtons[0]==255);
+    states[0].Gamepad.wButtons=0;
+    CHECK(xbox_InputGetState(0,&guest)==ERROR_SUCCESS && guest.Gamepad.bAnalogButtons[0]==0);
+    pad_mapping_set_menu_open(1);
+    CHECK(xbox_InputGetState(1,&guest)==ERROR_SUCCESS && guest.Gamepad.bAnalogButtons[0]==0);
+    pad_mapping_set_menu_open(0);
+    pad_mapping_set_device(1,PAD_DEVICE_NONE);
+    CHECK(xbox_InputGetState(1,&guest)==ERROR_DEVICE_NOT_CONNECTED);
+    /* Guest subtype is independent of the physical host controller. */
+    for (int t=0;t<PAD_TYPE_COUNT;++t) {
+        const BYTE expected[]={1,2,0x20};
+        pad_mapping_set_type(2,t);
+        CHECK(xbox_InputGuestSubtype(2)==expected[t]);
+        CHECK(xbox_InputGetCapabilities(2,0,&caps)==ERROR_SUCCESS && caps.SubType==expected[t]);
+    }
+    CHECK(xbox_InputTakeReconfiguredMask()!=0 && xbox_InputTakeReconfiguredMask()==0);
+    /* All four mappings, assignments and types survive a save/load. */
+    for (int p=0;p<4;++p) {
+        pad_mapping_set_device(p,p);
+        pad_mapping_set_type(p,p%3);
+        pad_mapping_get_player(p)->b[PADCTL_START]=(PadBinding){PADSRC_KEY,'1'+p};
+    }
+    CHECK(pad_mapping_save("player_mapping_test.ini"));
+    pad_mapping_reset_defaults();
+    CHECK(pad_mapping_load("player_mapping_test.ini"));
+    for (int p=0;p<4;++p) {
+        CHECK(pad_mapping_device(p)==p && pad_mapping_type(p)==p%3);
+        CHECK(pad_mapping_get_player(p)->b[PADCTL_START].code=='1'+p);
+    }
+    pad_mapping_reset_player(2);
+    CHECK(pad_mapping_get_player(2)->b[PADCTL_START].kind==PADSRC_PAD_BUTTON);
+    CHECK(pad_mapping_get_player(1)->b[PADCTL_START].kind==PADSRC_KEY);
+    /* Older shared mappings migrate without discarding any player's binding. */
+    write_ini("A=1:8192\n");
+    CHECK(pad_mapping_load("player_mapping_test.ini"));
+    for (int p=0;p<4;++p) CHECK(pad_mapping_get_player(p)->b[PADCTL_A].code==8192);
+    write_ini("[Player1]\nDevice=2\nType=99\n[Player2]\nDevice=2\n[Player3]\nDevice=99\n[Player5]\nA=0:0\n");
+    CHECK(pad_mapping_load("player_mapping_test.ini"));
+    CHECK(pad_mapping_device(0)==2 && pad_mapping_device(1)==PAD_DEVICE_NONE);
+    CHECK(pad_mapping_type(0)==PAD_TYPE_DUKE && pad_mapping_device(2)==PAD_DEVICE_AUTO);
+    CHECK(pad_mapping_get_player(0)->b[PADCTL_A].kind==PADSRC_PAD_BUTTON);
+    remove("player_mapping_test.ini");
+    puts("Four-player routing, rumble, reconnect, bindings, keyboard, subtypes and persistence passed.");
+    return 0;
+}

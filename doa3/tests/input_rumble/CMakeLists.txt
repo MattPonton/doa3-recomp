@@ -4,6 +4,10 @@ enable_testing()
 add_executable(input_rumble_test input_rumble_test.c input_device_test.c)
 target_include_directories(input_rumble_test PRIVATE ../../src/input)
 add_test(NAME input_rumble COMMAND input_rumble_test)
+add_executable(player_mapping_test player_mapping_test.c input_device_test.c player_mapping_device.c)
+target_include_directories(player_mapping_test PRIVATE ../../src/input)
+target_link_libraries(player_mapping_test PRIVATE user32)
+add_test(NAME player_mapping COMMAND player_mapping_test)
 
 # Explicit manual check: briefly pulses each motor on the first real pad.
 # Never run by CTest.

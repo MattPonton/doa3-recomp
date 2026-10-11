@@ -596,6 +596,9 @@ void sub_0021159F(void)   /* XGetDeviceChanges(type, &ins, &rem), stdcall ret 12
     extern DWORD xbox_InputHostMask(void);
     uint32_t p_ins = MEM32(esp + 8), p_rem = MEM32(esp + 12);
     uint32_t cur = netplay_filter_pad_mask(xbox_InputHostMask());
+    /* Reopen configured local ports so the game refreshes controller type.
+     * Network-owned ports retain their forced presence. */
+    cur &= ~(xbox_InputTakeReconfiguredMask() & ~netplay_forced_pads());
     uint32_t ins = cur & ~s_xpp_prev_mask, rem = s_xpp_prev_mask & ~cur;
     {   uint32_t forced = netplay_forced_pads(), p;
         for (p = 0; p < 4; p++)
@@ -655,11 +658,12 @@ void sub_00211823(void)   /* XInputOpen(type, port, slot, attrs) -> handle, ret 
 void sub_002118A4(void)   /* XInputGetCapabilities(handle, caps), ret 8 */
 {
     uint32_t caps = MEM32(esp + 8);
+    uint32_t port = MEM32(esp + 4) - 0x0AD00001u;
     if (caps) {
         int i;
         for (i = 0; i < 0x18; i += 4) MEM32(caps + i) = 0;
         MEM8(caps + 0x18) = 0;
-        MEM8(caps) = 1;   /* XINPUT_DEVSUBTYPE_GC_GAMEPAD */
+        MEM8(caps) = xbox_InputGuestSubtype((int)port);
     }
     eax = 0;
     esp += 12;

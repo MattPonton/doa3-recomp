@@ -62,9 +62,19 @@ const char *pad_ctl_group(int ctl);
 /* Non-zero when the control drives a stick axis rather than a button. */
 int         pad_ctl_is_axis(int ctl);
 
-/* The live mapping (one process-wide table; read on the guest thread, written
- * by the menu on that same thread). */
+/* Four independent mappings, read and edited on the guest/UI thread.
+ * The legacy getter aliases player 1. Player indices are zero-based. */
 PadMapping *pad_mapping_get(void);
+PadMapping *pad_mapping_get_player(int player);
+enum { PAD_DEVICE_KEYBOARD = -3, PAD_DEVICE_NONE = -2, PAD_DEVICE_AUTO = -1 };
+enum { PAD_TYPE_DUKE, PAD_TYPE_S, PAD_TYPE_FIGHT_STICK, PAD_TYPE_COUNT };
+int pad_mapping_device(int player);
+void pad_mapping_set_device(int player, int device);
+int pad_mapping_type(int player);
+void pad_mapping_set_type(int player, int type);
+void pad_mapping_reset_player(int player);
+int pad_mapping_player_has_key(int player);
+void pad_mapping_apply_player(int player, const void *state, XBOX_GAMEPAD *out, int use_keyboard);
 
 /* Restore the built-in defaults: exactly the translation this layer performed
  * before it was made remappable. */
@@ -94,8 +104,8 @@ int  pad_mapping_has_key_binding(void);
 /* Build an Xbox gamepad state from a polled XInput state (may be NULL when no
  * controller is attached) plus the current keyboard, per the mapping. */
 void pad_mapping_apply(const void *xinput_state, XBOX_GAMEPAD *out);
-/* Same, but keyboard sources only contribute when use_keyboard is non-zero:
- * the keyboard belongs to port 0, it must not drive players 2-4 as well. */
+/* Legacy player-1 mapping helper with explicit keyboard gating.
+ * Guest input uses pad_mapping_apply_player for the selected player's map. */
 void pad_mapping_apply_port(const void *xinput_state, XBOX_GAMEPAD *out, int use_keyboard);
 
 #ifdef __cplusplus
