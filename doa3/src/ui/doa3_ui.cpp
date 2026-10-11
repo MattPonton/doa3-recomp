@@ -59,6 +59,43 @@ char g_status[128] = { 0 };
 
 void SetStatus(const char *s) { _snprintf_s(g_status, sizeof(g_status), _TRUNCATE, "%s", s); }
 
+/* Use the same assigned player-1 device as gameplay, including native PS4.
+ * The Win32 backend's hardcoded XInput-slot-0 navigation is disabled. */
+void UpdateGamepadNavigation()
+{
+    ImGuiIO &io = ImGui::GetIO();
+    XINPUT_STATE state = {};
+    bool connected = xbox_InputGetRawState(&state) == ERROR_SUCCESS;
+    if (connected) io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
+    else io.BackendFlags &= ~ImGuiBackendFlags_HasGamepad;
+    const struct { ImGuiKey key; WORD button; } buttons[] = {
+        {ImGuiKey_GamepadStart, XINPUT_GAMEPAD_START}, {ImGuiKey_GamepadBack, XINPUT_GAMEPAD_BACK},
+        {ImGuiKey_GamepadFaceDown, XINPUT_GAMEPAD_A}, {ImGuiKey_GamepadFaceRight, XINPUT_GAMEPAD_B},
+        {ImGuiKey_GamepadFaceLeft, XINPUT_GAMEPAD_X}, {ImGuiKey_GamepadFaceUp, XINPUT_GAMEPAD_Y},
+        {ImGuiKey_GamepadDpadUp, XINPUT_GAMEPAD_DPAD_UP}, {ImGuiKey_GamepadDpadDown, XINPUT_GAMEPAD_DPAD_DOWN},
+        {ImGuiKey_GamepadDpadLeft, XINPUT_GAMEPAD_DPAD_LEFT}, {ImGuiKey_GamepadDpadRight, XINPUT_GAMEPAD_DPAD_RIGHT},
+        {ImGuiKey_GamepadL1, XINPUT_GAMEPAD_LEFT_SHOULDER}, {ImGuiKey_GamepadR1, XINPUT_GAMEPAD_RIGHT_SHOULDER},
+        {ImGuiKey_GamepadL3, XINPUT_GAMEPAD_LEFT_THUMB}, {ImGuiKey_GamepadR3, XINPUT_GAMEPAD_RIGHT_THUMB}
+    };
+    for (const auto &b : buttons) io.AddKeyEvent(b.key, connected && (state.Gamepad.wButtons & b.button) != 0);
+    auto analog = [&](ImGuiKey key, int value, int dead, int end) {
+        float amount = connected ? (float)(value - dead) / (float)(end - dead) : 0.0f;
+        if (amount < 0.0f) amount = 0.0f;
+        if (amount > 1.0f) amount = 1.0f;
+        io.AddKeyAnalogEvent(key, amount > 0.1f, amount);
+    };
+    analog(ImGuiKey_GamepadL2, state.Gamepad.bLeftTrigger, 30, 255);
+    analog(ImGuiKey_GamepadR2, state.Gamepad.bRightTrigger, 30, 255);
+    analog(ImGuiKey_GamepadLStickLeft, state.Gamepad.sThumbLX, -7849, -32768);
+    analog(ImGuiKey_GamepadLStickRight, state.Gamepad.sThumbLX, 7849, 32767);
+    analog(ImGuiKey_GamepadLStickUp, state.Gamepad.sThumbLY, 7849, 32767);
+    analog(ImGuiKey_GamepadLStickDown, state.Gamepad.sThumbLY, -7849, -32768);
+    analog(ImGuiKey_GamepadRStickLeft, state.Gamepad.sThumbRX, -8689, -32768);
+    analog(ImGuiKey_GamepadRStickRight, state.Gamepad.sThumbRX, 8689, 32767);
+    analog(ImGuiKey_GamepadRStickUp, state.Gamepad.sThumbRY, 8689, 32767);
+    analog(ImGuiKey_GamepadRStickDown, state.Gamepad.sThumbRY, -8689, -32768);
+}
+
 /* ── Capture ───────────────────────────────────────────────────────────────
  * Returns true when a source was pressed. A key arrives via the wndproc (so we
  * get a real VK rather than translating back out of ImGuiKey); controller
@@ -77,9 +114,9 @@ bool CaptureBinding(PadBinding &out)
 
     XINPUT_STATE xi;
     int assigned = xbox_InputAssignedSlot(g_input_player);
-    for (DWORD port = 0; port < 4; ++port) {
+    for (DWORD port = 0; port < XBOX_HOST_CONTROLLERS; ++port) {
         if ((int)port != assigned) continue;
-        if (XInputGetState(port, &xi) != ERROR_SUCCESS) continue;
+        if (xbox_InputReadPhysical((int)port, &xi) != ERROR_SUCCESS) continue;
 
         static const int kButtons[] = {
             XINPUT_GAMEPAD_A, XINPUT_GAMEPAD_B, XINPUT_GAMEPAD_X, XINPUT_GAMEPAD_Y,
@@ -146,19 +183,20 @@ void DrawControlsSection()
         g_status[0] = 0;
     }
     PadMapping *m = pad_mapping_get_player(g_input_player);
-    char device_labels[7][64];
+    char device_labels[3 + XBOX_HOST_CONTROLLERS][64];
     strcpy_s(device_labels[0], "Automatic");
     strcpy_s(device_labels[1], "None");
     strcpy_s(device_labels[2], "Keyboard");
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < XBOX_HOST_CONTROLLERS; ++i)
         _snprintf_s(device_labels[i + 3], sizeof device_labels[i + 3], _TRUNCATE,
-            "Controller %d (%s)", i + 1, physical & (1u << i) ? "connected" : "disconnected");
-    const int devices[] = { PAD_DEVICE_AUTO, PAD_DEVICE_NONE, PAD_DEVICE_KEYBOARD, 0, 1, 2, 3 };
+            "%s %d (%s)", i < 4 ? "Xbox controller" : "PS4 controller", i % 4 + 1,
+            physical & (1u << i) ? "connected" : "disconnected");
+    const int devices[] = { PAD_DEVICE_AUTO, PAD_DEVICE_NONE, PAD_DEVICE_KEYBOARD, 0, 1, 2, 3, 4, 5, 6, 7 };
     int selected = 0;
-    for (int i = 0; i < 7; ++i) if (devices[i] == pad_mapping_device(g_input_player)) selected = i;
+    for (int i = 0; i < 3 + XBOX_HOST_CONTROLLERS; ++i) if (devices[i] == pad_mapping_device(g_input_player)) selected = i;
     ImGui::SetNextItemWidth(270.0f);
     if (ImGui::BeginCombo("Input device", device_labels[selected])) {
-        for (int i = 0; i < 7; ++i) if (ImGui::Selectable(device_labels[i], i == selected)) {
+        for (int i = 0; i < 3 + XBOX_HOST_CONTROLLERS; ++i) if (ImGui::Selectable(device_labels[i], i == selected)) {
             pad_mapping_set_device(g_input_player, devices[i]);
             g_listening = -1; g_pending_vk = 0;
             SetStatus("Device changed; Save to keep settings");
@@ -173,7 +211,7 @@ void DrawControlsSection()
         SetStatus("Controller type changed; Save to keep settings");
     }
     int slot = xbox_InputAssignedSlot(g_input_player);
-    if (slot >= 0) ImGui::TextDisabled("Using Controller %d", slot + 1);
+    if (slot >= 0) ImGui::TextDisabled("Using %s %d", slot < 4 ? "Xbox controller" : "PS4 controller", slot % 4 + 1);
     else if (pad_mapping_device(g_input_player) == PAD_DEVICE_KEYBOARD)
         ImGui::TextDisabled("Using keyboard; bind keys below");
     else ImGui::TextDisabled("No physical controller assigned");
@@ -778,9 +816,7 @@ extern "C" int doa3_ui_init(void)
     /* No imgui.ini: the overlay is one centred window, and writing a settings
      * file into the game's working directory is just clutter. */
     io.IniFilename = nullptr;
-    /* Restored: with this off the pad stopped being read in the mapper.
-     * The Win32 backend only initialises its XInput path when gamepad nav
-     * is enabled, and removing this is what broke capture. */
+    /* Navigation and binding capture use the game's unified controller path. */
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
     ImGui::StyleColorsDark();
 
@@ -911,6 +947,7 @@ extern "C" void doa3_ui_render(void)
 
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
+    UpdateGamepadNavigation();
     ImGui::NewFrame();
 
     DrawCombatDebugOverlay();

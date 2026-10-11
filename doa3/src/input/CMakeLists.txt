@@ -3,6 +3,8 @@
 add_library(input_compat STATIC
     xinput_device.c
     pad_mapping.c
+    ds4_device.c
+    ds4_rumble.c
 )
 
 target_include_directories(input_compat PUBLIC
@@ -11,6 +13,9 @@ target_include_directories(input_compat PUBLIC
 
 target_link_libraries(input_compat
     xinput
+    dinput8
+    dxguid
+    hid
 )
 
 if(MSVC)

@@ -28,6 +28,8 @@ extern "C" {
 
 /* Xbox controller port count */
 #define XBOX_MAX_CONTROLLERS 4
+/* Host slots 0..3 are XInput; 4..7 are native PS4 controllers. */
+#define XBOX_HOST_CONTROLLERS 8
 
 /* Xbox gamepad button flags */
 #define XBOX_GAMEPAD_DPAD_UP        0x0001
@@ -95,8 +97,9 @@ void xbox_InputInit(void);
  * checked every 250ms; empty slots at most once a second.
  */
 DWORD xbox_InputHostMask(void);
-/* UI discovery and assignment; physical indices are Windows XInput slots. */
+/* UI discovery and assignment use host slots, independent of guest ports. */
 DWORD xbox_InputPhysicalMask(void);
+DWORD xbox_InputReadPhysical(int slot, XINPUT_STATE *state);
 int xbox_InputAssignedSlot(int player);
 void xbox_InputConfigurationChanged(void);
 DWORD xbox_InputTakeReconfiguredMask(void);

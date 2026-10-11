@@ -1,15 +1,16 @@
 /**
- * Xbox Input -> XInput Compatibility Layer
+ * Xbox Input -> Windows Controller Compatibility Layer
  *
- * Translates Xbox controller API calls to Windows XInput.
+ * Translates Xbox controller API calls to Windows XInput or native PS4 input.
  *
- * Each guest port selects Automatic, None, Keyboard, or an explicit XInput
+ * Each guest port selects Automatic, None, Keyboard, or an explicit host
  * slot. Explicit devices are reserved before automatic ports are packed.
  * Player 1's Automatic mode retains the legacy keyboard overlay/fallback.
  */
 
 #include "xinput_xbox.h"
 #include "pad_mapping.h"
+#include "ds4_device.h"
 #include <xinput.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,27 +21,30 @@
 /* Guest reads always fetch fresh input. Device discovery can reuse connection
  * information from those reads instead of polling the same pad a second time.
  * Idle connected slots are checked every 250ms, empty slots every second. */
-static struct { BOOL connected, probed; DWORD last_probe; } s_slot[XBOX_MAX_CONTROLLERS];
+static struct { BOOL connected, probed; DWORD last_probe; } s_slot[XBOX_HOST_CONTROLLERS];
 /* Guest port -> host slot, -1 = no controller. */
 static int   s_port_slot[XBOX_MAX_CONTROLLERS] = { -1, -1, -1, -1 };
 static DWORD s_kb_packet;
 static BOOL s_active = TRUE;
 static BOOL s_captured;
-static BOOL s_rumbling[XBOX_MAX_CONTROLLERS];
+static BOOL s_rumbling[XBOX_HOST_CONTROLLERS];
 static DWORD s_reconfigured;
 
 static void stop_slot(int slot)
 {
     XINPUT_VIBRATION off = { 0, 0 };
-    if (slot >= 0 && s_rumbling[slot]) {
-        XInputSetState((DWORD)slot, &off);
+    /* DS4 writes are asynchronous: stop even if the last request reported
+     * an earlier write failure and the worker has since recovered. */
+    if (slot >= 0 && slot < XBOX_HOST_CONTROLLERS && (s_rumbling[slot] || slot >= 4)) {
+        if (slot < 4) XInputSetState((DWORD)slot, &off);
+        else ds4_set_rumble(slot - 4, &off);
         s_rumbling[slot] = FALSE;
     }
 }
 
 void xbox_InputStopRumble(void)
 {
-    for (int slot = 0; slot < XBOX_MAX_CONTROLLERS; ++slot) stop_slot(slot);
+    for (int slot = 0; slot < XBOX_HOST_CONTROLLERS; ++slot) stop_slot(slot);
 }
 
 void xbox_InputSetActive(BOOL active)
@@ -53,24 +57,31 @@ static void probe_slots(void)
 {
     DWORD now = GetTickCount();
     DWORD i;
-    for (i = 0; i < XBOX_MAX_CONTROLLERS; i++) {
+    ds4_probe();
+    for (i = 0; i < XBOX_HOST_CONTROLLERS; i++) {
         XINPUT_STATE st;
         DWORD interval = s_slot[i].connected ? 250 : 1000;
         if (s_slot[i].probed && (now - s_slot[i].last_probe) < interval)
             continue;
         s_slot[i].probed = TRUE;
         s_slot[i].last_probe = now;
-        s_slot[i].connected = (XInputGetState(i, &st) == ERROR_SUCCESS);
+        s_slot[i].connected = ((i < 4 ? XInputGetState(i, &st) : ds4_read((int)i - 4, &st)) == ERROR_SUCCESS);
     }
 }
 
 static DWORD read_slot(int slot, XINPUT_STATE *state)
 {
-    DWORD result = XInputGetState((DWORD)slot, state);
+    DWORD result = slot < 4 ? XInputGetState((DWORD)slot, state) : ds4_read(slot - 4, state);
     s_slot[slot].connected = result == ERROR_SUCCESS;
     s_slot[slot].probed = TRUE;
     s_slot[slot].last_probe = GetTickCount();
     return result;
+}
+
+DWORD xbox_InputReadPhysical(int slot, XINPUT_STATE *state)
+{
+    if (!state || slot < 0 || slot >= XBOX_HOST_CONTROLLERS) return ERROR_DEVICE_NOT_CONNECTED;
+    return read_slot(slot, state);
 }
 
 static void rebuild_map(void)
@@ -82,14 +93,14 @@ static void rebuild_map(void)
     for (i = 0; i < XBOX_MAX_CONTROLLERS; i++) s_port_slot[i] = -1;
     for (p = 0; p < XBOX_MAX_CONTROLLERS; ++p) {
         i = pad_mapping_device(p);
-        if (i >= 0 && i < 4 && !(reserved & (1u << i))) {
+        if (i >= 0 && i < XBOX_HOST_CONTROLLERS && !(reserved & (1u << i))) {
             reserved |= 1u << i; /* Reserve even while disconnected. */
             if (s_slot[i].connected) s_port_slot[p] = i;
         }
     }
     for (p = 0; p < XBOX_MAX_CONTROLLERS; ++p) {
         if (pad_mapping_device(p) != PAD_DEVICE_AUTO) continue;
-        for (i = 0; i < XBOX_MAX_CONTROLLERS; ++i) {
+        for (i = 0; i < XBOX_HOST_CONTROLLERS; ++i) {
             if (!s_slot[i].connected || (reserved & (1u << i))) continue;
             s_port_slot[p] = i;
             reserved |= 1u << i;
@@ -136,7 +147,7 @@ DWORD xbox_InputPhysicalMask(void)
     DWORD mask = 0;
     probe_slots();
     rebuild_map();
-    for (int i = 0; i < 4; ++i) if (s_slot[i].connected) mask |= 1u << i;
+    for (int i = 0; i < XBOX_HOST_CONTROLLERS; ++i) if (s_slot[i].connected) mask |= 1u << i;
     return mask;
 }
 int xbox_InputAssignedSlot(int player)
@@ -235,7 +246,7 @@ DWORD xbox_InputSetState(DWORD dwPort, const XBOX_VIBRATION *pVibration)
     xi_vib.wLeftMotorSpeed = s_active && !s_captured ? pVibration->wLeftMotorSpeed : 0;
     xi_vib.wRightMotorSpeed = s_active && !s_captured ? pVibration->wRightMotorSpeed : 0;
 
-    result = XInputSetState((DWORD)slot, &xi_vib);
+    result = slot < 4 ? XInputSetState((DWORD)slot, &xi_vib) : ds4_set_rumble(slot - 4, &xi_vib);
     {
         static int trace = -1, count;
         static XINPUT_VIBRATION previous[4];
@@ -300,6 +311,13 @@ DWORD xbox_InputGetCapabilities(DWORD dwPort, DWORD dwFlags, XBOX_INPUT_CAPABILI
         return ERROR_SUCCESS;
     }
 
+    if (slot >= 4) {
+        if (!s_slot[slot].connected) return ERROR_DEVICE_NOT_CONNECTED;
+        pCaps->Type = XINPUT_DEVTYPE_GAMEPAD;
+        pCaps->SubType = xbox_InputGuestSubtype((int)dwPort);
+        pCaps->Flags = ds4_has_rumble(slot - 4) ? XINPUT_CAPS_FFB_SUPPORTED : 0;
+        return ERROR_SUCCESS;
+    }
     result = XInputGetCapabilities((DWORD)slot, dwFlags, &xi_caps);
     if (result != ERROR_SUCCESS) return result;
 

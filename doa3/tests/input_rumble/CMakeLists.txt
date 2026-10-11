@@ -1,17 +1,24 @@
 cmake_minimum_required(VERSION 3.20)
 project(input_rumble_test C)
 enable_testing()
-add_executable(input_rumble_test input_rumble_test.c input_device_test.c)
+add_executable(input_rumble_test input_rumble_test.c input_device_test.c ds4_stub.c)
 target_include_directories(input_rumble_test PRIVATE ../../src/input)
 add_test(NAME input_rumble COMMAND input_rumble_test)
-add_executable(player_mapping_test player_mapping_test.c input_device_test.c player_mapping_device.c)
+add_executable(player_mapping_test player_mapping_test.c input_device_test.c player_mapping_device.c ds4_stub.c)
 target_include_directories(player_mapping_test PRIVATE ../../src/input)
 target_link_libraries(player_mapping_test PRIVATE user32)
 add_test(NAME player_mapping COMMAND player_mapping_test)
+add_executable(ds4_mapping_test ds4_mapping_test.c ../../src/input/ds4_device.c ../../src/input/ds4_rumble.c)
+target_include_directories(ds4_mapping_test PRIVATE ../../src/input)
+target_link_libraries(ds4_mapping_test PRIVATE dinput8 dxguid user32 hid)
+add_test(NAME ds4_mapping COMMAND ds4_mapping_test)
+add_executable(ds4_controller_check EXCLUDE_FROM_ALL ds4_controller_check.c ../../src/input/ds4_device.c ../../src/input/ds4_rumble.c)
+target_include_directories(ds4_controller_check PRIVATE ../../src/input)
+target_link_libraries(ds4_controller_check PRIVATE dinput8 dxguid user32 hid)
 
 # Explicit manual check: briefly pulses each motor on the first real pad.
 # Never run by CTest.
 add_executable(rumble_controller_check EXCLUDE_FROM_ALL
-    rumble_controller_check.c ../../src/input/xinput_device.c ../../src/input/pad_mapping.c)
+    rumble_controller_check.c ../../src/input/xinput_device.c ../../src/input/pad_mapping.c ../../src/input/ds4_device.c ../../src/input/ds4_rumble.c)
 target_include_directories(rumble_controller_check PRIVATE ../../src/input)
-target_link_libraries(rumble_controller_check PRIVATE xinput user32)
+target_link_libraries(rumble_controller_check PRIVATE xinput user32 dinput8 dxguid hid)

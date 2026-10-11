@@ -16,6 +16,7 @@ add_library(doa3_ui STATIC
     ${IMGUI_DIR}/backends/imgui_impl_win32.cpp
     ${IMGUI_DIR}/backends/imgui_impl_dx11.cpp
 )
+target_compile_definitions(doa3_ui PRIVATE IMGUI_IMPL_WIN32_DISABLE_GAMEPAD)
 
 target_include_directories(doa3_ui PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}

@@ -115,7 +115,7 @@ int pad_mapping_type(int p) { pad_mapping_get(); return p >= 0 && p < 4 ? g_type
 void pad_mapping_set_device(int p, int device)
 {
     pad_mapping_get();
-    if (p < 0 || p >= 4 || device < PAD_DEVICE_KEYBOARD || device > 3) return;
+    if (p < 0 || p >= 4 || device < PAD_DEVICE_KEYBOARD || device >= XBOX_HOST_CONTROLLERS) return;
     /* A physical controller can belong to only one explicit assignment. */
     if (device >= 0) for (int i = 0; i < 4; ++i)
         if (i != p && g_devices[i] == device) g_devices[i] = PAD_DEVICE_NONE;
@@ -267,7 +267,7 @@ int pad_mapping_load(const char *path)
         *eq = 0;
         if (player >= 0 && sscanf_s(eq + 1, "%d", &value) == 1) {
             if (!strcmp(line, "Device")) {
-                if (value >= PAD_DEVICE_KEYBOARD && value <= 3) g_devices[player] = value;
+                if (value >= PAD_DEVICE_KEYBOARD && value < XBOX_HOST_CONTROLLERS) g_devices[player] = value;
                 continue;
             }
             if (!strcmp(line, "Type")) {
