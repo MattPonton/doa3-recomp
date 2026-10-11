@@ -26,6 +26,7 @@
 #include "../d3d/d3d8_nv2aff.h"
 #include "../d3d/d3d8_combiners.h"
 #include "../d3d/d3d8_polygon_offset.h"
+#include "../game/debug_capture.h"
 extern IDirect3DDevice8 *xbox_GetD3DDevice(void);
 
 /* Global.txd texture lookup */
@@ -3777,7 +3778,8 @@ static void submit_draw(void)
             }
         }
     }
-    {   /* DOA3 DIAG: dump presented frames after the movie hand-off, timed
+    if (doa3_auto_capture_enabled()) {
+        /* DOA3 DIAG: dump presented frames after the movie hand-off, timed
          * relative to it (g_doa3_post_movie is set when the movie teardown
          * sub_0009E340 returns) -- absolute draw marks either land inside the
          * movie or never arrive, depending on how far a debug run gets. */
@@ -3786,7 +3788,7 @@ static void submit_draw(void)
         static unsigned s_base = 0;
         static int s_shot = 0;
         static const unsigned offs[4] = { 200u, 2000u, 8000u, 20000u };
-        /* DOA3: unconditional early captures -- runs reach ~3k draws, so the
+        /* DOA3: early diagnostic captures -- runs reach ~3k draws, so the
          * 5000/60000 marks below and the post-movie offsets never fire. */
         if (g_pg.stats.draw_calls == 5u || g_pg.stats.draw_calls == 15u ||
             g_pg.stats.draw_calls == 30u ||

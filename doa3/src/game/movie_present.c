@@ -24,6 +24,7 @@
 #include <limits.h>
 
 #include "../apu/apu_xaudio2.h"
+#include "debug_capture.h"
 #include "recomp/gen/xbe_layout.h"   /* DOA3_XBE_ID_* */
 
 #define PL_MPEG_IMPLEMENTATION
@@ -869,7 +870,8 @@ void doa3_capture_backbuffer(const char *path)
 }
 
 /* ── Boot-screen glitch finder ─────────────────────────────────────────
- * For the first DOA3_GLITCH_UNTIL presented frames (default 1500), read each
+ * Enabled only with DOA3_AUTO_CAPTURE=1. For the first DOA3_GLITCH_UNTIL
+ * presented frames (default 1500), read each
  * frame back at half size, log its mean brightness and red-pixel count to
  * doa3_frames.csv, and when a frame jumps away from the one before it (mean
  * brightness by more than 2/255, or the red-pixel count by more than a
@@ -901,6 +903,7 @@ static void bmp_write(const char *path, const unsigned char *bgr, int w, int h)
 
 void doa3_frame_monitor(unsigned frame)
 {
+    if (!doa3_auto_capture_enabled()) return;
     enum { RING = 4 };
     static unsigned s_until = 0;
     static ID3D11Texture2D *s_stg;

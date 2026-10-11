@@ -29,6 +29,7 @@
 #include "../free_camera.h"
 #include "../combat_debug.h"
 #include "../training_dummy.h"
+#include "../debug_capture.h"
 
 extern uint32_t xbox_HeapAlloc(uint32_t size, uint32_t alignment);
 extern void xbox_fiber_yield(void);
@@ -1046,11 +1047,8 @@ static void d3d4134_pace(void)
 
 /* Frame captures by presented-frame number: DOA3_CAPTURE_FRAMES="a-b,c-d"
  * writes half-size frame_NNNN.bmp of each frame in the ranges, just before it
- * is presented. The default ranges bracket the two one-frame glitches seen on
- * the boot screens (legal text brightening, a box around the TECMO logo),
- * located relative to the draw-count captures: frame_at30 + ~206 and
- * frame_at400 + ~111 (the [CAPTURE] "draw N = presented frame M" lines map
- * those). DOA3_CAPTURE_FRAMES=0 turns it off. */
+ * is presented. Disabled unless ranges are explicitly supplied.
+ * DOA3_CAPTURE_FRAMES=0 turns it off. */
 extern unsigned g_doa3_frames_presented;   /* nv2a_pgraph_d3d11.c */
 static void d3d4134_capture_frame(unsigned frame)
 {
@@ -1118,8 +1116,7 @@ static void d3d4134_capture_frame(unsigned frame)
         }
 }
 
-/* Method trace of chosen frames: DOA3_MTRACE="a-b,c-d" (default the
- * legal-text brightening at frame 308 and the TECMO logo fade-out, 590-612)
+/* Method trace of chosen frames: DOA3_MTRACE="a-b,c-d" (off by default)
  * writes mtrace_NNNN.txt with every NV2A method of frame NNNN. Called at
  * each flip with the number of the frame that comes next. =0 turns it off. */
 static void doa3_mtrace_frame(unsigned next)
@@ -1132,7 +1129,7 @@ static void doa3_mtrace_frame(unsigned next)
     if (!s_init) {
         const char *e = getenv("DOA3_MTRACE");
         s_init = 1;
-        if (!e) e = "305-310,590-612";
+        if (!e) e = doa3_auto_capture_enabled() ? "305-310,590-612" : "";
         while (*e && s_n < 8) {
             char *end; unsigned a = strtoul(e, &end, 10), b = a;
             if (end == e) break;
@@ -1149,6 +1146,7 @@ static void doa3_mtrace_frame(unsigned next)
             g_doa3_mtrace = fopen(path, "w");
             return;
         }
+    if (!doa3_auto_capture_enabled()) return;
     /* Frame-buffer sampling effects (Omega's after-image / blur): trace and
      * screenshot the next frame the first time one is seen, then every 10 s
      * while they continue (at most 6). */
@@ -1471,7 +1469,7 @@ void sub_0019EA30(void)
     {
         uint32_t dst = a[1] & 0x07FFFFFFu;
         if (dst >= 0x1000u && dst + 2880u * 480u < 0x08000000u) {
-            if (s_n == 30 || s_n == 200) {
+            if (doa3_auto_capture_enabled() && (s_n == 30 || s_n == 200)) {
                 /* What the guest decoded and converted: the 720x480 32bpp
                  * destination as movie_NNN.bmp, plus how much of it is lit. */
                 char path[64]; FILE *f; unsigned nz = 0, k, y, x;
