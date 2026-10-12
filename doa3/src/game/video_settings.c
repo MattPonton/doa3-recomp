@@ -8,6 +8,7 @@
 #include <stddef.h>
 
 #include "video_settings.h"
+#include "d3d/interpolation_math.h"
 #include "xbe_layout.h"   /* DOA3_XBE_ID_<version> */
 
 extern HWND d3d8_GetHWND(void);
@@ -16,6 +17,13 @@ extern ptrdiff_t g_xbox_mem_offset;
 static int g_window_mode = VIDEO_BORDERLESS;
 static int g_aspect      = VIDEO_ASPECT_16_9;
 static int g_scale       = 3;
+static int g_render_hz   = 60;
+static InterpolationBudget g_render_budget;
+void video_reset_render_timing(void) { memset(&g_render_budget,0,sizeof g_render_budget); }
+int video_get_render_hz(void) { return g_render_hz; }
+void video_set_render_hz(int hz) { g_render_hz = (hz == 120 || hz == 240) ? hz : 60; memset(&g_render_budget,0,sizeof g_render_budget); }
+int video_render_limited(void) { return g_render_budget.limited; }
+void video_render_tick_ms(double milliseconds) { interpolation_budget_tick(&g_render_budget,milliseconds); }
 
 int video_get_window_mode(void) { return g_window_mode; }
 int video_get_aspect(void)      { return g_aspect; }
@@ -45,6 +53,7 @@ int video_settings_load(void)
     g_window_mode = (wm == VIDEO_WINDOWED) ? VIDEO_WINDOWED : VIDEO_BORDERLESS;
     g_aspect      = (ar == VIDEO_ASPECT_4_3) ? VIDEO_ASPECT_4_3 : VIDEO_ASPECT_16_9;
     g_scale       = (sc >= 1 && sc <= 3) ? sc : 3;
+    video_set_render_hz((int)GetPrivateProfileIntA("Video", "RenderHz", 60, p));
     return GetFileAttributesA(p) != INVALID_FILE_ATTRIBUTES;
 }
 
@@ -54,7 +63,9 @@ int video_settings_save(void)
     /* WindowMode: 0 = windowed, 1 = borderless fullscreen.
      * Widescreen: 0 = 4:3, 1 = 16:9.
      * InternalResolution: 1 = 480 lines, 2 = 960, 3 = 1440. */
-    return WritePrivateProfileStringA("Video", "WindowMode",
+    return WritePrivateProfileStringA("Video", "RenderHz",
+                                      g_render_hz == 240 ? "240" : g_render_hz == 120 ? "120" : "60", p) &&
+           WritePrivateProfileStringA("Video", "WindowMode",
                                       g_window_mode ? "1" : "0", p) &&
            WritePrivateProfileStringA("Video", "Widescreen",
                                       g_aspect ? "1" : "0", p) &&
@@ -80,6 +91,7 @@ void video_guest_target_size(int aspect, unsigned *w, unsigned *h)
 
 void video_set_scale(int scale)
 {
+    memset(&g_render_budget,0,sizeof g_render_budget);
     /* Applied at the next frame boundary, like the aspect. */
     g_scale = (scale >= 1 && scale <= 3) ? scale : 3;
 }

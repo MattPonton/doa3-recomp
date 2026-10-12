@@ -7,6 +7,7 @@
  */
 
 #include "d3d8_internal.h"
+#include "d3d8_interpolation.h"
 #include "d3d8_swizzle.h"
 #include <stdlib.h>
 #include <string.h>
@@ -498,6 +499,7 @@ static HRESULT __stdcall tex_UnlockRect(IDirect3DTexture8 *self, UINT Level)
                 }
             }
 
+            d3d8_interpolation_texture_changed((ID3D11Resource *)tex->d3d11_texture);
             ID3D11DeviceContext_UpdateSubresource(ctx,
                 (ID3D11Resource *)tex->d3d11_texture,
                 Level, NULL, upload_data, lp, lp * rows);

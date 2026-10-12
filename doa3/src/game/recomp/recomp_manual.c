@@ -30,6 +30,11 @@
 #include "../combat_debug.h"
 #include "../training_dummy.h"
 #include "../debug_capture.h"
+#include "../video_settings.h"
+#include "d3d/d3d8_interpolation.h"
+#include "d3d/interpolation_math.h"
+extern void d3d8_SetPresentationAlpha(float alpha);
+extern void d3d8_PresentIntermediate(float alpha);
 
 extern uint32_t xbox_HeapAlloc(uint32_t size, uint32_t alignment);
 extern void xbox_fiber_yield(void);
@@ -42,7 +47,8 @@ extern void xbox_fiber_wake(uint32_t event_va);
 void sub_00011980_gen(void);
 void sub_00012B60_gen(void);
 void sub_001894B0_gen(void);
-void sub_00011980(void) { sub_00011980_gen(); training_input_begin(); }
+unsigned g_doa3_game_input_ticks;
+void sub_00011980(void) { ++g_doa3_game_input_ticks; sub_00011980_gen(); training_input_begin(); }
 void sub_00012B60(void) { sub_00012B60_gen(); training_input_end(); }
 void sub_001894B0(void) { training_reset(); sub_001894B0_gen(); }
 
@@ -1019,6 +1025,7 @@ static void d3d4134_pace(void)
     if (now.QuadPart - s_next > period * 8) s_next = now.QuadPart;
     for (;;) {
         LONGLONG rem;
+        d3d8_ServicePresentation();
         QueryPerformanceCounter(&now);
         rem = s_next - now.QuadPart;
         if (rem <= 0) break;
@@ -1222,6 +1229,9 @@ static void d3d4134_frame_done(uint32_t dev)
     extern void pgraph_d3d11_flush(void);
     extern void doa3_present_frame(void);
     static int s_frames;
+    static LARGE_INTEGER previous_present, tick_frequency;
+    static int previous_steps;
+    static int previous_focus;
     uint32_t sv_eax = eax, sv_ecx = ecx, sv_edx = edx, sv_ebx = ebx;
     uint32_t sv_esi = esi, sv_edi = edi, sv_esp = esp, sv_seh = g_seh_ebp;
     pgraph_d3d11_flush();
@@ -1229,8 +1239,41 @@ static void d3d4134_frame_done(uint32_t dev)
     { extern void doa3_frame_monitor(unsigned frame); doa3_frame_monitor(g_doa3_frames_presented); }
     doa3_mtrace_frame(g_doa3_frames_presented + 1);
     { void doa3_adx_frame(unsigned frame); doa3_adx_frame(g_doa3_frames_presented); }
-    doa3_present_frame();
-    d3d4134_pace();
+    {
+        extern int doa3_movie_host_owns_screen(void);
+        extern HWND d3d8_GetHWND(void);
+        /* Scene changes invalidate history. Menu/movie timing remains native.
+         * Diagnostic world overlays describe exact collision state, so leave
+         * interpolation off while those are being inspected. */
+        unsigned mode = MEM32(0x5A2858);
+        int focused = GetForegroundWindow()==d3d8_GetHWND();
+        int steps;
+        /* Background presentation can stall under the compositor. Do not
+         * classify a focus transition as sustained gameplay overload. */
+        if (focused!=previous_focus) video_reset_render_timing();
+        previous_focus=focused;
+        steps = (focused && !video_render_limited() && !doa3_movie_host_owns_screen() && (mode == 7 || mode == 11) &&
+            !(combat_debug_flags() & (COMBAT_HITBOXES | COMBAT_HURTBOXES | COMBAT_HAZARDS))) ?
+            interpolation_steps(video_get_render_hz()) : 1;
+        unsigned scene = mode | (MEM8(0xC59865) << 8) |
+            (MEM8(0x59D084 + MEM8(0xC59865)) << 16) | (MEM8(0x591F50) << 24);
+        d3d8_interpolation_finish(steps > 1, scene);
+        if (!d3d8_interpolation_ready()) steps = 1;
+        d3d8_SchedulePresentations(steps);
+        d3d8_SetPresentationAlpha(1.0f / steps);
+        doa3_present_frame();
+        {
+            LARGE_INTEGER end;
+            if (!tick_frequency.QuadPart) QueryPerformanceFrequency(&tick_frequency);
+            QueryPerformanceCounter(&end);
+            if (steps>1 && previous_steps>1 && previous_present.QuadPart)
+                video_render_tick_ms(1000.0*(end.QuadPart-previous_present.QuadPart)/tick_frequency.QuadPart);
+            previous_present=end;
+            previous_steps=steps;
+        }
+        d3d8_SetPresentationAlpha(1.0f);
+        d3d4134_pace();
+    }
     { extern void doa3_fn_profile_tick(void); doa3_fn_profile_tick(); }
     eax = sv_eax; ecx = sv_ecx; edx = sv_edx; ebx = sv_ebx;    /* the worker laps */
     esi = sv_esi; edi = sv_edi; esp = sv_esp; g_seh_ebp = sv_seh;
@@ -1246,6 +1289,7 @@ static void d3d4134_frame_done(uint32_t dev)
 void sub_001E27C0_gen(void);
 void sub_001E27C0(void)
 {
+    d3d8_ServicePresentation();
     static int s_on = -1, s_log;
     uint32_t dev = ecx, flags = MEM32(dev + 8), cursor, start, end, sem;
     if (s_on < 0) { const char *e = getenv("DOA3_PB"); s_on = !(e && *e == '0'); }

@@ -46,6 +46,12 @@ void video_set_aspect(int aspect);
 
 /* Internal resolution: 1 = 480 lines, 2 = 960, 3 = 1440 (default). Applied at the next
  * frame boundary. */
+/* Presentation only: gameplay always runs at 60 Hz. */
+int video_get_render_hz(void);
+void video_set_render_hz(int hz);
+int video_render_limited(void);
+void video_render_tick_ms(double milliseconds);
+void video_reset_render_timing(void);
 int  video_get_scale(void);
 void video_set_scale(int scale);
 

@@ -17,6 +17,7 @@
  */
 
 #include "d3d8_internal.h"
+#include "d3d8_interpolation.h"
 #include "d3d8_nv2aff.h"
 #include <d3dcompiler.h>
 #include <string.h>
@@ -754,7 +755,8 @@ void d3d8_shaders_prepare_draw(DWORD fvf)
     /* ---- VS Transform CB (b0) ---- */
     hr = ID3D11DeviceContext_Map(ctx, (ID3D11Resource *)g_vs_cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
     if (SUCCEEDED(hr)) {
-        VSTransformConstants *cb = (VSTransformConstants *)mapped.pData;
+        VSTransformConstants cpu_constants = {0};
+        VSTransformConstants *cb = &cpu_constants;
         memset(cb, 0, sizeof(*cb));
 
         if (fvf & D3DFVF_XYZRHW) {
@@ -818,13 +820,16 @@ void d3d8_shaders_prepare_draw(DWORD fvf)
             cb->fog_params[3] = (float)rs[D3DRS_FOGTABLEMODE];
         }
 
+        d3d8_interpolation_constants(g_vs_cb, cb, sizeof *cb);
+        memcpy(mapped.pData, cb, sizeof *cb);
         ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource *)g_vs_cb, 0);
     }
 
     /* ---- VS Lighting CB (b1) ---- */
     hr = ID3D11DeviceContext_Map(ctx, (ID3D11Resource *)g_vs_light_cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
     if (SUCCEEDED(hr)) {
-        VSLightingConstants *lb = (VSLightingConstants *)mapped.pData;
+        VSLightingConstants cpu_constants = {0};
+        VSLightingConstants *lb = &cpu_constants;
         const D3DMATERIAL8 *mat = d3d8_GetMaterial();
         UINT i, active_count = 0;
         memset(lb, 0, sizeof(*lb));
@@ -883,13 +888,16 @@ void d3d8_shaders_prepare_draw(DWORD fvf)
         }
         lb->num_lights = active_count;
 
+        d3d8_interpolation_constants(g_vs_light_cb, lb, sizeof *lb);
+        memcpy(mapped.pData, lb, sizeof *lb);
         ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource *)g_vs_light_cb, 0);
     }
 
     /* ---- PS Constant Buffer ---- */
     hr = ID3D11DeviceContext_Map(ctx, (ID3D11Resource *)g_ps_cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
     if (SUCCEEDED(hr)) {
-        PSConstants *pc = (PSConstants *)mapped.pData;
+        PSConstants cpu_constants = {0};
+        PSConstants *pc = &cpu_constants;
         UINT stage;
         memset(pc, 0, sizeof(*pc));
 
@@ -949,6 +957,8 @@ void d3d8_shaders_prepare_draw(DWORD fvf)
             pc->stage_alpha[stage][1] = tss[D3DTSS_ALPHAARG2];
         }
 
+        d3d8_interpolation_constants(g_ps_cb, pc, sizeof *pc);
+        memcpy(mapped.pData, pc, sizeof *pc);
         ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource *)g_ps_cb, 0);
     }
 
@@ -1178,6 +1188,7 @@ int d3d8_Nv2aFF_Bind(const Nv2aFFConstants *cb)
     if (!ctx || !g_nv2aff_vs || !g_nv2aff_cb) return 0;
     if (FAILED(ID3D11DeviceContext_Map(ctx, (ID3D11Resource *)g_nv2aff_cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
         return 0;
+    d3d8_interpolation_constants(g_nv2aff_cb, cb, sizeof *cb);
     memcpy(mapped.pData, cb, sizeof *cb);
     ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource *)g_nv2aff_cb, 0);
     ID3D11DeviceContext_VSSetShader(ctx, g_nv2aff_vs, NULL, 0);

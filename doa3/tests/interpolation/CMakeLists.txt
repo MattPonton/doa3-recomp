@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.20)
+project(interpolation_tests C)
+enable_testing()
+add_executable(interpolation_test interpolation_test.c ../../src/d3d/d3d8_interpolation.c)
+target_include_directories(interpolation_test PRIVATE ../../src/d3d ../../src)
+target_compile_definitions(interpolation_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_link_libraries(interpolation_test d3d11 dxgi dxguid d3dcompiler)
+add_test(NAME interpolation_warp COMMAND interpolation_test)

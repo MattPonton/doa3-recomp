@@ -33,6 +33,7 @@
  */
 
 #include "d3d8_internal.h"
+#include "d3d8_interpolation.h"
 #include "d3d8_combiners.h"
 #include <d3dcompiler.h>
 #include <string.h>
@@ -1053,7 +1054,8 @@ BOOL d3d8_combiners_prepare_draw(void)
     hr = ID3D11DeviceContext_Map(ctx, (ID3D11Resource *)g_combiner_cb,
                                 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
     if (SUCCEEDED(hr)) {
-        NV2APSConstants *cb = (NV2APSConstants *)mapped.pData;
+        NV2APSConstants cpu_constants = {0};
+        NV2APSConstants *cb = &cpu_constants;
 
         const NV2ACombinerState *cs = g_direct_on ? &g_direct_state : &g_combiner_state;
         /* Per-stage constants */
@@ -1075,6 +1077,8 @@ BOOL d3d8_combiners_prepare_draw(void)
         cb->alpha_test_enable = rs[D3DRS_ALPHATESTENABLE] ? 1 : 0;
         cb->fog_enable = (!g_direct_on && rs[D3DRS_FOGENABLE]) ? 1 : 0;
 
+        d3d8_interpolation_constants(g_combiner_cb, cb, sizeof *cb);
+        memcpy(mapped.pData, cb, sizeof *cb);
         ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource *)g_combiner_cb, 0);
     }
 

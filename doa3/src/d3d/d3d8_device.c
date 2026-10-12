@@ -18,6 +18,16 @@
 #include "d3d8_internal.h"
 #include "d3d8_presentation.h"
 #include "d3d8_nv2aff.h"
+#include "d3d8_interpolation.h"
+static float g_present_alpha = 1.0f;
+static int g_extra_present;
+static LONGLONG g_present_start, g_present_frequency;
+static int g_present_steps=1, g_present_next=1, g_servicing;
+unsigned g_doa3_host_presents;
+static ID3D11ShaderResourceView *g_completed_srv;
+static void d3d8_completed_frame(int keep);
+void d3d8_SetPresentationAlpha(float alpha) { g_present_alpha = alpha; }
+void d3d8_PresentIntermediate(float alpha);
 static ID3D11Buffer *g_nv2aff_idx_ring;   /* NV2A FF index ring, see d3d8_DrawNv2aFF */
 static UINT          g_nv2aff_idx_off;
 #include "ui/doa3_ui.h"
@@ -513,6 +523,8 @@ static ULONG __stdcall dev_Release(IDirect3DDevice8 *self)
         d3d8_vsh_shutdown();
         d3d8_combiners_shutdown();
         d3d8_states_shutdown();
+        d3d8_completed_frame(0);
+        d3d8_interpolation_shutdown();
         d3d8_shaders_shutdown();
 
         /* Cleanup D3D11 resources */
@@ -677,6 +689,7 @@ static void d3d8_apply_target_size_change(void)
     D3D11_VIEWPORT vp;
     video_guest_target_size(video_get_aspect(), &w, &h);
     if (w == s->width && h == s->height) return;
+    d3d8_interpolation_shutdown();
 
     ID3D11DeviceContext_OMSetRenderTargets(s->d3d11_context, 0, NULL, NULL);
     d3d11_release_guest_target(s);
@@ -706,15 +719,21 @@ static HRESULT d3d8_compose_and_present(void)
     ID3D11DeviceContext *ctx = s->d3d11_context;
     HRESULT hr;
     if (!s->swap_chain || !ctx) return E_FAIL;
-    { extern void d3d8_screenshot_capture(ID3D11Texture2D *source);
+    if (!g_extra_present) { extern void d3d8_screenshot_capture(ID3D11Texture2D *source);
       d3d8_screenshot_capture(s->default_tex); }
-    d3d8_keep_prev_frame();
+    if (!g_extra_present) d3d8_keep_prev_frame();
+    if (!g_extra_present) d3d8_interpolation_validate(s->default_tex);
 
     swap_resize_if_needed();
     if (s->swap_rtv && s->default_srv && blit_init()) {
-        ID3D11ShaderResourceView *scene_srv = combat_world_render(s->d3d11_device,
+        ID3D11ShaderResourceView *scene_srv = g_extra_present ? NULL : combat_world_render(s->d3d11_device,
             ctx, s->default_tex, s->default_dsv);
         if (!scene_srv) scene_srv = s->default_srv;
+        { ID3D11ShaderResourceView *interpolated = g_extra_present && g_present_alpha >= 1 ?
+              g_completed_srv : g_present_alpha < 1 ? d3d8_interpolation_render(g_present_alpha) : NULL;
+          if (interpolated) scene_srv = interpolated;
+          else if (g_extra_present) return S_FALSE; /* never show the next partially built guest frame */
+        }
         /* save */
         ID3D11InputLayout *il = NULL; D3D11_PRIMITIVE_TOPOLOGY topo;
         ID3D11VertexShader *vs = NULL; ID3D11PixelShader *ps = NULL;
@@ -799,8 +818,52 @@ static HRESULT d3d8_compose_and_present(void)
     }
 
     hr = d3d8_present_swap_chain(s->swap_chain, s->swap_flags);
-    d3d8_apply_target_size_change();
+    if (SUCCEEDED(hr)) ++g_doa3_host_presents;
+    if (!g_extra_present && g_present_steps>1 && !g_present_start) {
+        LARGE_INTEGER now; QueryPerformanceCounter(&now); g_present_start=now.QuadPart;
+    }
+    if (!g_extra_present) d3d8_apply_target_size_change();
     return hr;
+}
+
+/* Cooperative render checkpoints service extra presents during both guest
+ * submission and idle pacing. Waiting only at frame end causes a burst when
+ * the next frame takes more than half a tick to build. */
+void d3d8_SchedulePresentations(int steps)
+{
+    LARGE_INTEGER now;
+    if (!g_present_frequency) { QueryPerformanceFrequency(&now); g_present_frequency=now.QuadPart; }
+    g_present_start=0; /* anchor at the first actual present, after its render work */
+    d3d8_completed_frame(steps>1);
+    g_present_steps=steps;
+    g_present_next=1;
+}
+void d3d8_ServicePresentation(void)
+{
+    LARGE_INTEGER now;
+    LONGLONG elapsed;
+    int due;
+    if (g_servicing || !g_present_start || g_present_next>=g_present_steps ||
+        video_get_render_hz()==60 || !d3d8_interpolation_ready()) return;
+    QueryPerformanceCounter(&now);
+    elapsed=now.QuadPart-g_present_start;
+    due=(int)(elapsed*60*g_present_steps/g_present_frequency);
+    if (due<g_present_next) return;
+    if (due>=g_present_steps) { g_present_next=g_present_steps; return; }
+    g_present_next=due+1;
+    g_servicing=1;
+    d3d8_PresentIntermediate((float)(due+1)/g_present_steps);
+    g_servicing=0;
+}
+
+/* Extra presentation has no game callback, IRQ delivery, or guest vblank. */
+void d3d8_PresentIntermediate(float alpha)
+{
+    g_extra_present = 1;
+    g_present_alpha = alpha;
+    d3d8_compose_and_present();
+    g_present_alpha = 1.0f;
+    g_extra_present = 0;
 }
 
 /* Online play: while the game thread waits for the other player's input it
@@ -1029,6 +1092,7 @@ int d3d8_SetOffscreenTarget(uint32_t key, UINT w, UINT h)
     if (!g_device_state.d3d11_device || !w || !h) return 0;
     slot = offrt_slot(key, w, h);
     if (slot < 0) return 0;
+    d3d8_interpolation_texture_changed((ID3D11Resource *)g_offrt[slot].tex);
     ID3D11DeviceContext_OMSetRenderTargets(g_device_state.d3d11_context, 1,
                                            &g_offrt[slot].rtv, g_offrt[slot].dsv);
     {   /* The translator maps the guest surface onto -1..1 NDC, so the
@@ -1138,8 +1202,25 @@ static int fbcopy_ensure(FbCopy *c)
     return 1;
 }
 
+static void d3d8_completed_frame(int keep)
+{
+    static FbCopy completed;
+    if (!keep) {
+        if (completed.srv) ID3D11ShaderResourceView_Release(completed.srv);
+        if (completed.tex) ID3D11Texture2D_Release(completed.tex);
+        memset(&completed,0,sizeof completed);
+        g_completed_srv=NULL;
+        return;
+    }
+    if (!fbcopy_ensure(&completed)) { g_completed_srv=NULL; return; }
+    ID3D11DeviceContext_CopyResource(g_device_state.d3d11_context,
+        (ID3D11Resource *)completed.tex,(ID3D11Resource *)g_device_state.default_tex);
+    g_completed_srv=completed.srv;
+}
+
 int d3d8_BindFramebufferCopy(UINT stage)
 {
+    d3d8_interpolation_invalidate();
     if (!fbcopy_ensure(&g_fbcopy)) return 0;   /* copying is fine with or without default_tex bound */
     ID3D11DeviceContext_CopyResource(g_device_state.d3d11_context,
                                      (ID3D11Resource *)g_fbcopy.tex,
@@ -1157,6 +1238,7 @@ int d3d8_BindFramebufferCopy(UINT stage)
  * the current frame stands in for it. */
 int d3d8_BindPrevFrame(UINT stage)
 {
+    d3d8_interpolation_invalidate();
     InterlockedExchange(&g_prevframe_want, 120);
     /* also while an offscreen target is bound: the effect renders its after-image buffer from the frame on screen */
     if (!g_prevframe_valid) return d3d8_BindFramebufferCopy(stage);
@@ -1227,6 +1309,7 @@ static HRESULT __stdcall dev_Clear(IDirect3DDevice8 *self, DWORD Count, const D3
         if (doa3_movie_host_owns_screen())
             Flags &= ~(DWORD)D3DCLEAR_TARGET;
     }
+    if (!g_off_active) d3d8_interpolation_clear(Flags, Color, Z, Stencil);
     if (Flags & D3DCLEAR_TARGET) {
         float clear_color[4] = {
             ((Color >> 16) & 0xFF) / 255.0f,  /* R */
@@ -1543,6 +1626,7 @@ static HRESULT __stdcall dev_DrawPrimitive(IDirect3DDevice8 *self, D3DPRIMITIVET
     d3d8_states_apply();
 
     ID3D11DeviceContext_IASetPrimitiveTopology(g_device_state.d3d11_context, topology);
+    if (!g_off_active) d3d8_interpolation_invalidate();
     ID3D11DeviceContext_Draw(g_device_state.d3d11_context, vertex_count, StartVertex);
     return S_OK;
 }
@@ -1564,6 +1648,7 @@ static HRESULT __stdcall dev_DrawIndexedPrimitive(IDirect3DDevice8 *self, D3DPRI
     d3d8_states_apply();
 
     ID3D11DeviceContext_IASetPrimitiveTopology(g_device_state.d3d11_context, topology);
+    if (!g_off_active) d3d8_interpolation_invalidate();
     ID3D11DeviceContext_DrawIndexed(g_device_state.d3d11_context, index_count, StartIndex, (INT)g_cur_ib_base_vertex);
     return S_OK;
 }
@@ -1594,9 +1679,7 @@ static HRESULT __stdcall dev_DrawPrimitiveUP(IDirect3DDevice8 *self, D3DPRIMITIV
 
     /* Upload to ring buffer */
     ring_offset = up_ring_upload(draw_data, vb_size);
-    if (converted) free(converted);
-
-    if (ring_offset == (UINT)-1) return E_OUTOFMEMORY;
+    if (ring_offset == (UINT)-1) { free(converted); return E_OUTOFMEMORY; }
 
     /* Bind ring buffer at the right offset */
     ID3D11DeviceContext_IASetVertexBuffers(g_device_state.d3d11_context,
@@ -1609,6 +1692,8 @@ static HRESULT __stdcall dev_DrawPrimitiveUP(IDirect3DDevice8 *self, D3DPRIMITIV
     d3d8_states_apply();
 
     ID3D11DeviceContext_IASetPrimitiveTopology(g_device_state.d3d11_context, topology);
+    if (!g_off_active) d3d8_interpolation_draw(draw_data, vertex_count, VertexStreamZeroStride, NULL, 0, NULL);
+    free(converted);
     ID3D11DeviceContext_Draw(g_device_state.d3d11_context, vertex_count, 0);
 
     /* Restore previous VB binding if any */
@@ -1674,6 +1759,7 @@ static HRESULT __stdcall dev_DrawIndexedPrimitiveUP(IDirect3DDevice8 *self, D3DP
     d3d8_states_apply();
 
     ID3D11DeviceContext_IASetPrimitiveTopology(g_device_state.d3d11_context, topology);
+    if (!g_off_active) d3d8_interpolation_invalidate();
     ID3D11DeviceContext_DrawIndexed(g_device_state.d3d11_context, index_count, 0, 0);
 
     /* Cleanup temp buffers */
@@ -2159,6 +2245,7 @@ long d3d8_DrawNv2aFF(const Nv2aFFVertex *verts, unsigned nverts,
     ID3D11DeviceContext_IASetVertexBuffers(g_device_state.d3d11_context, 0, 1, &g_up_ring_buffer, &stride, &vb_off);
     ID3D11DeviceContext_IASetIndexBuffer(g_device_state.d3d11_context, g_nv2aff_idx_ring, DXGI_FORMAT_R16_UINT, 0);
     ID3D11DeviceContext_IASetPrimitiveTopology(g_device_state.d3d11_context, (D3D11_PRIMITIVE_TOPOLOGY)topology);
+    if (!g_off_active) d3d8_interpolation_draw(verts, nverts, stride, idx, nidx, cb);
     ID3D11DeviceContext_DrawIndexed(g_device_state.d3d11_context, nidx, ib_off / 2, 0);
 
     /* Restore the game's own bindings, as DrawPrimitiveUP does. */

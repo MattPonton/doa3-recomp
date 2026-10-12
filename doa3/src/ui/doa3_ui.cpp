@@ -318,6 +318,7 @@ void DrawVideoSection()
         video_set_window_mode(VIDEO_BORDERLESS);
         video_set_aspect(VIDEO_ASPECT_16_9);
         video_set_scale(3);
+        video_set_render_hz(60);
         SetStatus("Video settings reset to defaults");
         break;
     case 2:
@@ -342,6 +343,14 @@ void DrawVideoSection()
     if (ImGui::Combo("Internal resolution", &sc, kScale, IM_ARRAYSIZE(kScale)) &&
         sc + 1 != video_get_scale())
         video_set_scale(sc + 1);
+
+    const char *rates[] = { "60 Hz (native)", "120 Hz (experimental)", "240 Hz (experimental)" };
+    int rate = video_get_render_hz() == 240 ? 2 : video_get_render_hz() == 120 ? 1 : 0;
+    if (ImGui::Combo("Render rate", &rate, rates, IM_ARRAYSIZE(rates)))
+        video_set_render_hz(rate == 2 ? 240 : rate == 1 ? 120 : 60);
+    if (video_render_limited())
+        ImGui::TextWrapped("Using 60 Hz: interpolation exceeded the gameplay frame budget. Lower internal resolution or select a render rate again to retry.");
+    ImGui::TextWrapped("Gameplay stays at 60 Hz. Higher rates interpolate geometry during fights and add up to one logic frame of visual delay. Reflections and texture animation remain at 60 Hz. Collision overlays use native rendering for accuracy.");
 }
 
 /* Audio output settings. */

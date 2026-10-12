@@ -24,6 +24,7 @@
 #include "../d3d/d3d8_swizzle.h"
 #include "nv2a_vertex_program.h"
 #include "../d3d/d3d8_nv2aff.h"
+#include "../d3d/d3d8_interpolation.h"
 #include "../d3d/d3d8_combiners.h"
 #include "../d3d/d3d8_polygon_offset.h"
 #include "../game/debug_capture.h"
@@ -3036,6 +3037,8 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
 unsigned g_doa3_drop[4];
 static void submit_array_draw(void)
 {
+    /* UV arrays identify the mesh even when skinning alternates position buffers. */
+    d3d8_interpolation_key(((uint64_t)g_pg.attr_off[9] << 32) | g_pg.tex[0].offset);
     nv_sync_render_target();
     IDirect3DDevice8 *dev;
     OutputVertex *out;
@@ -3312,6 +3315,7 @@ static int nv_is_aa_resolve(void)
 }
 static void submit_draw(void)
 {
+    d3d8_interpolation_key(0);
     nv_sync_render_target();
     if (nv_is_aa_resolve()) {
         g_pg.idx_count = 0;
