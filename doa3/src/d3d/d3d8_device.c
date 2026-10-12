@@ -1111,7 +1111,6 @@ typedef struct { ID3D11Texture2D *tex; ID3D11ShaderResourceView *srv; UINT w, h;
 static FbCopy g_fbcopy;      /* the current frame as of the sampling draw */
 static FbCopy g_prevframe;   /* the last presented frame */
 static int    g_prevframe_valid;
-static volatile LONG g_prevframe_want;   /* presents left to prefer the pre-HUD scene */
 
 static int fbcopy_ensure(FbCopy *c)
 {
@@ -1157,44 +1156,23 @@ int d3d8_BindFramebufferCopy(UINT stage)
  * the current frame stands in for it. */
 int d3d8_BindPrevFrame(UINT stage)
 {
-    InterlockedExchange(&g_prevframe_want, 120);
     /* also while an offscreen target is bound: the effect renders its after-image buffer from the frame on screen */
     if (!g_prevframe_valid) return d3d8_BindFramebufferCopy(stage);
     ID3D11DeviceContext_PSSetShaderResources(g_device_state.d3d11_context, stage, 1, &g_prevframe.srv);
     return 1;
 }
 
-/* The after-image must be built from the 3D scene only. Copying the finished
- * frame at present put the HUD and the KO / YOU LOSE text into the blur (the
- * text ghosted) and fed each frame's blur overlay back into the next one,
- * which compounded the smear until the fight looked like it was crawling.
- * The pgraph translator calls this right before the first 2D screen-space
- * draw of a frame (HUD, text, fades, the effect's own overlay pass); the
- * present-time copy below runs when no such snapshot was taken, including
- * while the effect is idle, so the first capture of a new effect is fresh. */
-static int g_prevframe_snapped;
-
-void d3d8_SnapshotSceneForAfterImage(void)
-{
-    if (g_prevframe_want <= 0 || g_prevframe_snapped || g_off_active) return;
-    if (!fbcopy_ensure(&g_prevframe)) return;
-    ID3D11DeviceContext_CopyResource(g_device_state.d3d11_context,
-                                     (ID3D11Resource *)g_prevframe.tex,
-                                     (ID3D11Resource *)g_device_state.default_tex);
-    g_prevframe_valid = 1;
-    g_prevframe_snapped = 1;
-}
-
+/* Keep the completed guest frame, including its own blur pass. The Xbox
+ * samples the displayed flip buffer, so its accumulated after-images must
+ * feed the next frame. Replacing history at the first 2D draw both sampled
+ * the current scene too early and discarded the accumulated blur. Omega's
+ * entrance needs that feedback (also visible on guest HUD/text in reference
+ * footage). Host UI is excluded by the caller, which runs this once per
+ * native frame before host composition.
+ * Keep updating during inactivity so later crossfades use a fresh image. */
 static void d3d8_keep_prev_frame(void)
 {
-    int snapped = g_prevframe_snapped;
-    g_prevframe_snapped = 0;            /* next frame takes a fresh snapshot */
-    if (g_prevframe_want > 0) InterlockedDecrement(&g_prevframe_want);
-    /* Always retain the latest screen. Previously this stopped after 120
-     * presents but left g_prevframe_valid set, so a reset minutes later
-     * sampled an old moment in the fight. The demand window only controls
-     * the pre-HUD capture used by the continuous after-image effect. */
-    if (snapped || !fbcopy_ensure(&g_prevframe)) return;
+    if (!fbcopy_ensure(&g_prevframe)) return;
     ID3D11DeviceContext_CopyResource(g_device_state.d3d11_context,
                                      (ID3D11Resource *)g_prevframe.tex,
                                      (ID3D11Resource *)g_device_state.default_tex);

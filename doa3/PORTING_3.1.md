@@ -1462,3 +1462,107 @@ checks after the initial scan. This is discovery timing, not total game frame
 time. Tests cover idle discovery, notification bursts, timer wrap, failed-scan
 recovery and immediate routing after reconnection. Live gameplay confirmation
 of the performance graph remains pending.
+
+## Castle ember colors and fading (2026-10-12)
+
+The 3.1 point-sprite path retained the 3.0 port's texture-stage marker
+fallback. Those markers are not emitted by 3.1, so it selected the sprite's
+RGB and alpha alone. The burning-castle cutscene in Ryu's Story instead emits
+shader program `00008000`, one combiner, RGB input `04200000`, alpha input
+`1B140000`, both outputs `00000C00`, and final words
+`0000000C / 00001C80`. This is RGB = vertex color and alpha = T3 alpha times
+vertex alpha, with SRCALPHA/ONE framebuffer blending. Captured vertex colors
+include `33FF6D02` (orange with 20% opacity), not opaque white. The temporary
+particle logger also observed this shader on courtyard torch embers.
+
+`nv_apply_point_state` now selects the real combiner path for T3-only point
+sprite programs with valid combiner counts. `nv_draw_point_sprites` submits
+the expanded quads with four texture coordinates and the generated UV on T3,
+binds the sprite there, and uses the existing register-combiner translator.
+It restores direct-shader mode and unbinds T3 after each draw. This is shared
+by inline and array points; it neither changes global brightness nor names a
+specific stage/texture address. Multi-texture point programs and legacy TSS
+markers keep the prior path. The additional vertex fields are local to
+sprites; general CPU vertex size is unchanged. The temporary logger was
+removed, and normal play does not gain any automatic captures.
+
+`tests/point_sprites` extracts the production point routing, vertex packing
+and NV2A decoder, then renders with the production combiner shaders on WARP.
+It checks the captured orange/fade result against a deliberately green sprite
+with four different mask alpha values, complete fade-out, full opacity,
+texture-colored particles, missing textures, cleanup, and legacy guards.
+Release build, point-sprite WARP and combiner-cache tests pass. In-game comparison of the corrected cutscene is still pending.
+
+## Omega entrance framebuffer feedback (2026-10-12)
+
+An Ayane Story diagnostic recorded the entrance's inline, depth-disabled
+framebuffer reads swapping source/destination `01058000` and `011C0000`.
+The entrance uses SRCALPHA/INVSRCALPHA with T0*V0 color and alpha; later the
+fight uses CONSTANT_ALPHA/ONE_MINUS_CONSTANT_ALPHA, commonly `95FFFFFF`.
+The reference clip `2026-10-12_00-29-18.mp4` shows accumulated trails during
+the snowy entrance and transition, and during combat, including guest HUD/KO
+trails. This confirms that the earlier pre-overlay-only history policy was
+suppressing part of the intended effect.
+
+The first-2D-draw call to `d3d8_SnapshotSceneForAfterImage` overwrote the image
+that the same frame's blur then sampled. A WARP test reproduced this by
+observing the current red scene instead of the previous green frame. Keeping
+a separate pending scene fixed that ordering error but still discarded the
+blur feedback, so the final change removes the pre-overlay capture entirely.
+`d3d8_keep_prev_frame` retains the completed guest frame at each native present,
+including guest effects/text, before host composition. It continues updating
+while effects are idle, preserving the Sparring crossfade fix. Guest blend factors, zoom offsets
+and timing remain unchanged; there is no artificial strength multiplier.
+
+The frame-history WARP regression exercises actual GPU blends across several
+frames: an older red after-image remains in a later blue/black scene with the
+expected decay, and history does not change mid-frame. It also retains the
+freshness check after more than 120 idle presents. The temporary opt-in blur
+logger was removed; no automatic screenshots or logging were added to normal
+play. Visual confirmation of the updated executable is still pending.
+
+## Timer shadow appears before the HUD (2026-10-12)
+
+A captured Practice round start (`mtrace_17233`) submits the two timer-shadow
+quads with `00000000` vertex colors, followed by the frame artwork with
+`00FFFFFF`. Both request TEX0 * V0 for RGB and alpha: combiner inputs
+`08040000` / `18140000`, outputs `00000C00`, final `0000000C` / `00001C80`,
+one stage, SRCALPHA / INVSRCALPHA. Subsequent shadow alpha values rise through
+`11`, `50`, and `80`. The renderer's all-zero-diffuse heuristic selected the
+texture directly only at the zero endpoint, displaying the opaque black
+backing before the intended fade. The capture visibly reproduces this during
+GET READY; no framebuffer-history sampling is involved in these HUD draws.
+
+`nv_use_vertex_diffuse` now honors transparent black for this explicit inline
+modulation program in both ordinary texture and render-target texture paths.
+Other programs retain their existing fallback. The `hud_fade` regression
+uses the captured registers and fade values and checks fallback isolation.
+The regression and Release build pass. The user confirmed the corrected
+round-start appearance in game.
+
+## Ice Cave near-plane clipping precision (2026-10-12)
+
+A native-60-Hz movement capture shows a dark wedge in frame 61372, between
+clean frames 61371/61373. The main-target reflection draw samples `020FF200`;
+its minimum screen Y unexpectedly becomes zero. A subsequent opt-in coordinate
+trace reproduced this on multiple triangles in Ice Cave: clip-space positions
+around 1e13 and negative depths around 1e9 adjoin visible vertices around 1e5.
+The old float interpolation parameter rounded to 1, and `A + (B-A)*t`
+cancelled X/Y/Z to zero while retaining positive W. Reprojection stretched
+the reflection triangle to the screen origin. This is independent of render
+interpolation and is not a single faulty mesh.
+
+`nv_clip_plane` now computes signed distances and independent endpoint weights
+in double precision, blends all position/color/UV fields with those weights,
+and sets the selected coordinate exactly to the clipping boundary. Computing
+both weights directly avoids losing the smaller weight through `1-t`.
+No stage-specific filtering, geometry removal or blend adjustment is used.
+
+`tests/clipping` retains 12 exact captured input triangles, with expected
+intersections calculated offline using 70-digit decimal arithmetic. It checks
+all cyclic vertex orders and both windings, projected output, both UV sets,
+color interpolation, unchanged inside triangles, rejected outside triangles,
+and the positive-W boundary. The old code failed 180 checks; the correction
+passes, as does the existing reflection-mask WARP test. The temporary logger
+has been removed. The user confirmed that the rebuilt Ice Cave scene looks
+correct after the fix.

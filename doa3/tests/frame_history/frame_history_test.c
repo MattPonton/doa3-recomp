@@ -4,6 +4,7 @@
 #define COBJMACROS
 #include <windows.h>
 #include <d3d11.h>
+#include <d3dcompiler.h>
 #include <stdio.h>
 #include <stdlib.h>
 static struct {
@@ -46,6 +47,54 @@ static int frame_is(BYTE r, BYTE g, BYTE b)
     return match;
 }
 
+/* Blend history onto the current scene on WARP. Repeated frames must retain
+ * older after-images, not replace them with a clean pre-overlay scene. */
+static void blend_history(void)
+{
+    static ID3D11VertexShader *vs;
+    static ID3D11PixelShader *ps;
+    static ID3D11BlendState *blend;
+    static ID3D11RasterizerState *raster;
+    ID3D11Device *device=g_device_state.d3d11_device;
+    ID3D11DeviceContext *ctx=g_device_state.d3d11_context;
+    D3D11_VIEWPORT viewport={0,0,16,16,0,1};
+    if(!vs) {
+        ID3DBlob *v=NULL,*p=NULL,*error=NULL;
+        D3D11_BLEND_DESC bd={0};
+        D3D11_RASTERIZER_DESC rd={0};
+        const char *shader="Texture2D history:register(t0);"
+            "float4 vs(uint id:SV_VertexID):SV_POSITION{"
+            "return float4(id==2?3:-1,id==1?3:-1,0,1);}"
+            "float4 ps(float4 p:SV_POSITION):SV_TARGET{"
+            "return float4(history.Load(int3(p.xy,0)).rgb,0.75);}";
+        CHECK(SUCCEEDED(D3DCompile(shader,strlen(shader),NULL,NULL,NULL,"vs","vs_4_0",0,0,&v,&error)));
+        CHECK(SUCCEEDED(D3DCompile(shader,strlen(shader),NULL,NULL,NULL,"ps","ps_4_0",0,0,&p,&error)));
+        CHECK(SUCCEEDED(ID3D11Device_CreateVertexShader(device,ID3D10Blob_GetBufferPointer(v),ID3D10Blob_GetBufferSize(v),NULL,&vs)));
+        CHECK(SUCCEEDED(ID3D11Device_CreatePixelShader(device,ID3D10Blob_GetBufferPointer(p),ID3D10Blob_GetBufferSize(p),NULL,&ps)));
+        ID3D10Blob_Release(v); ID3D10Blob_Release(p);
+        bd.RenderTarget[0].BlendEnable=TRUE;
+        bd.RenderTarget[0].SrcBlend=D3D11_BLEND_SRC_ALPHA;
+        bd.RenderTarget[0].DestBlend=D3D11_BLEND_INV_SRC_ALPHA;
+        bd.RenderTarget[0].SrcBlendAlpha=D3D11_BLEND_ONE;
+        bd.RenderTarget[0].DestBlendAlpha=D3D11_BLEND_ZERO;
+        bd.RenderTarget[0].BlendOp=bd.RenderTarget[0].BlendOpAlpha=D3D11_BLEND_OP_ADD;
+        bd.RenderTarget[0].RenderTargetWriteMask=D3D11_COLOR_WRITE_ENABLE_ALL;
+        CHECK(SUCCEEDED(ID3D11Device_CreateBlendState(device,&bd,&blend)));
+        rd.FillMode=D3D11_FILL_SOLID; rd.CullMode=D3D11_CULL_NONE;
+        CHECK(SUCCEEDED(ID3D11Device_CreateRasterizerState(device,&rd,&raster)));
+    }
+    CHECK(d3d8_BindPrevFrame(0));
+    ID3D11DeviceContext_OMSetRenderTargets(ctx,1,&g_device_state.default_rtv,NULL);
+    ID3D11DeviceContext_OMSetBlendState(ctx,blend,NULL,~0u);
+    ID3D11DeviceContext_RSSetState(ctx,raster);
+    ID3D11DeviceContext_RSSetViewports(ctx,1,&viewport);
+    ID3D11DeviceContext_VSSetShader(ctx,vs,NULL,0);
+    ID3D11DeviceContext_PSSetShader(ctx,ps,NULL,0);
+    ID3D11DeviceContext_IASetInputLayout(ctx,NULL);
+    ID3D11DeviceContext_IASetPrimitiveTopology(ctx,D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ID3D11DeviceContext_Draw(ctx,3,0);
+}
+
 int main(void)
 {
     D3D11_TEXTURE2D_DESC td = {0};
@@ -74,13 +123,24 @@ int main(void)
     ID3D11DeviceContext_ClearRenderTargetView(g_device_state.d3d11_context, g_device_state.default_rtv, blue);
     CHECK(frame_is(0, 255, 0));
 
-    /* Preserve the existing after-image behavior: retain the red scene
-     * captured before HUD/overlay draws even if presentation is blue. */
+    /* Changes during the frame do not replace displayed history until the
+     * native present. Retain the completed frame, including the effect. */
     ID3D11DeviceContext_ClearRenderTargetView(g_device_state.d3d11_context, g_device_state.default_rtv, red);
-    d3d8_SnapshotSceneForAfterImage();
-    ID3D11DeviceContext_ClearRenderTargetView(g_device_state.d3d11_context, g_device_state.default_rtv, blue);
+    CHECK(frame_is(0, 255, 0));
     d3d8_keep_prev_frame();
     CHECK(frame_is(255, 0, 0));
-    puts("Frame history stays current after inactivity; pre-overlay capture preserved.");
+    ID3D11DeviceContext_ClearRenderTargetView(g_device_state.d3d11_context, g_device_state.default_rtv, blue);
+    blend_history();
+    CHECK(frame_is(255, 0, 0)); /* The draw cannot replace its own input. */
+    d3d8_keep_prev_frame();
+    CHECK(frame_is(191, 0, 64));
+    {
+        const FLOAT black[4]={0,0,0,1};
+        ID3D11DeviceContext_ClearRenderTargetView(g_device_state.d3d11_context, g_device_state.default_rtv, black);
+        blend_history();
+        d3d8_keep_prev_frame();
+        CHECK(frame_is(143, 0, 48)); /* Red persists from two frames earlier. */
+    }
+    puts("Frame history stays fresh after inactivity, stays immutable during draws, and retains accumulated after-images.");
     return 0;
 }

@@ -1574,6 +1574,23 @@ typedef struct {
 static uint32_t g_nvreg[0x800];
 #define NVREG(m) g_nvreg[(m) >> 2]
 
+static int nv_use_vertex_diffuse(int all_zero)
+{
+    if (!all_zero) return 1;
+    /* A zero RGBA value is a real, transparent colour in the HUD's
+     * TEX0 * primary-colour program. The timer shadow starts its fade at
+     * 00000000; treating that as a missing diffuse selected the opaque
+     * texture instead. Keep the fallback for other, combiner-sourced draws
+     * until their colour pipeline is translated explicitly. */
+    return g_nv_draw_inline && (NVREG(0x1E60) & 0xFFu) == 1 &&
+           NVREG(0x0AC0) == 0x08040000u &&
+           NVREG(0x0260) == 0x18140000u &&
+           NVREG(0x1E40) == 0x00000C00u &&
+           NVREG(0x0AA0) == 0x00000C00u &&
+           NVREG(0x0288) == 0x0000000Cu &&
+           NVREG(0x028C) == 0x00001C80u;
+}
+
 static void nv_apply_polygon_offset(void)
 {
     unsigned gh = (g_pg.surface_clip_v >> 16) & 0xFFFF;
@@ -1594,19 +1611,8 @@ static void nv_apply_polygon_offset(void)
 static void nv_apply_draw_state(IDirect3DDevice8 *dev, const NvDrawSummary *sum,
                                 NvPostOps *post)
 {
-    if (g_nv_draw_inline && !g_pg.depth_test && !d3d8_OffscreenTargetActive()) {
-        /* first 2D screen-space draw of the frame: capture the 3D scene for
-         * Omega's after-image before the HUD and text land on it (no-op
-         * unless the effect is running) */
-        extern void d3d8_SnapshotSceneForAfterImage(void);
-        d3d8_SnapshotSceneForAfterImage();
-    }
     nv_apply_stage1_factor(dev);
-    /* The fade-to-black quad carries an OPAQUE BLACK diffuse (0xFF000000) with
-     * the stage disabled; all_zero compares the whole 32-bit colour, so that
-     * read as a valid diffuse and the fade took its alpha from whatever
-     * texture was still bound -- the character's hair. */
-    int diffuse_all_zero = sum->all_zero;
+    int use_vertex_diffuse = nv_use_vertex_diffuse(sum->all_zero);
 
     /* Alpha blending stays on for the 2D menu path. Depth follows the
      * guest: DOA3's 3D screens draw with SET_DEPTH_TEST_ENABLE and rely on
@@ -1859,7 +1865,7 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, const NvDrawSummary *sum,
             if (g_pg.tex[0].enabled && g_pg.tex[0].offset &&
                 (samples_fb || (!d3d8_OffscreenTargetActive() &&
                                 d3d8_HasOffscreenTexture(g_pg.tex[0].offset)))) {
-                int use_diffuse = !diffuse_all_zero;
+                int use_diffuse = use_vertex_diffuse;
                 if (samples_fb) {
                     /* The frame buffer is a linear (rect) surface, sampled
                      * with texel coordinates -- Omega's after-image pass
@@ -1926,9 +1932,9 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, const NvDrawSummary *sum,
              * one. DOA3 leaves vertex attribute 3 at zero for these draws and
              * sources colour from the combiners instead, so modulating turned
              * every textured pixel into transparent black -- the whole screen.
-             * When the diffuse register is degenerate, take the texture
-             * directly rather than multiplying the image away. */
-            int use_diffuse = !diffuse_all_zero;
+             * Preserve explicitly requested TEX0 * diffuse even when the
+             * diffuse is transparent black (the HUD's initial fade). */
+            int use_diffuse = use_vertex_diffuse;
             /* Does the bound image carry an alpha channel worth sampling? */
             int tex_has_alpha =
                 (g_pg.dyn_fmt == (uint32_t)D3DFMT_LIN_A8R8G8B8 ||
@@ -2106,13 +2112,26 @@ static int nv_clip_plane(const ClipVert *in, int n_in, int sel, float eps,
     int n = 0, i;
     for (i = 0; i < n_in; i++) {
         const ClipVert *a = &in[i], *b = &in[(i + 1) % n_in];
-        float da = (sel ? a->Z : a->W) - eps;
-        float db = (sel ? b->Z : b->W) - eps;
-        int ina = (da >= 0.0f), inb = (db >= 0.0f);
+        double da = (double)(sel ? a->Z : a->W) - (double)eps;
+        double db = (double)(sel ? b->Z : b->W) - (double)eps;
+        int ina = (da >= 0.0), inb = (db >= 0.0);
         if (ina) out[n++] = *a;
         if (ina != inb) {
-            float t = da / (da - db);
-            nv_clip_lerp(a, b, t, &out[n++]);
+            /* Ice Cave reflections can supply coordinates around 1e13 next
+             * to visible vertices around 1e5. A float t rounds to 1 and
+             * A + (B-A)*t cancels X/Y to zero, stretching a dark triangle
+             * to the screen origin. Compute BOTH endpoint weights directly
+             * in double precision; 1-t would lose the small contribution.
+             * This also gives the same intersection in either direction. */
+            double wa = -db / (da - db), wb = da / (da - db);
+            ClipVert *o = &out[n++];
+#define CLIP_FIELD(field) o->field = (float)(wa * (double)a->field + wb * (double)b->field)
+            CLIP_FIELD(X); CLIP_FIELD(Y); CLIP_FIELD(Z); CLIP_FIELD(W);
+            CLIP_FIELD(r); CLIP_FIELD(g); CLIP_FIELD(b); CLIP_FIELD(a);
+            CLIP_FIELD(u); CLIP_FIELD(v); CLIP_FIELD(u1); CLIP_FIELD(v1);
+#undef CLIP_FIELD
+            /* Keep roundoff from placing the new vertex outside the plane. */
+            if (sel) o->Z = eps; else o->W = eps;
         }
     }
     return n;
@@ -2504,23 +2523,30 @@ static int nv_point_quad(const OutputVertex *v, const float *pos, OutputVertex *
 }
 
 /* Render state for a point-sprite batch. Sprite texture: texture unit 3,
- * combined by the guest's stage-3 ops. Bound on host stage 0 the way cxbx
- * does it. The unit's control0 enable bit is not consulted: DOA3 never sets
- * it for any unit but 0 (measured), cxbx's HLE never reads it, and the
+ * combined by the guest register combiners in 3.1. The older marker-based
+ * path binds it on host stage 0. The control0 enable bit is not consulted:
+ * DOA3 never sets it for any unit but 0 (measured), cxbx's HLE never reads it, and the
  * sprite is textured on the real console. */
-static void nv_apply_point_state(IDirect3DDevice8 *dev, const OutputVertex *out, uint32_t out_n)
+static int nv_apply_point_state(IDirect3DDevice8 *dev, OutputVertex *out, uint32_t out_n)
 {
     unsigned char saved[sizeof g_pg.tex[0]];
     uint32_t cop, ca1, ca2, aop, aa1, aa2;
+    /* Only T3 has generated sprite coordinates. Other texture programs keep
+     * the existing path until their per-point coordinates are supported.
+     * 3.1 emits real NV2A combiners, not the older port's TSS markers. */
+    int direct = !g_pg.tss3_valid && g_pg.shader_prog == 0x8000u &&
+                 (g_pg.comb_control & 0xFFu) >= 1 &&
+                 (g_pg.comb_control & 0xFFu) <= 8;
     if (!(g_pg.point_smooth && g_pg.tex[3].offset)) {
         nv_apply_draw_state_cpu(dev, out, out_n, 0);
-        return;
+        return 0;
     }
     memcpy(saved, &g_pg.tex[0], sizeof saved);
     memcpy(&g_pg.tex[0], &g_pg.tex[3], sizeof saved);
     g_pg.tex[0].enabled = 1;
-    nv_apply_draw_state_cpu(dev, out, out_n, 0);
+    nv_apply_draw_state_cpu(dev, out, out_n, direct);
     memcpy(&g_pg.tex[0], saved, sizeof saved);
+    if (direct) return 1;
     if (g_pg.tss3_valid) {
         cop = nv_xbox_texop((g_pg.tss3_color >> 12) & 0x1F); ca1 = (g_pg.tss3_color >> 6) & 0x3F; ca2 = g_pg.tss3_color & 0x3F;
         aop = nv_xbox_texop((g_pg.tss3_alpha >> 12) & 0x1F); aa1 = (g_pg.tss3_alpha >> 6) & 0x3F; aa2 = g_pg.tss3_alpha & 0x3F;
@@ -2535,6 +2561,53 @@ static void nv_apply_point_state(IDirect3DDevice8 *dev, const OutputVertex *out,
     dev->lpVtbl->SetTextureStageState(dev, 0, 4 /*ALPHAOP*/,   aop);
     dev->lpVtbl->SetTextureStageState(dev, 0, 5 /*ALPHAARG1*/, aa1);
     dev->lpVtbl->SetTextureStageState(dev, 0, 6 /*ALPHAARG2*/, aa2);
+    return 0;
+}
+
+static void nv_build_combiner_state(NV2ACombinerState *cs);
+static IDirect3DTexture8 *nv_stage_texture(IDirect3DDevice8 *dev, int stage);
+
+/* Preserve the hardware's T3 register and coordinates. Renaming T3 to T0
+ * would also change R0's initial value. Keep this larger layout local to
+ * sprites rather than increasing the size of every CPU vertex. */
+static void nv_draw_point_sprites(IDirect3DDevice8 *dev, const OutputVertex *out,
+                                  uint32_t n, int direct)
+{
+    typedef struct { OutputVertex base; float u2, v2, u3, v3; } PointVertex;
+    static PointVertex *vertices;
+    static uint32_t capacity;
+    if (direct) {
+        NV2ACombinerState cs;
+        IDirect3DTexture8 *sprite;
+        uint32_t i;
+        if (capacity < n) {
+            PointVertex *grown = (PointVertex *)realloc(vertices, (size_t)n * sizeof *vertices);
+            if (!grown) return;
+            vertices = grown; capacity = n;
+        }
+        for (i = 0; i < n; ++i) {
+            vertices[i].base = out[i];
+            vertices[i].u2 = vertices[i].v2 = 0.0f;
+            vertices[i].u3 = out[i].u; vertices[i].v3 = out[i].v;
+        }
+        nv_build_combiner_state(&cs);
+        sprite = nv_stage_texture(dev, 3);
+        /* Sprite coordinates sample T3 even without its enable bit, matching
+         * the existing point path. A missing texture upload reads zero. */
+        cs.tex_mode[3] = sprite ? NV2A_TEXMODE_2D : NV2A_TEXMODE_NONE;
+        dev->lpVtbl->SetTexture(dev, 3, (IDirect3DBaseTexture8 *)sprite);
+        nv_apply_tex_address(dev, 3);
+        d3d8_combiners_set_direct(&cs);
+        dev->lpVtbl->SetVertexShader(dev, D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX4);
+        nv_mtrace_draw("point-combiners", out, n);
+        dev->lpVtbl->DrawPrimitiveUP(dev, D3DPT_TRIANGLELIST, n / 3, vertices, sizeof *vertices);
+        d3d8_combiners_set_direct(NULL);
+        dev->lpVtbl->SetTexture(dev, 3, NULL);
+    } else {
+        dev->lpVtbl->SetVertexShader(dev, D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
+        nv_mtrace_draw("point-legacy", out, n);
+        dev->lpVtbl->DrawPrimitiveUP(dev, D3DPT_TRIANGLELIST, n / 3, out, sizeof *out);
+    }
 }
 
 /* Inline (DrawVerticesUP) POINTS through the fixed-function pipeline.
@@ -2554,6 +2627,7 @@ static int submit_inline_points(IDirect3DDevice8 *dev, const uint32_t *src, uint
 {
     OutputVertex *out;
     uint32_t i, o = 0;
+    int direct;
     if (g_pg.draw_mode != 1 || lay_pos < 3 || (g_pg.xform_mode & 3) == 2 || !nv_composite_usable())
         return 0;
     out = nv_scratch_verts(0, num_verts * 6);
@@ -2571,7 +2645,7 @@ static int submit_inline_points(IDirect3DDevice8 *dev, const uint32_t *src, uint
     g_nv_draw_has_uv = 1;
     g_nv_draw_inline = 0;
     if (o == 0) { g_pg.gtss_valid = 0; g_pg.tss3_valid = 0; g_pg.tss1_valid = 0; g_pg.tss0_alpha_valid = 0; return 1; }
-    nv_apply_point_state(dev, out, o);
+    direct = nv_apply_point_state(dev, out, o);
     g_pg.gtss_valid = 0;
     g_pg.tss3_valid = 0;
     g_pg.tss1_valid = 0;
@@ -2580,9 +2654,8 @@ static int submit_inline_points(IDirect3DDevice8 *dev, const uint32_t *src, uint
     {   DWORD prev_vs = 0;
         int clipped = nv_apply_window_clip();
         HRESULT got = dev->lpVtbl->GetVertexShader(dev, &prev_vs);
-        dev->lpVtbl->SetVertexShader(dev, D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
         dev->lpVtbl->BeginScene(dev);
-        dev->lpVtbl->DrawPrimitiveUP(dev, D3DPT_TRIANGLELIST, o / 3, out, sizeof(OutputVertex));
+        nv_draw_point_sprites(dev, out, o, direct);
         if (clipped) { extern void d3d8_ResetScissorRect(void); d3d8_ResetScissorRect(); }
         if (got == 0) dev->lpVtbl->SetVertexShader(dev, prev_vs);
     }
@@ -3044,7 +3117,7 @@ static void submit_array_draw(void)
     int is_quads = (g_pg.draw_mode == 8);
     int is_points = (g_pg.draw_mode == 1);
     NvBatchCtx ctx;
-    int program_combiners = 0;
+    int program_combiners = 0, point_combiners = 0;
 
     if (n < (uint32_t)(is_points ? 1 : 3)) { g_pg.idx_count = 0; return; }
 
@@ -3205,7 +3278,7 @@ static void submit_array_draw(void)
     g_nv_draw_has_uv = 1;            /* array path: unchanged */
     g_nv_draw_inline = 0;
     if (is_points)
-        nv_apply_point_state(dev, out, out_n);
+        point_combiners = nv_apply_point_state(dev, out, out_n);
     else
         nv_apply_draw_state_cpu(dev, out, out_n, program_combiners);
     g_pg.gtss_valid = 0;
@@ -3252,9 +3325,13 @@ static void submit_array_draw(void)
             D3DFVF_XYZRHW | D3DFVF_DIFFUSE |
             (program_combiners ? D3DFVF_TEX2 : D3DFVF_TEX1));
         dev->lpVtbl->BeginScene(dev);
-        nv_mtrace_draw("array", out, out_n);
-        dev->lpVtbl->DrawPrimitiveUP(dev, (D3DPRIMITIVETYPE)prim,
-                                     prim_count, out, sizeof(OutputVertex));
+        if (is_points) {
+            nv_draw_point_sprites(dev, out, out_n, point_combiners);
+        } else {
+            nv_mtrace_draw("array", out, out_n);
+            dev->lpVtbl->DrawPrimitiveUP(dev, (D3DPRIMITIVETYPE)prim,
+                                         prim_count, out, sizeof(OutputVertex));
+        }
         if (program_combiners) {
             d3d8_combiners_set_direct(NULL);
             dev->lpVtbl->SetTexture(dev, 1, NULL);
@@ -3565,12 +3642,6 @@ static void submit_draw(void)
     }
     #undef CONVERT_VERT
 
-    /* A draw whose every vertex carries a zero diffuse cannot be intending to
-     * modulate by it; see the texture-stage setup below. */
-    int diffuse_all_zero = 1;
-    for (uint32_t i = 0; i < out_vert_count; i++)
-        if (out[i].color != 0) { diffuse_all_zero = 0; break; }
-
     /* DOA3 interim: the movie quad's UVs are never written by the game-side
      * builder (all zeros). When a draw has NO usable texcoords but positions
      * span an area, derive full-range UVs from the position bounding box so
@@ -3649,8 +3720,7 @@ static void submit_draw(void)
     g_nv_draw_inline = 0;
     {
         extern int debug_hide_ui_get(void);
-        /* Same inline/depth classification as the pre-HUD scene snapshot.
-         * Keep array/depth-tested geometry and offscreen reflection/mask draws. */
+        /* Keep array/depth-tested geometry and offscreen reflection/mask draws. */
         if (debug_hide_ui_get() && !g_pg.depth_test && !d3d8_OffscreenTargetActive()) return;
     }
     nv_fit_to_backbuffer(out, out_vert_count, 1);
