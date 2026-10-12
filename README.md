@@ -5,9 +5,15 @@ that compiles and runs on Windows as a native x86-64 executable.
 
 **Status:** All game modes are fully playable
 
+**This branch: `codex/120hz`** — experimental interpolated rendering based on
+Jay's branch. Gameplay remains at 60 Hz. The verified high-refresh setup is
+120 Hz at 1× resolution in Beach Practice; broader stage/mode coverage, higher
+resolutions and 240 Hz still need validation. See the
+[branch changelog](doa3/CHANGELOG.md) for changes and measured results.
+
 ## Features
 - New online mode added for single and tag matches
-- Capped at 60 FPS
+- 60 Hz gameplay with optional experimental 120/240 Hz interpolated rendering
 - Windowed/Borderless and 4:3/16:9 options
 - Internal resolution scaling to 1440p (3x)
 
@@ -28,14 +34,32 @@ The binary lands in `doa3/build/release/DOA3.exe`.
 
 Download the latest release from the releases tab
 
-Game files are **not** included. On first launch of DOA3.exe, select your legally obtained copy of Dead or Alive 3 (USA) in `.xiso` or
-`.xiso` format. Asset files are automatically extracted, save data is created, and then the game will be ready to play once this completes.
+Game files are **not** included. This branch targets **Japanese Dead or Alive 3
+3.1 (NTSC-J)**; see [the porting notes](doa3/PORTING_3.1.md) for the required
+XBE fingerprint. Use your legally obtained game files with the asset importer.
 
 Press the **Escape** key to open the overlay menu. This has online, controller mapping, and other settings.
 
 Under **Audio**, adjust **Master volume** from 0% (mute) to 100%. It affects all
 game audio, including movies. Changes apply immediately; click **Save** to keep
 the level between launches. **Reset to defaults** restores 100%.
+
+### Experimental high-refresh rendering
+
+Under **Escape → Video**, set **Internal resolution** to **1×** and **Render
+rate** to **120 Hz (experimental)**. Choose **Save** to keep the settings.
+The default remains **60 Hz (native)**. Extra frames interpolate geometry;
+they do not advance attacks, inputs or game logic faster.
+
+Lighting, reflections and texture animation retain their native cadence.
+Hitbox, hurtbox and hazard overlays use native rendering. Interpolation can
+add up to one logic frame of visual delay; it is not an input-latency reduction.
+Unsupported draws and scene changes may use native geometry or native frames.
+
+If rendering falls behind, the game falls back to 60 Hz and shows a message
+in Video settings. Lower the resolution or reselect a render rate to retry.
+Switching away suspends interpolation; returning to the game automatically
+rearms it. Sustained high refresh at 2×/3× or 240 Hz is not yet verified.
 
 <img width="642" height="512" alt="Screenshot 2026-10-05 172951" src="https://github.com/user-attachments/assets/a3f0d351-4e54-43b4-bb78-0d2f4bedec8b" />
 

@@ -1462,3 +1462,51 @@ checks after the initial scan. This is discovery timing, not total game frame
 time. Tests cover idle discovery, notification bursts, timer wrap, failed-scan
 recovery and immediate routing after reconnection. Live gameplay confirmation
 of the performance graph remains pending.
+
+### Experimental high-refresh rendering
+
+Video settings expose 60 (default), 120 and 240 Hz presentation. Gameplay,
+input updates and native vblank callbacks retain the existing 60 Hz timing;
+the PAL animation/time scale is not used. A three-frame history captures
+backbuffer draw geometry, constants, textures and pipeline state. Compatible
+draws interpolate positions and camera projection into a private target.
+Lighting, render-to-texture effects and HUD data retain native timing. Extra
+presentations run at cooperative render/pacing checkpoints without invoking
+game logic. Interpolation introduces visual delay and remains experimental.
+
+Scene changes, incompatible draws and unsupported framebuffer feedback avoid
+interpolation. Collision/hazard overlays use native presentation. Sustained
+over-budget work falls back to 60 Hz; changing render rate or resolution
+rearms it. Replay geometry buffers retain capacity and use discard uploads.
+After a sixty-tick warmup, the guard tracks delay accumulated by complete
+native presentation intervals relative to 1/60 second. Catch-up ticks repay
+that delay; more than 50 ms of accumulated delay triggers fallback. Measuring
+busy time alone produced false fallbacks even when the simulation kept up.
+Interpolation is suspended while the game is unfocused, and focus transitions
+reset the timing guard. Background compositor stalls must not permanently
+disable high refresh after returning to the game.
+
+Keyed fixed-function meshes match independently of command order, since
+particle/effect draws can shift later commands. Ambiguous model instances use
+native geometry. Replay skips redundant state changes and reuses identical
+consecutive constant uploads; interpolated constants replace the native
+upload instead of uploading both versions.
+
+The WARP test in `tests/interpolation` checks rendered intermediate geometry,
+perspective endpoints, camera transforms, captured texture/constant isolation,
+state restoration, command-order changes, shared/changed material constants,
+invalidation and overload handling. The explicit testing
+environment variable `DOA3_INTERPOLATION_CHECK=1` additionally compares native
+and alpha=1 replay pixels and captures the midpoint; normal runs do not save
+these screenshots. Live comparisons matched all native/replay pixels at 1x
+and 3x. Release compilation and the WARP suite pass. At 1x on Beach Practice,
+the user reported no flashing or slowdown while attacking with the optimized
+replay. A 39-second combat sample measured 60.01 logic/input ticks and 120.07
+host presents per second before a focus-loss stall exposed the old guard's
+background handling. With the focus correction installed, switching away
+and back resumed interpolation automatically: the following 29.02-second
+sample measured 60.03 logic ticks and 119.81 host presents per second with
+interpolation active throughout. Median replay CPU time was 2.82 ms in that
+sample. These are host presentation counts, not display scanout measurements
+or end-to-end input latency. Sustained high refresh at higher resolutions and
+240 Hz, and broader stage/mode coverage, remain unverified.
