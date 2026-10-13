@@ -11,6 +11,7 @@ static struct {
     unsigned surface_clip_h,surface_clip_v,window_clip_type;
     unsigned window_clip_h[1],window_clip_v[1];
     int depth_test;
+    float vp_offset[4];
     struct { unsigned enabled,offset; } tex[1];
 } g_pg;
 static unsigned bw,bh;
@@ -75,6 +76,38 @@ int main(void)
         quad(q,0,30,720,40); q[0].rhw=.5f; CHECK(!nv_fit_to_backbuffer(q,4,1));
         quad(q,0,0,1440,960); CHECK(!nv_fit_to_backbuffer(q,4,0)); /* World geometry. */
         CHECK(fabsf(q[2].x-(float)bw)<.001f);
+        /* Portrait viewport/scissor move together without shrinking the
+         * already aspect-correct projected model. Exercise both sides. */
+        for (int side=0;side<2;++side) {
+            unsigned left=94+side*648, right=left+607;
+            g_pg.window_clip_h[0]=left|(right<<16);
+            g_pg.window_clip_v[0]=154|(625u<<16);
+            g_pg.vp_offset[0]=left+.53125f; g_pg.vp_offset[1]=154.53125f;
+            CHECK(nv_menu_preview()==(aspect>VIDEO_ASPECT_16_9));
+            float shift=aspect>VIDEO_ASPECT_16_9 ? x+(left+.53125f+304)*(w-bw)/1440 : 0;
+            CHECK(fabsf(nv_menu_preview_shift(bw,1440)-shift)<.001f);
+            quad(q,(float)left,154,200,100);
+            nv_fit_to_backbuffer(q,4,0);
+            CHECK(fabsf(q[0].x-(left*(float)bw/1440+shift))<.001f);
+            CHECK(fabsf((q[2].x-q[0].x)-200*(float)bw/1440)<.001f);
+            CHECK(nv_apply_window_clip(0));
+            if (aspect>VIDEO_ASPECT_16_9) {
+                CHECK(clip_x==(int)floorf(x+left*w/1440));
+                CHECK(clip_x+clip_w==(int)ceilf(x+(right+1)*w/1440));
+            }
+        }
+        g_pg.depth_test=1;
+        quad(q,46,77,304,236);
+        OutputVertex temp=q[1];q[1]=q[3];q[3]=q[2];q[2]=temp; /* captured strip order */
+        for (int i=0;i<4;++i) q[i].z=.9999f;
+        CHECK(nv_fit_to_backbuffer(q,4,1)==(aspect>VIDEO_ASPECT_16_9));
+        CHECK(fabsf(q[0].x-(x+46*w/720))<.001f);
+        g_pg.depth_test=0;
+        offscreen=1;CHECK(!nv_menu_preview());offscreen=0;
+        g_pg.surface_clip_h=720u<<16;CHECK(!nv_menu_preview());
+        g_pg.surface_clip_h=1440u<<16;
+        g_pg.window_clip_h[0]=1439u<<16;g_pg.window_clip_v[0]=959u<<16;
+        CHECK(!nv_menu_preview());
         offscreen=1; quad(q,0,0,1440,960); CHECK(!nv_fit_to_backbuffer(q,4,1));
         CHECK(fabsf(q[2].x-(float)bw)<.001f); offscreen=0;
     }

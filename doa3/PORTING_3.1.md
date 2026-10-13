@@ -1627,3 +1627,23 @@ capture. No controller disconnect or gameplay pause is synthesized. Disabling
 the option restores controller passthrough; keyboard bindings retain their
 existing menu suppression. Tests exercise all four ports, raw input, immediate
 toggle changes, menu close, persistence, and malformed/legacy settings.
+
+## Ultrawide character-select previews (2026-10-13)
+
+The centered 16:9 HUD left character-select portrait models and their dark
+backings in full-width coordinates. A 21:9 Sparring capture showed the left
+preview scissor at 94,154–701,625 on the 1440x960 supersampled menu surface,
+with viewport origin 94.53125,154.53125. A 16:9 reference confirmed that the
+model projection already responds to the aspect constant.
+
+Recognize bounded preview viewports on the main 2x2 menu surface and translate
+their centres into the HUD canvas, preserving model width. Apply the same
+translation to CPU output and GPU fixed-function clip constants; map their
+scissors into the centered canvas. Flat far-depth panel backings follow the
+HUD scale. Ordinary world draws, offscreen targets, fullscreen fades, and
+native main-menu pixel offsets retain their existing behavior.
+
+The aspect/HUD layout tests cover both portrait sides, preserved projected
+width, backing alignment, legacy aspect ratios, and offscreen/world isolation.
+All four video/HUD/timer regression tests and the Release build pass. The user
+confirmed character select looks correct in both 21:9 and 32:9.

@@ -2306,6 +2306,43 @@ static uint32_t nv_inline_layout_from_attrs(int *pos_dw, int *uv_off, int *color
  * XMAX/YMAX are inclusive. Type 1 is an exclusion rectangle, which nothing
  * here needs; leave the scissor wide open rather than guess at it.
  * Returns 1 if a rect narrower than the whole target was set. */
+/* Character-select previews use a bounded viewport on the 2x2 menu
+ * surface. Their projection already uses the chosen widescreen ratio, so
+ * preserve projected model width and move only the viewport centre. */
+static int nv_menu_surface(void)
+{
+    extern int doa3_guest_display_size(unsigned *w, unsigned *h);
+    unsigned dw, dh;
+    return video_get_aspect() > VIDEO_ASPECT_16_9 && !d3d8_OffscreenTargetActive() &&
+        doa3_guest_display_size(&dw, &dh) && dw && dh &&
+        (g_pg.surface_clip_h >> 16) == dw * 2 &&
+        (g_pg.surface_clip_v >> 16) == dh * 2;
+}
+
+static int nv_menu_preview(void)
+{
+    if (!nv_menu_surface() || g_pg.window_clip_type != 0) return 0;
+    unsigned x0 = g_pg.window_clip_h[0] & 0xFFFu;
+    unsigned x1 = (g_pg.window_clip_h[0] >> 16) & 0xFFFu;
+    unsigned y0 = g_pg.window_clip_v[0] & 0xFFFu;
+    unsigned y1 = (g_pg.window_clip_v[0] >> 16) & 0xFFFu;
+    return x1 > x0 && y1 > y0 && x1 + 1 < (g_pg.surface_clip_h >> 16) &&
+        y1 + 1 < (g_pg.surface_clip_v >> 16) &&
+        fabsf(g_pg.vp_offset[0] - (float)x0) < 1.0f &&
+        fabsf(g_pg.vp_offset[1] - (float)y0) < 1.0f;
+}
+
+static float nv_menu_preview_shift(unsigned bw, unsigned sw)
+{
+    if (!bw || !sw || !nv_menu_preview()) return 0.0f;
+    float x, w;
+    video_hud_region(bw, &x, &w);
+    unsigned x0 = g_pg.window_clip_h[0] & 0xFFFu;
+    unsigned x1 = (g_pg.window_clip_h[0] >> 16) & 0xFFFu;
+    float centre = g_pg.vp_offset[0] + (float)(x1 + 1 - x0) * 0.5f;
+    return x + centre * (w - (float)bw) / (float)sw;
+}
+
 static int nv_apply_window_clip(int hud)
 {
     extern void d3d8_SetScissorRect(int x, int y, int w, int h);
@@ -2316,6 +2353,7 @@ static int nv_apply_window_clip(int hud)
     unsigned x0, y0, x1, y1;
     int sx0, sy0, sx1, sy1;
 
+    hud = hud || nv_menu_preview();
     if (g_pg.window_clip_type != 0) return 0;
     if (!gw || !gh || !bw || !bh) return 0;
     x0 =  hz        & 0xFFFu; x1 = (hz >> 16) & 0xFFFu;
@@ -2398,6 +2436,21 @@ static int nv_hud_geometry(const OutputVertex *out, uint32_t n, unsigned w, unsi
              y0 <= 1.0f && y1 >= (float)h-1.0f);
 }
 
+static int nv_menu_panel_geometry(const OutputVertex *out, uint32_t n)
+{
+    if (n != 4 || !nv_menu_surface() || !g_pg.depth_test || g_pg.tex[0].enabled ||
+        out[0].z < 0.999f || out[0].z > 1.0f) return 0;
+    for (uint32_t i = 0; i < n; ++i)
+        if (out[i].rhw != 1.0f || out[i].z != out[0].z) return 0;
+    /* The two axis-aligned portrait backings use triangle-strip order. */
+    return out[0].x == out[2].x && out[1].x == out[3].x &&
+        out[0].y == out[1].y && out[2].y == out[3].y &&
+        out[0].x > 0 && out[0].y > 0 && out[1].x > out[0].x &&
+        out[2].y > out[0].y &&
+        out[1].x < (g_pg.surface_clip_h >> 16) * 0.5f &&
+        out[2].y < (g_pg.surface_clip_v >> 16) * 0.5f;
+}
+
 static int nv_fit_to_backbuffer(OutputVertex *out, uint32_t n, int screen_space)
 {
     unsigned gw = (g_pg.surface_clip_h >> 16) & 0xFFFF;
@@ -2425,11 +2478,18 @@ static int nv_fit_to_backbuffer(OutputVertex *out, uint32_t n, int screen_space)
             hud = hud_w != (float)bw;
         }
     }
-    if (!hud && gw == bw && gh == bh) return 0;
+    if (screen_space && nv_menu_panel_geometry(out, n)) {
+        video_hud_region(bw, &hud_x, &hud_w);
+        hud = 1;
+    }
+    /* Projection already compensates for ultrawide; scaling it again would
+     * squeeze the model. Only its panel centre moves into the HUD canvas. */
+    float preview_shift = screen_space ? 0.0f : nv_menu_preview_shift(bw, gw);
+    if (!hud && preview_shift == 0.0f && gw == bw && gh == bh) return 0;
     sx = hud_w / (float)gw;
     sy = (float)bh / (float)gh;
     for (i = 0; i < n; i++) {
-        out[i].x = hud_x + out[i].x * sx;
+        out[i].x = hud_x + preview_shift + out[i].x * sx;
         out[i].y *= sy;
     }
     return hud;
@@ -3031,12 +3091,13 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
         float sx = 1.0f, sy = 1.0f, kx, ky;
         if (!(ox >= 0.0f && oy >= 0.0f && sw && sh && ox < (float)sw && oy < (float)sh)) { ox = 0.0f; oy = 0.0f; }
         if (sw && sh && bw && bh && !(sw == bw && sh == bh)) { sx = (float)bw / (float)sw; sy = (float)bh / (float)sh; }
+        float preview_shift = nv_menu_preview_shift(bw, sw);
         kx = 2.0f * sx / (float)bw;
         ky = 2.0f * sy / (float)bh;
         for (k = 0; k < 4; k++) {
             float r0 = g_pg.composite[0 * 4 + k], r1 = g_pg.composite[1 * 4 + k];
             float r2 = g_pg.composite[2 * 4 + k], r3 = g_pg.composite[3 * 4 + k];
-            cb.clip[0][k] =  kx * r0 + (kx * ox - 1.0f) * r3;
+            cb.clip[0][k] =  kx * r0 + (kx * ox - 1.0f + 2.0f * preview_shift / (float)bw) * r3;
             cb.clip[1][k] = -ky * r1 + (1.0f - ky * oy) * r3;
             cb.clip[2][k] =  r2 / zrange;
             cb.clip[3][k] =  r3;

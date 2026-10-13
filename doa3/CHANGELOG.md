@@ -1,5 +1,17 @@
 # DOA3 3.1 changelog
 
+## 0.0.122 — 2026-10-13
+
+- Align character-select previews and their dark backing panels with the
+  centered 16:9 interface at 21:9 and 32:9. Move portrait viewport centres
+  and clipping together while preserving the models' projected proportions
+  in both CPU and GPU rendering paths.
+- Preserve 4:3/16:9 behavior, ordinary world rendering, offscreen targets,
+  full-screen fades, and the existing main-menu pixel offsets.
+- Extend HUD layout regressions for both portrait sides, model width, panel
+  alignment, and target isolation. All four aspect/HUD/timer tests and the
+  Release build pass; the user confirmed both ultrawide ratios look correct.
+
 ## 0.0.121 — 2026-10-13
 
 - Replace the player selector in Controls with Player 1–4 tabs. Keep Player 1's
