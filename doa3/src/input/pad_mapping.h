@@ -80,6 +80,10 @@ void pad_mapping_apply_player(int player, const void *state, XBOX_GAMEPAD *out, 
  * before it was made remappable. */
 void pad_mapping_reset_defaults(void);
 
+/* Global gameplay policy, shared by all four players and persisted with bindings. */
+int  pad_mapping_focus_only(void);
+void pad_mapping_set_focus_only(int enabled);
+
 /* `doa3_input.ini` next to the executable. Load is best-effort: a missing or
  * malformed file leaves the defaults in place. */
 int  pad_mapping_load(const char *path);

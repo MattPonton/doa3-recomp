@@ -50,6 +50,30 @@ int main(void)
         CHECK(xbox_InputGetState(p,&guest)==ERROR_SUCCESS);
         CHECK(guest.Gamepad.bAnalogButtons[p]==255 && guest.dwPacketNumber==100+p);
     }
+    /* Focus filtering keeps ports connected, releases every player's input,
+     * and changes guest packets even while hardware packets stay constant. */
+    CHECK(pad_mapping_focus_only());
+    xbox_InputSetActive(FALSE);
+    CHECK(xbox_InputHostMask()==15 && xbox_InputTakeReconfiguredMask()==0);
+    for (int p=0;p<4;++p) {
+        const XBOX_GAMEPAD neutral = {0};
+        CHECK(xbox_InputGetState(p,&guest)==ERROR_SUCCESS);
+        CHECK(!memcmp(&guest.Gamepad,&neutral,sizeof(neutral)));
+        CHECK(guest.dwPacketNumber==101+p);
+        CHECK(xbox_InputGetState(p,&guest)==ERROR_SUCCESS && guest.dwPacketNumber==101+p);
+    }
+    pad_mapping_set_focus_only(0);
+    for (int p=0;p<4;++p) {
+        CHECK(xbox_InputGetState(p,&guest)==ERROR_SUCCESS);
+        CHECK(guest.Gamepad.bAnalogButtons[p]==255 && guest.dwPacketNumber==102+p);
+    }
+    /* Re-enabling while already unfocused takes effect without an activation event. */
+    pad_mapping_set_focus_only(1);
+    CHECK(xbox_InputGetState(0,&guest)==ERROR_SUCCESS && guest.Gamepad.bAnalogButtons[0]==0);
+    CHECK(guest.dwPacketNumber==103);
+    xbox_InputSetActive(TRUE);
+    CHECK(xbox_InputGetState(0,&guest)==ERROR_SUCCESS && guest.Gamepad.bAnalogButtons[0]==255);
+    CHECK(guest.dwPacketNumber==104);
     /* Explicit slot reserves its device ahead of all automatic players. */
     pad_mapping_set_device(3,0);
     CHECK(xbox_InputAssignedSlot(3)==0 && xbox_InputAssignedSlot(0)==1);
@@ -74,6 +98,14 @@ int main(void)
     pad_mapping_get_player(1)->b[PADCTL_A]=(PadBinding){PADSRC_KEY,'J'};
     pressed_key='J';
     CHECK(xbox_InputGetState(1,&guest)==ERROR_SUCCESS && guest.Gamepad.bAnalogButtons[0]==255);
+    xbox_InputSetActive(FALSE);
+    CHECK(xbox_InputGetState(1,&guest)==ERROR_SUCCESS && guest.Gamepad.bAnalogButtons[0]==0);
+    pad_mapping_set_focus_only(0);
+    CHECK(xbox_InputGetState(1,&guest)==ERROR_SUCCESS && guest.Gamepad.bAnalogButtons[0]==255);
+    xbox_InputSetCaptured(TRUE);
+    CHECK(xbox_InputGetState(1,&guest)==ERROR_SUCCESS && guest.Gamepad.bAnalogButtons[0]==0);
+    xbox_InputSetCaptured(FALSE);
+    xbox_InputSetActive(TRUE);
     states[0].Gamepad.wButtons=0;
     CHECK(xbox_InputGetState(0,&guest)==ERROR_SUCCESS && guest.Gamepad.bAnalogButtons[0]==0);
     pad_mapping_set_menu_open(1);
@@ -97,7 +129,9 @@ int main(void)
     }
     CHECK(pad_mapping_save("player_mapping_test.ini"));
     pad_mapping_reset_defaults();
+    CHECK(pad_mapping_focus_only());
     CHECK(pad_mapping_load("player_mapping_test.ini"));
+    CHECK(!pad_mapping_focus_only());
     for (int p=0;p<4;++p) {
         CHECK(pad_mapping_device(p)==p && pad_mapping_type(p)==p%3);
         CHECK(pad_mapping_get_player(p)->b[PADCTL_START].code=='1'+p);
@@ -108,7 +142,11 @@ int main(void)
     /* Older shared mappings migrate without discarding any player's binding. */
     write_ini("A=1:8192\n");
     CHECK(pad_mapping_load("player_mapping_test.ini"));
+    CHECK(pad_mapping_focus_only());
     for (int p=0;p<4;++p) CHECK(pad_mapping_get_player(p)->b[PADCTL_A].code==8192);
+    write_ini("[Input]\nFocusOnly=invalid\nFocusOnly=2\nFocusOnly=0junk\n[Player1]\nA=1:8192\n");
+    CHECK(pad_mapping_load("player_mapping_test.ini") && pad_mapping_focus_only());
+    CHECK(pad_mapping_get_player(0)->b[PADCTL_A].code==8192);
     write_ini("[Player1]\nDevice=2\nType=99\n[Player2]\nDevice=2\n[Player3]\nDevice=99\n[Player5]\nA=0:0\n");
     CHECK(pad_mapping_load("player_mapping_test.ini"));
     CHECK(pad_mapping_device(0)==2 && pad_mapping_device(1)==PAD_DEVICE_NONE);
@@ -130,6 +168,12 @@ int main(void)
     CHECK(caps.Flags & XINPUT_CAPS_FFB_SUPPORTED);
     CHECK(xbox_InputSetState(0,&vib) == ERROR_SUCCESS && ds4_test_motors[0].wLeftMotorSpeed == vib.wLeftMotorSpeed);
     xbox_InputSetActive(FALSE);
+    CHECK(xbox_InputGetState(0,&guest)==ERROR_SUCCESS && !guest.Gamepad.bAnalogButtons[0]);
+    CHECK(!guest.Gamepad.bAnalogButtons[XBOX_BUTTON_LTRIGGER]);
+    pad_mapping_set_focus_only(0);
+    CHECK(xbox_InputGetState(0,&guest)==ERROR_SUCCESS && guest.Gamepad.bAnalogButtons[0]==255);
+    CHECK(guest.Gamepad.bAnalogButtons[XBOX_BUTTON_LTRIGGER]==190);
+    pad_mapping_set_focus_only(1);
     CHECK(!ds4_test_motors[0].wLeftMotorSpeed && !ds4_test_motors[0].wRightMotorSpeed);
     CHECK(xbox_InputSetState(0,&vib) == ERROR_SUCCESS && !ds4_test_motors[0].wRightMotorSpeed);
     xbox_InputSetActive(TRUE);

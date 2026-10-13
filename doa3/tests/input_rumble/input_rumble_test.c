@@ -35,6 +35,7 @@ int pad_mapping_has_key_binding(void) { return keyboard; }
 int pad_mapping_player_has_key(int p) { return p == 0 && keyboard; }
 int pad_mapping_device(int p) { (void)p; return PAD_DEVICE_AUTO; }
 int pad_mapping_type(int p) { (void)p; return PAD_TYPE_DUKE; }
+int pad_mapping_focus_only(void) { return 1; }
 void pad_mapping_apply_port(const void *state, XBOX_GAMEPAD *pad, int use_keyboard)
 {
     (void)state; (void)use_keyboard;

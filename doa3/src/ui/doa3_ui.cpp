@@ -176,6 +176,15 @@ void DrawControlsSection()
 {
     static const char *players[] = { "Player 1", "Player 2", "Player 3", "Player 4" };
     static const char *types[] = { "Duke", "Controller S", "Fight Stick" };
+    bool focus_only = pad_mapping_focus_only() != 0;
+    if (ImGui::Checkbox("Input only when focused", &focus_only)) {
+        pad_mapping_set_focus_only(focus_only);
+        SetStatus("Input focus setting changed; Save to keep settings");
+    }
+    ImGui::TextDisabled("Applies to keyboard and controllers for all players.");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Turn off to allow gameplay input while another app is active.");
+    ImGui::Separator();
     DWORD physical = xbox_InputPhysicalMask();
     ImGui::SetNextItemWidth(180.0f);
     if (ImGui::Combo("Player", &g_input_player, players, 4)) {
@@ -858,7 +867,12 @@ extern "C" void doa3_ui_toggle(void)
 
 extern "C" int doa3_ui_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
-    if (msg == WM_KILLFOCUS || (msg == WM_ACTIVATEAPP && !wp)) g_screenshot_listening = false;
+    if (msg == WM_KILLFOCUS || (msg == WM_ACTIVATEAPP && !wp)) {
+        g_screenshot_listening = false;
+        g_listening = -1;
+        g_armed = false;
+        g_pending_vk = 0;
+    }
     /* Escape: cancel a listening row first, otherwise toggle the overlay. It is
      * handled here rather than as a bindable key so the menu can always be
      * closed, whatever the mapping says. */

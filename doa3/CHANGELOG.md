@@ -5,6 +5,19 @@ presentation remains on its separate branch. The Release build and six suites
 (clipping, HUD fade, point sprites, frame history, reflection mask and combiner
 cache) pass on this native-rate version.
 
+## Unreleased — Input focus setting
+
+- Add **Input only when focused** to Escape > Controls. Enabled by default;
+  disable it to allow background gameplay input. The setting applies to
+  keyboard, Xbox and PS4 controllers across all four players and is persisted
+  by Controls > Save in `doa3_input.ini`.
+- Keep controllers connected while filtering unfocused input to neutral.
+  Report focus-driven releases/restores as changed input packets even when
+  the physical controller's packet has not changed. Cancel pending rebinding
+  when focus is lost; existing menu, free-camera and rumble focus rules remain.
+- Extend input regressions for focus transitions, background input, live
+  setting changes, keyboard/PS4 routing, persistence and older settings files.
+
 ## Unreleased — Ice Cave reflection triangles
 
 - Fix precision loss when clipping large reflection vertices against the near

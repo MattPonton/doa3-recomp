@@ -12,6 +12,7 @@ static int g_types[4];
 static int        g_menu_open = 0;
 static int        g_use_keys  = 1;   /* set per call by pad_mapping_apply_port */
 static int        g_initialised = 0;
+static int        g_focus_only = 1;
 
 /* ── Row metadata ──────────────────────────────────────────────────────── */
 
@@ -95,6 +96,7 @@ static void reset_mapping(PadMapping *m)
 
 void pad_mapping_reset_defaults(void)
 {
+    g_focus_only = 1;
     for (int p = 0; p < 4; ++p) {
         reset_mapping(&g_maps[p]);
         g_devices[p] = PAD_DEVICE_AUTO;
@@ -109,6 +111,8 @@ PadMapping *pad_mapping_get_player(int player)
     return &g_maps[player >= 0 && player < 4 ? player : 0];
 }
 PadMapping *pad_mapping_get(void) { return pad_mapping_get_player(0); }
+int pad_mapping_focus_only(void) { pad_mapping_get(); return g_focus_only; }
+void pad_mapping_set_focus_only(int enabled) { pad_mapping_get(); g_focus_only = enabled != 0; }
 void pad_mapping_reset_player(int player) { reset_mapping(pad_mapping_get_player(player)); }
 int pad_mapping_device(int p) { pad_mapping_get(); return p >= 0 && p < 4 ? g_devices[p] : PAD_DEVICE_NONE; }
 int pad_mapping_type(int p) { pad_mapping_get(); return p >= 0 && p < 4 ? g_types[p] : PAD_TYPE_DUKE; }
@@ -228,6 +232,7 @@ int pad_mapping_save(const char *path)
     if (fopen_s(&f, path, "wb") != 0 || !f) return 0;
     fprintf(f, "# DOA3 pad mapping. Control = kind:code\n");
     fprintf(f, "# kind 0=unbound 1=pad button 2=pad trigger 3=pad axis 4=key(VK)\n");
+    fprintf(f, "[Input]\nFocusOnly=%d\n", g_focus_only);
     for (p = 0; p < 4; ++p) {
         PadMapping *m = pad_mapping_get_player(p);
         fprintf(f, "[Player%d]\nDevice=%d\nType=%d\n", p + 1, g_devices[p], g_types[p]);
@@ -257,6 +262,7 @@ int pad_mapping_load(const char *path)
         int i, kind, code, value;
         if (line[0] == '[') {
             player = -2;
+            if (!strncmp(line, "[Input]", 7)) player = -3;
             if (sscanf_s(line, "[Player%d]", &value) == 1 && value >= 1 && value <= 4) player = value - 1;
             continue;
         }
@@ -265,6 +271,12 @@ int pad_mapping_load(const char *path)
         eq = strchr(line, '=');
         if (!eq) continue;
         *eq = 0;
+        if (player == -3) {
+            char extra;
+            if (!strcmp(line, "FocusOnly") && sscanf_s(eq + 1, "%d %c", &value, &extra, 1u) == 1 &&
+                (value == 0 || value == 1)) g_focus_only = value;
+            continue;
+        }
         if (player >= 0 && sscanf_s(eq + 1, "%d", &value) == 1) {
             if (!strcmp(line, "Device")) {
                 if (value >= PAD_DEVICE_KEYBOARD && value < XBOX_HOST_CONTROLLERS) g_devices[player] = value;

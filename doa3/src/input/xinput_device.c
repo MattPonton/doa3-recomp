@@ -29,6 +29,30 @@ static BOOL s_active = TRUE;
 static BOOL s_captured;
 static BOOL s_rumbling[XBOX_HOST_CONTROLLERS];
 static DWORD s_reconfigured;
+static struct {
+    BOOL seen;
+    DWORD source_packet, packet;
+    XBOX_GAMEPAD gamepad;
+} s_guest_state[XBOX_MAX_CONTROLLERS];
+
+static void finish_guest_state(DWORD port, XBOX_INPUT_STATE *state)
+{
+    DWORD source_packet = state->dwPacketNumber;
+    if (s_captured || (!s_active && pad_mapping_focus_only()))
+        memset(&state->Gamepad, 0, sizeof(state->Gamepad));
+    /* Focus/capture changes can release or restore held buttons without a
+     * new hardware packet. Report those changes to the guest as well. */
+    if (!s_guest_state[port].seen) {
+        s_guest_state[port].seen = TRUE;
+        s_guest_state[port].packet = source_packet;
+    } else if (source_packet != s_guest_state[port].source_packet ||
+               memcmp(&state->Gamepad, &s_guest_state[port].gamepad, sizeof(state->Gamepad))) {
+        ++s_guest_state[port].packet;
+    }
+    s_guest_state[port].source_packet = source_packet;
+    s_guest_state[port].gamepad = state->Gamepad;
+    state->dwPacketNumber = s_guest_state[port].packet;
+}
 
 static void stop_slot(int slot)
 {
@@ -210,7 +234,7 @@ DWORD xbox_InputGetState(DWORD dwPort, XBOX_INPUT_STATE *pState)
         memset(pState, 0, sizeof(XBOX_INPUT_STATE));
         pState->dwPacketNumber = xi_state.dwPacketNumber;
         pad_mapping_apply_player((int)dwPort, &xi_state, &pState->Gamepad, port_has_keyboard(dwPort));
-        if (s_captured) memset(&pState->Gamepad, 0, sizeof(pState->Gamepad));
+        finish_guest_state(dwPort, pState);
         return ERROR_SUCCESS;
     }
     if (slot >= 0) {
@@ -227,7 +251,7 @@ DWORD xbox_InputGetState(DWORD dwPort, XBOX_INPUT_STATE *pState)
     memset(pState, 0, sizeof(XBOX_INPUT_STATE));
     pState->dwPacketNumber = ++s_kb_packet;
     pad_mapping_apply_player((int)dwPort, NULL, &pState->Gamepad, 1);
-    if (s_captured) memset(&pState->Gamepad, 0, sizeof(pState->Gamepad));
+    finish_guest_state(dwPort, pState);
     return ERROR_SUCCESS;
 }
 
