@@ -18,6 +18,7 @@ extern "C" {
 #include "pad_mapping.h"
 #include "../game/video_settings.h"
 #include "../game/audio_settings.h"
+#include "../game/game_audio.h"
 #include "../game/debug_settings.h"
 #include "../game/debug_capture.h"
 #include "../game/free_camera.h"
@@ -381,6 +382,7 @@ void DrawAudioSection()
     switch (ResetSaveRow()) {
     case 1:
         audio_set_volume(100);
+        audio_streamer_mode_set(0);
         SetStatus("Audio settings reset to defaults");
         break;
     case 2:
@@ -394,8 +396,39 @@ void DrawAudioSection()
     if (ImGui::SliderInt("Master volume", &volume, 0, 100, "%d%%",
                          ImGuiSliderFlags_AlwaysClamp))
         audio_set_volume(volume);
-    ImGui::TextWrapped("Controls music, voices, sound effects, and movies. "
-                       "Changes apply immediately; choose Save to keep them for next time.");
+    ImGui::TextWrapped("Overall output level of the PC version, applied after the game's own mix "
+                       "(music, voices, sound effects and movies). 100%% leaves the game unchanged. "
+                       "Choose Save to keep it for next time.");
+
+    ImGui::Spacing();
+    ImGui::SeparatorText("Game volume");
+    {
+        static const char *const names[3] = { "Music", "Sound effects", "Voice" };
+        const bool ready = game_audio_available() != 0;
+        if (!ready) ImGui::BeginDisabled();
+        for (int ch = 0; ch < 3; ++ch) {
+            int v = game_audio_get(ch);
+            if (ImGui::SliderInt(names[ch], &v, 0, 100, "%d", ImGuiSliderFlags_AlwaysClamp))
+                game_audio_request(ch, v);
+        }
+        if (!ready) ImGui::EndDisabled();
+        ImGui::TextWrapped("The same settings as the game's Options > Audio Setting, in its steps of 5. "
+                           "They apply immediately and are stored in the game's save the next time the game "
+                           "saves (leaving Options, or after the credits).");
+    }
+
+    ImGui::Spacing();
+    ImGui::SeparatorText("Streaming");
+    {
+        bool streamer = audio_streamer_mode_get() != 0;
+        if (ImGui::Checkbox("Streamer mode", &streamer))
+            audio_streamer_mode_set(streamer ? 1 : 0);
+        ImGui::TextWrapped("Silences the licensed songs \"Nine Lives\" (opening) and \"Home Tonight\" "
+                           "(credits) by setting the game's music volume to 0 while they play, then "
+                           "restores your level. Your saved music volume is never changed.");
+        if (game_audio_streamer_muting())
+            ImGui::TextDisabled("A licensed song is muted right now.");
+    }
 }
 
 /* ── General section ──────────────────────────────────────────────────────*/
@@ -616,7 +649,7 @@ void DrawDebugSection()
         combat_debug_set_flags(0);
         ResetPerformanceOverlay();
         free_camera_set_enabled(0);
-        free_camera_set_speed(300);
+        free_camera_set_speed(10);
         free_camera_reset_fov();
         d3d8_debug_views_reset();
         debug_hide_ui_set(0);
@@ -671,7 +704,8 @@ void DrawDebugSection()
     }
     if (ImGui::CollapsingHeader("Diagnostics")) {
         bool cap = doa3_auto_capture_enabled() != 0;
-        bool env_forced = getenv("DOA3_AUTO_CAPTURE") && *getenv("DOA3_AUTO_CAPTURE");
+        char env_value[8];
+        bool env_forced = GetEnvironmentVariableA("DOA3_AUTO_CAPTURE", env_value, sizeof env_value) > 0;
         if (env_forced) ImGui::BeginDisabled();
         if (ImGui::Checkbox("Automatic diagnostic captures", &cap))
             doa3_auto_capture_set(cap ? 1 : 0);
@@ -696,7 +730,7 @@ void DrawDebugSection()
                 SetStatus("Enter an offline 3D scene before enabling the camera.");
         }
         float speed = free_camera_speed();
-        if (ImGui::SliderFloat("Camera speed", &speed, 10.0f, 3000.0f, "%.0f", ImGuiSliderFlags_Logarithmic))
+        if (ImGui::SliderFloat("Camera speed", &speed, 1.0f, 20.0f, "%.1f", ImGuiSliderFlags_AlwaysClamp))
             free_camera_set_speed(speed);
         if (ImGui::Button("Reset to game camera")) free_camera_reset();
         ImGui::TextWrapped("Close this menu to fly. WASD: move; mouse: look; E/Q: up/down. "

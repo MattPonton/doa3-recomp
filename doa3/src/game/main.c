@@ -1000,7 +1000,7 @@ static LONG WINAPI crash_veh(PEXCEPTION_POINTERS info)
                     _rel < g_watch_arr_n * g_watch_arr_stride &&
                     (_rel % g_watch_arr_stride) < 4u) {
                     interesting = 1;
-                    fprintf(stderr, "[VTHIT] elem=%u xbva=0x%08X old=0x%08X rip=0x%llX eax=%08X ebx=%08X ecx=%08X edx=%08X esi=%08X edi=%08X ebp=%08X\n",
+                    fprintf(stderr, "[VTHIT] elem=%u xbva=0x%08X old=0x%08X rip=0x%llX eax=%08X ebx=%08X ecx=%08X edx=%08X esi=%08X edi=%08X\n",
                             _rel / g_watch_arr_stride, xbva,
                             *(volatile uint32_t *)f,
                             (unsigned long long)info->ContextRecord->Rip,

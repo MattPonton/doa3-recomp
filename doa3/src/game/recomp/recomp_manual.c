@@ -30,6 +30,7 @@
 #include "../combat_debug.h"
 #include "../training_dummy.h"
 #include "../debug_capture.h"
+#include "../game_audio.h"
 
 extern uint32_t xbox_HeapAlloc(uint32_t size, uint32_t alignment);
 extern void xbox_fiber_yield(void);
@@ -1229,6 +1230,7 @@ static void d3d4134_frame_done(uint32_t dev)
     { extern void doa3_frame_monitor(unsigned frame); doa3_frame_monitor(g_doa3_frames_presented); }
     doa3_mtrace_frame(g_doa3_frames_presented + 1);
     { void doa3_adx_frame(unsigned frame); doa3_adx_frame(g_doa3_frames_presented); }
+    game_audio_frame();               /* game volumes, streamer mode */
     doa3_present_frame();
     d3d4134_pace();
     { extern void doa3_fn_profile_tick(void); doa3_fn_profile_tick(); }
@@ -1347,6 +1349,44 @@ void sub_0018C9D3(void)          /* SwitchToFiber(handle), stdcall ret 4 */
     else xbox_fiber_yield_back();
 }
 #include "game/announcer_policy.h"
+/* Game-volume guest calls for game_audio.c, made from the per-frame hook or
+ * from inside the hooks below, always on the game thread. The caller-saved
+ * registers are preserved so either context resumes untouched. */
+void doa3_guest_set_music_volume(int percent)
+{
+    uint32_t sv_eax = eax, sv_ecx = ecx, sv_edx = edx;
+    eax = (uint32_t)percent;            /* 0xA61C0: register argument, clamps,  */
+    PUSH32(esp, 0);                     /* sets 0x2D3E9C, applies to every song */
+    sub_000A61C0();
+    eax = sv_eax; ecx = sv_ecx; edx = sv_edx;
+}
+
+void doa3_guest_apply_sfx_voice(void)
+{
+    uint32_t sv_eax = eax, sv_ecx = ecx, sv_edx = edx;
+    PUSH32(esp, 0);                     /* 0x8A3F0: reads 0x59D095/96 (boot path) */
+    sub_0008A3F0();
+    eax = sv_eax; ecx = sv_ecx; edx = sv_edx;
+}
+
+/* ADXT_StartAfs(adxt, partition, fid), cdecl, no return value. */
+void sub_00191DD0_gen(void);
+void sub_00191DD0(void)
+{
+    uint32_t adxt = MEM32(esp + 4), part = MEM32(esp + 8), fid = MEM32(esp + 12);
+    sub_00191DD0_gen();
+    game_audio_on_adxt_start(adxt, part, fid);
+}
+
+/* SaveGame (no arguments). */
+void sub_00020C80_gen(void);
+void sub_00020C80(void)
+{
+    game_audio_before_save();
+    sub_00020C80_gen();
+    game_audio_after_save();
+}
+
 
 /* Filter Survival transitions at the common streamed-voice request entry.
  * Both direct calls and the game's sound wrappers reach this function. */

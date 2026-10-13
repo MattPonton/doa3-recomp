@@ -1663,3 +1663,40 @@ framebuffer-effect captures immediately. The boot glitch finder only runs
 during the first frames after launch, so it needs the setting saved (or the
 variable set) before starting. Default remains off. tests/debug_settings
 covers the default, persistence round-trip and the ini key.
+
+### 0.0.124: game volume sliders, streamer mode, free-camera speed
+
+The game keeps three audio settings in its save block (0x59D088, written by
+SaveGame 0x20C80): Music 0x59D094, Sound effects 0x59D095, Voice 0x59D096,
+each a u8 percent 0-100 with default 80 (clamp table 0x3F4528, applied by
+the loader). The Options menu edits them in steps of 5 (0xC3A40 slider,
+step 5) and applies music through 0xA61C0 (eax = level: clamp, store the
+live level 0x2D3E9C, call 0x1C6EF0, which sets every live music channel's
+ADX output volume). The boot path applies SFX and voice through 0x8A3F0
+(0x2D3EA0 = SFX, 0x2D3EA4 = voice * 0.85, then 0x1C6AE0).
+
+Escape > Audio gains Music / Sound effects / Voice sliders bound to those
+bytes. The UI queues a change; the game thread applies it at the next
+frame (d3d4134_frame_done) through those same routines, with caller-saved
+guest registers preserved. Nothing is stored in doa3_settings.ini: the
+game saves the values itself when leaving Options or after the credits.
+The Master slider is unchanged (a final output attenuator, 100 = the
+game's own level; it never boosts) and its text now says so.
+
+Streamer mode ([Audio] StreamerMode, Audio tab) silences the licensed
+songs through the game's own music volume. Every song starts through
+ADXT_StartAfs (0x191DD0) with partition 2 (bgm.afs); the hook records each
+ADX handle's file and logs "[BGM] ... bgm.afs file N started". The song
+list at 0x29CE48 pairs "nine lives" with file 0x18 and "home tonight" with
+0x17 (to be confirmed from those log lines). While a licensed file is on a
+live music channel (0x5CF418 + n*0x45A00, kind 3) and still sounding (ADXT
+status at handle+1 in 1..4), the music byte and live level are set to 0;
+when it ends, another song starts, or the option is turned off, the
+player's level is restored. A change made in the game's Options while
+muted becomes the level to restore. The SaveGame hook puts the real level
+back for the save and re-zeroes it afterwards, so a 0 can never be stored.
+
+Free camera speed: default 10, range 1-20 (was 300, 10-3000).
+Also: the [VTHIT] diagnostic printed one register more than it passed
+(ebp has no global here; dropped), and the Diagnostics checkbox reads the
+environment through GetEnvironmentVariableA (no C4996 warning).

@@ -37,3 +37,5 @@
 0x0008A2E0  battle pause trigger (which player asked to pause): log why
 0x001DC8E0  D3DDevice_SetRenderTarget: record offscreen (render-to-texture) surfaces for the translator
 0x001C7920  Streamed voice requests: suppress intermediate Survival KO/Fight; opt-in state trace
+0x00191DD0  ADXT_StartAfs: note which bgm.afs song each ADX player starts (streamer mode)
+0x00020C80  SaveGame: never store streamer mode's temporary music level of 0

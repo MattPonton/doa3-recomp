@@ -7,14 +7,14 @@
 static FreeCameraPose s_pose, s_normal;
 static unsigned s_index, s_normal_index;
 static int s_enabled, s_have_normal, s_captured, s_registered;
-static float s_speed = 300.0f;
+static float s_speed = 10.0f;     /* default; the slider spans 1-20 */
 static float s_fov_degrees, s_normal_fov = 60.0f;
 static LONG s_mouse_x, s_mouse_y;
 static LARGE_INTEGER s_last, s_frequency;
 
 int free_camera_enabled(void) { return s_enabled; }
 float free_camera_speed(void) { return s_speed; }
-void free_camera_set_speed(float speed) { s_speed = fmaxf(10, fminf(3000, speed)); }
+void free_camera_set_speed(float speed) { s_speed = fmaxf(1, fminf(20, speed)); }
 float free_camera_fov(void) { return s_fov_degrees > 0 ? s_fov_degrees : s_normal_fov; }
 void free_camera_set_fov(float degrees)
 {

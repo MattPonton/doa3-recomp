@@ -30,6 +30,7 @@ set(GAME_SOURCES
     movie_present.c
     video_settings.c
     audio_settings.c
+    game_audio.c
     debug_settings.c
     save_compat.c
     free_camera.c

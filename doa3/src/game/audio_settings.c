@@ -5,6 +5,18 @@
 
 /* The UI writes this while the APU and movie threads read it. */
 static volatile LONG g_volume = 100;
+/* Streamer mode: the game thread (game_audio.c) reads it every frame. */
+static volatile LONG g_streamer_mode = 0;
+
+int audio_streamer_mode_get(void)
+{
+    return (int)InterlockedCompareExchange(&g_streamer_mode, 0, 0);
+}
+
+void audio_streamer_mode_set(int enabled)
+{
+    InterlockedExchange(&g_streamer_mode, enabled != 0);
+}
 
 int audio_get_volume(void)
 {
@@ -22,15 +34,19 @@ int audio_settings_load(void)
 {
     const char *path = doa3_settings_ini_path();
     audio_set_volume((int)GetPrivateProfileIntA("Audio", "MasterVolume", 100, path));
+    audio_streamer_mode_set(GetPrivateProfileIntA("Audio", "StreamerMode", 0, path) != 0);
     return GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES;
 }
 
 int audio_settings_save(void)
 {
     char value[16];
+    int ok;
     snprintf(value, sizeof(value), "%d", audio_get_volume());
-    return WritePrivateProfileStringA("Audio", "MasterVolume", value,
-                                      doa3_settings_ini_path()) != 0;
+    ok = WritePrivateProfileStringA("Audio", "MasterVolume", value,
+                                    doa3_settings_ini_path()) != 0;
+    return (WritePrivateProfileStringA("Audio", "StreamerMode",
+                audio_streamer_mode_get() ? "1" : "0", doa3_settings_ini_path()) != 0) && ok;
 }
 
 void audio_apply_volume(int16_t *samples, size_t count)

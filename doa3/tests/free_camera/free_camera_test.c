@@ -145,8 +145,8 @@ int main(void)
     free_camera_reset();
     CHECK(free_camera_view(0, eye, target, out_eye, out_target));
     CHECK_NEAR(out_eye[0], 20);
-    free_camera_set_speed(0); CHECK_NEAR(free_camera_speed(), 10);
-    free_camera_set_speed(9000); CHECK_NEAR(free_camera_speed(), 3000);
+    free_camera_set_speed(0); CHECK_NEAR(free_camera_speed(), 1);
+    free_camera_set_speed(9000); CHECK_NEAR(free_camera_speed(), 20);
     online = 1;
     CHECK_NEAR(free_camera_projection_fov(0, 1), 1);
     CHECK(!free_camera_view(0, eye, target, out_eye, out_target));
