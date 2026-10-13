@@ -1566,3 +1566,36 @@ and the positive-W boundary. The old code failed 180 checks; the correction
 passes, as does the existing reflection-mask WARP test. The temporary logger
 has been removed. The user confirmed that the rebuilt Ice Cave scene looks
 correct after the fix.
+
+## Aspect ratio projection and display shape (2026-10-12)
+
+The user identified the high bytes of the projection float at XBE offset
+`0x244C22`. The retail Japanese 3.1 file contains `00 00 10 3F` beginning at
+`0x244C20`: the full little-endian float 0.5625 (9/16). The .rdata section
+maps it to guest VA `0x251620`. Seven recompiled reads use `MEMF` at that
+address, including `sub_00027720`; changing mapped data therefore affects
+the native recompiled camera routines without patching generated code.
+
+The camera chooses that constant when `0xA48CDC` bit 0 is set; otherwise it
+reads 0.75 at `0x250EF0`. D3D initialization `sub_0017B8D0` caches the video
+flags in `0xA48CDC`, raw video flags `0xA48C78`, and present flags
+`0xA48C58` (widescreen bit 0x10), with guest present width at `0xA48C30`.
+The new 3.1 runtime synchronization updates those bits after initialization
+and writes the full projection float before startup and at frame boundaries.
+It preserves unrelated flags and never writes to the XBE file on disk.
+
+The five selections separate display ratio from projection height/width:
+Full Screen 4:3 uses 3/4; Anamorphic 4:3 and 16:9 use 9/16; 21:9 uses 9/21;
+32:9 uses 9/32. The base targets are 640x480 for either 4:3 mode, 854x480 for
+16:9 (unchanged), 1120x480 for 21:9, and 1707x480 for 32:9, multiplied by the
+internal-resolution scale. The final presentation uses the exact requested
+aspect despite integer target-size rounding, as do combat debug overlays.
+Guest HUD/movie layout remains game-authored and is presented in that area.
+
+Switching between the two 4:3 modes must synchronize even when target
+dimensions do not change. A new Video/AspectRatio key stores the five modes;
+legacy Widescreen=0 migrates to Anamorphic 4:3 and Widescreen=1 to 16:9.
+The video_settings regression exercises startup before D3D initialization,
+exact float bits, unrelated-memory preservation, both 4:3 modes, all scales,
+save/load round-trips, old settings, and invalid selections. Visual checking
+of the new ultrawide modes is still pending.

@@ -224,7 +224,7 @@ void DrawCombatDebugOverlay()
     if (!combat_debug_snapshot(&snapshot)) return;
     ImVec2 display = ImGui::GetIO().DisplaySize;
     if (display.x <= 0 || display.y <= 0) return;
-    float aspect = video_get_aspect() == VIDEO_ASPECT_16_9 ? 16.f/9.f : 4.f/3.f;
+    float aspect = video_display_aspect(video_get_aspect());
     float w = display.x, h = display.y;
     if (w/h > aspect) w=h*aspect; else h=w/aspect;
     View view = {snapshot.matrix, ImGui::GetBackgroundDrawList(),

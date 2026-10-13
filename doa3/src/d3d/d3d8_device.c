@@ -676,6 +676,8 @@ static void d3d8_apply_target_size_change(void)
     unsigned w, h;
     D3D11_VIEWPORT vp;
     video_guest_target_size(video_get_aspect(), &w, &h);
+    /* Full and anamorphic 4:3 share dimensions but need different projections. */
+    video_sync_guest_widescreen();
     if (w == s->width && h == s->height) return;
 
     ID3D11DeviceContext_OMSetRenderTargets(s->d3d11_context, 0, NULL, NULL);
@@ -696,7 +698,6 @@ static void d3d8_apply_target_size_change(void)
     s->viewport.X = 0; s->viewport.Y = 0;
     s->viewport.Width = w; s->viewport.Height = h;
     d3d8_ResetScissorRect();
-    video_sync_guest_widescreen();
 }
 
 static void d3d8_keep_prev_frame(void);
@@ -728,7 +729,7 @@ static HRESULT d3d8_compose_and_present(void)
         UINT nsc = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
         const FLOAT black[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
         D3D11_VIEWPORT vp;
-        float dar = (video_get_aspect() == VIDEO_ASPECT_16_9) ? (16.0f / 9.0f) : (4.0f / 3.0f);
+        float dar = video_display_aspect(video_get_aspect());
         float sw = (float)s->swap_w, sh = (float)s->swap_h;
 
         ID3D11DeviceContext_IAGetInputLayout(ctx, &il);

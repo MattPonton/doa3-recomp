@@ -4,12 +4,10 @@
  * general settings file; controls stay in doa3_input.ini, which
  * pad_mapping_save rewrites wholesale.
  *
- * 16:9 is DOA3's own widescreen mode. The game reads XC_VIDEO_FLAGS through
- * ExQueryNonVolatileSetting (kernel ordinal 24) once, in its D3D init
- * (sub_001539C0), and from then on narrows the 3D projection horizontally
- * (hor+) while leaving the 2D layer untouched -- the Xbox output it made was
- * anamorphic 720x480 for a 16:9 set. The host renders that into a 16:9 guest
- * target instead of stretching a 4:3 one.
+ * Display shape and guest projection are separate: 4:3 Anamorphic presents
+ * the same projection as 16:9 in a 4:3 target. Other modes use their display
+ * height/width as the guest projection ratio. Only mapped guest memory is
+ * patched; the original XBE stays unchanged.
  */
 #ifndef DOA3_VIDEO_SETTINGS_H
 #define DOA3_VIDEO_SETTINGS_H
@@ -23,14 +21,23 @@ extern "C" {
 #define VIDEO_WINDOWED    0
 #define VIDEO_BORDERLESS  1
 
-#define VIDEO_ASPECT_4_3  0
-#define VIDEO_ASPECT_16_9 1
+enum {
+    VIDEO_ASPECT_4_3_FULL,
+    VIDEO_ASPECT_4_3_ANAMORPHIC,
+    VIDEO_ASPECT_16_9,
+    VIDEO_ASPECT_21_9,
+    VIDEO_ASPECT_32_9,
+    VIDEO_ASPECT_COUNT
+};
 
 /* Full path of doa3_settings.ini next to the executable. */
 const char *doa3_settings_ini_path(void);
 
 int  video_get_window_mode(void);
 int  video_get_aspect(void);
+const char *video_aspect_name(int aspect);
+float video_display_aspect(int aspect);
+float video_projection_ratio(int aspect);
 
 /* Load doa3_settings.ini (defaults when absent: borderless, 16:9, 3x).
  * Returns non-zero if the file exists. */
@@ -59,8 +66,8 @@ unsigned video_xc_video_value(void);
 /* Restyle/resize the window for a window mode (also used at startup). */
 void video_apply_window_mode(HWND hwnd, int mode);
 
-/* Update the game's cached widescreen state to the current aspect. Called by
- * the d3d8 layer when it rebuilds the guest target. */
+/* Update mapped projection data and cached widescreen state at startup and
+ * frame boundaries, including changes that keep the same target dimensions. */
 void video_sync_guest_widescreen(void);
 
 #ifdef __cplusplus

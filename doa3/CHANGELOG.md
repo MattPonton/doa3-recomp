@@ -1,11 +1,18 @@
-# DOA3 3.1 rendering fixes
+# DOA3 3.1 changelog
+
+## 0.0.77 — 2026-10-12
+
+Adds five aspect-ratio choices and the input-focus toggle, and includes the
+castle-fire, Omega entrance, timer-shadow and Ice Cave rendering corrections
+delivered since 0.0.76. Release builds and the aspect-ratio and input regression
+tests pass. The new ultrawide modes still need in-game visual confirmation.
 
 These fixes retain native 60 Hz rendering and gameplay. Experimental 120/240 Hz
 presentation remains on its separate branch. The Release build and six suites
 (clipping, HUD fade, point sprites, frame history, reflection mask and combiner
 cache) pass on this native-rate version.
 
-## Unreleased — Input focus setting
+### Input focus setting
 
 - Add **Input only when focused** to Escape > Controls. Enabled by default;
   disable it to allow background gameplay input. The setting applies to
@@ -18,7 +25,21 @@ cache) pass on this native-rate version.
 - Extend input regressions for focus transitions, background input, live
   setting changes, keyboard/PS4 routing, persistence and older settings files.
 
-## Unreleased — Ice Cave reflection triangles
+### Aspect ratios
+
+- Expand Video > Aspect ratio to 4:3 (Full Screen), 4:3 (Anamorphic), 16:9,
+  21:9 and 32:9. Full Screen uses a 3/4 projection ratio; Anamorphic and 16:9
+  use 9/16; ultrawide modes use 9/21 and 9/32. Both 4:3 modes use the same
+  4:3 display area.
+- Update the mapped 3.1 projection float and cached video flags at startup
+  and frame boundaries, including switches between the two 4:3 modes without
+  resizing. Fit presentation and combat overlays to each display ratio.
+- Save the selection under Video/AspectRatio and migrate legacy Widescreen=0
+  to 4:3 (Anamorphic). Leave the original XBE on disk unchanged.
+- Add regression coverage for all five modes, exact projection bits, 1x/2x/3x
+  target sizes, cached flags, persistence and legacy settings migration.
+
+### Ice Cave reflection triangles
 
 - Fix precision loss when clipping large reflection vertices against the near
   plane. Some intersections collapsed to the screen origin, producing dark
@@ -31,7 +52,7 @@ cache) pass on this native-rate version.
   Clipping and reflection-mask tests pass; the user confirmed the corrected
   Ice Cave appearance in game.
 
-## Unreleased — Round-start timer shadow
+### Round-start timer shadow
 
 - Preserve transparent black vertex colors in the HUD's texture-times-diffuse
   program. The timer shadow previously appeared fully opaque before the timer
@@ -39,7 +60,7 @@ cache) pass on this native-rate version.
 - Add a regression for the captured shadow fade and isolation of the existing
   fallback for other rendering programs.
 
-## Unreleased — Omega entrance blur
+### Omega entrance blur
 
 - Retain the completed guest frame for framebuffer-sampling effects. The
   previous pre-overlay capture replaced history during rendering and removed
@@ -52,7 +73,7 @@ cache) pass on this native-rate version.
   after-image persistence across multiple frames, and fresh captures after
   inactivity. In-game comparison of the corrected entrance remains pending.
 
-## Unreleased — Castle fire particles
+### Castle fire particles
 
 - Preserve the guest's particle colors and fading for T3-only point sprites.
   Ryu's burning-castle scene supplies orange embers with changing opacity;

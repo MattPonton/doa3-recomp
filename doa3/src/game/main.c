@@ -134,7 +134,7 @@ static int doa3_init_graphics(void)
 
     { extern void pgraph_d3d11_init(void); pgraph_d3d11_init(); }
     fprintf(stderr, "  Graphics: D3D8->D3D11 device created (guest target %ux%u, %s, %s)\n",
-            gw, gh, video_get_aspect() == VIDEO_ASPECT_16_9 ? "16:9" : "4:3",
+            gw, gh, video_aspect_name(video_get_aspect()),
             video_get_window_mode() == VIDEO_BORDERLESS ? "borderless" : "windowed");
     return 1;
 }
@@ -1485,6 +1485,7 @@ int main(int argc, char **argv)
     }
     printf("Xbox memory mapped. Offset: 0x%llX\n",
            (unsigned long long)(uintptr_t)xbox_GetMemoryOffset());
+    video_sync_guest_widescreen();
 
     xbox_kernel_init();
     xbox_path_init(NULL, NULL);   /* D:\ -> <exe folder>\HDD\D (see kernel_path.c) */

@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.20)
+project(video_settings_test C)
+enable_testing()
+add_executable(video_settings_test video_settings_test.c)
+target_include_directories(video_settings_test PRIVATE ../../src/game ../../src/game/recomp/gen)
+target_link_libraries(video_settings_test PRIVATE user32)
+add_test(NAME video_settings COMMAND video_settings_test)

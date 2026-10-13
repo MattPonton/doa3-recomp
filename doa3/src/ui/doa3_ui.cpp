@@ -319,7 +319,8 @@ void DrawControlsSection()
 void DrawVideoSection()
 {
     static const char *kWindow[] = { "Windowed", "Borderless fullscreen" };
-    static const char *kAspect[] = { "4:3", "16:9" };
+    const char *kAspect[VIDEO_ASPECT_COUNT];
+    for (int i = 0; i < VIDEO_ASPECT_COUNT; ++i) kAspect[i] = video_aspect_name(i);
     static const char *kScale[]  = { "1x (480p)", "2x (960p)", "3x (1440p)" };
 
     switch (ResetSaveRow()) {
