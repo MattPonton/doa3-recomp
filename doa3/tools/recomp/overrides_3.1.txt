@@ -39,3 +39,4 @@
 0x001C7920  Streamed voice requests: suppress intermediate Survival KO/Fight; opt-in state trace
 0x00191DD0  ADXT_StartAfs: note which bgm.afs song each ADX player starts (streamer mode)
 0x00020C80  SaveGame: never store streamer mode's temporary music level of 0
+0x000A47E0  Movie start (eax = movie number): streamer mode mutes the credits movie (mv_st.sfd) before it reads the music level

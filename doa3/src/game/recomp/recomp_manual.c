@@ -1377,6 +1377,14 @@ void sub_00191DD0(void)
     game_audio_on_adxt_start(adxt, part, fid);
 }
 
+/* Movie start (eax = index into the movie table at 0x2D4DD8). */
+void sub_000A47E0_gen(void);
+void sub_000A47E0(void)
+{
+    game_audio_on_movie_start(eax);     /* preserves eax */
+    sub_000A47E0_gen();
+}
+
 /* SaveGame (no arguments). */
 void sub_00020C80_gen(void);
 void sub_00020C80(void)

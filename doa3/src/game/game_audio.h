@@ -25,6 +25,7 @@ int  game_audio_streamer_muting(void);        /* a licensed song is silenced rig
 /* Game thread only (recomp_manual.c). */
 void game_audio_frame(void);
 void game_audio_on_adxt_start(uint32_t adxt, uint32_t partition, uint32_t fid);
+void game_audio_on_movie_start(uint32_t index);
 void game_audio_before_save(void);
 void game_audio_after_save(void);
 

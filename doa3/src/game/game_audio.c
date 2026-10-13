@@ -17,9 +17,11 @@
  *                   (still sounding), 0 stop, 5 play end.
  *
  * Every song starts through ADXT_StartAfs(adxt, 2, fid), partition 2 being
- * bgm.afs. The game's song list at 0x29CE48 pairs "nine lives" with 0x18 and
+ * bgm.afs. The game's song list at 0x29CE48 (the Options sound test, test
+ * number = entry + 1) pairs "nine lives" with 0x18, "amazing" with 0x16 and
  * "home tonight" with 0x17 in the low word; [BGM] log lines confirm the file
- * numbers at runtime. */
+ * numbers at runtime. The credits play "Home Tonight" from the movie
+ * mv_st.sfd instead, handled through the movie-start hook. */
 
 #if defined(DOA3_XBE_ID_3_1)
 
@@ -30,8 +32,12 @@
 #define GA_BGM_STRIDE  0x45A00u
 #define GA_BGM_COUNT   5u
 #define GA_BGM_PART    2u
+#define GA_MOVIE_HANDLE 0x73C308u   /* Sofdec player of the running movie; 0xA4C10 clears it */
+#define GA_MOVIE_CREDITS 17u        /* d:\mv_st.sfd in the movie table at 0x2D4DD8 */
 
-static int ga_licensed(uint32_t fid) { return fid == 0x18u || fid == 0x17u; }
+/* Aerosmith's songs: "nine lives" (sound test 01), "amazing" (23) and
+ * "home tonight" (24). */
+static int ga_licensed(uint32_t fid) { return fid == 0x18u || fid == 0x16u || fid == 0x17u; }
 
 /* Which bgm.afs file each ADXT handle was last started with. */
 static struct { uint32_t adxt, fid; } s_map[16];
@@ -40,6 +46,9 @@ static unsigned s_map_next;
 static volatile LONG s_pending[3] = { -1, -1, -1 };
 static volatile LONG s_muting;          /* read by the UI */
 static int s_muted, s_saved_music;      /* game thread */
+/* The credits movie: 0 none, 1 starting (player not created yet), 2 playing. */
+static int s_movie_state;
+static unsigned s_movie_wait;
 
 int game_audio_available(void)
 {
@@ -96,6 +105,35 @@ void game_audio_on_adxt_start(uint32_t adxt, uint32_t partition, uint32_t fid)
     /* Mute at once rather than at the next frame, so the song's first
      * notes are not heard. */
     if (ga_licensed(f) && audio_streamer_mode_get()) game_audio_frame();
+}
+
+/* Movie start (0xA47E0, eax = movie number). The credits movie carries
+ * "Home Tonight" in its own audio, and its player takes the music level
+ * from 0x2D3E9C once, while it is created -- so the level must already be 0
+ * when the start routine runs. */
+void game_audio_on_movie_start(uint32_t index)
+{
+    extern unsigned g_doa3_frames_presented;
+    fprintf(stderr, "[MOVIE] frame %u: movie %u starting%s\n", g_doa3_frames_presented,
+            index, index == GA_MOVIE_CREDITS ? " (credits, licensed song)" : "");
+    if (index == GA_MOVIE_CREDITS) {
+        s_movie_state = 1;
+        s_movie_wait = 0;
+        if (audio_streamer_mode_get()) game_audio_frame();
+    } else {
+        s_movie_state = 0;
+    }
+}
+
+static int ga_licensed_movie(void)
+{
+    if (s_movie_state == 1) {
+        if (MEM32(GA_MOVIE_HANDLE) != 0) s_movie_state = 2;
+        else if (++s_movie_wait > 600) s_movie_state = 0;   /* never started */
+    } else if (s_movie_state == 2 && MEM32(GA_MOVIE_HANDLE) == 0) {
+        s_movie_state = 0;                                  /* torn down: ended or skipped */
+    }
+    return s_movie_state != 0;
 }
 
 /* A licensed song is on a live music channel and still sounding. */
@@ -161,7 +199,9 @@ void game_audio_frame(void)
         MEM8(GA_MUSIC_BYTE) = 0;
         doa3_guest_set_music_volume(0);
     }
-    want = audio_streamer_mode_get() && ga_licensed_playing();
+    {   int movie = ga_licensed_movie();      /* always tracked, even with the option off */
+        want = audio_streamer_mode_get() && (ga_licensed_playing() || movie);
+    }
     if (want && !s_muted) ga_mute();
     else if (!want && s_muted) ga_unmute();
 }
@@ -186,6 +226,7 @@ void game_audio_request(int channel, int value) { (void)channel; (void)value; }
 int  game_audio_streamer_muting(void) { return 0; }
 void game_audio_frame(void) {}
 void game_audio_on_adxt_start(uint32_t a, uint32_t p, uint32_t f) { (void)a; (void)p; (void)f; }
+void game_audio_on_movie_start(uint32_t index) { (void)index; }
 void game_audio_before_save(void) {}
 void game_audio_after_save(void) {}
 

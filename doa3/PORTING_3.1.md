@@ -1724,3 +1724,22 @@ The automatic scene_NNNNN.bmp snapshots (every 180 frames, capped at 80, so
 the last was always scene_15840) are removed with doa3_frame_monitor.
 Targeted captures stay: aa_*.bmp with its mtrace_aa / mtrace_fb trace,
 mvend_*, and the method traces, all under Diagnostics.
+
+### 0.0.127: streamer mode covers the credits movie and "Amazing"; menu input
+
+The credits do not start "Home Tonight" through ADXT_StartAfs: it is the
+audio of the movie d:\mv_st.sfd (entry 17 of the movie table at 0x2D4DD8).
+The movie start routine 0xA47E0 (eax = movie number) creates the Sofdec
+player at 0x73C308 and sets its output volume once, from the live music
+level 0x2D3E9C (0 -> -999). Hooking 0xA47E0 lets streamer mode mute before
+that read; the credits count as licensed until the player is torn down
+(0xA4C10 zeroes 0x73C308) or, if it never appears, after 600 frames.
+"[MOVIE] frame N: movie M starting" is logged for every movie.
+
+"Amazing" (song list entry 22, file 0x16, sound test 23) joins Nine Lives
+(0x18) and Home Tonight (0x17) as licensed.
+
+"Capture gameplay input in Escape menu" off previously only returned the
+controllers to the game; the menu still read the same controller, so both
+moved at once. Off now also withholds the controller from ImGui
+navigation (mouse and keyboard still work; rebinding reads raw input).

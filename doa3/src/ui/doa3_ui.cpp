@@ -62,12 +62,17 @@ char g_status[128] = { 0 };
 void SetStatus(const char *s) { _snprintf_s(g_status, sizeof(g_status), _TRUNCATE, "%s", s); }
 
 /* Use the same assigned player-1 device as gameplay, including native PS4.
- * The Win32 backend's hardcoded XInput-slot-0 navigation is disabled. */
+ * The Win32 backend's hardcoded XInput-slot-0 navigation is disabled.
+ * With "Capture gameplay input in Escape menu" off, the controller keeps
+ * driving the game while the menu is open, so it must not also drive the
+ * menu: report no gamepad (every button released) and leave the menu to
+ * the mouse and keyboard. Rebinding reads the raw device separately. */
 void UpdateGamepadNavigation()
 {
     ImGuiIO &io = ImGui::GetIO();
     XINPUT_STATE state = {};
-    bool connected = xbox_InputGetRawState(&state) == ERROR_SUCCESS;
+    bool connected = pad_mapping_capture_menu() != 0 &&
+                     xbox_InputGetRawState(&state) == ERROR_SUCCESS;
     if (connected) io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
     else io.BackendFlags &= ~ImGuiBackendFlags_HasGamepad;
     const struct { ImGuiKey key; WORD button; } buttons[] = {
@@ -317,8 +322,9 @@ void DrawControlsSection()
         pad_mapping_set_capture_menu(capture_menu);
         SetStatus("Menu input setting changed; Save to keep settings");
     }
-    ImGui::TextWrapped("While settings are open, controls operate the menu without affecting the game. "
-                       "Applies to all players; turn off to keep controller gameplay input active.");
+    ImGui::TextWrapped("On: while settings are open, controllers operate the menu without affecting the game. "
+                       "Off: controllers keep playing the game and do not operate the menu (use the mouse "
+                       "or keyboard). Applies to all players.");
     if (ImGui::BeginTabBar("Player controllers")) {
         for (int player = 0; player < 4; ++player) {
             if (!ImGui::BeginTabItem(players[player])) continue;
@@ -423,9 +429,10 @@ void DrawAudioSection()
         bool streamer = audio_streamer_mode_get() != 0;
         if (ImGui::Checkbox("Streamer mode", &streamer))
             audio_streamer_mode_set(streamer ? 1 : 0);
-        ImGui::TextWrapped("Silences the licensed songs \"Nine Lives\" (opening) and \"Home Tonight\" "
-                           "(credits) by setting the game's music volume to 0 while they play, then "
-                           "restores your level. Your saved music volume is never changed.");
+        ImGui::TextWrapped("Silences Aerosmith's licensed songs (\"Nine Lives\", \"Amazing\" and \"Home Tonight\") "
+                           "wherever they play, including the opening, the credits and the sound test, by "
+                           "setting the game's music volume to 0 while they play, then restoring your level. "
+                           "Your saved music volume is never changed.");
         if (game_audio_streamer_muting())
             ImGui::TextDisabled("A licensed song is muted right now.");
     }
