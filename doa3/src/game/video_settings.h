@@ -38,6 +38,9 @@ int  video_get_aspect(void);
 const char *video_aspect_name(int aspect);
 float video_display_aspect(int aspect);
 float video_projection_ratio(int aspect);
+/* Horizontal HUD area inside the render target. Ultrawide uses a centered
+ * 16:9 canvas; 4:3 and 16:9 retain their existing full-width scaling. */
+void video_hud_region(unsigned target_width, float *x, float *width);
 
 /* Load doa3_settings.ini (defaults when absent: borderless, 16:9, 3x).
  * Returns non-zero if the file exists. */

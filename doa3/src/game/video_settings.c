@@ -54,6 +54,15 @@ float video_projection_ratio(int aspect)
     }
 }
 
+void video_hud_region(unsigned target_width, float *x, float *width)
+{
+    float w = (float)target_width;
+    if (g_aspect == VIDEO_ASPECT_21_9) w *= 16.0f / 21.0f;
+    else if (g_aspect == VIDEO_ASPECT_32_9) w *= 0.5f;
+    *x = ((float)target_width - w) * 0.5f;
+    *width = w;
+}
+
 const char *doa3_settings_ini_path(void)
 {
     static char path[MAX_PATH];

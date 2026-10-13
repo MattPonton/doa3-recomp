@@ -1,5 +1,28 @@
 # DOA3 3.1 changelog
 
+## 0.0.78 — 2026-10-12
+
+- Center the HUD in a 16:9 area for 21:9 and 32:9, including its clipping
+  rectangles. Retain full-width scaling in both 4:3 modes and 16:9, and
+  preserve native menu pixel offsets. World geometry, collision overlays,
+  offscreen rendering and full-screen fades keep the full render area.
+- Keep collision overlays visible during native pause in the same fight,
+  including when first enabled while paused. Do not advance attack timing
+  while reading frozen geometry. Invalidate snapshots on stage, mode or
+  fighter changes; unpaused stale snapshots still expire normally.
+- Aspect/HUD layout, combat geometry/paused snapshots, and timer/HUD fade
+  regressions pass (six tests), and the Release build succeeds. The new
+  ultrawide HUD and paused collision behavior still need in-game confirmation.
+- Correct the persistent horizontal seam between the timer frame's upper
+  rim and lower body. Clamp the body's top half-texel strip to its first
+  artwork row, preventing bilinear filtering from sampling transparent
+  atlas padding. Apply the same correction to its shadow without moving
+  the frame, stretching the remaining artwork, or changing other textures.
+- Add timer-edge regressions for 1x–4x scaling, all five aspect widths,
+  shadow fading, unchanged interior UVs, and unrelated geometry. These and
+  the existing HUD fade test pass. The timer seam fix is confirmed in-game
+  at 3x resolution.
+
 ## 0.0.77 — 2026-10-12
 
 Adds five aspect-ratio choices and the input-focus toggle, and includes the

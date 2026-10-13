@@ -12,6 +12,7 @@ static SRWLOCK s_lock = SRWLOCK_INIT;
 static CombatSnapshot s_snapshot;
 static ULONGLONG s_captured;
 static unsigned s_characters;
+static unsigned s_capture_context;
 static CombatExchange s_exchange[2];
 static unsigned s_exchange_identity;
 static ULONGLONG s_logic_time;
@@ -454,7 +455,25 @@ static void volume(unsigned side, unsigned attack, unsigned cylinder,
     if (s_snapshot.count < 62) s_snapshot.volumes[s_snapshot.count++] = v;
 }
 
-void combat_debug_capture(void)
+/* Native pause (89B60) keeps phase 1 and sets 5A27A0. The Sparring
+ * settings screen uses this same pause flag. Do not infer pause from the
+ * absence of collision calls: loading and menus also stop those calls. */
+static int combat_debug_paused(void)
+{
+#if defined(DOA3_XBE_ID_3_1)
+    return MEM8(0x5A27A0) == 1 && MEM8(0x596A37) == 1;
+#else
+    return 0;
+#endif
+}
+
+static unsigned combat_debug_context(void)
+{
+    return MEM8(0x59CF59) | (MEM8(0x59CFC1) << 8) |
+        (MEM8(0xC59865) << 16) | (MEM8(0x5A2858) << 24);
+}
+
+static void combat_debug_capture_state(int frozen)
 {
 #if defined(DOA3_XBE_ID_3_1)
     if (!combat_debug_flags()) return;
@@ -464,6 +483,7 @@ void combat_debug_capture(void)
     if (characters != s_characters || now - s_captured > 1000)
         memset(&s_snapshot, 0, sizeof(s_snapshot));
     s_characters = characters;
+    s_capture_context = combat_debug_context();
     s_snapshot.count = 0;
     capture_hazards(now);
     /* 7F220/7F270 remap the type arrays for mirrored stances. Position and
@@ -474,8 +494,9 @@ void combat_debug_capture(void)
         int active = MEM8(player + 0x39) == 1;
         unsigned spent = MEM8(0x5A28E4 + side) != 0;
         CombatFighter *f = &s_snapshot.fighter[side];
-        combat_debug_timing_update(f, MEM16(player + 0x2E),
-            MEM16(0x9B28A0 + side * 2), MEM8(player + 0x33), MEM8(player + 0x39));
+        if (!frozen)
+            combat_debug_timing_update(f, MEM16(player + 0x2E),
+                MEM16(0x9B28A0 + side * 2), MEM8(player + 0x33), MEM8(player + 0x39));
         base_timing(&f->current, player);
         f->health = MEM16(player + 0x20);
         f->contact = MEM8(player + 0x3E) == 1;
@@ -500,14 +521,21 @@ void combat_debug_capture(void)
 #endif
 }
 
+void combat_debug_capture(void) { combat_debug_capture_state(0); }
+
 int combat_debug_snapshot(CombatSnapshot *out)
 {
 #if defined(DOA3_XBE_ID_3_1)
     if (!out || !combat_debug_flags()) return 0;
+    int paused = combat_debug_paused();
+    /* Enabling the overlay while already paused must work too. Read the
+     * frozen collision arrays once, without counting an attack frame. */
+    if (paused && !s_captured) combat_debug_capture_state(1);
     AcquireSRWLockShared(&s_lock);
-    /* Discard stale volumes after leaving a fight, loading, or pausing the
-     * guest. Never keep the previous stage's boxes over menus or movies. */
-    int valid = s_captured && GetTickCount64() - s_captured < 250;
+    /* Retain frozen boxes only in the same paused fight. Ordinary stale
+     * data still expires, and stage/mode/fighter changes invalidate it. */
+    int valid = s_captured && combat_debug_context() == s_capture_context &&
+        (GetTickCount64() - s_captured < 250 || paused);
     if (valid) {
         *out = s_snapshot;
         memcpy(out->exchange, s_exchange, sizeof(s_exchange));

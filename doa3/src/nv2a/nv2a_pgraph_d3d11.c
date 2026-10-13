@@ -27,6 +27,7 @@
 #include "../d3d/d3d8_combiners.h"
 #include "../d3d/d3d8_polygon_offset.h"
 #include "../game/debug_capture.h"
+#include "../game/video_settings.h"
 extern IDirect3DDevice8 *xbox_GetD3DDevice(void);
 
 /* Global.txd texture lookup */
@@ -2304,7 +2305,7 @@ static uint32_t nv_inline_layout_from_attrs(int *pos_dw, int *uv_off, int *color
  * XMAX/YMAX are inclusive. Type 1 is an exclusion rectangle, which nothing
  * here needs; leave the scissor wide open rather than guess at it.
  * Returns 1 if a rect narrower than the whole target was set. */
-static int nv_apply_window_clip(void)
+static int nv_apply_window_clip(int hud)
 {
     extern void d3d8_SetScissorRect(int x, int y, int w, int h);
     unsigned gw = (g_pg.surface_clip_h >> 16) & 0xFFFF;
@@ -2319,14 +2320,55 @@ static int nv_apply_window_clip(void)
     x0 =  hz        & 0xFFFu; x1 = (hz >> 16) & 0xFFFu;
     y0 =  vt        & 0xFFFu; y1 = (vt >> 16) & 0xFFFu;
     if (x1 <= x0 || y1 <= y0) return 0;                 /* never programmed */
-    if (x0 == 0 && y0 == 0 && x1 + 1 >= gw && y1 + 1 >= gh) return 0;  /* whole surface */
+    if (!hud && x0 == 0 && y0 == 0 && x1 + 1 >= gw && y1 + 1 >= gh) return 0;  /* whole surface */
 
-    sx0 = (int)((float)x0 * (float)bw / (float)gw);
+    float hud_x = 0.0f, hud_w = (float)bw;
+    if (hud) video_hud_region(bw, &hud_x, &hud_w);
+    sx0 = hud ? (int)floorf(hud_x + (float)x0 * hud_w / (float)gw)
+              : (int)((float)x0 * (float)bw / (float)gw);
     sy0 = (int)((float)y0 * (float)bh / (float)gh);
-    sx1 = (int)(((float)x1 + 1.0f) * (float)bw / (float)gw);
+    sx1 = hud ? (int)ceilf(hud_x + ((float)x1 + 1.0f) * hud_w / (float)gw)
+              : (int)(((float)x1 + 1.0f) * (float)bw / (float)gw);
     sy1 = (int)(((float)y1 + 1.0f) * (float)bh / (float)gh);
     if (sx1 <= sx0 || sy1 <= sy0) return 0;
     d3d8_SetScissorRect(sx0, sy0, sx1 - sx0, sy1 - sy0);
+    return 1;
+}
+
+/* The timer body uses [52,48]-[128,76] in its 128x128 P8 HUD atlas.
+ * Its upper rim is a separate quad. Bilinear sampling at the body's top
+ * edge mixes row 48 with transparent padding in row 47, exposing a seam.
+ * Clamp only that half-texel band to the first row's centre. Splitting the
+ * quad preserves the original UV mapping everywhere else (a whole-quad
+ * inset would stretch the artwork). This also fixes the matching shadow.
+ * No guest addresses, texture edits, or global sampler changes are needed.
+ * Caller restricts this to the main-target, depth-disabled HUD program. */
+static int nv_timer_body_edge(const OutputVertex *in, uint32_t n,
+                              OutputVertex out[12])
+{
+    OutputVertex q[4], left, right;
+    static const unsigned indices[6] = {0, 1, 2, 0, 2, 3};
+    unsigned i;
+    if (n != 4 ||
+        in[0].u != 52.0f/128.0f || in[1].u != 52.0f/128.0f ||
+        in[2].u != 1.0f || in[3].u != 1.0f ||
+        in[0].v != 48.0f/128.0f || in[3].v != 48.0f/128.0f ||
+        in[1].v != 76.0f/128.0f || in[2].v != 76.0f/128.0f ||
+        in[0].x != in[1].x || in[2].x != in[3].x ||
+        in[0].y != in[3].y || in[1].y != in[2].y ||
+        !(in[2].x > in[0].x) || !(in[1].y > in[0].y)) return 0;
+    for (i = 0; i < 4; ++i) {
+        if (in[i].rhw != 1.0f || in[i].z != in[0].z ||
+            in[i].color != in[0].color) return 0;
+    }
+    left = in[0]; right = in[3];
+    left.y = right.y = in[0].y + (in[1].y - in[0].y) * (0.5f/28.0f);
+    left.v = right.v = 48.5f/128.0f;
+    q[0] = in[0]; q[1] = left; q[2] = right; q[3] = in[3];
+    q[0].v = q[3].v = left.v;
+    for (i = 0; i < 6; ++i) out[i] = q[indices[i]];
+    q[0] = left; q[1] = in[1]; q[2] = in[2]; q[3] = right;
+    for (i = 0; i < 6; ++i) out[6 + i] = q[indices[i]];
     return 1;
 }
 
@@ -2338,13 +2380,32 @@ static int nv_apply_window_clip(void)
  * quadrant. Array-path vertices go through the composite matrix, which
  * already carries the (supersampled) NV2A viewport, so they keep mapping
  * from the clip. */
-static void nv_fit_to_backbuffer(OutputVertex *out, uint32_t n, int screen_space)
+/* Flat interface geometry is a display-space layer. Full-screen quads
+ * remain full-screen for fades, movies and crossfades, even if untextured.
+ * The caller also excludes depth-tested/offscreen/framebuffer-sampling draws. */
+static int nv_hud_geometry(const OutputVertex *out, uint32_t n, unsigned w, unsigned h)
+{
+    float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
+    if (!n || !w || !h) return 0;
+    for (uint32_t i = 0; i < n; ++i) {
+        if (out[i].rhw != 1.0f || out[i].z != 0.0f ||
+            !isfinite(out[i].x) || !isfinite(out[i].y)) return 0;
+        x0 = fminf(x0, out[i].x); x1 = fmaxf(x1, out[i].x);
+        y0 = fminf(y0, out[i].y); y1 = fmaxf(y1, out[i].y);
+    }
+    return !(x0 <= 1.0f && x1 >= (float)w-1.0f &&
+             y0 <= 1.0f && y1 >= (float)h-1.0f);
+}
+
+static int nv_fit_to_backbuffer(OutputVertex *out, uint32_t n, int screen_space)
 {
     unsigned gw = (g_pg.surface_clip_h >> 16) & 0xFFFF;
     unsigned gh = (g_pg.surface_clip_v >> 16) & 0xFFFF;
     unsigned bw = d3d8_GetBackbufferWidth();
     unsigned bh = d3d8_GetBackbufferHeight();
     float sx, sy;
+    float hud_x = 0.0f, hud_w = (float)bw;
+    int hud = 0;
     uint32_t i;
 
     /* Only for the swap chain: an offscreen target really is the size of the
@@ -2355,14 +2416,22 @@ static void nv_fit_to_backbuffer(OutputVertex *out, uint32_t n, int screen_space
         if (doa3_guest_display_size(&dw, &dh)) { gw = dw; gh = dh; }
     }
 
-    if (!gw || !gh || !bw || !bh) return;
-    if (gw == bw && gh == bh) return;
-    sx = (float)bw / (float)gw;
+    if (!gw || !gh || !bw || !bh) return 0;
+    if (screen_space && !g_pg.depth_test && !d3d8_OffscreenTargetActive() &&
+        !(g_pg.tex[0].enabled && nv_samples_framebuffer(g_pg.tex[0].offset))) {
+        if (video_get_aspect() > VIDEO_ASPECT_16_9 && nv_hud_geometry(out, n, gw, gh)) {
+            video_hud_region(bw, &hud_x, &hud_w);
+            hud = hud_w != (float)bw;
+        }
+    }
+    if (!hud && gw == bw && gh == bh) return 0;
+    sx = hud_w / (float)gw;
     sy = (float)bh / (float)gh;
     for (i = 0; i < n; i++) {
-        out[i].x *= sx;
+        out[i].x = hud_x + out[i].x * sx;
         out[i].y *= sy;
     }
+    return hud;
 }
 
 static void nv_sync_render_target(void)
@@ -2652,7 +2721,7 @@ static int submit_inline_points(IDirect3DDevice8 *dev, const uint32_t *src, uint
     g_pg.tss0_alpha_valid = 0;
     nv_fit_to_backbuffer(out, o, 0);
     {   DWORD prev_vs = 0;
-        int clipped = nv_apply_window_clip();
+        int clipped = nv_apply_window_clip(0);
         HRESULT got = dev->lpVtbl->GetVertexShader(dev, &prev_vs);
         dev->lpVtbl->BeginScene(dev);
         nv_draw_point_sprites(dev, out, o, direct);
@@ -3082,7 +3151,7 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     dev->lpVtbl->SetRenderState(dev, D3DRS_SPECULARENABLE,
                                 (cb.spec[1] != 0.0f && nv_final_reads_v1()) ? TRUE : FALSE);
     {
-        int clipped = nv_apply_window_clip();
+        int clipped = nv_apply_window_clip(0);
         dev->lpVtbl->BeginScene(dev);
         d3d8_DrawNv2aFF(s_gv, nv, s_gi, ni,
                         (prim == D3DPT_TRIANGLESTRIP) ? 5 /* D3D11 TRIANGLESTRIP */ : 4 /* TRIANGLELIST */,
@@ -3310,7 +3379,7 @@ static void submit_array_draw(void)
     }
 
     {   DWORD prev_vs = 0;
-        int clipped = nv_apply_window_clip();
+        int clipped = nv_apply_window_clip(0);
         HRESULT got = dev->lpVtbl->GetVertexShader(dev, &prev_vs);
         if (program_combiners) {
             NV2ACombinerState cs;
@@ -3715,6 +3784,18 @@ static void submit_draw(void)
     g_nv_draw_has_uv = (lay_uv >= 0);
     g_nv_draw_inline = 1;
     nv_apply_draw_state_cpu(dev, out, out_vert_count, 0);
+    OutputVertex timer_body[12];
+    int timer_edge = 0;
+    if (g_pg.draw_mode == 7 && !g_pg.depth_test &&
+        !d3d8_OffscreenTargetActive() && nv_use_vertex_diffuse(1) &&
+        g_pg.tex[0].enabled && g_pg.tex[0].format == 0x07710B2Au &&
+        nv_d3d_magfilter(g_pg.tex[0].filter >> 24) == 2 /* LINEAR */ &&
+        nv_timer_body_edge(out, out_vert_count, timer_body)) {
+        out = timer_body;
+        out_vert_count = 12;
+        prim_count = 4;
+        timer_edge = 1;
+    }
     g_pg.gtss_valid = 0;
     g_pg.tss1_valid = 0;
     g_nv_draw_inline = 0;
@@ -3723,7 +3804,7 @@ static void submit_draw(void)
         /* Keep array/depth-tested geometry and offscreen reflection/mask draws. */
         if (debug_hide_ui_get() && !g_pg.depth_test && !d3d8_OffscreenTargetActive()) return;
     }
-    nv_fit_to_backbuffer(out, out_vert_count, 1);
+    int hud = nv_fit_to_backbuffer(out, out_vert_count, 1);
     /* Begin scene if needed */
     dev->lpVtbl->BeginScene(dev);
 
@@ -3759,7 +3840,7 @@ static void submit_draw(void)
         dev->lpVtbl->SetVertexShader(dev,
             D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
 
-        int clipped = nv_apply_window_clip();
+        int clipped = nv_apply_window_clip(hud);
         /* Wide lines. D3D11 rasterises every line one pixel wide; the guest
          * asks for SET_LINE_WIDTH in surface pixels (character select's
          * panel borders: 0x10 = 2 px of the 1440x960 supersampled surface,
@@ -3813,7 +3894,7 @@ static void submit_draw(void)
                 fprintf(g_doa3_mtrace, "\n");
             }
         }
-        dev->lpVtbl->DrawPrimitiveUP(dev, (D3DPRIMITIVETYPE)g_pg.d3d_prim_type,
+        dev->lpVtbl->DrawPrimitiveUP(dev, timer_edge ? D3DPT_TRIANGLELIST : (D3DPRIMITIVETYPE)g_pg.d3d_prim_type,
                                       prim_count, out, sizeof(OutputVertex));
         if (clipped) { extern void d3d8_ResetScissorRect(void); d3d8_ResetScissorRect(); }
 

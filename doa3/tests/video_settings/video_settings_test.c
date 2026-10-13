@@ -56,6 +56,11 @@ int main(void)
             video_set_scale(scale);
             video_guest_target_size(aspect,&w,&h);
             CHECK(w==widths[aspect]*scale && h==480*scale);
+            float hud_x, hud_w;
+            video_hud_region(w,&hud_x,&hud_w);
+            CHECK(fabsf(hud_x*2+hud_w-(float)w)<0.001f);
+            if (aspect<=VIDEO_ASPECT_16_9) CHECK(hud_x==0 && hud_w==(float)w);
+            else CHECK(fabsf(hud_w/(float)w*display[aspect]-16.f/9.f)<1e-6f);
         }
         WORD_AT(0xA48C58)=0x55; WORD_AT(0xA48C78)=0xA5; WORD_AT(0xA48CDC)=0x55;
         video_sync_guest_widescreen();

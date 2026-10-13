@@ -144,6 +144,27 @@ int main(void)
     CHECK(snapshot.volumes[1].cylinder && snapshot.volumes[1].b[2]==12);
     CHECK(snapshot.volumes[2].attack && snapshot.volumes[2].side==1);
     CHECK(snapshot.volumes[2].a[0]==1 && snapshot.volumes[2].radius==.15f);
+    MEM8(0x596A37)=1; MEM8(0x5A27A0)=1;
+    Sleep(275); /* The old wall-clock expiration hid paused boxes. */
+    CHECK(combat_debug_snapshot(&snapshot) && snapshot.count==3);
+    unsigned frozen_active=snapshot.fighter[1].current.active_frames;
+    for (unsigned repeat=0;repeat<20;++repeat) CHECK(combat_debug_snapshot(&snapshot));
+    CHECK(snapshot.fighter[1].current.active_frames==frozen_active);
+    MEM8(0xC59865)++; CHECK(!combat_debug_snapshot(&snapshot)); /* Different stage. */
+    MEM8(0xC59865)--;
+    MEM8(0x5A2858)++; CHECK(!combat_debug_snapshot(&snapshot)); /* Different mode. */
+    MEM8(0x5A2858)--;
+    MEM8(0x59CF59)++; CHECK(!combat_debug_snapshot(&snapshot)); /* Different fighter. */
+    MEM8(0x59CF59)--;
+    MEM8(0x596A37)=4; CHECK(!combat_debug_snapshot(&snapshot)); /* Loading/transition. */
+    MEM8(0x596A37)=1; MEM8(0x5A27A0)=0;
+    CHECK(!combat_debug_snapshot(&snapshot)); /* Unpaused stale boxes still expire. */
+    MEM8(0x5A27A0)=1;
+    combat_debug_set_flags(0); combat_debug_set_flags(COMBAT_HURTBOXES);
+    CHECK(combat_debug_snapshot(&snapshot) && snapshot.count==3); /* Enable while paused. */
+    CHECK(snapshot.fighter[1].current.active_frames==0); /* No synthetic logic tick. */
+    MEM8(0x5A27A0)=0; MEM8(0x596A37)=0;
+    combat_debug_set_flags(7);
     MEM8(0x5A28E5)=1;
     combat_debug_capture(); combat_debug_snapshot(&snapshot);
     CHECK(snapshot.volumes[2].spent);
