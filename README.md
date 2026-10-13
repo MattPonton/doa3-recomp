@@ -33,6 +33,15 @@ Game files are **not** included. On first launch of DOA3.exe, select your legall
 
 Press the **Escape** key to open the overlay menu. This has online, controller mapping, and other settings.
 
+Under **Controls**, use the **Player 1–4** tabs to configure each player.
+Player 1 defaults to **Automatic**; Players 2–4 default to **None** until
+assigned. Existing saved assignments still load. Select a device and controller type, then click **Save** to keep
+the assignments between launches.
+**Capture gameplay input in Escape menu** is enabled by default: while settings
+are open, game input stays neutral and controller navigation still works. Turn
+it off to let controller input reach the game behind the menu, then **Save**
+to remember your preference.
+
 Under **Audio**, adjust **Master volume** from 0% (mute) to 100%. It affects all
 game audio, including movies. Changes apply immediately; click **Save** to keep
 the level between launches. **Reset to defaults** restores 100%.
@@ -178,3 +187,10 @@ without the Escape overlay. Use a key not already assigned to game controls.
 Enable **Hide UI** for unobstructed stage and character views. This hides game
 screen overlays, including HUD and menus; some fades may also disappear.
 **Escape** still opens settings so you can untick it. Hide UI resets on launch.
+
+**Hide Player 1** and **Hide Player 2** independently hide the fighters during
+battle, including their model shadows and reflections. These session-only
+options do not stop attacks, movement, or collision diagnostics, and reset on
+launch or when resetting Debug settings. They are unavailable online.
+Hitboxes and hurtboxes also remain visible while the native Start menu pauses
+a fight, including when enabled after pausing.

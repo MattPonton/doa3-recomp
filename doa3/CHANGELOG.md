@@ -1,5 +1,23 @@
 # DOA3 3.1 changelog
 
+## 0.0.121 — 2026-10-13
+
+- Replace the player selector in Controls with Player 1–4 tabs. Keep Player 1's
+  Automatic device default; default Players 2–4 to None. Existing saved device
+  assignments, bindings, and Xbox controller types remain supported.
+- Add **Capture gameplay input in Escape menu**, enabled by default. While
+  settings are open, all four players send neutral gameplay input while raw
+  controller input remains available for menu navigation and rebinding. Turn
+  the option off for controller passthrough; Controls > Save persists it.
+- Add independent **Hide Player 1** and **Hide Player 2** options under Debug >
+  Screenshots and UI. Hide fighter model draws, including their model shadows
+  and reflections, without altering simulation or collision diagnostics.
+  Visibility resets on launch or Debug reset and is unavailable online.
+- Preserve native Start-pause hitbox/hurtbox rendering, confirmed working by
+  the user. Keep the existing main-menu pixel offsets and native 60 Hz build.
+- Input routing/rumble, native PS4 support, visibility filtering/settings, and
+  combat overlay regressions pass (seven tests).
+
 ## 0.0.78 — 2026-10-12
 
 - Center the HUD in a 16:9 area for 21:9 and 32:9, including its clipping

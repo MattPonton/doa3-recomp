@@ -8,6 +8,10 @@ int debug_unlock_all_get(void);
 void debug_unlock_all_set(int enabled);
 int debug_hide_ui_get(void);
 void debug_hide_ui_set(int enabled);
+int debug_hide_player_get(int side);
+void debug_hide_player_set(int side, int enabled);
+/* Render-only filtering of a fighter-owned vertex stream. */
+int debug_hide_player_vertices(uint32_t address);
 int debug_screenshot_key_get(void);
 int debug_screenshot_key_set(int key);
 int debug_screenshot_key_save(void);

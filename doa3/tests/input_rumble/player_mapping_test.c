@@ -45,11 +45,19 @@ int main(void)
     pad_mapping_reset_defaults();
     for (int p=0;p<4;++p) { states[p].Gamepad.wButtons=buttons[p]; states[p].dwPacketNumber=100+p; }
     xbox_InputInit();
+    CHECK(xbox_InputHostMask()==1);
+    CHECK(pad_mapping_device(0)==PAD_DEVICE_AUTO && xbox_InputAssignedSlot(0)==0);
+    for (int p=1;p<4;++p) {
+        CHECK(pad_mapping_device(p)==PAD_DEVICE_NONE);
+        CHECK(xbox_InputGetState(p,&guest)==ERROR_DEVICE_NOT_CONNECTED);
+        pad_mapping_set_device(p,PAD_DEVICE_AUTO);
+    }
     CHECK(xbox_InputHostMask()==15);
     for (int p=0;p<4;++p) {
         CHECK(xbox_InputGetState(p,&guest)==ERROR_SUCCESS);
         CHECK(guest.Gamepad.bAnalogButtons[p]==255 && guest.dwPacketNumber==100+p);
     }
+    CHECK(xbox_InputTakeReconfiguredMask()==14);
     /* Focus filtering keeps ports connected, releases every player's input,
      * and changes guest packets even while hardware packets stay constant. */
     CHECK(pad_mapping_focus_only());
@@ -74,6 +82,32 @@ int main(void)
     xbox_InputSetActive(TRUE);
     CHECK(xbox_InputGetState(0,&guest)==ERROR_SUCCESS && guest.Gamepad.bAnalogButtons[0]==255);
     CHECK(guest.dwPacketNumber==104);
+    /* Capture only guest input: all ports stay connected and raw menu reads
+     * retain buttons, triggers and sticks. Toggling takes effect immediately. */
+    CHECK(pad_mapping_capture_menu());
+    for (int p=0;p<4;++p) {
+        states[p].Gamepad.bLeftTrigger=190;
+        states[p].Gamepad.sThumbLX=20000;
+    }
+    pad_mapping_set_menu_open(1);
+    for (int p=0;p<4;++p) {
+        const XBOX_GAMEPAD neutral = {0};
+        XINPUT_STATE physical;
+        CHECK(xbox_InputGetState(p,&guest)==ERROR_SUCCESS);
+        CHECK(!memcmp(&guest.Gamepad,&neutral,sizeof(neutral)));
+        CHECK(xbox_InputReadPhysical(p,&physical)==ERROR_SUCCESS);
+        CHECK(physical.Gamepad.wButtons==buttons[p] && physical.Gamepad.sThumbLX==20000);
+    }
+    CHECK(xbox_InputHostMask()==15 && xbox_InputTakeReconfiguredMask()==0);
+    pad_mapping_set_capture_menu(0);
+    CHECK(xbox_InputGetState(0,&guest)==ERROR_SUCCESS && guest.Gamepad.bAnalogButtons[0]==255);
+    CHECK(guest.Gamepad.sThumbLX==20000 && guest.Gamepad.bAnalogButtons[XBOX_BUTTON_LTRIGGER]==190);
+    pad_mapping_set_capture_menu(1);
+    CHECK(xbox_InputGetState(0,&guest)==ERROR_SUCCESS && guest.Gamepad.bAnalogButtons[0]==0);
+    pad_mapping_set_menu_open(0);
+    for (int p=0;p<4;++p) {
+        states[p].Gamepad.bLeftTrigger=0; states[p].Gamepad.sThumbLX=0;
+    }
     /* Explicit slot reserves its device ahead of all automatic players. */
     pad_mapping_set_device(3,0);
     CHECK(xbox_InputAssignedSlot(3)==0 && xbox_InputAssignedSlot(0)==1);
@@ -127,11 +161,12 @@ int main(void)
         pad_mapping_set_type(p,p%3);
         pad_mapping_get_player(p)->b[PADCTL_START]=(PadBinding){PADSRC_KEY,'1'+p};
     }
+    pad_mapping_set_capture_menu(0);
     CHECK(pad_mapping_save("player_mapping_test.ini"));
     pad_mapping_reset_defaults();
     CHECK(pad_mapping_focus_only());
     CHECK(pad_mapping_load("player_mapping_test.ini"));
-    CHECK(!pad_mapping_focus_only());
+    CHECK(!pad_mapping_focus_only() && !pad_mapping_capture_menu());
     for (int p=0;p<4;++p) {
         CHECK(pad_mapping_device(p)==p && pad_mapping_type(p)==p%3);
         CHECK(pad_mapping_get_player(p)->b[PADCTL_START].code=='1'+p);
@@ -142,19 +177,23 @@ int main(void)
     /* Older shared mappings migrate without discarding any player's binding. */
     write_ini("A=1:8192\n");
     CHECK(pad_mapping_load("player_mapping_test.ini"));
-    CHECK(pad_mapping_focus_only());
-    for (int p=0;p<4;++p) CHECK(pad_mapping_get_player(p)->b[PADCTL_A].code==8192);
-    write_ini("[Input]\nFocusOnly=invalid\nFocusOnly=2\nFocusOnly=0junk\n[Player1]\nA=1:8192\n");
-    CHECK(pad_mapping_load("player_mapping_test.ini") && pad_mapping_focus_only());
+    CHECK(pad_mapping_focus_only() && pad_mapping_capture_menu());
+    for (int p=0;p<4;++p) {
+        CHECK(pad_mapping_get_player(p)->b[PADCTL_A].code==8192);
+        CHECK(pad_mapping_device(p)==(p == 0 ? PAD_DEVICE_AUTO : PAD_DEVICE_NONE));
+    }
+    write_ini("[Input]\nFocusOnly=invalid\nFocusOnly=2\nFocusOnly=0junk\nCaptureMenu=invalid\nCaptureMenu=2\nCaptureMenu=0junk\n[Player1]\nA=1:8192\n");
+    CHECK(pad_mapping_load("player_mapping_test.ini") && pad_mapping_focus_only() && pad_mapping_capture_menu());
     CHECK(pad_mapping_get_player(0)->b[PADCTL_A].code==8192);
     write_ini("[Player1]\nDevice=2\nType=99\n[Player2]\nDevice=2\n[Player3]\nDevice=99\n[Player5]\nA=0:0\n");
     CHECK(pad_mapping_load("player_mapping_test.ini"));
     CHECK(pad_mapping_device(0)==2 && pad_mapping_device(1)==PAD_DEVICE_NONE);
-    CHECK(pad_mapping_type(0)==PAD_TYPE_DUKE && pad_mapping_device(2)==PAD_DEVICE_AUTO);
+    CHECK(pad_mapping_type(0)==PAD_TYPE_DUKE && pad_mapping_device(2)==PAD_DEVICE_NONE);
     CHECK(pad_mapping_get_player(0)->b[PADCTL_A].kind==PADSRC_PAD_BUTTON);
     /* Native DS4 slots coexist with all four XInput slots, reserve normally,
      * survive settings round-trips, and release neutral input on unplug. */
     pad_mapping_reset_defaults();
+    for (int p=0;p<4;++p) pad_mapping_set_device(p,PAD_DEVICE_AUTO);
     ds4_test_mask = 1;
     ds4_test_states[0].Gamepad.wButtons = XINPUT_GAMEPAD_A;
     ds4_test_states[0].Gamepad.bLeftTrigger = 190;
@@ -200,6 +239,7 @@ int main(void)
     CHECK(xbox_InputHostMask() == 15 && xbox_InputAssignedSlot(0) == 4);
     connected = 0; clock_ms += 1000;
     pad_mapping_reset_defaults();
+    pad_mapping_set_device(0,PAD_DEVICE_AUTO);
     CHECK(xbox_InputHostMask() == 1 && xbox_InputAssignedSlot(0) == 4);
     remove("player_mapping_test.ini");
     puts("Four-player routing, rumble, reconnect, bindings, keyboard, subtypes and persistence passed.");

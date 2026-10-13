@@ -1599,3 +1599,31 @@ The video_settings regression exercises startup before D3D initialization,
 exact float bits, unrelated-memory preservation, both 4:3 modes, all scales,
 save/load round-trips, old settings, and invalid selections. Visual checking
 of the new ultrawide modes is still pending.
+
+## Player visibility and controller tabs (2026-10-13)
+
+Controls now uses four player tabs. Player 1 retains its Automatic default;
+unconfigured Players 2–4 default to None. Explicit saved assignments and
+optional Automatic routing still work.
+The routing tests cover disconnected defaults, saved selections, and the
+existing four-port XInput/DS4 input and rumble paths.
+
+The screenshot section exposes separate render-only fighter visibility flags.
+The 3.1 player record byte at `0x59CF58 + side*0x68 + 3` selects one of four
+resource slots. `8AA50` allocates `0x498000` bytes per slot and stores its base
+at `0x5A0CF0 + slot*0x1C`. The indexed-draw path filters the position stream
+against the selected player's arena before either CPU or GPU submission.
+A paused Beach trace with two Helenas places both body and shadow streams in
+these arenas, distinct from stage geometry. Guest updates and collision data
+are untouched; phase 1 and offline play gate the filter. Flags reset on launch.
+Tests cover separate sides, stage exclusion, invalid slots, online gating,
+and reset behavior. The user confirmed native Start-pause collision overlays
+already work in 0.0.78, so that implementation remains unchanged.
+
+The global `Input/CaptureMenu` setting defaults to enabled. With the Escape
+menu open, `pad_mapping_apply_player` returns a neutral guest gamepad for each
+port, while raw device reads remain available to ImGui navigation and binding
+capture. No controller disconnect or gameplay pause is synthesized. Disabling
+the option restores controller passthrough; keyboard bindings retain their
+existing menu suppression. Tests exercise all four ports, raw input, immediate
+toggle changes, menu close, persistence, and malformed/legacy settings.

@@ -172,25 +172,10 @@ int ResetSaveRow()
     return hit;
 }
 
-void DrawControlsSection()
+static void DrawPlayerControls()
 {
-    static const char *players[] = { "Player 1", "Player 2", "Player 3", "Player 4" };
     static const char *types[] = { "Duke", "Controller S", "Fight Stick" };
-    bool focus_only = pad_mapping_focus_only() != 0;
-    if (ImGui::Checkbox("Input only when focused", &focus_only)) {
-        pad_mapping_set_focus_only(focus_only);
-        SetStatus("Input focus setting changed; Save to keep settings");
-    }
-    ImGui::TextDisabled("Applies to keyboard and controllers for all players.");
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Turn off to allow gameplay input while another app is active.");
-    ImGui::Separator();
     DWORD physical = xbox_InputPhysicalMask();
-    ImGui::SetNextItemWidth(180.0f);
-    if (ImGui::Combo("Player", &g_input_player, players, 4)) {
-        g_listening = -1; g_armed = false; g_pending_vk = 0;
-        g_status[0] = 0;
-    }
     PadMapping *m = pad_mapping_get_player(g_input_player);
     char device_labels[3 + XBOX_HOST_CONTROLLERS][64];
     strcpy_s(device_labels[0], "Automatic");
@@ -314,6 +299,40 @@ void DrawControlsSection()
 
 }
 
+void DrawControlsSection()
+{
+    static const char *players[] = { "Player 1", "Player 2", "Player 3", "Player 4" };
+    bool focus_only = pad_mapping_focus_only() != 0;
+    if (ImGui::Checkbox("Input only when focused", &focus_only)) {
+        pad_mapping_set_focus_only(focus_only);
+        SetStatus("Input focus setting changed; Save to keep settings");
+    }
+    ImGui::TextDisabled("Applies to keyboard and controllers for all players.");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Turn off to allow gameplay input while another app is active.");
+    bool capture_menu = pad_mapping_capture_menu() != 0;
+    if (ImGui::Checkbox("Capture gameplay input in Escape menu", &capture_menu)) {
+        pad_mapping_set_capture_menu(capture_menu);
+        SetStatus("Menu input setting changed; Save to keep settings");
+    }
+    ImGui::TextWrapped("While settings are open, controls operate the menu without affecting the game. "
+                       "Applies to all players; turn off to keep controller gameplay input active.");
+    if (ImGui::BeginTabBar("Player controllers")) {
+        for (int player = 0; player < 4; ++player) {
+            if (!ImGui::BeginTabItem(players[player])) continue;
+            if (g_input_player != player) {
+                g_input_player = player;
+                g_listening = -1; g_armed = false; g_pending_vk = 0;
+                g_status[0] = 0;
+            }
+            ImGui::PushID(player);
+            DrawPlayerControls();
+            ImGui::PopID();
+            ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
+    }
+}
 /* ── Video section ────────────────────────────────────────────────────────*/
 
 void DrawVideoSection()
@@ -599,6 +618,8 @@ void DrawDebugSection()
         free_camera_reset_fov();
         d3d8_debug_views_reset();
         debug_hide_ui_set(0);
+        debug_hide_player_set(0, 0);
+        debug_hide_player_set(1, 0);
         debug_screenshot_key_set(VK_F12);
         g_screenshot_listening = false;
         SetStatus("Debug settings reset to defaults");
@@ -672,6 +693,14 @@ void DrawDebugSection()
                            "Camera mode is temporary and unavailable during online play.");
     }
     if (ImGui::CollapsingHeader("Screenshots and UI")) {
+        ImGui::BeginDisabled(netplay_active() != 0);
+        for (int side = 0; side < 2; ++side) {
+            bool hide = debug_hide_player_get(side) != 0;
+            if (ImGui::Checkbox(side ? "Hide Player 2" : "Hide Player 1", &hide))
+                debug_hide_player_set(side, hide);
+        }
+        ImGui::EndDisabled();
+        ImGui::TextDisabled("Character visibility is session only. Gameplay and collision boxes stay active.");
         bool hidden = debug_hide_ui_get() != 0;
         if (ImGui::Checkbox("Hide UI", &hidden)) debug_hide_ui_set(hidden);
         ImGui::TextWrapped("Hides game screen overlays, including HUD and menus. Some fades may also disappear. "
@@ -861,7 +890,7 @@ extern "C" void doa3_ui_toggle(void)
     g_armed = false;
     g_pending_vk = 0;
     g_screenshot_listening = false;
-    /* Keyboard sources are suppressed while the menu owns the keyboard. */
+    /* The input mapping applies the configured menu capture policy. */
     pad_mapping_set_menu_open(g_visible ? 1 : 0);
     if (g_visible) free_camera_release_mouse();
 }

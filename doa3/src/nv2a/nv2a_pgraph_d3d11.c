@@ -27,6 +27,7 @@
 #include "../d3d/d3d8_combiners.h"
 #include "../d3d/d3d8_polygon_offset.h"
 #include "../game/debug_capture.h"
+#include "../game/debug_settings.h"
 #include "../game/video_settings.h"
 extern IDirect3DDevice8 *xbox_GetD3DDevice(void);
 
@@ -3187,6 +3188,12 @@ static void submit_array_draw(void)
     int is_points = (g_pg.draw_mode == 1);
     NvBatchCtx ctx;
     int program_combiners = 0, point_combiners = 0;
+
+    if (debug_hide_player_vertices(g_pg.attr_off[0])) {
+        g_pg.idx_count = 0;
+        g_pg.idx_dropped = 0;
+        return;
+    }
 
     if (n < (uint32_t)(is_points ? 1 : 3)) { g_pg.idx_count = 0; return; }
 

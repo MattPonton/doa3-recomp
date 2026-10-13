@@ -83,6 +83,8 @@ void pad_mapping_reset_defaults(void);
 /* Global gameplay policy, shared by all four players and persisted with bindings. */
 int  pad_mapping_focus_only(void);
 void pad_mapping_set_focus_only(int enabled);
+int  pad_mapping_capture_menu(void);
+void pad_mapping_set_capture_menu(int enabled);
 
 /* `doa3_input.ini` next to the executable. Load is best-effort: a missing or
  * malformed file leaves the defaults in place. */
@@ -94,9 +96,8 @@ const char *pad_mapping_default_path(void);
 /* Human-readable source label ("A", "Left Trigger", "LS Left", "Key W", "-"). */
 void pad_binding_label(PadBinding b, char *out, size_t n);
 
-/* While the menu is open, keyboard sources are suppressed so typing in the UI
- * does not also drive the game. Controller sources stay live so a rebind can
- * be tested immediately. */
+/* While the menu is open, keyboard sources are suppressed. CaptureMenu also
+ * suppresses guest controller input; raw navigation/rebinding reads stay live. */
 void pad_mapping_set_menu_open(int open);
 int  pad_mapping_menu_open(void);
 

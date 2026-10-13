@@ -1,11 +1,44 @@
 #include "debug_settings.h"
 #include "video_settings.h"
+#include "recomp/recomp_types.h"
+#include "recomp/gen/xbe_layout.h"
+#include "online/netplay_session.h"
 #include <windows.h>
 
 static volatile LONG g_unlock_all;
+static unsigned g_hide_players;
 static int g_hide_ui, g_screenshot_key = VK_F12;
 int debug_hide_ui_get(void) { return g_hide_ui; }
 void debug_hide_ui_set(int enabled) { g_hide_ui = !!enabled; }
+int debug_hide_player_get(int side)
+{
+    return side >= 0 && side < 2 && (g_hide_players & (1u << side)) != 0;
+}
+void debug_hide_player_set(int side, int enabled)
+{
+    if (side < 0 || side >= 2) return;
+    if (enabled) g_hide_players |= 1u << side;
+    else g_hide_players &= ~(1u << side);
+}
+int debug_hide_player_vertices(uint32_t address)
+{
+#if defined(DOA3_XBE_ID_3_1)
+    if (!g_hide_players || netplay_active() || MEM8(0x596A37) != 1) return 0;
+    /* 8AA50 allocates one 0x498000-byte model/animation/vertex arena per
+     * resource slot. Player +3 selects that slot (including tag swaps).
+     * Filtering the position stream also covers model shadows/reflections,
+     * without changing simulation, collision volumes, or shared textures. */
+    for (unsigned side = 0; side < 2; ++side) {
+        if (!(g_hide_players & (1u << side))) continue;
+        unsigned slot = MEM8(0x59CF5B + side * 0x68);
+        if (slot >= 4) continue;
+        uint32_t base = MEM32(0x5A0CF0 + slot * 0x1C);
+        if (base >= 0x10000 && base <= 0x08000000 - 0x498000 &&
+            address >= base && address - base < 0x498000) return 1;
+    }
+#endif
+    return 0;
+}
 int debug_screenshot_key_get(void) { return g_screenshot_key; }
 int debug_screenshot_key_set(int key)
 {
@@ -39,6 +72,7 @@ int debug_settings_load(void)
     g_screenshot_key = VK_F12;
     debug_screenshot_key_set(GetPrivateProfileIntA("Debug", "ScreenshotKey", VK_F12, path));
     g_hide_ui = 0;
+    g_hide_players = 0;
     return GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES;
 }
 
