@@ -710,7 +710,7 @@ void DrawDebugSection()
         if (ImGui::Checkbox("Automatic diagnostic captures", &cap))
             doa3_auto_capture_set(cap ? 1 : 0);
         if (env_forced) ImGui::EndDisabled();
-        ImGui::TextWrapped("Writes developer traces (mtrace_*.txt) and screenshots (scene_*/aa_*.bmp) "
+        ImGui::TextWrapped("Writes developer traces (mtrace_*.txt) and their screenshots (aa_*.bmp) "
                            "to the Diagnostics folder next to the game while you play, for bug reports. "
                            "Leave off for normal play. "
                            "Choose Save to keep this setting for next time.");

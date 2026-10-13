@@ -869,85 +869,10 @@ void doa3_capture_backbuffer(const char *path)
     ID3D11Texture2D_Release(bb);
 }
 
-/* ── Periodic scene snapshots ──────────────────────────────────────────
- * Enabled only with automatic captures on (Debug > Diagnostics, [Debug]
- * AutoCapture, or DOA3_AUTO_CAPTURE=1): a half-size snapshot of the guest
- * frame every 3 s (Diagnostics\scene_NNNNN.bmp, at most 80 per launch).
- * The boot-screen glitch finder that used to share this hook (per-frame
- * readback, doa3_frames.csv, glitch_NNNN.bmp) was for the TECMO logo flash,
- * fixed in the 0.0.20s, and has been removed. */
-static void bmp_write(const char *path, const unsigned char *bgr, int w, int h)
-{
-    FILE *f = doa3_diag_fopen(path, "wb");
-    int stride = (w * 3 + 3) & ~3, y;
-    unsigned char hdr[54];
-    unsigned size = 54u + (unsigned)(stride * h);
-    static const unsigned char pad[4];
-    if (!f) return;
-    memset(hdr, 0, sizeof hdr);
-    hdr[0] = 'B'; hdr[1] = 'M';
-    memcpy(hdr + 2, &size, 4);
-    { unsigned off = 54; memcpy(hdr + 10, &off, 4); }
-    { unsigned ih = 40; memcpy(hdr + 14, &ih, 4); }
-    memcpy(hdr + 18, &w, 4);
-    memcpy(hdr + 22, &h, 4);
-    { unsigned short pl = 1, bc = 24; memcpy(hdr + 26, &pl, 2); memcpy(hdr + 28, &bc, 2); }
-    fwrite(hdr, 1, sizeof hdr, f);
-    for (y = h - 1; y >= 0; y--) {
-        fwrite(bgr + (size_t)y * w * 3, 1, (size_t)w * 3, f);
-        fwrite(pad, 1, (size_t)(stride - w * 3), f);
-    }
-    fclose(f);
-}
-
-void doa3_frame_monitor(unsigned frame)
-{
-    static ID3D11Texture2D *s_stg;
-    static int s_w, s_h, s_scenes;
-    static unsigned char *s_img;
-    ID3D11Device *dev;
-    ID3D11DeviceContext *ctx;
-    ID3D11Texture2D *bb;
-    D3D11_MAPPED_SUBRESOURCE map;
-    D3D11_TEXTURE2D_DESC td;
-    char sp[64];
-    int x, y, w, h;
-    if (!doa3_auto_capture_enabled() || frame == 0 || (frame % 180u) != 0 || s_scenes >= 80)
-        return;
-    dev = d3d8_GetD3D11Device();
-    ctx = d3d8_GetD3D11Context();
-    bb = d3d8_GetGuestTexture();
-    if (!dev || !ctx || !bb) return;
-    ID3D11Texture2D_GetDesc(bb, &td);
-    if (!s_stg || s_w != (int)td.Width || s_h != (int)td.Height) {
-        D3D11_TEXTURE2D_DESC sd = td;
-        if (s_stg) { ID3D11Texture2D_Release(s_stg); s_stg = NULL; }
-        sd.Usage = D3D11_USAGE_STAGING; sd.BindFlags = 0;
-        sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ; sd.MiscFlags = 0;
-        if (FAILED(ID3D11Device_CreateTexture2D(dev, &sd, NULL, &s_stg))) { s_stg = NULL; return; }
-        s_w = (int)td.Width; s_h = (int)td.Height;
-        free(s_img);
-        s_img = (unsigned char *)calloc((size_t)(s_w / 2) * (s_h / 2), 3);
-    }
-    if (!s_img) return;
-    w = s_w / 2; h = s_h / 2;
-    ID3D11DeviceContext_CopyResource(ctx, (ID3D11Resource *)s_stg, (ID3D11Resource *)bb);
-    if (FAILED(ID3D11DeviceContext_Map(ctx, (ID3D11Resource *)s_stg, 0, D3D11_MAP_READ, 0, &map)))
-        return;
-    for (y = 0; y < h; y++) {
-        const unsigned char *src = (const unsigned char *)map.pData + (size_t)(y * 2) * map.RowPitch;
-        unsigned char *dst = s_img + (size_t)y * w * 3;
-        for (x = 0; x < w; x++) {                    /* RGBA -> BGR, every other pixel */
-            dst[x * 3 + 0] = src[x * 8 + 2];
-            dst[x * 3 + 1] = src[x * 8 + 1];
-            dst[x * 3 + 2] = src[x * 8 + 0];
-        }
-    }
-    ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource *)s_stg, 0);
-    s_scenes++;
-    sprintf(sp, "scene_%05u.bmp", frame);
-    bmp_write(sp, s_img, w, h);
-}
+/* The periodic scene snapshots (scene_NNNNN.bmp every 3 s) and, before
+ * them, the boot-screen glitch finder that shared this spot were removed in
+ * 0.0.125-0.0.126. Targeted captures (aa_*, mvend_*, the method traces)
+ * remain in recomp_manual.c. */
 
 void doa3_movie_repaint(void)
 {

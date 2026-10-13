@@ -1073,7 +1073,7 @@ static void d3d4134_capture_frame(unsigned frame)
     {   /* default: relative to the frames where draw 30 / draw 400 were captured */
         extern unsigned g_doa3_frame_at_draw30, g_doa3_frame_at_draw400;
         static int s_rel0, s_rel1;
-        if (0) {   /* replaced by the automatic glitch finder (doa3_frame_monitor) */
+        if (0) {   /* old boot capture (the glitch finder that replaced it is gone too) */
             if (!s_rel0 && g_doa3_frame_at_draw30) {
                 s_rel0 = 1;
                 s_lo[s_n] = g_doa3_frame_at_draw30 - 1 + 200; s_hi[s_n] = s_lo[s_n] + 12;
@@ -1227,7 +1227,6 @@ static void d3d4134_frame_done(uint32_t dev)
     uint32_t sv_esi = esi, sv_edi = edi, sv_esp = esp, sv_seh = g_seh_ebp;
     pgraph_d3d11_flush();
     d3d4134_capture_frame(++g_doa3_frames_presented);
-    { extern void doa3_frame_monitor(unsigned frame); doa3_frame_monitor(g_doa3_frames_presented); }
     doa3_mtrace_frame(g_doa3_frames_presented + 1);
     { void doa3_adx_frame(unsigned frame); doa3_adx_frame(g_doa3_frames_presented); }
     game_audio_frame();               /* game volumes, streamer mode */

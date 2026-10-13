@@ -1717,3 +1717,10 @@ writing doa3_frames.csv and glitch_NNNN.bmp (and DOA3_GLITCH_UNTIL). The
 same hook now only takes the periodic half-size scene snapshot (every 180
 frames, at most 80, from the start of the run), reading the frame back
 only on those frames.
+
+### 0.0.126: periodic scene snapshots removed
+
+The automatic scene_NNNNN.bmp snapshots (every 180 frames, capped at 80, so
+the last was always scene_15840) are removed with doa3_frame_monitor.
+Targeted captures stay: aa_*.bmp with its mtrace_aa / mtrace_fb trace,
+mvend_*, and the method traces, all under Diagnostics.
