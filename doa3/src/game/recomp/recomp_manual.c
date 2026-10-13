@@ -331,7 +331,7 @@ void doa3_fn_profile_tick(void)
     fflush(stderr);
     {   /* every active function of the window, for offline comparison */
         static FILE *s_pf;
-        if (!s_pf) s_pf = fopen("doa3_prof.txt", "w");
+        if (!s_pf) s_pf = doa3_diag_fopen("doa3_prof.txt", "w");
         if (s_pf) {
             fprintf(s_pf, "# t=%lu\n", (unsigned long)((now - s_t0) / 1000));
             for (i = 0; i < s_nprof; i++)
@@ -1144,7 +1144,7 @@ static void doa3_mtrace_frame(unsigned next)
         if (next >= s_lo[k] && next <= s_hi[k]) {
             char path[64];
             sprintf(path, "mtrace_%04u.txt", next);
-            g_doa3_mtrace = fopen(path, "w");
+            g_doa3_mtrace = doa3_diag_fopen(path, "w");
             return;
         }
     if (!doa3_auto_capture_enabled()) return;
@@ -1160,7 +1160,7 @@ static void doa3_mtrace_frame(unsigned next)
                 s_cnt++; s_last = next;
                 g_doa3_aa_shot = next;
                 sprintf(path, "mtrace_fb_%05u.txt", next);
-                g_doa3_mtrace = fopen(path, "w");
+                g_doa3_mtrace = doa3_diag_fopen(path, "w");
                 fprintf(stderr, "[FBFX] frame-buffer sampling effect: tracing frame %u -> %s + aa_%05u.bmp\n", next, path, next);
                 return;
             }
@@ -1183,7 +1183,7 @@ static void doa3_mtrace_frame(unsigned next)
                     char path[64];
                     g_doa3_mv_shot[q] = next;
                     sprintf(path, "mtrace_mvend_%05u.txt", next);
-                    g_doa3_mtrace = fopen(path, "w");
+                    g_doa3_mtrace = doa3_diag_fopen(path, "w");
                     if (q == 4) s_base = 0;
                     return;
                 }
@@ -1200,7 +1200,7 @@ static void doa3_mtrace_frame(unsigned next)
             s_at = 0;
             g_doa3_aa_shot = next;
             sprintf(path, "mtrace_aa_%05u.txt", next);
-            g_doa3_mtrace = fopen(path, "w");
+            g_doa3_mtrace = doa3_diag_fopen(path, "w");
             fprintf(stderr, "[AA] tracing frame %u (multisampled screen) -> %s + aa_%05u.bmp\n", next, path, next);
             return;
         }
@@ -1213,7 +1213,7 @@ static void doa3_mtrace_frame(unsigned next)
             char path[64];
             s_auto++;
             sprintf(path, "mtrace_%05u.txt", next);
-            g_doa3_mtrace = fopen(path, "w");
+            g_doa3_mtrace = doa3_diag_fopen(path, "w");
         }
     }
 }
@@ -1517,7 +1517,7 @@ void sub_0019EA30(void)
                 fprintf(stderr, "[MOVIE] frame copy #%d: %u of %u sampled bytes non-zero\n",
                         s_n, nz, 2880u * 480u / 64u);
                 sprintf(path, "movie_%03d.bmp", s_n);
-                f = fopen(path, "wb");
+                f = doa3_diag_fopen(path, "wb");
                 if (f) {
                     uint8_t hdr[54] = { 'B', 'M' };
                     uint32_t size = 54u + 720u * 480u * 3u, v;

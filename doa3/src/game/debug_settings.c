@@ -32,6 +32,21 @@ void doa3_auto_capture_set(int enabled)
 {
     InterlockedExchange(&g_auto_capture, enabled != 0);
 }
+
+/* The working directory is the game's folder (main.c sets it at startup),
+ * so diagnostics go to .\Diagnostics. */
+FILE *doa3_diag_fopen(const char *name, const char *mode)
+{
+    static volatile LONG s_made;
+    char path[MAX_PATH];
+    if (!name || !*name) return NULL;
+    if (!InterlockedCompareExchange(&s_made, 0, 0)) {
+        CreateDirectoryA("Diagnostics", NULL);     /* fails harmlessly if it exists */
+        InterlockedExchange(&s_made, 1);
+    }
+    wsprintfA(path, "Diagnostics\\%s", name);
+    return fopen(path, mode);
+}
 int debug_hide_ui_get(void) { return g_hide_ui; }
 void debug_hide_ui_set(int enabled) { g_hide_ui = !!enabled; }
 int debug_hide_player_get(int side)

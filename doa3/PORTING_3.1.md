@@ -1700,3 +1700,20 @@ Free camera speed: default 10, range 1-20 (was 300, 10-3000).
 Also: the [VTHIT] diagnostic printed one register more than it passed
 (ebp has no global here; dropped), and the Diagnostics checkbox reads the
 environment through GetEnvironmentVariableA (no C4996 warning).
+
+### 0.0.125: Diagnostics folder; boot glitch finder removed
+
+Developer diagnostic files now go to a `Diagnostics` folder next to the
+game (created on first use) through `doa3_diag_fopen()` in
+debug_settings.c: method traces (mtrace_*.txt), automatic capture
+screenshots (scene_*, aa_*, mvend_*, frame_*, movie_*, frame_at*,
+frame_post*, pm*), doa3_prof.txt and performance_frames.csv. The log
+(doa3_log.txt), xbox_kernel.log, netplay digests/replays, manual PNG
+screenshots and DOA3_WAVCAP (an explicit path) are unchanged.
+
+The boot-screen glitch finder is gone: it read every frame back for the
+first 1500 frames to catch the TECMO-logo flash fixed in the 0.0.20s,
+writing doa3_frames.csv and glitch_NNNN.bmp (and DOA3_GLITCH_UNTIL). The
+same hook now only takes the periodic half-size scene snapshot (every 180
+frames, at most 80, from the start of the run), reading the frame back
+only on those frames.

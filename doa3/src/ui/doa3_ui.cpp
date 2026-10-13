@@ -711,7 +711,8 @@ void DrawDebugSection()
             doa3_auto_capture_set(cap ? 1 : 0);
         if (env_forced) ImGui::EndDisabled();
         ImGui::TextWrapped("Writes developer traces (mtrace_*.txt) and screenshots (scene_*/aa_*.bmp) "
-                           "next to the game while you play, for bug reports. Leave off for normal play. "
+                           "to the Diagnostics folder next to the game while you play, for bug reports. "
+                           "Leave off for normal play. "
                            "Choose Save to keep this setting for next time.");
         if (env_forced)
             ImGui::TextDisabled("Set by the DOA3_AUTO_CAPTURE environment variable for this launch.");

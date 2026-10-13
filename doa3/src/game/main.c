@@ -32,6 +32,7 @@
 #include "video_settings.h"
 #include "audio_settings.h"
 #include "debug_settings.h"
+#include "debug_capture.h"
 #include "free_camera.h"
 #include "d3d/d3d8_screenshot.h"
 #include "input/xinput_xbox.h"
@@ -318,7 +319,7 @@ static void doa3_perf_frame(void)
     if (s_perf_enabled < 0) {
         s_perf_enabled = getenv("DOA3_PERF_CAPTURE") != NULL;
         if (s_perf_enabled) {
-            file = fopen("performance_frames.csv", "w");
+            file = doa3_diag_fopen("performance_frames.csv", "w");
             if (!file) { s_perf_enabled = 0; return; }
             setvbuf(file, NULL, _IOFBF, 65536);
             fputs("seconds,frame_ms,mode,movie,foreground,free_camera,input_age_ms,input_to_logic_ms,present_ms,logic_input_age_ms,input_reads\n", file);

@@ -175,7 +175,8 @@ void d3d8_DumpBackbufferBMP(const char *path)
     if (SUCCEEDED(ID3D11DeviceContext_Map(g_device_state.d3d11_context,
                                           (ID3D11Resource *)st, 0,
                                           D3D11_MAP_READ, 0, &map))) {
-        FILE *f = fopen(path, "wb");
+        extern FILE *doa3_diag_fopen(const char *, const char *);
+        FILE *f = doa3_diag_fopen(path, "wb");
         if (f) {
             uint32_t w = td.Width, h = td.Height;
             uint32_t img = w * h * 4;
