@@ -19,6 +19,7 @@ extern "C" {
 #include "../game/video_settings.h"
 #include "../game/audio_settings.h"
 #include "../game/debug_settings.h"
+#include "../game/debug_capture.h"
 #include "../game/free_camera.h"
 #include "../d3d/d3d8_debug_views.h"
 #include "../d3d/d3d8_screenshot.h"
@@ -611,6 +612,7 @@ void DrawDebugSection()
     switch (ResetSaveRow()) {
     case 1:
         debug_unlock_all_set(0);
+        doa3_auto_capture_set(0);
         combat_debug_set_flags(0);
         ResetPerformanceOverlay();
         free_camera_set_enabled(0);
@@ -666,6 +668,19 @@ void DrawDebugSection()
         ImGui::TextDisabled("Your earned unlocks and save data are preserved.");
         ImGui::TextWrapped("Untick to use your normal unlocks. Choose Save to keep "
                            "this setting for next time.");
+    }
+    if (ImGui::CollapsingHeader("Diagnostics")) {
+        bool cap = doa3_auto_capture_enabled() != 0;
+        bool env_forced = getenv("DOA3_AUTO_CAPTURE") && *getenv("DOA3_AUTO_CAPTURE");
+        if (env_forced) ImGui::BeginDisabled();
+        if (ImGui::Checkbox("Automatic diagnostic captures", &cap))
+            doa3_auto_capture_set(cap ? 1 : 0);
+        if (env_forced) ImGui::EndDisabled();
+        ImGui::TextWrapped("Writes developer traces (mtrace_*.txt) and screenshots (scene_*/aa_*.bmp) "
+                           "next to the game while you play, for bug reports. Leave off for normal play. "
+                           "Choose Save to keep this setting for next time.");
+        if (env_forced)
+            ImGui::TextDisabled("Set by the DOA3_AUTO_CAPTURE environment variable for this launch.");
     }
     if (ImGui::CollapsingHeader("Camera controls")) {
         float fov = free_camera_fov();

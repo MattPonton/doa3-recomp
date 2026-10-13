@@ -1,4 +1,5 @@
 #include "debug_settings.h"
+#include "debug_capture.h"
 #include "video_settings.h"
 #include "recomp/recomp_types.h"
 #include "recomp/gen/xbe_layout.h"
@@ -8,6 +9,29 @@
 static volatile LONG g_unlock_all;
 static unsigned g_hide_players;
 static int g_hide_ui, g_screenshot_key = VK_F12;
+static volatile LONG g_auto_capture;
+
+/* DOA3_AUTO_CAPTURE=1/0 in the environment wins over the settings file, so
+ * a one-off developer launch does not need the ini edited. */
+static int auto_capture_env(void)
+{
+    static int env = -2;
+    if (env == -2) {
+        const char *v = getenv("DOA3_AUTO_CAPTURE");
+        env = (v && *v) ? (strcmp(v, "0") != 0) : -1;
+    }
+    return env;
+}
+int doa3_auto_capture_enabled(void)
+{
+    int env = auto_capture_env();
+    if (env >= 0) return env;
+    return (int)InterlockedCompareExchange(&g_auto_capture, 0, 0);
+}
+void doa3_auto_capture_set(int enabled)
+{
+    InterlockedExchange(&g_auto_capture, enabled != 0);
+}
 int debug_hide_ui_get(void) { return g_hide_ui; }
 void debug_hide_ui_set(int enabled) { g_hide_ui = !!enabled; }
 int debug_hide_player_get(int side)
@@ -69,6 +93,7 @@ int debug_settings_load(void)
 {
     const char *path = doa3_settings_ini_path();
     debug_unlock_all_set(GetPrivateProfileIntA("Debug", "UnlockAll", 0, path) != 0);
+    doa3_auto_capture_set(GetPrivateProfileIntA("Debug", "AutoCapture", 0, path) != 0);
     g_screenshot_key = VK_F12;
     debug_screenshot_key_set(GetPrivateProfileIntA("Debug", "ScreenshotKey", VK_F12, path));
     g_hide_ui = 0;
@@ -80,6 +105,9 @@ int debug_settings_save(void)
 {
     int result = WritePrivateProfileStringA("Debug", "UnlockAll",
         debug_unlock_all_get() ? "1" : "0", doa3_settings_ini_path()) != 0;
+    result = (WritePrivateProfileStringA("Debug", "AutoCapture",
+        InterlockedCompareExchange(&g_auto_capture, 0, 0) ? "1" : "0",
+        doa3_settings_ini_path()) != 0) && result;
     return debug_screenshot_key_save() && result;
 }
 

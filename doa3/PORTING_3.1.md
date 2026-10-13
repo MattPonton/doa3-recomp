@@ -1647,3 +1647,19 @@ The aspect/HUD layout tests cover both portrait sides, preserved projected
 width, backing alignment, legacy aspect ratios, and offscreen/world isolation.
 All four video/HUD/timer regression tests and the Release build pass. The user
 confirmed character select looks correct in both 21:9 and 32:9.
+
+### 0.0.123: automatic diagnostics switch in the settings file
+
+The 0.0.76 opt-in for automatic diagnostic captures needed the
+`DOA3_AUTO_CAPTURE` environment variable, i.e. a console launch. It is now
+also `[Debug] AutoCapture=0/1` in `doa3_settings.ini` and a checkbox under
+Escape > Debug > Diagnostics (saved with the Debug section's Save, cleared
+by its Reset). The environment variable still wins when present (`1` on,
+`0` off), so one-off developer launches need no ini edit; the checkbox is
+greyed out in that case. `doa3_auto_capture_enabled()` moved from a static
+header function to debug_settings.c and reads the live setting, so toggling
+it in the menu starts or stops the periodic scene/method-trace and
+framebuffer-effect captures immediately. The boot glitch finder only runs
+during the first frames after launch, so it needs the setting saved (or the
+variable set) before starting. Default remains off. tests/debug_settings
+covers the default, persistence round-trip and the ini key.

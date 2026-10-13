@@ -1,4 +1,5 @@
 #include "debug_settings.h"
+#include "debug_capture.h"
 #include "recomp/recomp_types.h"
 #include <windows.h>
 #include <stdio.h>
@@ -83,6 +84,23 @@ int main(void)
     debug_unlock_all_set(1);
     CHECK(debug_settings_load());
     CHECK(!debug_unlock_all_get());
+    /* Automatic diagnostic captures: off by default, persisted in [Debug]
+     * AutoCapture. Skipped when the environment variable overrides it. */
+    if (!getenv("DOA3_AUTO_CAPTURE")) {
+        CHECK(!doa3_auto_capture_enabled());
+        doa3_auto_capture_set(1);
+        CHECK(doa3_auto_capture_enabled());
+        CHECK(debug_settings_save());
+        doa3_auto_capture_set(0);
+        CHECK(!doa3_auto_capture_enabled());
+        CHECK(debug_settings_load());
+        CHECK(doa3_auto_capture_enabled());
+        CHECK(GetPrivateProfileIntA("Debug", "AutoCapture", 0, ini_path) == 1);
+        doa3_auto_capture_set(0);
+        CHECK(debug_settings_save());
+        CHECK(debug_settings_load());
+        CHECK(!doa3_auto_capture_enabled());
+    }
 cleanup:
     if (g_xbox_mem_offset) VirtualFree((void *)g_xbox_mem_offset,0,MEM_RELEASE);
     WritePrivateProfileStringA(NULL, NULL, NULL, ini_path);

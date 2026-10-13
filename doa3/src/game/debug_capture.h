@@ -4,15 +4,18 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Developer-only automatic captures. Manual screenshots are independent. */
-static int doa3_auto_capture_enabled(void)
-{
-    static int enabled = -1;
-    if (enabled < 0) {
-        const char *value = getenv("DOA3_AUTO_CAPTURE");
-        enabled = value && strcmp(value, "1") == 0;
-    }
-    return enabled;
+#ifdef __cplusplus
+extern "C" {
+#endif
+/* Developer-only automatic captures (periodic scene screenshots, method
+ * traces, movie/framebuffer-effect captures). Manual screenshots are
+ * independent. Set by [Debug] AutoCapture in doa3_settings.ini or the Debug
+ * menu; the DOA3_AUTO_CAPTURE environment variable (1/0), when present,
+ * overrides both. Defined in debug_settings.c. */
+int doa3_auto_capture_enabled(void);
+void doa3_auto_capture_set(int enabled);
+#ifdef __cplusplus
 }
+#endif
 
 #endif

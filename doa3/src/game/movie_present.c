@@ -870,7 +870,8 @@ void doa3_capture_backbuffer(const char *path)
 }
 
 /* ── Boot-screen glitch finder ─────────────────────────────────────────
- * Enabled only with DOA3_AUTO_CAPTURE=1. For the first DOA3_GLITCH_UNTIL
+ * Enabled only with automatic captures on (Debug > Diagnostics, [Debug]
+ * AutoCapture, or DOA3_AUTO_CAPTURE=1). For the first DOA3_GLITCH_UNTIL
  * presented frames (default 1500), read each
  * frame back at half size, log its mean brightness and red-pixel count to
  * doa3_frames.csv, and when a frame jumps away from the one before it (mean
