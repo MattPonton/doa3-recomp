@@ -1,6 +1,9 @@
 # Guest functions replaced by hand-written code in src/game/recomp/recomp_manual.c
 # (tools.recomp.apply_overrides renames the generated body to sub_X_gen).
 0x00011980  Training recording: provide dummy input before native command decoding
+0x000D6360  Mode Select: Online entry and menu-only Host/Join navigation
+0x000D6810  Mode Select: consume Back while the Online submenu owns navigation
+0x000D5F40  Mode Select: reset session-only Online menu state on entry
 0x00012B60  Training recording: restore input routing before the input fiber yields
 0x001894B0  Sparring initialization: clear session-only input recordings
 0x00029E30  Camera activation: optional host free camera through native view/projection setup
@@ -37,3 +40,7 @@
 0x0008A2E0  battle pause trigger (which player asked to pause): log why
 0x001DC8E0  D3DDevice_SetRenderTarget: record offscreen (render-to-texture) surfaces for the translator
 0x001C7920  Streamed voice requests: suppress intermediate Survival KO/Fight; opt-in state trace
+0x000CDCB0  # Online native carousel
+0x000CE070  # Online native carousel
+0x0006DF00  # Online native carousel
+0x000CE530  # Online native carousel

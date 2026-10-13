@@ -50,6 +50,9 @@ def main():
         for m in re.finditer(r"^void (sub_[0-9A-F]{8})_gen\(void\)$", s2, flags=re.M):
             if int(m.group(1)[4:], 16) in want:
                 done.add(int(m.group(1)[4:], 16))
+        if L.VERSION == "3.1" and os.path.basename(f) == "recomp_0003.c":
+            from tools.recomp.online_carousel import patch
+            s2 = patch(s2)
         if s2 != s:
             open(f, "w").write(s2)
     missing = want - done

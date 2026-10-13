@@ -30,6 +30,7 @@
 #include "../combat_debug.h"
 #include "../training_dummy.h"
 #include "../debug_capture.h"
+#include "../online_menu.h"
 
 extern uint32_t xbox_HeapAlloc(uint32_t size, uint32_t alignment);
 extern void xbox_fiber_yield(void);
@@ -37,6 +38,92 @@ extern int  xbox_fiber_active(void);
 extern void xbox_fiber_wake(uint32_t event_va);
 
 #if defined(DOA3_XBE_ID_3_1)
+/* The caller D6300 still runs D5110 to refresh mapped menu inputs. Only
+ * native carousel navigation/Back are suspended while Online owns them. */
+extern unsigned g_doa3_frames_presented;
+extern int doa3_ui_visible(void);
+void sub_000D6360_gen(void);
+void sub_000D6810_gen(void);
+void sub_000D5F40_gen(void);
+/* Allocate a separate descriptor table: the original has exactly ten slots
+ * followed immediately by function pointers. Keep native mode IDs intact. */
+unsigned g_online_menu_descriptors = 0x29CB20;
+void sub_000CDCB0_gen(void);
+void sub_000CDCB0(void)
+{
+    if (g_online_menu_descriptors == 0x29CB20) {
+        unsigned table = xbox_HeapAlloc(11*12, 16);
+        if (table) {
+            for (unsigned i=0; i<10*12; ++i) MEM8(table+i)=MEM8(0x29CB20+i);
+            MEM32(table+120)=ONLINE_MENU_MODE;
+            MEM16(table+124)=ONLINE_MENU_LABEL;
+            MEM16(table+126)=ONLINE_MENU_ICON;
+            MEM32(table+128)=0;
+            g_online_menu_descriptors=table;
+        }
+    }
+    sub_000CDCB0_gen();
+    if (g_online_menu_descriptors != 0x29CB20) {
+        unsigned count=MEM8(0x29CB1C);
+        MEM8(0x9B76A4+count)=10;
+        MEM8(0x29CB1C)=count+1;
+    }
+}
+void sub_000CE070_gen(void);
+void sub_000CE070(void)
+{
+    online_menu_draw_begin(g_doa3_frames_presented);
+    sub_000CE070_gen();
+}
+void sub_0006DF00_gen(void);
+void sub_0006DF00(void)
+{
+    unsigned id=MEM32(eax);
+    if (id==ONLINE_MENU_ICON || id==ONLINE_MENU_LABEL) {
+        unsigned packed=MEM32(eax+4), bounds=0x3049B8+(id==ONLINE_MENU_ICON ? 829 : 693)*12;
+        OnlineMenuSprite sprite;
+        sprite.x=(int32_t)(packed<<20)>>20;
+        sprite.y=(int32_t)(packed<<8)>>20;
+        sprite.x += SMEM16(0x5B12E8)-SMEM16(0x5B12EC);
+        sprite.y += SMEM16(0x5B12EA)-SMEM16(0x5B12EE);
+        sprite.w=(MEM16(bounds+4)-MEM16(bounds))*MEMF(0x5B12D8);
+        sprite.h=(MEM16(bounds+6)-MEM16(bounds+2))*MEMF(0x5B12DC);
+        /* Native label sprites are center-anchored; icons are top-left.
+         * Convert the guest's 720-wide canvas to the host view's 640 units. */
+        if (MEM8(0x5B12CD)==1) sprite.x -= (MEM16(bounds+4)-MEM16(bounds))*.5f;
+        float canvas_scale=640.f/(MEM16(0x596A88) ? MEM16(0x596A88) : 720);
+        sprite.x *= canvas_scale;
+        sprite.w *= canvas_scale;
+        sprite.alpha=MEMF(0x5B12F4);
+        sprite.label=id==ONLINE_MENU_LABEL;
+        online_menu_draw_sprite(sprite);
+        esp+=4;
+    } else sub_0006DF00_gen();
+}
+void sub_000CE530_gen(void);
+void sub_000CE530(void)
+{
+    if (MEM32(MEM32(esp+4)+0x1D8)==ONLINE_MENU_MODE) esp+=4;
+    else sub_000CE530_gen();
+}
+void sub_000D5F40(void) { online_menu_reset(); sub_000D5F40_gen(); }
+void sub_000D6360(void)
+{
+    unsigned buttons = 0;
+    int ready = MEM16(edi + 0xFA) == 0 && MEM16(edi + 0xFC) == 1 &&
+                MEM8(edi + 0x228) == 0;
+    for (unsigned port = 0; port < 4; ++port)
+        if (MEM32(0x73C8C8) & (1u << port)) buttons |= MEM16(0x9B7C0E + port*8);
+    if (online_menu_tick(g_doa3_frames_presented, ready, buttons, doa3_ui_visible()))
+        esp += 4;
+    else sub_000D6360_gen();
+}
+void sub_000D6810(void)
+{
+    if (online_menu_blocks_native()) esp += 4;
+    else sub_000D6810_gen();
+}
+
 /* The input fiber decodes both players, runs commands, then yields. Keep the
  * virtual dummy input confined to that interval, including command commit. */
 void sub_00011980_gen(void);

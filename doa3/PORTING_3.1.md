@@ -1647,3 +1647,36 @@ The aspect/HUD layout tests cover both portrait sides, preserved projected
 width, backing alignment, legacy aspect ratios, and offscreen/world isolation.
 All four video/HUD/timer regression tests and the Release build pass. The user
 confirmed character select looks correct in both 21:9 and 32:9.
+
+## Main-menu Online carousel (2026-10-13)
+
+Online is an additional native Mode Select carousel slot after Options; moving
+left from Story wraps to it. Its globe icon and ONLINE label follow the game's
+carousel positions, scaling and fades. Confirm opens Host / Join / Back;
+Host and Join are menu previews with no networking calls. Back/Escape returns
+to the same Online slot. Existing native modes keep their IDs and behavior.
+
+CDCB0 rebuilds the native visible-index map (including the unlock-dependent
+entry), then appends descriptor 10. A separate 132-byte guest heap table copies
+the original ten descriptors and adds mode 7, previously unused by this menu.
+The original table at 29CB20 has function pointers immediately after its ten
+entries, so it must never be extended in place. tools/recomp/online_carousel.py,
+invoked by apply_overrides for 3.1, redirects descriptor references after code
+regeneration and consumes Online confirm before the native game-mode launch.
+Allocation failure leaves the original carousel unchanged.
+
+CE070 starts the custom-sprite capture; 6DF00 intercepts only the two sentinel
+sprite IDs. The custom icon borrows Story's dimensions without sampling its
+atlas pixels. The view converts the native horizontal canvas and centered-label
+anchor to the host HUD canvas, including centered 16:9 placement on ultrawide
+screens. CE530 suppresses the native footer text for Online. D5F40 resets its
+frontend state; D6360/D6810 block carousel input while a preview owns focus.
+D6300 still refreshes mapped input through D5110. Closing input is consumed,
+so Back cannot also leave Mode Select. Escape settings retain input priority.
+
+The standalone tests/online_menu target covers navigation, both confirm/back
+bits, closing-input isolation, queued mouse actions, settings capture, native
+transitions and frame-counter wraparound. Live checks exercise left/right
+carousel wrapping, Host and Join, and returning to the selected Online slot.
+Test-only keyboard latching and post-UI screenshot capture are removed before
+the final build; no user controller mappings are changed.
