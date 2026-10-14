@@ -29,7 +29,10 @@
 #include "../game/debug_capture.h"
 #include "../game/debug_settings.h"
 #include "../game/video_settings.h"
+#include "../perf_capture.h"
 extern IDirect3DDevice8 *xbox_GetD3DDevice(void);
+extern HRESULT d3d8_CreateUploadTexture(UINT, UINT, UINT, D3DFORMAT, IDirect3DTexture8 **);
+extern HRESULT d3d8_TextureFinishUpload(IDirect3DTexture8 *);
 
 /* Global.txd texture lookup */
 typedef struct { char name[24]; IDirect3DTexture8 *texture; uint32_t width, height, format; } TXD_Entry;
@@ -311,11 +314,12 @@ static struct {
      * textures were thrown out and recreated a few draws later -- 53-158
      * CreateTexture + uploads (1-2.6 MB) every frame, none of them because
      * the contents had changed. A whole stage visit touches at most 415
-     * textures (~8 MB, measured), so 1024 slots under a byte budget keep
-     * several stages resident, and the least recently used slot goes first.
+     * textures (~8 MB, measured). Story filled 1024 slots at only 63 MB of
+     * the 192 MB budget, recreating textures at scene starts. Allow 4096
+     * entries within the same byte budget; least recently used goes first.
      * Lookups go through a hash instead of scanning every slot. */
-#define TEXCACHE_N      1024
-#define TEXCACHE_HASH_N 4096                       /* power of two */
+#define TEXCACHE_N      4096
+#define TEXCACHE_HASH_N 16384                      /* power of two */
 #define TEXCACHE_BUDGET (192u * 1024u * 1024u)     /* host bytes: GPU + staging */
     struct {
         IDirect3DTexture8 *tex;
@@ -391,6 +395,11 @@ static struct {
     /* Init flag */
     int initialized;
 } g_pg;
+
+static struct {
+    unsigned created, reused, uploaded;
+    LONGLONG allocation_ticks, upload_ticks;
+} s_tex_perf;
 
 /* ══════════════════════════════════════════════════════════════════════
  * Float/uint32 conversion
@@ -643,7 +652,7 @@ static uint32_t nv_tex_signature(const uint8_t *p, size_t n)
 static uint32_t texcache_hash(uint32_t off, uint32_t w, uint32_t h, uint32_t fmt, uint32_t pal)
 {
     return (((off ^ (w << 20) ^ (h << 8) ^ (fmt * 0x9E3779B1u) ^ pal) * 2654435761u)
-            >> 20) & (TEXCACHE_HASH_N - 1);
+            >> 18) & (TEXCACHE_HASH_N - 1);
 }
 
 static int texcache_find(uint32_t off, uint32_t w, uint32_t h, uint32_t fmt, uint32_t pal)
@@ -713,10 +722,11 @@ static void texcache_evict(int slot)
  * oldest goes anyway so a draw can always get a texture. Releasing a texture
  * that is still bound is safe: the D3D11 binding holds its own reference, and
  * eviction runs before the current draw binds anything. */
-static int texcache_make_room(uint32_t bytes)
+static int texcache_make_room(uint32_t bytes, uint32_t w, uint32_t h,
+                              uint32_t fmt, uint32_t levels)
 {
     for (;;) {
-        int i, free_slot = -1, lru = -1, lru_any = -1;
+        int i, free_slot = -1, lru = -1, lru_any = -1, reuse = -1;
         for (i = 0; i < TEXCACHE_N; i++) {
             if (!g_pg.texcache[i].tex) { if (free_slot < 0) free_slot = i; continue; }
             if (lru_any < 0 ||
@@ -726,9 +736,26 @@ static int texcache_make_room(uint32_t bytes)
                 (lru < 0 ||
                  (int32_t)(g_pg.texcache[i].last_frame - g_pg.texcache[lru].last_frame) < 0))
                 lru = i;
+            if (g_pg.texcache[i].last_frame != g_pg.frame &&
+                g_pg.texcache[i].w == w && g_pg.texcache[i].h == h &&
+                g_pg.texcache[i].fmt == fmt && g_pg.texcache[i].levels == levels &&
+                g_pg.texcache[i].bytes == bytes &&
+                (reuse < 0 || (int32_t)(g_pg.texcache[i].last_frame -
+                                       g_pg.texcache[reuse].last_frame) < 0))
+                reuse = i;
         }
         if (free_slot >= 0 && g_pg.texcache_bytes + bytes <= TEXCACHE_BUDGET)
             return free_slot;
+        /* Recycle an allocation only under pressure and only if it has not
+         * been used this frame. The caller resets its identity and uploads
+         * every mip. Keeping the D3D resource avoids free/create driver work;
+         * ordered UpdateSubresource preserves previously submitted draws. */
+        if (reuse >= 0) {
+            texcache_hash_remove(reuse);
+            g_pg.texcache_bytes -= g_pg.texcache[reuse].bytes;
+            g_pg.texcache[reuse].bytes = 0;
+            return reuse;
+        }
         if (lru < 0) lru = lru_any;
         if (lru < 0) return free_slot >= 0 ? free_slot : 0;   /* nothing resident */
         texcache_evict(lru);
@@ -745,6 +772,7 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
     uint32_t palreg = g_pg.tex[0].palette;
     uint32_t sig;
     D3DFORMAT d3dfmt;
+    int upload_slot = -1;
 
     if (!off || off >= 0x08000000u) return NULL; /* DOA3: guest RAM to 128 MB */
     {   /* DOA3 DIAG: why textures do or do not materialise. */
@@ -875,12 +903,20 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
                 lh = (lh > 1) ? lh / 2 : 1;
             }
             bytes *= 2;
-            slot = texcache_make_room(bytes);
-            if (dev->lpVtbl->CreateTexture(dev, w, h, nlevels, 0, d3dfmt, 0,
+            LONGLONG create_begin = doa3_perf_begin();
+            slot = texcache_make_room(bytes, w, h, (uint32_t)d3dfmt, nlevels);
+            int reused = g_pg.texcache[slot].tex != NULL;
+            if (!g_pg.texcache[slot].tex &&
+                (d3d8_CreateUploadTexture(w, h, nlevels, d3dfmt,
                                            &g_pg.texcache[slot].tex) != 0 ||
-                !g_pg.texcache[slot].tex) {
+                 !g_pg.texcache[slot].tex)) {
                 g_pg.texcache[slot].tex = NULL;
                 return NULL;
+            }
+            doa3_perf_end("Texture allocation/eviction", create_begin);
+            if (create_begin) {
+                s_tex_perf.allocation_ticks += doa3_perf_begin() - create_begin;
+                if (reused) s_tex_perf.reused++; else s_tex_perf.created++;
             }
             g_pg.texcache[slot].bytes = bytes;
             g_pg.texcache_bytes += bytes;
@@ -924,10 +960,13 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
         if ((swizzled || compressed) && g_pg.texcache[slot].uploaded &&
             g_pg.texcache[slot].sig == sig)
             return g_pg.dyn_tex;
-        g_pg.texcache[slot].uploaded = (swizzled || compressed);
-        g_pg.texcache[slot].sig = sig;
+        /* Publish the fingerprint only after every level and the GPU resource
+         * succeed. A failed first upload must be retried on the next binding. */
+        upload_slot = slot;
+        g_pg.texcache[slot].uploaded = 0;
     }
     {
+        LONGLONG upload_begin = doa3_perf_begin();
         const uint8_t *srcp = (const uint8_t *)((uintptr_t)off + g_xbox_mem_offset);
         uint32_t l, lw = w, lh = h;
         uint32_t pal[256];
@@ -955,6 +994,7 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
         }
         for (l = 0; l < nlevels; l++) {
             D3DLOCKED_RECT lr;
+            int decoded = 1;
             /* Source stride of this level. Swizzled and DXT levels are
              * tightly packed; a linear surface only ever has level 0. */
             uint32_t lp = compressed
@@ -970,6 +1010,10 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
                     for (r = 0; r < rows; r++)
                         memcpy(dstp + (size_t)r * lr.Pitch,
                                srcp + (size_t)r * lp, lp);
+                } else if (swizzled && !palettised && lr.Pitch == (INT)(lw * bpp)) {
+                    /* Decode directly into the staging rows. Avoid a temporary
+                     * allocation and full-image copy for every ordinary mip. */
+                    xbox_unswizzle_rect(dstp, srcp, lw, lh, bpp);
                 } else if (swizzled) {
                     uint8_t *lin = (uint8_t *)malloc((size_t)lw * lh * bpp);
                     if (lin) {
@@ -991,7 +1035,7 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
                                        (size_t)lw * bpp);
                         }
                         free(lin);
-                    }
+                    } else decoded = 0;
                 } else if (palettised) {
                     uint32_t yy;
                     for (yy = 0; yy < lh; yy++) {
@@ -1006,11 +1050,23 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
                         memcpy(dstp + (size_t)yy * lr.Pitch,
                                srcp + (size_t)yy * lp, row_bytes);
                 }
-                g_pg.dyn_tex->lpVtbl->UnlockRect(g_pg.dyn_tex, l);
-            }
+                if (g_pg.dyn_tex->lpVtbl->UnlockRect(g_pg.dyn_tex, l) != 0 || !decoded)
+                    return NULL;
+            } else return NULL;
             srcp += lsize;
             lw = (lw > 1) ? lw / 2 : 1;
             lh = (lh > 1) ? lh / 2 : 1;
+        }
+        /* Supply the complete mip chain at creation instead of creating an
+         * empty allocation and issuing one driver upload per mip. Cached
+         * allocations continue to use their normal ordered update path. */
+        if (d3d8_TextureFinishUpload(g_pg.dyn_tex) != 0) return NULL;
+        g_pg.texcache[upload_slot].uploaded = (swizzled || compressed);
+        g_pg.texcache[upload_slot].sig = sig;
+        doa3_perf_end("Texture decode/upload", upload_begin);
+        if (upload_begin) {
+            s_tex_perf.upload_ticks += doa3_perf_begin() - upload_begin;
+            s_tex_perf.uploaded++;
         }
     }
     return g_pg.dyn_tex;
@@ -2306,9 +2362,9 @@ static uint32_t nv_inline_layout_from_attrs(int *pos_dw, int *uv_off, int *color
  * XMAX/YMAX are inclusive. Type 1 is an exclusion rectangle, which nothing
  * here needs; leave the scissor wide open rather than guess at it.
  * Returns 1 if a rect narrower than the whole target was set. */
-/* Character-select previews use a bounded viewport on the 2x2 menu
- * surface. Their projection already uses the chosen widescreen ratio, so
- * preserve projected model width and move only the viewport centre. */
+/* Character-select previews use bounded viewports on 2x2 (solo) or
+ * 2x1 (four-slot/tag) menu surfaces. Projection already uses the chosen
+ * widescreen ratio, so preserve model width and move only the viewport centre. */
 static int nv_menu_surface(void)
 {
     extern int doa3_guest_display_size(unsigned *w, unsigned *h);
@@ -2316,7 +2372,8 @@ static int nv_menu_surface(void)
     return video_get_aspect() > VIDEO_ASPECT_16_9 && !d3d8_OffscreenTargetActive() &&
         doa3_guest_display_size(&dw, &dh) && dw && dh &&
         (g_pg.surface_clip_h >> 16) == dw * 2 &&
-        (g_pg.surface_clip_v >> 16) == dh * 2;
+        ((g_pg.surface_clip_v >> 16) == dh ||
+         (g_pg.surface_clip_v >> 16) == dh * 2);
 }
 
 static int nv_menu_preview(void)
@@ -2442,13 +2499,17 @@ static int nv_menu_panel_geometry(const OutputVertex *out, uint32_t n)
         out[0].z < 0.999f || out[0].z > 1.0f) return 0;
     for (uint32_t i = 0; i < n; ++i)
         if (out[i].rhw != 1.0f || out[i].z != out[0].z) return 0;
-    /* The two axis-aligned portrait backings use triangle-strip order. */
+    /* Backings are in display pixels even when the surface uses 2x1 AA.
+     * Halving the surface height rejected the lower half of tag portraits. */
+    unsigned dw, dh;
+    extern int doa3_guest_display_size(unsigned *w, unsigned *h);
+    if (!doa3_guest_display_size(&dw, &dh)) return 0;
+    /* Both two-slot and four-slot backings use triangle-strip order. */
     return out[0].x == out[2].x && out[1].x == out[3].x &&
         out[0].y == out[1].y && out[2].y == out[3].y &&
         out[0].x > 0 && out[0].y > 0 && out[1].x > out[0].x &&
         out[2].y > out[0].y &&
-        out[1].x < (g_pg.surface_clip_h >> 16) * 0.5f &&
-        out[2].y < (g_pg.surface_clip_v >> 16) * 0.5f;
+        out[1].x < (float)dw && out[2].y < (float)dh;
 }
 
 static int nv_fit_to_backbuffer(OutputVertex *out, uint32_t n, int screen_space)
@@ -4787,6 +4848,17 @@ void pgraph_d3d11_flush(void)
         g_pg.in_draw = 0;
     }
     g_pg.stats.frames++;
+    if (s_tex_perf.created || s_tex_perf.reused || s_tex_perf.uploaded) {
+        LARGE_INTEGER frequency;
+        QueryPerformanceFrequency(&frequency);
+        double allocation_ms = 1000.0 * s_tex_perf.allocation_ticks / frequency.QuadPart;
+        double upload_ms = 1000.0 * s_tex_perf.upload_ticks / frequency.QuadPart;
+        if (s_tex_perf.created || s_tex_perf.reused || allocation_ms + upload_ms >= 2.0)
+            fprintf(stderr, "[PERF-TEX] frame %u created %u reused %u uploaded %u allocation %.3f ms upload %.3f ms resident %.2f MB\n",
+                g_doa3_frames_presented, s_tex_perf.created, s_tex_perf.reused, s_tex_perf.uploaded,
+                allocation_ms, upload_ms, g_pg.texcache_bytes / (1024.0 * 1024.0));
+        memset(&s_tex_perf, 0, sizeof s_tex_perf);
+    }
     g_pg.frame++;
 }
 

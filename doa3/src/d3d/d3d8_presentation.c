@@ -1,4 +1,5 @@
 #include "d3d8_presentation.h"
+#include "../perf_capture.h"
 #include <stdio.h>
 
 static BOOL tearing_supported(void)
@@ -81,5 +82,8 @@ HRESULT d3d8_present_swap_chain(IDXGISwapChain *swap, UINT swap_flags)
         if (SUCCEEDED(IDXGISwapChain_GetFullscreenState(swap, &fullscreen, NULL)) && !fullscreen)
             flags = DXGI_PRESENT_ALLOW_TEARING;
     }
-    return IDXGISwapChain_Present(swap, 0, flags);
+    LONGLONG present_begin = doa3_perf_begin();
+    HRESULT hr = IDXGISwapChain_Present(swap, 0, flags);
+    doa3_perf_end("DXGI Present", present_begin);
+    return hr;
 }

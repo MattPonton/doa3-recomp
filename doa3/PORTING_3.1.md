@@ -1743,3 +1743,234 @@ that read; the credits count as licensed until the player is torn down
 controllers to the game; the menu still read the same controller, so both
 moved at once. Off now also withholds the controller from ImGui
 navigation (mouse and keyboard still work; rebinding reads raw input).
+
+## Additional character-select portrait layouts (2026-10-13)
+
+A live 21:9 Tag Battle capture reproduced the uncentered portrait/backing in
+four-slot character select. Its native surface is 1440x480 (2x1 supersampling),
+with first portrait scissor 92,77-389,312 and origin 92.53125,77.53125. The
+previous 1440x960-only gate excluded this layout entirely. Its dark backing
+is still in 720x480 display coordinates: 46,77-196,313.
+
+Accept both 2x1 and 2x2 main menu surfaces. Validate backing bounds against
+actual display dimensions instead of halving the surface height. The existing
+viewport translation and centered scissor then apply to these additional
+character-select layouts without narrowing the already aspect-correct model.
+Regressions cover all four slots at both ultrawide ratios, all three internal
+scales, legacy ratios, and offscreen/full-screen isolation.
+
+The Release build and both video/layout tests pass. A second live Tag Battle
+capture at 21:9 verified that the portrait and all four dark panels align
+with their centered borders. Survival/Time Attack visual confirmation is pending.
+
+## Story-mode hitch investigation and persistent shaders (2026-10-13)
+
+Hayabusa Story profiling confirmed individual presentation gaps despite an
+average near 60 FPS. A native overlay capture contained a 118.74 ms frame.
+A separate foreground Story timing run recorded 61 frames over 25 ms and
+9 over 50 ms in 16,746 samples (74.68 ms maximum). These are presentation
+intervals, including CPU work and waits, not GPU timings. Slow-frame thread
+samples caught D3DCompile during multiple stalls, as well as guest audio
+voice-retirement waits and texture/render work. Sampling overhead was below
+0.4 ms per sample; each stalled frame received at most five samples.
+
+Cache generated combiner pixel shader and programmable vertex shader DXBC
+under `%LOCALAPPDATA%\DOA3\shader-cache-v1`. SHA-256 keys include the exact
+generated source, entry point, target profile, and compiler flags; changing
+generated code invalidates old entries automatically. Records carry the key,
+bounded bytecode length and payload digest. Invalid/truncated records or
+unavailable cache directories fall back to normal compilation. Temporary
+files are renamed after complete writes. Existing GPU shader-object caches
+and shader optimization flags remain unchanged. `DOA3_SHADER_CACHE_DIR`
+overrides the location for isolated tests/profiling.
+
+This removes repeat compilation after a shader has been encountered, including
+across launches. It does not eliminate first-encounter compilation, texture
+uploads, or audio waits. `DOA3_PERF_CAPTURE` additionally logs cache-hit/compile
+time and voice-retirement total/wait time for follow-up attribution; ordinary
+launches do not emit these profiling records. A follow-up cold-cache run
+measured 21.86 ms retiring four voices on frame 5237; most of that time was
+in polling sleeps, with individual `Sleep(1)` calls taking about 2 ms.
+
+Signal an auto-reset host event when the APU raises a pending interrupt.
+The retirement loop waits for this event with the original 1 ms timeout,
+so an IRQ can wake it immediately. Waking never acknowledges the interrupt:
+the existing ISR/DPC service and guest retirement flags remain authoritative.
+Deterministic APU stepping retains its existing branch. Event creation failure
+falls back to sleeping, and shutdown closes the event after joining the APU
+worker. A stale event can cause one harmless early retry. This avoids removing
+the retirement check, which previously allowed use-after-free crashes.
+
+The disk-cache regression covers byte-identical reuse, creation of cached
+pixel/vertex shaders on WARP, key invalidation, damaged header/payload recovery,
+compiler errors, and an unavailable cache location. Disk-cache, combiner-cache
+and point-sprite WARP tests pass. APU IRQ tests cover pre-wait and concurrent
+signals, acknowledgement, coalescing, stale wakes, lifecycle reset and the
+unavailable-event fallback. The Release build succeeds. A warm-cache launch
+verified 14 disk hits at 0.232-0.795 ms with no new shader compilations in the
+initial sample (prior cold compilations were roughly 6-15 ms each). The user
+still reported visible hitches with these changes.
+
+### Audio retirement between output batches
+
+The follow-up trace attributed 35.253 ms of a 62.200 ms frame (12969) to
+retiring seven voices, each taking about 4-6 ms. Frame 22391 spent another
+47.195 ms retiring ten voices. An event alone did not resolve this: the audio
+worker waits between 256-sample output batches, so serial guest destruction
+can repeatedly wait for the next batch to raise each stopped voice's idle trap.
+
+While the guest is explicitly waiting for retirement, perform a control-only
+voice-list walk under the APU lock. For the first already-inactive, unlocked
+voice, emit the normal SE2FE_IDLE_VOICE trap and publish the interrupt. The
+guest ISR/DPC still acknowledges and unlinks it. Preserve outstanding traps;
+skip halted/disabled notification paths; bound malformed lists. This poll does
+not mix samples, advance chip time/envelopes, or mark an active voice stopped.
+The deterministic netplay branch continues using its original chip stepping.
+
+Idle-walk regressions cover all three lists, active/locked voices, trap
+preservation, guest acknowledgement, malformed links and disabled traps.
+Idle-walk and audio-mix tests pass. The Release build links successfully.
+The next live run observed 55 logged retirements with a 0.026 ms median and
+1.201 ms maximum; the largest multi-voice total was 0.642 ms. This removes
+the observed serial output-batch waits, but the user still sees hitches.
+An initial 9,852 foreground Story frames still included 11 frames over 25 ms,
+with a 48.949 ms maximum (33.173 ms inside presentation). These are different
+playthroughs, not a matched before/after benchmark. Later samples also caught
+new shader compilation and waits acquiring the audio voice lock.
+
+Extend opt-in frame capture to 72,000 presentations (about 20 minutes at
+60 Hz). Log slow frame boundaries and operations with QPC timestamps to
+separate GPU shader creation, texture allocation/upload, DXGI presentation,
+and APU voice-lock acquisition. Ordinary launches leave these timers and logs
+disabled. The targeted diagnostic Release build links and the point-sprite
+WARP test passes. The live run still showed foreground intro frames of
+35.371 and 36.519 ms without any individual shader creation, texture upload,
+or audio-lock operation exceeding the reporting threshold in those frames.
+Thread samples elsewhere in the run repeatedly landed in the generic shader
+preparation underneath `d3d8_DrawNv2aFF`; samples also include unrelated
+background/focus-switch frames and are not a complete CPU profile.
+
+### Avoid discarded generic shader uploads in NV2A draws
+
+`d3d8_DrawNv2aFF` previously prepared all generic fixed-function shaders and
+uploaded VS transform, VS lighting and PS constants, then replaced the vertex
+shader/layout/VS b0 with the NV2A implementation and PS b0 with the combiner.
+Try combiner preparation first and use generic preparation only on fallback.
+The NV2A shader does not read generic VS lighting b1. This eliminates three
+unused constant-buffer uploads per successful NV2A/combiner draw, preserving
+the generic PS when combiners are unavailable.
+
+The WARP regression executes the production draw and shaders, alternates
+combiner/fallback paths, changes constant colors and vertex colors, and moves
+geometry out of view with a changed transform. Pixel checks pass and the
+Release executable links successfully. Measuring the same intro in the
+installed build still showed a 39.004 ms foreground intro frame; the user
+confirmed the hitch remains. Shader-cache reads in that frame totaled about
+1.8 ms and retirement took 1.968 ms, so neither explains its full duration.
+
+### Story texture cache pressure
+
+The next trace sampled a 32.063 ms foreground intro frame in texture creation
+and driver allocation. A read-only inspection found all 1024 cache entries
+occupied at 65,931,928 accounted bytes, well below the 192 MiB budget. The user
+also reported that replaying without restarting still hitches, somewhat less.
+
+Allow 4096 entries and a proportionally sized hash table within the same
+192 MiB budget. Under entry or byte pressure, reuse the oldest compatible
+allocation not used this frame (exact dimensions, format, mip count and byte
+size), removing its old hash identity and fully uploading the new contents.
+Incompatible allocations retain normal LRU eviction. This avoids avoidable
+free/create driver work, but first encounters still require texture uploads.
+
+Production cache-policy tests cover full-table lookups and deletion, reuse,
+current-frame protection, mip/size/format incompatibility, and byte-pressure
+handling. Tests pass and the Release build links. Opt-in per-frame texture
+totals report allocation and upload costs for the next live comparison;
+effectiveness against the intro hitch remains unverified.
+
+The next live run still hitched: foreground frame 5645 took 38.090 ms,
+with the preceding renderer flush reporting 55 texture allocations/uploads
+totalling 6.948 ms. Frame 14723 took 40.007 ms, with 119 allocations/uploads
+totalling 12.624 ms. Texture setup explains only part of these intervals.
+The user identifies the recurring spike as the first frame of each intro.
+
+Add opt-in `[PERF-PHASE]` attribution at the existing 3.1 frame boundary:
+previous-frame pacing (including worker laps), work before the renderer flush,
+pushbuffer translation as an inclusive subset, final flush, auxiliary work,
+and presentation. Worker total and longest lap distinguish a pacing sleep
+from a worker consuming the remaining deadline. Timers do not change pacing
+or gameplay, and remain disabled without `DOA3_PERF_CAPTURE`. The diagnostic
+Release build links successfully; live first-intro attribution is pending.
+
+Focused replay then captured frame 6466 at 32.435 ms (32.719 ms in the
+phase reporter, which includes logging overhead): 14.566 ms previous pacing,
+17.214 ms before flush (9.625 ms pushbuffer subset), 0.389 ms final flush,
+0.002 ms auxiliary work, and 0.547 ms presentation. The 59 new textures in
+that frame consumed 5.092 ms within the pushbuffer work. Thread samples
+across the startup interval include texture allocation, guest D3D state
+setup and CPU vertex-program execution; they do not identify a single
+blocking call. The 33 ms pre-render burst in the earlier frame 1525 occurred
+unfocused and is not sufficient evidence of the focused intro's cause.
+
+There are also separate foreground presentation stalls: frame 7088 was
+48.712 ms, including 31.612 ms in DXGI Present. Do not conflate these with
+texture preparation or claim the intro hitch is fixed. Moving the existing
+post-present pacing before presentation could absorb variable render costs
+but would change input-to-display latency; no such timing change is applied.
+Saved capture: build/hayabusa-frame-phases.csv, story-frame-phases-stderr.log
+and story-frame-phases-stacks-20261013-195504.json. The sampler is stopped.
+
+### Reduce first-use texture setup without moving frame pacing
+
+Keep the existing 60 Hz and post-present pacing after the user chose to
+preserve low input latency. NV2A now fills the complete mip chain in staging
+before creating its D3D11 texture with initial subresource data. This replaces
+an empty GPU allocation followed by one UpdateSubresource per mip. Existing
+cached textures keep ordered per-level updates; ordinary D3D8 CreateTexture
+still allocates its GPU resource immediately. Do not publish the NV2A cache
+fingerprint until every level and the final GPU resource succeed, allowing
+failed initialization to retry. Deferred publication rejects incomplete or
+locked staging data.
+
+Allocate one aligned staging block per texture rather than one heap block
+per mip, and decode ordinary swizzled mips directly into matching staging
+rows. Palette expansion and padded-row fallback retain their conversion path.
+
+Production-resource tests read back every mip for BGRA8, RGB565, A8 and
+DXT1/3/5 on WARP and hardware, compare exact bytes, and verify that subsequent
+single-level updates preserve the other levels. They also cover incomplete
+publication, repeated finish calls and release before publication. Texture
+cache, NV2A draw and point-sprite regression suites pass; Release links.
+Paired 64-texture hardware batches show modest, variable upload savings, not
+evidence that the full intro hitch is solved. Live comparison is pending in
+the story-batched-upload diagnostic build. GPU creation time is now included
+in the upload total, so compare allocation plus upload across builds.
+
+The live upload-only run still showed foreground scene-start spikes (33.423 ms
+at frame 1462; 38.262 ms at frame 5212). The latter loaded 55 textures with
+7.723 ms total allocation/upload, versus 6.948 ms for 55 textures in an earlier
+run; these are not matched A/B scenes and do not establish a live win. Keep
+the remaining hitch explicitly unresolved.
+
+CPU vertex-program execution also appeared in startup samples. Avoid fetching
+unused source operands: MOV/ARL need A, ADD needs A/C, dot products need A/B,
+and ILU needs C. All required operands are still fetched before either paired
+operation writes registers, preserving simultaneous-source semantics. No
+arithmetic, constants, masks, register aliasing or vertex counts change.
+Differential tests against unconditional operand fetching cover 32,768
+opcode/operand combinations, paired MAC/ILU register dependencies and program
+start bounds. Results match bit for bit. A paired 250,000-vertex DP4/MOV
+microbenchmark takes roughly 20–22 ms versus 24–26 ms for unconditional
+fetches; this is a component benchmark, not an overall frame-time claim.
+Release links; live verification of the combined build is pending.
+
+Combined live build (story-setup-optimized, saved CSV
+build/hayabusa-setup-optimized.csv) still records foreground startup frames
+1502=37.502 ms, 3150=30.660 ms and 4770=36.628 ms. Frame 4770 reports
+15.394 ms previous pacing, 20.948 ms pre-flush work (16.782 ms pushbuffer
+subset), and only 0.282 ms presentation. Its 55 texture preparations total
+7.225 ms. These different runs do not demonstrate an overall hitch fix;
+first-use preparation and rendering remain concentrated on the first frame.
+An additional foreground frame 5611=42.676 ms has 26.739 ms in presentation,
+a separate stall from the startup work. User completed the test; visual
+regression confirmation was not supplied. Input/pacing behavior is unchanged.

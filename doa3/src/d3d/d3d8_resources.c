@@ -381,12 +381,12 @@ static HRESULT __stdcall tex_QueryInterface(IDirect3DTexture8 *self, const IID *
     return E_NOINTERFACE;
 }
 
-/* Free the per-level staging buffers of a texture. */
+/* Every mip is a slice of the same staging allocation. */
 static void d3d8_tex_free_levels(D3D8Texture *tex)
 {
     UINT l;
+    free(tex->sys_mem);
     for (l = 0; l < D3D8_MAX_LEVELS; l++) {
-        free(tex->level_mem[l]);
         tex->level_mem[l] = NULL;
     }
     tex->sys_mem = NULL;
@@ -471,6 +471,7 @@ static HRESULT __stdcall tex_UnlockRect(IDirect3DTexture8 *self, UINT Level)
 
     tex->locked = FALSE;
     tex->dirty = TRUE;
+    tex->initialized_levels |= 1u << Level;
 
     /* Upload this level to its own subresource. */
     {
@@ -516,16 +517,63 @@ static const IDirect3DTexture8Vtbl g_tex_vtbl = {
     tex_GetLevelDesc, tex_GetSurfaceLevel, tex_LockRect, tex_UnlockRect,
 };
 
-HRESULT d3d8_CreateTextureImpl(UINT Width, UINT Height, UINT Levels, DWORD Usage, D3DFORMAT Format, IDirect3DTexture8 **ppTex)
+static HRESULT d3d8_tex_create_gpu(D3D8Texture *tex, BOOL initial_data)
+{
+    D3D11_TEXTURE2D_DESC td = {0};
+    D3D11_SHADER_RESOURCE_VIEW_DESC srvd = {0};
+    D3D11_SUBRESOURCE_DATA data[D3D8_MAX_LEVELS] = {0};
+    HRESULT hr;
+    td.Width = tex->width;
+    td.Height = tex->height;
+    td.MipLevels = tex->levels;
+    td.ArraySize = 1;
+    td.Format = tex->dxgi_format;
+    td.SampleDesc.Count = 1;
+    td.Usage = D3D11_USAGE_DEFAULT;
+    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    if (initial_data) {
+        for (UINT l = 0; l < tex->levels; ++l) {
+            UINT rows = d3d8_format_is_compressed(tex->d3d8_format)
+                      ? (tex->level_h[l] + 3) / 4 : tex->level_h[l];
+            data[l].pSysMem = tex->level_mem[l];
+            data[l].SysMemPitch = tex->level_pitch[l];
+            data[l].SysMemSlicePitch = tex->level_pitch[l] * rows;
+        }
+    }
+    hr = ID3D11Device_CreateTexture2D(d3d8_GetD3D11Device(), &td,
+                                    initial_data ? data : NULL, &tex->d3d11_texture);
+    if (FAILED(hr)) return hr;
+    srvd.Format = tex->dxgi_format;
+    srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    srvd.Texture2D.MipLevels = tex->levels;
+    hr = ID3D11Device_CreateShaderResourceView(d3d8_GetD3D11Device(),
+        (ID3D11Resource *)tex->d3d11_texture, &srvd, &tex->srv);
+    if (FAILED(hr)) {
+        ID3D11Texture2D_Release(tex->d3d11_texture);
+        tex->d3d11_texture = NULL;
+        return hr;
+    }
+    if (initial_data) tex->dirty = FALSE;
+    return S_OK;
+}
+
+HRESULT d3d8_TextureFinishUpload(IDirect3DTexture8 *iface)
+{
+    if (!iface) return E_INVALIDARG;
+    D3D8Texture *tex = tex_from_iface(iface);
+    if (tex->d3d11_texture) return S_OK;
+    if (tex->locked || !tex->linear_data ||
+        tex->initialized_levels != ((1u << tex->levels) - 1u)) return E_FAIL;
+    return d3d8_tex_create_gpu(tex, TRUE);
+}
+
+static HRESULT d3d8_create_texture(UINT Width, UINT Height, UINT Levels, D3DFORMAT Format, BOOL deferred, IDirect3DTexture8 **ppTex)
 {
     D3D8Texture *tex;
-    D3D11_TEXTURE2D_DESC td;
-    D3D11_SHADER_RESOURCE_VIEW_DESC srvd;
     HRESULT hr;
-    UINT data_size;
-    (void)Usage;
 
     if (!ppTex) return E_INVALIDARG;
+    *ppTex = NULL;
 
     tex = (D3D8Texture *)calloc(1, sizeof(*tex));
     if (!tex) return E_OUTOFMEMORY;
@@ -542,10 +590,13 @@ HRESULT d3d8_CreateTextureImpl(UINT Width, UINT Height, UINT Levels, DWORD Usage
         if (tex->levels > cap) tex->levels = cap;
     }
     tex->pitch = d3d8_row_pitch(Format, Width);
+    tex->linear_data = deferred;
 
-    /* Staging memory for every level. */
+    /* One staging allocation for the complete chain. Scene startup can load
+     * hundreds of mips; separate heap allocations are unnecessary. */
     {
         UINT l, lw = Width, lh = Height;
+        size_t offsets[D3D8_MAX_LEVELS], total = 0;
         for (l = 0; l < tex->levels; l++) {
             UINT lp = d3d8_row_pitch(Format, lw);
             UINT sz = d3d8_format_is_compressed(Format)
@@ -553,52 +604,24 @@ HRESULT d3d8_CreateTextureImpl(UINT Width, UINT Height, UINT Levels, DWORD Usage
             tex->level_w[l] = lw;
             tex->level_h[l] = lh;
             tex->level_pitch[l] = lp;
-            tex->level_mem[l] = (BYTE *)calloc(1, sz ? sz : 1);
-            if (!tex->level_mem[l]) {
-                UINT k;
-                for (k = 0; k < l; k++) free(tex->level_mem[k]);
-                free(tex);
-                return E_OUTOFMEMORY;
-            }
+            offsets[l] = total;
+            /* Retain alignment for typed 16/32-bit texture conversion. */
+            total += ((size_t)(sz ? sz : 1) + 15u) & ~(size_t)15u;
             lw = (lw > 1) ? lw / 2 : 1;
             lh = (lh > 1) ? lh / 2 : 1;
         }
+        tex->sys_mem = (BYTE *)calloc(1, total);
+        if (!tex->sys_mem) { free(tex); return E_OUTOFMEMORY; }
+        for (l = 0; l < tex->levels; l++)
+            tex->level_mem[l] = tex->sys_mem + offsets[l];
     }
-    tex->sys_mem = tex->level_mem[0];
-    data_size = tex->level_pitch[0];
-    (void)data_size;
-
-    /* Create D3D11 texture */
-    memset(&td, 0, sizeof(td));
-    td.Width = Width;
-    td.Height = Height;
-    td.MipLevels = tex->levels;
-    td.ArraySize = 1;
-    td.Format = tex->dxgi_format;
-    td.SampleDesc.Count = 1;
-    td.Usage = D3D11_USAGE_DEFAULT;
-    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-
-    hr = ID3D11Device_CreateTexture2D(d3d8_GetD3D11Device(), &td, NULL, &tex->d3d11_texture);
-    if (FAILED(hr)) {
-        d3d8_tex_free_levels(tex);
-        free(tex);
-        return hr;
-    }
-
-    /* Create shader resource view */
-    memset(&srvd, 0, sizeof(srvd));
-    srvd.Format = tex->dxgi_format;
-    srvd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-    srvd.Texture2D.MipLevels = tex->levels;
-
-    hr = ID3D11Device_CreateShaderResourceView(d3d8_GetD3D11Device(),
-        (ID3D11Resource *)tex->d3d11_texture, &srvd, &tex->srv);
-    if (FAILED(hr)) {
-        ID3D11Texture2D_Release(tex->d3d11_texture);
-        d3d8_tex_free_levels(tex);
-        free(tex);
-        return hr;
+    if (!deferred) {
+        hr = d3d8_tex_create_gpu(tex, FALSE);
+        if (FAILED(hr)) {
+            d3d8_tex_free_levels(tex);
+            free(tex);
+            return hr;
+        }
     }
 
     tex->iface.lpVtbl = &g_tex_vtbl;
@@ -606,4 +629,15 @@ HRESULT d3d8_CreateTextureImpl(UINT Width, UINT Height, UINT Levels, DWORD Usage
 
     *ppTex = &tex->iface;
     return S_OK;
+}
+
+HRESULT d3d8_CreateTextureImpl(UINT Width, UINT Height, UINT Levels, DWORD Usage, D3DFORMAT Format, IDirect3DTexture8 **ppTex)
+{
+    (void)Usage;
+    return d3d8_create_texture(Width, Height, Levels, Format, FALSE, ppTex);
+}
+
+HRESULT d3d8_CreateUploadTexture(UINT Width, UINT Height, UINT Levels, D3DFORMAT Format, IDirect3DTexture8 **ppTex)
+{
+    return d3d8_create_texture(Width, Height, Levels, Format, TRUE, ppTex);
 }

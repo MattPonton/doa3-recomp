@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.20)
+project(shader_disk_cache_test C)
+enable_testing()
+set(D3D "${CMAKE_CURRENT_SOURCE_DIR}/../../src/d3d")
+add_executable(shader_disk_cache_test shader_disk_cache_test.c "${D3D}/d3d8_shader_cache.c")
+target_include_directories(shader_disk_cache_test PRIVATE "${D3D}")
+target_link_libraries(shader_disk_cache_test PRIVATE d3d11 d3dcompiler bcrypt)
+add_test(NAME shader_disk_cache COMMAND shader_disk_cache_test)

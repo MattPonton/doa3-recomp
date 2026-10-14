@@ -2129,10 +2129,12 @@ long d3d8_DrawNv2aFF(const Nv2aFFVertex *verts, unsigned nverts,
     ib_off = nv2aff_idx_upload(idx, nidx * 2);
     if (ib_off == (UINT)-1) return E_OUTOFMEMORY;
 
-    /* PS side exactly as the XYZRHW path: PS constants, combiner override,
-     * render + sampler state. The VS it binds is replaced just below. */
-    d3d8_shaders_prepare_draw(D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
-    d3d8_combiners_prepare_draw();
+    /* The combiner supplies PS b0; Nv2aFF_Bind supplies the VS, layout and
+     * VS b0. Preparing the generic shaders first uploads three discarded
+     * constant buffers per draw. Only prepare them when the combiner is
+     * unavailable, so the ordinary fixed-function PS remains the fallback. */
+    if (!d3d8_combiners_prepare_draw())
+        d3d8_shaders_prepare_draw(D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
     d3d8_states_apply();
     if (!d3d8_Nv2aFF_Bind(cb)) return E_FAIL;
 

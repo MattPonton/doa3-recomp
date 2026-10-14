@@ -312,6 +312,7 @@ void doa3_perf_logic_sample(void)
 }
 static void doa3_perf_frame(void)
 {
+    extern unsigned g_doa3_frames_presented;
     static FILE *file;
     static LARGE_INTEGER frequency, first, previous;
     static unsigned count;
@@ -344,13 +345,17 @@ static void doa3_perf_frame(void)
             s_perf_logic_input.QuadPart ? 1000.0*(now.QuadPart-s_perf_logic_input.QuadPart)/frequency.QuadPart : -1.0,
             s_perf_input_reads);
     }
+    if (now.QuadPart - previous.QuadPart > frequency.QuadPart / 40)
+        fprintf(stderr, "[PERF-FRAME] frame %u %.3f ms end-qpc %lld foreground %d\n",
+            g_doa3_frames_presented, 1000.0 * (now.QuadPart - previous.QuadPart) / frequency.QuadPart,
+            (long long)now.QuadPart, GetForegroundWindow() == g_hwnd);
     previous = now;
     /* Keep the last poll across presents: some guest tasks consume a sample
      * after a flip. Preserve that age instead of hiding it as missing data. */
     s_perf_logic.QuadPart = s_perf_logic_input.QuadPart = s_perf_present.QuadPart = 0;
     s_perf_input_reads = 0;
     if (++count % 300 == 0) fflush(file);
-    if (count >= 18000) { fclose(file); file = NULL; s_perf_enabled = 0; }
+    if (count >= 72000) { fclose(file); file = NULL; s_perf_enabled = 0; }
 }
 
 void doa3_present_frame(void)

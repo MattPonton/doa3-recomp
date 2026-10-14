@@ -6,6 +6,7 @@ add_library(d3d8_compat STATIC
     d3d8_presentation.c
     d3d8_resources.c
     d3d8_shaders.c
+    d3d8_shader_cache.c
     d3d8_states.c
     d3d8_debug_views.c
     d3d8_screenshot.c
@@ -24,6 +25,7 @@ target_link_libraries(d3d8_compat
     dxgi
     dxguid
     d3dcompiler
+    bcrypt
 )
 
 if(MSVC)

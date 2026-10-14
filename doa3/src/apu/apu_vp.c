@@ -21,6 +21,7 @@
 
 #include "apu_state.h"
 #include "fpconv.h"
+#include "../perf_capture.h"
 
 /* #define DEBUG_MCPX */
 
@@ -157,8 +158,10 @@ static void voice_off(MCPXAPUState *d, uint16_t v)
 
 static void voice_lock(MCPXAPUState *d, uint16_t v, bool lock)
 {
+    LONGLONG begin = doa3_perf_begin(), acquired = 0;
     assert(v < MCPX_HW_MAX_VOICES);
     qemu_mutex_lock(&d->lock);
+    if (begin) acquired = doa3_perf_begin();
 
     uint64_t mask = 1ULL << (v % 64);
     if (lock) {
@@ -169,6 +172,7 @@ static void voice_lock(MCPXAPUState *d, uint16_t v, bool lock)
 
     qemu_cond_signal(&d->cond);
     qemu_mutex_unlock(&d->lock);
+    doa3_perf_report("APU voice lock", begin, acquired);
 }
 
 static bool is_voice_locked(MCPXAPUState *d, uint16_t v)
@@ -1257,6 +1261,39 @@ static void voice_process(MCPXAPUState *d,
  *
  * Simplified single-threaded version (no worker threads initially)
  * ============================================================ */
+
+/* Control-only walk, with d->lock held. A guest waiting for VOICE_OFF must
+ * not wait for the next 256-sample output batch to learn that an already
+ * inactive voice is idle. Emit exactly the normal idle trap; the guest ISR
+ * still removes/acknowledges the voice. Never mix samples, step envelopes,
+ * unlink a voice, or replace an outstanding trap here. */
+bool mcpx_apu_vp_poll_idle(MCPXAPUState *d)
+{
+    if ((d->regs[NV_PAPU_FECTL] & NV_PAPU_FECTL_FEMETHMODE) !=
+        NV_PAPU_FECTL_FEMETHMODE_FREE_RUNNING ||
+        !(d->regs[NV_PAPU_FETFORCE1] & NV_PAPU_FETFORCE1_SE2FE_IDLE_VOICE))
+        return false;
+    for (int list = 0; list < 3; ++list) {
+        uint16_t cur = (uint16_t)d->regs[voice_list_regs[list].top];
+        for (int i = 0; cur != 0xFFFF && i < MCPX_HW_MAX_VOICES; ++i) {
+            uint16_t next;
+            if (cur >= MCPX_HW_MAX_VOICES) break;
+            next = (uint16_t)voice_get_mask(d, cur, NV_PAVS_VOICE_TAR_PITCH_LINK,
+                NV_PAVS_VOICE_TAR_PITCH_LINK_NEXT_VOICE_HANDLE);
+            if (next == cur) next = 0xFFFF;
+            if (!is_voice_locked(d, cur) &&
+                !voice_get_mask(d, cur, NV_PAVS_VOICE_PAR_STATE,
+                    NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE)) {
+                d->regs[voice_list_regs[list].current] = cur;
+                d->regs[voice_list_regs[list].next] = next;
+                fe_method(d, SE2FE_IDLE_VOICE, cur);
+                return true;
+            }
+            cur = next;
+        }
+    }
+    return false;
+}
 
 void mcpx_apu_vp_frame(MCPXAPUState *d,
                         float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])

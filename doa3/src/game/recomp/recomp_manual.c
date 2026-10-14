@@ -32,6 +32,9 @@
 #include "../debug_capture.h"
 #include "../game_audio.h"
 
+#include "apu/apu_irq.h"
+#include "../../perf_capture.h"
+
 extern uint32_t xbox_HeapAlloc(uint32_t size, uint32_t alignment);
 extern void xbox_fiber_yield(void);
 extern int  xbox_fiber_active(void);
@@ -969,10 +972,22 @@ static void pb4134_translate_span(uint32_t from, uint32_t to, int translate, uin
     (void)depth;
 }
 
+/* Host-thread-only counters. PB time is a subset of the frame interval;
+ * worker time is a subset of pacing, not additional time to sum with it. */
+static struct {
+    LONGLONG presented, pace, workers, longest_worker, pb;
+    unsigned kicks;
+} s_frame_perf;
+
 static void pb4134_translate(uint32_t from, uint32_t to, int translate)
 {
     extern uint32_t g_pb4134_ring_lo, g_pb4134_ring_hi;
+    LONGLONG begin = doa3_perf_begin();
     pb4134_translate_span(from, to, translate, g_pb4134_ring_lo, g_pb4134_ring_hi, 0);
+    if (begin) {
+        s_frame_perf.pb += doa3_perf_begin() - begin;
+        ++s_frame_perf.kicks;
+    }
 }
 uint32_t g_pb4134_ring_lo, g_pb4134_ring_hi;
 
@@ -1028,7 +1043,14 @@ static void d3d4134_pace(void)
         xbox_fiber_vblank_tick();
         if (rem * 1000 > s_qpf && (xbox_fiber_is_primary() || xbox_fiber_is_coroutine()) &&
             doa3_workers_may_run() && xbox_fiber_workers_ready()) {
+            LONGLONG worker_begin = doa3_perf_begin();
             xbox_fiber_yield();             /* a worker lap while we wait */
+            if (worker_begin) {
+                LONGLONG elapsed = doa3_perf_begin() - worker_begin;
+                s_frame_perf.workers += elapsed;
+                if (elapsed > s_frame_perf.longest_worker)
+                    s_frame_perf.longest_worker = elapsed;
+            }
             continue;
         }
         if (s_timer && rem * 2000 > s_qpf) {
@@ -1225,13 +1247,40 @@ static void d3d4134_frame_done(uint32_t dev)
     static int s_frames;
     uint32_t sv_eax = eax, sv_ecx = ecx, sv_edx = edx, sv_ebx = ebx;
     uint32_t sv_esi = esi, sv_edi = edi, sv_esp = esp, sv_seh = g_seh_ebp;
+    LONGLONG entry = doa3_perf_begin(), flushed, prepared, presented;
     pgraph_d3d11_flush();
+    flushed = entry ? doa3_perf_begin() : 0;
     d3d4134_capture_frame(++g_doa3_frames_presented);
     doa3_mtrace_frame(g_doa3_frames_presented + 1);
     { void doa3_adx_frame(unsigned frame); doa3_adx_frame(g_doa3_frames_presented); }
     game_audio_frame();               /* game volumes, streamer mode */
+
+    prepared = entry ? doa3_perf_begin() : 0;
     doa3_present_frame();
+    presented = entry ? doa3_perf_begin() : 0;
+    if (entry) {
+        LARGE_INTEGER frequency;
+        QueryPerformanceFrequency(&frequency);
+        double ms = 1000.0 / frequency.QuadPart;
+        if (s_frame_perf.presented &&
+            (presented - s_frame_perf.presented) * ms >= 25.0) {
+            fprintf(stderr, "[PERF-PHASE] frame %u interval %.3f pace-prev %.3f workers-prev %.3f longest-worker %.3f before-flush %.3f pb-subset %.3f kicks %u flush %.3f auxiliary %.3f present %.3f end-qpc %lld\n",
+                g_doa3_frames_presented,
+                (presented - s_frame_perf.presented) * ms,
+                s_frame_perf.pace * ms, s_frame_perf.workers * ms,
+                s_frame_perf.longest_worker * ms,
+                (entry - s_frame_perf.presented - s_frame_perf.pace) * ms,
+                s_frame_perf.pb * ms, s_frame_perf.kicks,
+                (flushed - entry) * ms, (prepared - flushed) * ms,
+                (presented - prepared) * ms, (long long)presented);
+        }
+        s_frame_perf.presented = presented;
+        s_frame_perf.pb = s_frame_perf.workers = s_frame_perf.longest_worker = 0;
+        s_frame_perf.kicks = 0;
+    }
+    LONGLONG pace_begin = entry ? doa3_perf_begin() : 0;
     d3d4134_pace();
+    if (entry) s_frame_perf.pace = doa3_perf_begin() - pace_begin;
     { extern void doa3_fn_profile_tick(void); doa3_fn_profile_tick(); }
     eax = sv_eax; ecx = sv_ecx; edx = sv_edx; ebx = sv_ebx;    /* the worker laps */
     esi = sv_esi; edi = sv_edi; esp = sv_esp; g_seh_ebp = sv_seh;
@@ -1592,13 +1641,21 @@ void sub_0019A330(void)
  * registers. */
 void sub_001F5157(void)
 {
+    extern int mcpx_apu_poll_idle(void);
     uint32_t v = ecx;
     uint32_t r_eax = eax, r_ecx = ecx, r_edx = edx, r_ebx = ebx, r_esi = esi,
              r_edi = edi, r_esp = esp, r_seh = g_seh_ebp;
     DWORD t0 = GetTickCount(), tlog = 0;
     static int s_n;
+    static int s_perf = -1;
+    LARGE_INTEGER perf_begin = {0}, perf_freq = {0};
+    LONGLONG sleep_ticks = 0, max_sleep_ticks = 0;
+    unsigned sleep_count = 0, idle_polls = 0;
+    if (s_perf < 0) s_perf = getenv("DOA3_PERF_CAPTURE") != NULL;
     if ((MEM8(v + 0x12) & 1) && (MEM16(v + 0x12) & 0x8000)) {
+        if (s_perf) { QueryPerformanceFrequency(&perf_freq); QueryPerformanceCounter(&perf_begin); }
         while (MEM16(v + 0x12) & 0x8000) {
+            idle_polls += mcpx_apu_poll_idle();
             doa3_apu_deliver_irq();
             eax = r_eax; ecx = r_ecx; edx = r_edx; ebx = r_ebx; esi = r_esi;
             edi = r_edi; esp = r_esp; g_seh_ebp = r_seh;
@@ -1607,7 +1664,17 @@ void sub_001F5157(void)
                 extern void mcpx_apu_det_step(void);
                 if (g_apu_det) { mcpx_apu_det_step(); continue; }
             }
-            Sleep(1);
+            if (s_perf) {
+                LARGE_INTEGER before, after;
+                LONGLONG elapsed;
+                QueryPerformanceCounter(&before);
+                mcpx_apu_wait_irq(1);
+                QueryPerformanceCounter(&after);
+                elapsed = after.QuadPart - before.QuadPart;
+                sleep_ticks += elapsed;
+                if (elapsed > max_sleep_ticks) max_sleep_ticks = elapsed;
+                ++sleep_count;
+            } else mcpx_apu_wait_irq(1);
             if (GetTickCount() - t0 > 1000 + tlog) {
                 tlog += 2000;
                 fprintf(stderr, "[DSRETIRE] voice %08X still not retired after %lu ms (flags %04X)\n",
@@ -1618,6 +1685,15 @@ void sub_001F5157(void)
         if (s_n++ < 8) {
             fprintf(stderr, "[DSRETIRE] voice %08X retired after %lu ms\n", v, (unsigned long)(GetTickCount() - t0));
             fflush(stderr);
+        }
+        if (s_perf) {
+            LARGE_INTEGER end;
+            QueryPerformanceCounter(&end);
+            if (idle_polls || end.QuadPart - perf_begin.QuadPart > perf_freq.QuadPart / 500)
+                fprintf(stderr, "[PERF-RETIRE] frame %u voice %08X total %.3f ms waits %u wait %.3f ms max %.3f ms idle-polls %u\n",
+                    g_doa3_frames_presented, v,
+                    1000.0 * (end.QuadPart - perf_begin.QuadPart) / perf_freq.QuadPart, sleep_count,
+                    1000.0 * sleep_ticks / perf_freq.QuadPart, 1000.0 * max_sleep_ticks / perf_freq.QuadPart, idle_polls);
         }
     }
     esp += 4;   /* ret */

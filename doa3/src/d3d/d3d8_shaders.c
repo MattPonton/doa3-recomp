@@ -1168,9 +1168,9 @@ void d3d8_Nv2aFF_Shutdown(void)
     if (g_nv2aff_vs)     { ID3D11VertexShader_Release(g_nv2aff_vs); g_nv2aff_vs = NULL; }
 }
 
-/* Bind the NV2A VS, its layout and constants. The PS side (shader, PS
- * constants, combiners, render/sampler state) is set up by the caller through
- * the ordinary prepare path; only the VS stage is replaced here. */
+/* Bind the NV2A VS, its layout and constants. The caller prepares either the
+ * combiner PS or the generic fallback PS, plus render/sampler state. This
+ * shader owns VS b0 and does not consume the generic lighting buffer at b1. */
 int d3d8_Nv2aFF_Bind(const Nv2aFFConstants *cb)
 {
     ID3D11DeviceContext *ctx = d3d8_GetD3D11Context();

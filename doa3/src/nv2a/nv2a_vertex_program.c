@@ -186,12 +186,18 @@ int nv2a_vp_execute(const Nv2aVertexProgram *vp,
 
         c_idx = c_base + (a0x ? a0 : 0);
 
-        fetch(A, a_mux, a_r, v_idx, c_idx, R, in, vp->consts,
-              a_sx, a_sy, a_sz, a_sw, a_neg);
-        fetch(B, b_mux, b_r, v_idx, c_idx, R, in, vp->consts,
-              b_sx, b_sy, b_sz, b_sw, b_neg);
-        fetch(C, c_mux, c_r, v_idx, c_idx, R, in, vp->consts,
-              c_sx, c_sy, c_sz, c_sw, c_neg);
+        /* Fetch only operands the paired operations consume. Keep every
+         * fetch before either operation writes a temporary: paired ILU may
+         * read the same register that MAC is about to overwrite. */
+        if (mac >= MAC_MOV && mac <= MAC_ARL)
+            fetch(A, a_mux, a_r, v_idx, c_idx, R, in, vp->consts,
+                  a_sx, a_sy, a_sz, a_sw, a_neg);
+        if (mac == MAC_MUL || (mac >= MAC_MAD && mac <= MAC_SGE))
+            fetch(B, b_mux, b_r, v_idx, c_idx, R, in, vp->consts,
+                  b_sx, b_sy, b_sz, b_sw, b_neg);
+        if (mac == MAC_ADD || mac == MAC_MAD || ilu != ILU_NOP)
+            fetch(C, c_mux, c_r, v_idx, c_idx, R, in, vp->consts,
+                  c_sx, c_sy, c_sz, c_sw, c_neg);
 
         if (mac != MAC_NOP) {
             switch (mac) {

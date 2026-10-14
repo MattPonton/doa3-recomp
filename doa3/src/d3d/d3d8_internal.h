@@ -102,6 +102,7 @@ typedef struct D3D8Texture {
      * SWIZZLED Xbox format for the surface -- which is accurate about
      * the source but made this layer undo the work a second time. */
     BOOL                    linear_data;
+    UINT                    initialized_levels;
 } D3D8Texture;
 
 typedef struct D3D8Surface {
@@ -129,6 +130,10 @@ UINT        d3d8_row_pitch(D3DFORMAT fmt, UINT width);
 HRESULT d3d8_CreateVertexBufferImpl(UINT Length, DWORD Usage, DWORD FVF, IDirect3DVertexBuffer8 **ppVB);
 HRESULT d3d8_CreateIndexBufferImpl(UINT Length, DWORD Usage, D3DFORMAT Format, IDirect3DIndexBuffer8 **ppIB);
 HRESULT d3d8_CreateTextureImpl(UINT Width, UINT Height, UINT Levels, DWORD Usage, D3DFORMAT Format, IDirect3DTexture8 **ppTex);
+/* NV2A fills every mip with decoded linear rows, then publishes the texture
+ * in one CreateTexture2D call. Subsequent Lock/Unlock updates stay immediate. */
+HRESULT d3d8_CreateUploadTexture(UINT Width, UINT Height, UINT Levels, D3DFORMAT Format, IDirect3DTexture8 **ppTex);
+HRESULT d3d8_TextureFinishUpload(IDirect3DTexture8 *tex);
 
 /* ================================================================
  * Shader management (d3d8_shaders.c)

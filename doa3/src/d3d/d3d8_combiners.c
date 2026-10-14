@@ -34,6 +34,8 @@
 
 #include "d3d8_internal.h"
 #include "d3d8_combiners.h"
+#include "d3d8_shader_cache.h"
+#include "../perf_capture.h"
 #include <d3dcompiler.h>
 #include <string.h>
 #include <stdio.h>
@@ -807,7 +809,7 @@ static unsigned g_combiner_compiles;
 static ID3D11PixelShader *compile_combiner_shader(const NV2ACombinerState *state)
 {
     if (++g_combiner_compiles <= 64 || (g_combiner_compiles % 256) == 0)
-        fprintf(stderr, "[COMB] pixel shader compile #%u (%d stages)\n", g_combiner_compiles, state->num_stages);
+        fprintf(stderr, "[COMB] pixel shader #%u (%d stages)\n", g_combiner_compiles, state->num_stages);
     /* 16KB should be more than enough for any combiner shader */
     char hlsl[16384];
     ID3DBlob *code = NULL;
@@ -822,10 +824,9 @@ static ID3D11PixelShader *compile_combiner_shader(const NV2ACombinerState *state
         return NULL;
     }
 
-    hr = D3DCompile(hlsl, (SIZE_T)len, "ps_combiner",
-                    NULL, NULL, "main", "ps_5_0",
-                    D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
-                    &code, &errors);
+    hr = d3d8_compile_shader_cached(hlsl, (SIZE_T)len, "ps_combiner",
+                    "main", "ps_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3,
+                    &code, &errors, NULL);
     if (FAILED(hr)) {
         fprintf(stderr, "NV2A combiners: HLSL compile failed: %s\n",
                 errors ? (char *)ID3D10Blob_GetBufferPointer(errors)
@@ -837,11 +838,13 @@ static ID3D11PixelShader *compile_combiner_shader(const NV2ACombinerState *state
     }
     if (errors) ID3D10Blob_Release(errors);
 
+    LONGLONG create_begin = doa3_perf_begin();
     hr = ID3D11Device_CreatePixelShader(
         d3d8_GetD3D11Device(),
         ID3D10Blob_GetBufferPointer(code),
         ID3D10Blob_GetBufferSize(code),
         NULL, &ps);
+    doa3_perf_end("CreatePixelShader", create_begin);
     ID3D10Blob_Release(code);
 
     if (FAILED(hr)) {

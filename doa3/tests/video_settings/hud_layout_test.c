@@ -102,6 +102,40 @@ int main(void)
         for (int i=0;i<4;++i) q[i].z=.9999f;
         CHECK(nv_fit_to_backbuffer(q,4,1)==(aspect>VIDEO_ASPECT_16_9));
         CHECK(fabsf(q[0].x-(x+46*w/720))<.001f);
+        /* Tag/four-slot capture: 1440x480 surface, 92,77-389,312
+         * scissor and 92.53125,77.53125 origin. Backings remain display
+         * pixels (46,77-196,313), including their bottom below y=240. */
+        g_pg.surface_clip_v=480u<<16;
+        static const unsigned panels[4]={46,200,370,522};
+        for (int slot=0;slot<4;++slot) {
+            unsigned left=panels[slot]*2, right=left+297;
+            g_pg.window_clip_h[0]=left|(right<<16);
+            g_pg.window_clip_v[0]=77|(312u<<16);
+            g_pg.vp_offset[0]=left+.53125f; g_pg.vp_offset[1]=77.53125f;
+            CHECK(nv_menu_preview()==(aspect>VIDEO_ASPECT_16_9));
+            float shift=aspect>VIDEO_ASPECT_16_9 ? x+(left+.53125f+149)*(w-bw)/1440 : 0;
+            quad(q,(float)left,77,100,100);
+            nv_fit_to_backbuffer(q,4,0);
+            CHECK(fabsf(q[0].x-(left*(float)bw/1440+shift))<.001f);
+            CHECK(fabsf((q[2].x-q[0].x)-100*(float)bw/1440)<.001f);
+            CHECK(fabsf(q[0].y-77*(float)bh/480)<.001f);
+            CHECK(nv_apply_window_clip(0));
+            if (aspect>VIDEO_ASPECT_16_9) {
+                CHECK(clip_x==(int)floorf(x+left*w/1440));
+                CHECK(clip_x+clip_w==(int)ceilf(x+(right+1)*w/1440));
+            }
+            quad(q,(float)panels[slot],77,150,236);
+            temp=q[1];q[1]=q[3];q[3]=q[2];q[2]=temp;
+            for (int i=0;i<4;++i) q[i].z=.9999f;
+            CHECK(nv_fit_to_backbuffer(q,4,1)==(aspect>VIDEO_ASPECT_16_9));
+            CHECK(fabsf(q[0].x-(x+panels[slot]*w/720))<.001f);
+            CHECK(fabsf(q[3].x-(x+(panels[slot]+150)*w/720))<.001f);
+            CHECK(fabsf(q[2].y-313*scale)<.001f);
+        }
+        offscreen=1;CHECK(!nv_menu_preview());offscreen=0;
+        g_pg.window_clip_h[0]=1439u<<16;g_pg.window_clip_v[0]=479u<<16;
+        CHECK(!nv_menu_preview()); /* Full-screen world viewport. */
+        g_pg.surface_clip_v=960u<<16;
         g_pg.depth_test=0;
         offscreen=1;CHECK(!nv_menu_preview());offscreen=0;
         g_pg.surface_clip_h=720u<<16;CHECK(!nv_menu_preview());

@@ -1,5 +1,30 @@
 # DOA3 3.1 changelog
 
+## 0.0.128 — 2026-10-13
+
+- Extend the centered ultrawide character-select portrait and backing-panel
+  correction to 2×1/four-slot layouts, including Tag Battle. Preserve the
+  existing solo layout, 4:3/16:9 behavior and main-menu pixel offsets.
+- Cache generated shader bytecode between launches with validated cache
+  records and normal compilation fallback for missing or damaged entries.
+- Reduce audio voice-retirement waits using IRQ wakeups and control-only
+  idle notifications, preserving guest acknowledgement and deterministic
+  audio behavior.
+- Remove redundant shader constant uploads and unused CPU vertex-operand
+  fetches. Expand texture-cache capacity within the existing byte budget,
+  reuse compatible allocations, batch initial mip uploads, consolidate
+  staging allocations and avoid redundant texture decode copies.
+- Add opt-in frame-phase, texture, shader and audio timing diagnostics and
+  regression tests. Retain native 60 Hz logic and low-latency frame pacing.
+- Preserve upstream v0.0.123–v0.0.127 settings, audio/streamer controls and
+  diagnostic changes. The separate experimental Online carousel and
+  120/240 Hz work are not part of this update.
+- **Known issue:** Hayabusa Story intro startup spikes remain around
+  31–38 ms in live testing; separate presentation stalls also remain.
+  Component benchmark gains do not establish an overall hitch fix.
+- Validation: Release builds as v0.0.128, and all 12 selected regression
+  suites pass after integration with the latest 3.1 changes.
+
 ## 0.0.122 — 2026-10-13
 
 - Align character-select previews and their dark backing panels with the

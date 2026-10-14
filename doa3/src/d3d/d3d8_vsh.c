@@ -19,6 +19,8 @@
 
 #include "d3d8_internal.h"
 #include "d3d8_vsh.h"
+#include "d3d8_shader_cache.h"
+#include "../perf_capture.h"
 #include <d3dcompiler.h>
 #include <string.h>
 #include <stdio.h>
@@ -1187,10 +1189,9 @@ static VshCacheEntry *compile_shader(const DWORD *microcode, int num_insns,
     }
 
     /* Compile HLSL to bytecode */
-    hr = D3DCompile(hlsl_buf, (SIZE_T)hlsl_len, "nv2a_vsh",
-                    NULL, NULL, "main", "vs_5_0",
-                    D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
-                    &code, &errors);
+    hr = d3d8_compile_shader_cached(hlsl_buf, (SIZE_T)hlsl_len, "nv2a_vsh",
+                    "main", "vs_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3,
+                    &code, &errors, NULL);
     if (FAILED(hr)) {
         if (errors) ID3D10Blob_Release(errors);
         return NULL;
@@ -1205,11 +1206,13 @@ static VshCacheEntry *compile_shader(const DWORD *microcode, int num_insns,
     }
 
     /* Create D3D11 vertex shader */
+    LONGLONG create_begin = doa3_perf_begin();
     hr = ID3D11Device_CreateVertexShader(
         d3d8_GetD3D11Device(),
         ID3D10Blob_GetBufferPointer(code),
         ID3D10Blob_GetBufferSize(code),
         NULL, &entry->vs);
+    doa3_perf_end("CreateVertexShader", create_begin);
 
     if (FAILED(hr)) {
         ID3D10Blob_Release(code);

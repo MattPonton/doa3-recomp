@@ -21,6 +21,7 @@
 
 #include "apu_state.h"
 #include "apu.h"
+#include "apu_irq.h"
 #include "apu_xaudio2.h"
 #include "../game/audio_settings.h"
 #include "fpconv.h"
@@ -65,12 +66,6 @@ void mcpx_debug_end_frame(void) {}
  * (doa3_apu_deliver_irq in recomp_manual.c). Without this the driver's own
  * "trap the FE when a voice goes idle" request left the front end trapped
  * forever after the first idle voice, and no frame was ever mixed again. */
-volatile LONG g_apu_irq_pending = 0;
-int mcpx_apu_take_irq(void)
-{
-    return InterlockedExchange(&g_apu_irq_pending, 0) != 0;
-}
-
 static void update_irq(MCPXAPUState *d)
 {
     if (d->regs[NV_PAPU_FECTL] & NV_PAPU_FECTL_FEMETHMODE_TRAPPED) {
@@ -83,7 +78,7 @@ static void update_irq(MCPXAPUState *d)
         /* In standalone mode we don't raise a PCI IRQ; the game's kernel
          * stub will poll ISTS directly or we'll signal via a flag. */
         pci_irq_assert(PCI_DEVICE(d));
-        InterlockedExchange(&g_apu_irq_pending, 1);
+        mcpx_apu_raise_irq();
     } else {
         qatomic_and(&d->regs[NV_PAPU_ISTS], ~NV_PAPU_ISTS_GINTSTS);
         pci_irq_deassert(PCI_DEVICE(d));
@@ -587,6 +582,28 @@ void mcpx_apu_det_step(void)
     s_apu_det_debt++;
 }
 
+/* Called only by the guest's blocking voice-retirement wait. Service stopped
+ * voices between audio batches without advancing the sample clock. Netplay
+ * retains its deterministic chip-stepping path. */
+int mcpx_apu_poll_idle(void)
+{
+    MCPXAPUState *d = g_state;
+    int notified = 0;
+    if (!d || g_apu_det) return 0;
+    qemu_mutex_lock(&d->lock);
+    if (!g_apu_det &&
+        GET_MASK(qatomic_read(&d->regs[NV_PAPU_SECTL]), NV_PAPU_SECTL_XCNTMODE) !=
+            NV_PAPU_SECTL_XCNTMODE_OFF) {
+        notified = mcpx_apu_vp_poll_idle(d);
+        if (d->set_irq) {
+            d->set_irq = false;
+            update_irq(d);
+        }
+    }
+    qemu_mutex_unlock(&d->lock);
+    return notified;
+}
+
 static void *mcpx_apu_frame_thread(void *arg)
 {
     MCPXAPUState *d = MCPX_APU_DEVICE(arg);
@@ -669,6 +686,7 @@ MCPXAPUState *mcpx_apu_init_standalone(uint8_t *ram_ptr)
     }
 
     g_apu_ram_ptr = ram_ptr;
+    mcpx_apu_irq_init();
     g_state = d;
     d->ram_ptr = ram_ptr;
 
@@ -729,6 +747,7 @@ void mcpx_apu_shutdown(MCPXAPUState *d)
     qemu_mutex_unlock(&d->lock);
 
     qemu_thread_join(&d->apu_thread);
+    mcpx_apu_irq_shutdown();
     mcpx_apu_vp_finalize(d);
     mcpx_apu_monitor_finalize(d);
 
