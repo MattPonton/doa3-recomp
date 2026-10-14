@@ -22,6 +22,9 @@
 #include "apu_state.h"
 #include "fpconv.h"
 #include "../perf_capture.h"
+#include <stdarg.h>
+#include <math.h>
+#include <windows.h>
 
 /* #define DEBUG_MCPX */
 
@@ -1016,6 +1019,40 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
  * resample. This gives us functional audio at the cost of quality.
  * ============================================================ */
 
+/* Opt-in voice event trace (Diagnostics\apu_voices.txt, only while the
+ * automatic diagnostic captures are on). It logs what the guest does to a
+ * voice -- pause/resume, pitch changes -- and every APU frame in which a
+ * playing voice ran out of sample data and then produced sound again (a
+ * hole of digital silence inside that voice, reported with its length when
+ * it ends). Sound starts and natural ends are not logged, so ordinary play
+ * stays quiet. */
+static FILE *s_vtrace;
+static unsigned s_vtrace_lines;
+static struct { int8_t paused; int16_t pitch; uint8_t seen; uint16_t hole; } s_vlast[MCPX_HW_MAX_VOICES];
+
+static void vtrace(const char *fmt, ...)
+{
+    extern int doa3_auto_capture_enabled(void);
+    extern FILE *doa3_diag_fopen(const char *, const char *);
+    extern unsigned g_doa3_frames_presented;
+    static LARGE_INTEGER s_f, s_t0;
+    LARGE_INTEGER now;
+    va_list ap;
+    if (!doa3_auto_capture_enabled() || s_vtrace_lines >= 20000) return;
+    if (!s_vtrace) {
+        s_vtrace = doa3_diag_fopen("apu_voices.txt", "w");
+        if (!s_vtrace) { s_vtrace_lines = 20000; return; }
+        QueryPerformanceFrequency(&s_f); QueryPerformanceCounter(&s_t0);
+        fputs("# ms frame event\n", s_vtrace);
+    }
+    QueryPerformanceCounter(&now);
+    fprintf(s_vtrace, "%9.2f %6u ", (double)(now.QuadPart - s_t0.QuadPart) * 1000.0 / (double)s_f.QuadPart,
+            g_doa3_frames_presented);
+    va_start(ap, fmt); vfprintf(s_vtrace, fmt, ap); va_end(ap);
+    fputc('\n', s_vtrace);
+    if (++s_vtrace_lines % 64 == 0) fflush(s_vtrace);
+}
+
 /* Voice rate extremes, reported and reset by the XAudio2 output meter. */
 float g_apu_rate_min = 1e9f, g_apu_rate_max = 0.0f;
 
@@ -1080,6 +1117,21 @@ static void voice_process(MCPXAPUState *d,
     dbg->stereo = stereo;
     dbg->paused = paused;
 
+    {   /* voice trace: pause/resume and pitch changes of a live voice */
+        int16_t pt = (int16_t)voice_get_mask(d, v, NV_PAVS_VOICE_TAR_PITCH_LINK,
+                                            NV_PAVS_VOICE_TAR_PITCH_LINK_PITCH);
+        if (voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE, NV_PAVS_VOICE_PAR_STATE_NEW_VOICE))
+            s_vlast[v].seen = 0, s_vlast[v].hole = 0;   /* a fresh voice: nothing to report */
+        if (s_vlast[v].seen) {
+            if (s_vlast[v].paused != (int8_t)paused)
+                vtrace("v%03u %s (pitch %d)", v, paused ? "PAUSED" : "resumed", pt);
+            if (s_vlast[v].pitch != pt)
+                vtrace("v%03u pitch %d -> %d (rate %.3f)", v, s_vlast[v].pitch, pt,
+                       1.0 / pow(2.0, pt / 4096.0));
+        }
+        s_vlast[v].seen = 1; s_vlast[v].paused = (int8_t)paused; s_vlast[v].pitch = pt;
+    }
+
     if (paused) return;
 
     /* Step filter envelope */
@@ -1131,14 +1183,25 @@ static void voice_process(MCPXAPUState *d,
             memset(&mixbins[mp_bin][0], 0, sizeof(mixbins[0]));
         }
     } else {
-        for (int sample_count = 0; sample_count < NUM_SAMPLES_PER_FRAME;) {
+        int sample_count = 0;
+        for (; sample_count < NUM_SAMPLES_PER_FRAME;) {
             int active = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
                                         NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE);
             if (!active) return;
             int count = voice_resample(d, v, &samples[sample_count],
                                        NUM_SAMPLES_PER_FRAME - sample_count, rate);
-            if (count < 0) break;
+            if (count < 0) {
+                if (s_vlast[v].hole < 0xFFFF) s_vlast[v].hole++;
+                break;
+            }
             sample_count += count;
+        }
+        if (sample_count == NUM_SAMPLES_PER_FRAME && s_vlast[v].hole) {
+            vtrace("v%03u hole: %u APU frames (%.2f ms) of no data, then sound again (pitch %d, stream %d)",
+                   v, s_vlast[v].hole, s_vlast[v].hole * (double)NUM_SAMPLES_PER_FRAME / 48.0,
+                   (int16_t)voice_get_mask(d, v, NV_PAVS_VOICE_TAR_PITCH_LINK, NV_PAVS_VOICE_TAR_PITCH_LINK_PITCH),
+                   voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT, NV_PAVS_VOICE_CFG_FMT_DATA_TYPE) ? 1 : 0);
+            s_vlast[v].hole = 0;
         }
     }
 

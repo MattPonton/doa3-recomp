@@ -1423,11 +1423,16 @@ int main(int argc, char **argv)
         xbox_path_init(NULL, NULL);
         wcscpy_s(assets_dir, MAX_PATH, xbox_path_disc_dir());
     }
+    /* Diagnostics are per run: clear the previous run's files before anything
+     * can write new ones (they are all opened lazily, later). */
+    int diag_cleared = doa3_diag_clear();
     setvbuf(stdout, NULL, _IONBF, 0);
     /* stderr -> doa3_log.txt when logging is on in the Esc menu, NUL when
      * off (the default). See log_settings.h. */
     doa3_log_init();
     fprintf(stderr, "[DOA3] DOA3.exe version %s (%s)\n", DOA3_VER_STR, DOA3_XBE_VERSION);
+    if (diag_cleared)
+        fprintf(stderr, "[DOA3] removed %d file(s) left in Diagnostics by the previous run\n", diag_cleared);
 
     atexit(doa3_atexit);
     SetUnhandledExceptionFilter(doa3_unhandled);

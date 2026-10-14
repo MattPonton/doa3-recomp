@@ -1974,3 +1974,39 @@ first-use preparation and rendering remain concentrated on the first frame.
 An additional foreground frame 5611=42.676 ms has 26.739 ms in presentation,
 a separate stall from the startup work. User completed the test; visual
 regression confirmation was not supplied. Input/pacing behavior is unchanged.
+### 0.0.129: voice event trace for the Genra/Omega KO audio; Diagnostics cleared at boot
+
+Comparing the user's recordings of the same KO (PC 4.80 s, hardware 6.02 s,
+first K.O. frame to the black screen before the ending):
+- Hardware's "K.O." has a ~1.2 s decaying tail (-36 to -71 dB) and a
+  regular ~22 ms envelope repetition decaying 0.72, 0.63, 0.55, 0.45...;
+  the scream also fades out over ~1.2 s at the end. PC has neither. This
+  is the effects-processor (reverb/echo) output the PC build never makes:
+  sub_000A5C60 skips the dsstdfx.bin download and apu_dsp.c bypasses the
+  GP/EP DSP.
+- PC has repeated runs of exact digital silence: 36 ms at 0.18 s, then
+  5.3 ms (256 samples) and 8 ms holes about 38-40 ms apart from 1.81 s to
+  2.21 s and around 0.65-0.85 s. Hardware has one 13 ms gap. The log shows
+  no XAudio2 starvation then, so the holes come from the guest mix itself.
+  The scream's voice data was read in one 137 KB block (frame 28445), so
+  this is not disc streaming.
+- The PC sequence is ~20% shorter, consistent with the user's observation
+  that the KO slow motion differs from hardware.
+
+The game's main loop presents once per iteration at 60 Hz and never changes
+the presentation interval, so the slow motion is game logic. To see what it
+does to the voices, apu_vp.c now writes Diagnostics\apu_voices.txt while
+automatic captures are on: per-voice pause/resume and pitch changes, and
+"hole" lines when a playing voice ran out of sample data and later sounded
+again (length in APU frames / ms), each with host ms and game frame.
+Capped at 20000 lines.
+
+Diagnostics are per run: main() calls doa3_diag_clear() right after it
+settles the exe folder and before the log or any diagnostic file opens. It
+deletes the plain files directly inside <exe folder>\Diagnostics, using an
+absolute path built from the exe's location (never the working directory),
+and leaves subfolders, links and the folder itself alone; a Diagnostics
+that is missing, not a folder, or a reparse point is not touched. The log
+notes how many files it removed. (Numbered 0.0.129: Jay's v0.0.128, "fix
+ultrawide tag portraits and optimize scene setup", landed first.)
+

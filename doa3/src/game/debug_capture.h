@@ -19,6 +19,11 @@ void doa3_auto_capture_set(int enabled);
  * CSV dumps) inside the Diagnostics folder next to the game, creating the
  * folder on first use. `name` is a bare file name. */
 FILE *doa3_diag_fopen(const char *name, const char *mode);
+/* At startup: delete the files a previous run left in the Diagnostics
+ * folder next to the exe, so every diagnostic belongs to this run. Only
+ * plain files directly inside that folder are removed; subfolders, links
+ * and the folder itself are left alone. Returns the number deleted. */
+int doa3_diag_clear(void);
 #ifdef __cplusplus
 }
 #endif

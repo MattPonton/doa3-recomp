@@ -33,6 +33,36 @@ void doa3_auto_capture_set(int enabled)
     InterlockedExchange(&g_auto_capture, enabled != 0);
 }
 
+int doa3_diag_clear(void)
+{
+    WCHAR dir[MAX_PATH], pattern[MAX_PATH], file[MAX_PATH], *slash;
+    WIN32_FIND_DATAW fd;
+    HANDLE h;
+    DWORD n = GetModuleFileNameW(NULL, dir, MAX_PATH), attr;
+    int deleted = 0;
+    /* An absolute path built from the exe's own location, never the working
+     * directory, so nothing outside <game folder>\Diagnostics is touched. */
+    if (n == 0 || n >= MAX_PATH || !(slash = wcsrchr(dir, L'\\'))) return 0;
+    *slash = 0;
+    if (wcslen(dir) + 16 >= MAX_PATH) return 0;
+    wcscat_s(dir, MAX_PATH, L"\\Diagnostics");
+    attr = GetFileAttributesW(dir);
+    if (attr == INVALID_FILE_ATTRIBUTES || !(attr & FILE_ATTRIBUTE_DIRECTORY) ||
+        (attr & FILE_ATTRIBUTE_REPARSE_POINT))
+        return 0;                       /* missing, not a folder, or a link elsewhere */
+    swprintf_s(pattern, MAX_PATH, L"%s\\*", dir);
+    h = FindFirstFileW(pattern, &fd);
+    if (h == INVALID_HANDLE_VALUE) return 0;
+    do {
+        if (fd.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT))
+            continue;
+        if (swprintf_s(file, MAX_PATH, L"%s\\%s", dir, fd.cFileName) <= 0) continue;
+        if (DeleteFileW(file)) deleted++;
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+    return deleted;
+}
+
 /* The working directory is the game's folder (main.c sets it at startup),
  * so diagnostics go to .\Diagnostics. */
 FILE *doa3_diag_fopen(const char *name, const char *mode)
