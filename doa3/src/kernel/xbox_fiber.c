@@ -242,16 +242,61 @@ int xbox_fiber_spawn(uint32_t start_routine, uint32_t ctx1, uint32_t ctx2,
  * the D3D vblank event park on XBOX_FIB_VBLANK_KEY; this releases them once
  * per 1/60 s of wall time. It runs at every scheduling decision, so it needs
  * no thread of its own. */
+/* Vertical blanks that have really elapsed, and how many each worker fiber
+ * has been given. On the console the vblank interrupt wakes CRI's vsync
+ * thread (the ADX decode server) every 1/60 s whatever the game thread is
+ * doing; here a worker only runs when the game yields. A frame that took
+ * 40-50 ms (the KO slow motion) used to release the workers ONCE for the
+ * 2-3 vblanks that passed, so ADX decoded ~25 times a second instead of 60,
+ * fell behind its looping playback buffer and the voice played stretches
+ * of cleared buffer: the Omega KO stutter (0.0.130 trace). Missed vblanks
+ * are now counted (up to 6, i.e. 100 ms) and each waiting worker gets one
+ * pass per vblank that elapsed -- the 60 Hz the hardware gives it, never
+ * more. */
+static unsigned g_vbl_seq;
+static unsigned g_vbl_seen[MAX_FIBERS];
+#define VBL_CATCHUP_MAX 6u
+
 void xbox_fiber_vblank_tick(void)
 {
     static LONGLONG s_qpf, s_next;
     LARGE_INTEGER now;
+    LONGLONG period;
+    unsigned elapsed = 1;
     if (!s_qpf) { LARGE_INTEGER f; QueryPerformanceFrequency(&f); s_qpf = f.QuadPart; }
+    period = s_qpf * 1001 / 60000;                  /* 59.94 Hz */
     QueryPerformanceCounter(&now);
     if (now.QuadPart < s_next) return;
-    if (!s_next || now.QuadPart - s_next > s_qpf / 10) s_next = now.QuadPart;
-    s_next += s_qpf * 1001 / 60000;                 /* 59.94 Hz */
+    if (!s_next) {
+        s_next = now.QuadPart + period;
+    } else {
+        LONGLONG late = now.QuadPart - s_next;
+        elapsed = 1u + (unsigned)(late / period);
+        if (elapsed > VBL_CATCHUP_MAX) {            /* long stall: give up on the rest */
+            elapsed = VBL_CATCHUP_MAX;
+            s_next = now.QuadPart + period;
+        } else {
+            s_next += period * (LONGLONG)elapsed;
+        }
+    }
+    g_vbl_seq += elapsed;
     xbox_fiber_wake(XBOX_FIB_VBLANK_KEY);
+}
+
+/* A worker fiber's wait for the D3D vblank event: return at once while it
+ * still has elapsed vblanks to consume, else park until the next one. */
+void xbox_fiber_vblank_wait(void)
+{
+    int me = g_cur;
+    if (me < 0 || me >= MAX_FIBERS) { xbox_fiber_block(XBOX_FIB_VBLANK_KEY); return; }
+    if (!g_vbl_seen[me] || g_vbl_seq - g_vbl_seen[me] > VBL_CATCHUP_MAX)
+        g_vbl_seen[me] = g_vbl_seq - (g_vbl_seen[me] ? VBL_CATCHUP_MAX : 0);
+    if (g_vbl_seen[me] != g_vbl_seq) {               /* a vblank already passed for us */
+        g_vbl_seen[me]++;
+        return;
+    }
+    xbox_fiber_block(XBOX_FIB_VBLANK_KEY);
+    g_vbl_seen[me]++;                                /* the one that woke us */
 }
 
 void xbox_fiber_yield(void)

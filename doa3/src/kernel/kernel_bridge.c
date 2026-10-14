@@ -933,7 +933,7 @@ static void bridge_KeWaitForSingleObject(void)
          * within microseconds, set error -2 (ADXT_ExecErrChk, 0x19634F) and
          * Sofdec aborted the movie with SFD ERROR(FF000C09) (thirtieth run). */
         if (!g_xbox_det_active && !xbox_fiber_is_primary() && !xbox_fiber_is_coroutine())
-            xbox_fiber_block(XBOX_FIB_VBLANK_KEY);
+            xbox_fiber_vblank_wait();
         else
 #endif
         if (g_xbox_det_active && (xbox_fiber_is_primary() || xbox_fiber_is_coroutine())) xbox_fiber_run_workers_idle(1024);

@@ -2034,3 +2034,37 @@ The submitted mix of the last 30 s is kept in memory (captures on only) and
 written as Diagnostics\apu_mix_movieNN_fFFFFF.wav at each movie start and
 apu_mix_exit.wav at exit (at most 8 per run), for direct comparison with
 the hardware recording.
+
+### 0.0.131: CRI worker fibers get every elapsed vblank (Omega KO stutter)
+
+The 0.0.130 run (Music and SFX at 0, voice only) settled where the KO
+holes come from. Our own submitted mix (apu_mix_movie08_f22242.wav, the 30 s
+before the ending) contains them -- 10-12 ms silent runs from 24.2 s to
+26.2 s -- so they are made by the game's audio, not by XAudio2 or the
+recorder; no batch was dropped and the queue never starved there. The
+voice trace shows no voice paused, ran dry or changed pitch. What changes
+is the frame time: from frame 22025 (the KO voice is read that frame)
+to ~22150 frames take 30-51 ms instead of 16.7 ms, and the holes recur
+once per frame.
+
+The ADX player decodes into a looping DirectSound buffer from CRI's vsync
+server thread, which the console's vblank interrupt wakes every 1/60 s
+regardless of the game thread. Here worker fibers that wait on the D3D
+vblank event park on XBOX_FIB_VBLANK_KEY, and xbox_fiber_vblank_tick (run
+at every scheduling decision) released them once when a vblank was due --
+once per slow frame, however many vblanks had passed. ADX then decoded ~25
+times a second, fell behind playback, and the voice played cleared buffer.
+
+xbox_fiber_vblank_tick now counts the vblanks that elapsed (up to 6 = 100
+ms, re-anchoring after longer stalls) into a sequence number, and the new
+xbox_fiber_vblank_wait (used by the worker branch of the vblank wait in
+bridge_KeWaitForSingleObject) returns at once while that fiber still has
+elapsed vblanks to consume. Workers therefore get exactly one pass per real
+vblank -- the hardware's 60 Hz, never more (the earlier "answer at once"
+attempt ran them millions of times a second and tripped ADX's stall
+check). Netplay's deterministic vblank path is unchanged.
+
+Still open: why the KO slow-motion frames take 30-51 ms on PC. That is a
+rendering/CPU cost in those frames (no diagnostic capture fired there) and
+is the next thing to measure; it may also explain the KO sequence running
+~1.2 s shorter than on hardware.
