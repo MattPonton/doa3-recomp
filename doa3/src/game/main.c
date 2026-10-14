@@ -1336,6 +1336,7 @@ static void doa3_atexit(void)
 {
     extern void netplay_shutdown(void);
     xbox_InputStopRumble();
+    {   extern void apu_mix_dump(const char *tag); apu_mix_dump("exit"); }   /* diagnostics only */
     fprintf(stderr, "[EXIT] process exiting via exit()/CRT (g_esp=0x%08X)\n", g_esp);
     fflush(stderr);
     netplay_shutdown();   /* tell the other player, close the router port */

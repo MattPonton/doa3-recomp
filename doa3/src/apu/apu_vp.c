@@ -23,6 +23,7 @@
 #include "fpconv.h"
 #include "../perf_capture.h"
 #include <stdarg.h>
+#include <stdlib.h>
 #include <math.h>
 #include <windows.h>
 
@@ -1028,9 +1029,9 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
  * stays quiet. */
 static FILE *s_vtrace;
 static unsigned s_vtrace_lines;
-static struct { int8_t paused; int16_t pitch; uint8_t seen; uint16_t hole; } s_vlast[MCPX_HW_MAX_VOICES];
+static struct { int8_t paused; int16_t pitch; uint8_t seen, newv; uint16_t hole; } s_vlast[MCPX_HW_MAX_VOICES];
 
-static void vtrace(const char *fmt, ...)
+void apu_vtrace(const char *fmt, ...)
 {
     extern int doa3_auto_capture_enabled(void);
     extern FILE *doa3_diag_fopen(const char *, const char *);
@@ -1120,16 +1121,26 @@ static void voice_process(MCPXAPUState *d,
     {   /* voice trace: pause/resume and pitch changes of a live voice */
         int16_t pt = (int16_t)voice_get_mask(d, v, NV_PAVS_VOICE_TAR_PITCH_LINK,
                                             NV_PAVS_VOICE_TAR_PITCH_LINK_PITCH);
-        if (voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE, NV_PAVS_VOICE_PAR_STATE_NEW_VOICE))
-            s_vlast[v].seen = 0, s_vlast[v].hole = 0;   /* a fresh voice: nothing to report */
+        int newv = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE, NV_PAVS_VOICE_PAR_STATE_NEW_VOICE) != 0;
+        int restart = newv && !s_vlast[v].newv;     /* first frame of a (re)started voice */
+        s_vlast[v].newv = (uint8_t)newv;
+        if (restart) {
+            if (s_vlast[v].seen == 1) apu_vtrace("v%03u restarted while still playing", v);
+            apu_vtrace("v%03u start (pitch %d, %s, %s)", v, pt, stereo ? "stereo" : "mono",
+                           voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT, NV_PAVS_VOICE_CFG_FMT_DATA_TYPE)
+                               ? "stream" : "buffer");
+            s_vlast[v].seen = 0, s_vlast[v].hole = 0;   /* a fresh voice: no transition to report */
+            s_vlast[v].pitch = pt;
+        }
         if (s_vlast[v].seen) {
             if (s_vlast[v].paused != (int8_t)paused)
-                vtrace("v%03u %s (pitch %d)", v, paused ? "PAUSED" : "resumed", pt);
-            if (s_vlast[v].pitch != pt)
-                vtrace("v%03u pitch %d -> %d (rate %.3f)", v, s_vlast[v].pitch, pt,
+                apu_vtrace("v%03u %s (pitch %d)", v, paused ? "PAUSED" : "resumed", pt);
+            if (abs(s_vlast[v].pitch - pt) >= 64)     /* skip positional-audio wobble */
+                apu_vtrace("v%03u pitch %d -> %d (rate %.3f)", v, s_vlast[v].pitch, pt,
                        1.0 / pow(2.0, pt / 4096.0));
         }
-        s_vlast[v].seen = 1; s_vlast[v].paused = (int8_t)paused; s_vlast[v].pitch = pt;
+        s_vlast[v].seen = 1; s_vlast[v].paused = (int8_t)paused;
+        if (abs(s_vlast[v].pitch - pt) >= 64 || !s_vlast[v].pitch) s_vlast[v].pitch = pt;
     }
 
     if (paused) return;
@@ -1197,7 +1208,7 @@ static void voice_process(MCPXAPUState *d,
             sample_count += count;
         }
         if (sample_count == NUM_SAMPLES_PER_FRAME && s_vlast[v].hole) {
-            vtrace("v%03u hole: %u APU frames (%.2f ms) of no data, then sound again (pitch %d, stream %d)",
+            apu_vtrace("v%03u hole: %u APU frames (%.2f ms) of no data, then sound again (pitch %d, stream %d)",
                    v, s_vlast[v].hole, s_vlast[v].hole * (double)NUM_SAMPLES_PER_FRAME / 48.0,
                    (int16_t)voice_get_mask(d, v, NV_PAVS_VOICE_TAR_PITCH_LINK, NV_PAVS_VOICE_TAR_PITCH_LINK_PITCH),
                    voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT, NV_PAVS_VOICE_CFG_FMT_DATA_TYPE) ? 1 : 0);
@@ -1408,6 +1419,10 @@ void mcpx_apu_vp_frame(MCPXAPUState *d,
 
             if (!voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
                                 NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE)) {
+                if (s_vlast[v].seen == 1) {
+                    apu_vtrace("v%03u end", v);
+                    s_vlast[v].seen = 2;
+                }
                 if (!trap_outstanding) {
                     /* Ask the driver to retire it, exactly as the hardware
                      * does: CVL/NVL name the voice and its successor. */

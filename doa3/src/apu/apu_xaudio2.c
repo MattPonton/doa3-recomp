@@ -124,6 +124,71 @@ int xa2_is_active(void)
     return g_xa2_initialized;
 }
 
+/* DOA3 DIAG (automatic diagnostic captures only): the last 30 s of the mix
+ * as submitted, kept in memory and written as Diagnostics\apu_mix_*.wav by
+ * apu_mix_dump() -- at each movie start (so the seconds before the Story
+ * ending are kept) and at exit. */
+#define MIX_RING_FRAMES (48000 * 30)
+static int16_t *s_ring;
+static unsigned s_ring_pos, s_ring_fill;
+static SRWLOCK s_ring_lock = SRWLOCK_INIT;
+static unsigned s_dropped;               /* batches discarded with the queue full */
+
+static void mix_ring_push(const int16_t *samples, int frames)
+{
+    extern int doa3_auto_capture_enabled(void);
+    if (!doa3_auto_capture_enabled()) return;
+    AcquireSRWLockExclusive(&s_ring_lock);
+    if (!s_ring) s_ring = (int16_t *)calloc((size_t)MIX_RING_FRAMES * XA2_CHANNELS, sizeof(int16_t));
+    if (s_ring) {
+        int i;
+        for (i = 0; i < frames; i++) {
+            s_ring[s_ring_pos * 2] = samples[i * 2];
+            s_ring[s_ring_pos * 2 + 1] = samples[i * 2 + 1];
+            s_ring_pos = (s_ring_pos + 1) % MIX_RING_FRAMES;
+        }
+        s_ring_fill = (s_ring_fill + (unsigned)frames > MIX_RING_FRAMES) ? MIX_RING_FRAMES
+                                                                          : s_ring_fill + (unsigned)frames;
+    }
+    ReleaseSRWLockExclusive(&s_ring_lock);
+}
+
+void apu_mix_dump(const char *tag)
+{
+    extern FILE *doa3_diag_fopen(const char *, const char *);
+    static int s_dumps;
+    char name[64];
+    FILE *f;
+    unsigned bytes, start, i;
+    unsigned char h[44];
+    if (!s_ring || !s_ring_fill || s_dumps >= 8) return;
+    _snprintf_s(name, sizeof name, _TRUNCATE, "apu_mix_%s.wav", tag);
+    f = doa3_diag_fopen(name, "wb");
+    if (!f) return;
+    s_dumps++;
+    AcquireSRWLockShared(&s_ring_lock);
+    bytes = s_ring_fill * XA2_CHANNELS * 2;
+    memcpy(h, "RIFF", 4); { unsigned v = 36 + bytes; memcpy(h + 4, &v, 4); }
+    memcpy(h + 8, "WAVEfmt ", 8);
+    { unsigned v = 16; memcpy(h + 16, &v, 4); }
+    { unsigned short fmt = 1, ch = XA2_CHANNELS; memcpy(h + 20, &fmt, 2); memcpy(h + 22, &ch, 2); }
+    { unsigned sr = 48000, br = 48000 * XA2_CHANNELS * 2; memcpy(h + 24, &sr, 4); memcpy(h + 28, &br, 4); }
+    { unsigned short ba = XA2_CHANNELS * 2, bits = 16; memcpy(h + 32, &ba, 2); memcpy(h + 34, &bits, 2); }
+    memcpy(h + 36, "data", 4); memcpy(h + 40, &bytes, 4);
+    fwrite(h, 1, sizeof h, f);
+    start = (s_ring_pos + MIX_RING_FRAMES - s_ring_fill) % MIX_RING_FRAMES;
+    for (i = 0; i < s_ring_fill; ) {        /* oldest first, in up to two runs */
+        unsigned at = (start + i) % MIX_RING_FRAMES;
+        unsigned run = MIX_RING_FRAMES - at;
+        if (run > s_ring_fill - i) run = s_ring_fill - i;
+        fwrite(s_ring + (size_t)at * 2, XA2_CHANNELS * 2, run, f);
+        i += run;
+    }
+    ReleaseSRWLockShared(&s_ring_lock);
+    fclose(f);
+    fprintf(stderr, "[XA2] wrote Diagnostics\\%s (last %.1f s of the mix)\n", name, s_ring_fill / 48000.0);
+}
+
 /* Submit a buffer of mixed samples to XAudio2.
  * Called from APU frame thread. Returns 1 if buffer was submitted. */
 int xa2_submit_samples(const int16_t *samples, int num_samples)
@@ -136,7 +201,12 @@ int xa2_submit_samples(const int16_t *samples, int num_samples)
     if (!g_xa2_initialized || !g_xa2_source) return 0;
 
     IXAudio2SourceVoice_GetState(g_xa2_source, &state, XAUDIO2_VOICE_NOSAMPLESPLAYED);
-    if ((int)state.BuffersQueued >= XA2_NUM_BUFS) return 0;
+    if ((int)state.BuffersQueued >= XA2_NUM_BUFS) {
+        extern void apu_vtrace(const char *fmt, ...);
+        s_dropped++;
+        apu_vtrace("mix batch DROPPED (%d samples): output queue full", num_samples);
+        return 0;
+    }
 
     idx = g_xa2_next_buf;
     copy_samples = (num_samples > XA2_BUF_SAMPLES) ? XA2_BUF_SAMPLES : num_samples;
@@ -148,6 +218,22 @@ int xa2_submit_samples(const int16_t *samples, int num_samples)
     xbuf.pAudioData = (const BYTE *)g_xa2_bufs[idx];
 
     IXAudio2SourceVoice_SubmitSourceBuffer(g_xa2_source, &xbuf, NULL);
+    mix_ring_push(samples, copy_samples);
+    {   /* DOA3 DIAG: digital silence inside the mix while voices are playing */
+        extern unsigned g_apu_voices_active_last;
+        extern void apu_vtrace(const char *fmt, ...);
+        int i, run = 0, longest = 0;
+        for (i = 0; i < copy_samples; i++) {
+            if (samples[i * 2] == 0 && samples[i * 2 + 1] == 0) { if (++run > longest) longest = run; }
+            else run = 0;
+        }
+        if (longest >= 96 && g_apu_voices_active_last)
+            apu_vtrace("mix batch: %d-sample silent run of %d (%u voices active, queue %u)",
+                       longest, copy_samples, g_apu_voices_active_last, (unsigned)state.BuffersQueued);
+        if (state.BuffersQueued == 0 && g_apu_voices_active_last)
+            apu_vtrace("output STARVED before this batch (queue empty, %u voices active)",
+                       g_apu_voices_active_last);
+    }
     {   /* DOA3 DIAG: DOA3_WAVCAP=<path> appends the submitted 48 kHz s16 stereo
          * stream to a raw file (first 60 s) so the output can be inspected. */
         static FILE *s_cap = NULL; static int s_cap_tried = 0; static unsigned s_cap_samples = 0;
@@ -169,10 +255,11 @@ int xa2_submit_samples(const int16_t *samples, int num_samples)
             s_next = GetTickCount() + 2000;
             /* Only report windows with trouble: host starvation (gaps) or
              * clipped samples (crackle). */
-            if (s_starved || s_clip)
-                fprintf(stderr, "[XA2] last 2 s: %u buffers, %u starved, %u clipped samples, peak %d, "
+            if (s_starved || s_clip || s_dropped)
+                fprintf(stderr, "[XA2] last 2 s: %u buffers, %u starved, %u dropped, %u clipped samples, peak %d, "
                         "voice rate %.3f..%.3f\n",
-                        s_bufs, s_starved, s_clip, s_peak, g_apu_rate_min, g_apu_rate_max);
+                        s_bufs, s_starved, s_dropped, s_clip, s_peak, g_apu_rate_min, g_apu_rate_max);
+            s_dropped = 0;
             g_apu_rate_min = 1e9f; g_apu_rate_max = 0.0f;
             s_bufs = s_loud = s_starved = s_clip = 0; s_peak = 0;
         }

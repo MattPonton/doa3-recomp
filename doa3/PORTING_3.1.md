@@ -2010,3 +2010,27 @@ that is missing, not a folder, or a reparse point is not touched. The log
 notes how many files it removed. (Numbered 0.0.129: Jay's v0.0.128, "fix
 ultrawide tag portraits and optimize scene setup", landed first.)
 
+
+### 0.0.130: KO audio, round 2 -- what the trace showed, mix recording
+
+The 0.0.129 trace of a full Hayate Story run (KO on Omega, ending movie 13
+at frame 22138) had no voice holes, no pauses and no pitch change through
+the KO: the game does not slow its voices down in slow motion, and no voice
+ran dry and recovered. The routine pitch lines were 3D wobble around -4596
+(22.05 kHz sources at 48 kHz). So the silent runs in the recording lie
+between voices or across the whole mix -- 5.3 ms is exactly one 256-sample
+output batch.
+
+The trace now also records:
+- voice start (pitch, mono/stereo, buffer/stream), restarted-while-playing
+  and end; pitch changes only when >= 64 units (no positional wobble);
+- "mix batch: N-sample silent run" when a submitted batch holds >= 96
+  consecutive zero frames while voices are active;
+- "output STARVED" (queue empty with voices active) and "mix batch
+  DROPPED": xa2_submit_samples discarded a finished batch when the queue was
+  full (return 0 without submitting), which the meter never counted --
+  [XA2] now reports dropped batches too.
+The submitted mix of the last 30 s is kept in memory (captures on only) and
+written as Diagnostics\apu_mix_movieNN_fFFFFF.wav at each movie start and
+apu_mix_exit.wav at exit (at most 8 per run), for direct comparison with
+the hardware recording.

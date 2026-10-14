@@ -116,6 +116,13 @@ void game_audio_on_movie_start(uint32_t index)
     extern unsigned g_doa3_frames_presented;
     fprintf(stderr, "[MOVIE] frame %u: movie %u starting%s\n", g_doa3_frames_presented,
             index, index == GA_MOVIE_CREDITS ? " (credits, licensed song)" : "");
+    {   /* diagnostics: keep the mix of the seconds before this movie (e.g. the
+         * Story fight's KO before its ending); no-op unless captures are on */
+        extern void apu_mix_dump(const char *tag);
+        char tag[32];
+        sprintf(tag, "movie%02u_f%05u", index, g_doa3_frames_presented);
+        apu_mix_dump(tag);
+    }
     if (index == GA_MOVIE_CREDITS) {
         s_movie_state = 1;
         s_movie_wait = 0;
