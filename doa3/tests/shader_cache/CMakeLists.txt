@@ -6,3 +6,7 @@ add_executable(shader_disk_cache_test shader_disk_cache_test.c "${D3D}/d3d8_shad
 target_include_directories(shader_disk_cache_test PRIVATE "${D3D}")
 target_link_libraries(shader_disk_cache_test PRIVATE d3d11 d3dcompiler bcrypt)
 add_test(NAME shader_disk_cache COMMAND shader_disk_cache_test)
+target_sources(shader_disk_cache_test PRIVATE ../../src/perf_capture.c)
+add_executable(shader_hash_test shader_hash_test.c ../../src/perf_capture.c)
+target_link_libraries(shader_hash_test PRIVATE d3dcompiler bcrypt)
+add_test(NAME shader_hash_concurrent COMMAND shader_hash_test)

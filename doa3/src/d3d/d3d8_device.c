@@ -18,6 +18,8 @@
 #include "d3d8_internal.h"
 #include "d3d8_presentation.h"
 #include "d3d8_nv2aff.h"
+#include "d3d8_srv_bindings.h"
+static D3D8SrvBindings g_srv_bindings;
 static ID3D11Buffer *g_nv2aff_ring;   /* NV2A FF vertices + indices, see d3d8_DrawNv2aFF */
 static UINT          g_nv2aff_ring_off;
 /* What the last NV2A draw left in the input assembler, see d3d8_DrawNv2aFF. */
@@ -418,6 +420,7 @@ static HRESULT d3d11_create_render_targets(D3D8DeviceState *state)
     if (FAILED(hr)) return hr;
 
     /* Bind default render targets */
+    g_srv_bindings.valid = 0; /* Target hazards can unbind PS resources. */
     ID3D11DeviceContext_OMSetRenderTargets(state->d3d11_context, 1,
                                             &state->default_rtv,
                                             state->default_dsv);
@@ -661,6 +664,7 @@ static void swap_resize_if_needed(void)
     /* A previous startup/present path may still have the backbuffer bound.
      * Release that context reference before ResizeBuffers, then restore the
      * guest target so the compose step saves the expected scene state. */
+    g_srv_bindings.valid = 0; /* Target hazards can unbind PS resources. */
     ID3D11DeviceContext_OMSetRenderTargets(s->d3d11_context, 0, NULL, NULL);
     if (s->swap_rtv) { ID3D11RenderTargetView_Release(s->swap_rtv); s->swap_rtv = NULL; }
     hr = IDXGISwapChain_ResizeBuffers(s->swap_chain, 0, w, h, DXGI_FORMAT_UNKNOWN, s->swap_flags);
@@ -686,6 +690,7 @@ static void d3d8_apply_target_size_change(void)
     video_sync_guest_widescreen();
     if (w == s->width && h == s->height) return;
 
+    g_srv_bindings.valid = 0; /* Target hazards can unbind PS resources. */
     ID3D11DeviceContext_OMSetRenderTargets(s->d3d11_context, 0, NULL, NULL);
     d3d11_release_guest_target(s);
     s->width = w;
@@ -694,6 +699,7 @@ static void d3d8_apply_target_size_change(void)
         return;
     }
     g_off_active = 0;
+    g_srv_bindings.valid = 0; /* Target hazards can unbind PS resources. */
     ID3D11DeviceContext_OMSetRenderTargets(s->d3d11_context, 1, &s->default_rtv, s->default_dsv);
     /* The translator draws in target pixels through a viewport that covers
      * the whole target (set once at CreateDevice), so it has to follow. */
@@ -758,6 +764,7 @@ static HRESULT d3d8_compose_and_present(void)
         vp.TopLeftY = (float)(int)((sh - vp.Height) * 0.5f);
         vp.MinDepth = 0.0f; vp.MaxDepth = 1.0f;
 
+        g_srv_bindings.valid = 0; /* Target hazards can unbind PS resources. */
         ID3D11DeviceContext_OMSetRenderTargets(ctx, 1, &s->swap_rtv, NULL);
         ID3D11DeviceContext_ClearRenderTargetView(ctx, s->swap_rtv, black);
         ID3D11DeviceContext_RSSetViewports(ctx, 1, &vp);
@@ -792,6 +799,7 @@ static HRESULT d3d8_compose_and_present(void)
         ID3D11DeviceContext_RSSetScissorRects(ctx, nsc, scs);
         ID3D11DeviceContext_OMSetBlendState(ctx, bs, bf, bmask);
         ID3D11DeviceContext_OMSetDepthStencilState(ctx, dss, sref);
+        g_srv_bindings.valid = 0; /* Target hazards can unbind PS resources. */
         ID3D11DeviceContext_OMSetRenderTargets(ctx, 1, &rtv, dsv);
         if (il)  ID3D11InputLayout_Release(il);
         if (vs)  ID3D11VertexShader_Release(vs);
@@ -1040,6 +1048,7 @@ int d3d8_SetOffscreenTarget(uint32_t key, UINT w, UINT h)
     if (!g_device_state.d3d11_device || !w || !h) return 0;
     slot = offrt_slot(key, w, h);
     if (slot < 0) return 0;
+    g_srv_bindings.valid = 0; /* Target hazards can unbind PS resources. */
     ID3D11DeviceContext_OMSetRenderTargets(g_device_state.d3d11_context, 1,
                                            &g_offrt[slot].rtv, g_offrt[slot].dsv);
     {   /* The translator maps the guest surface onto -1..1 NDC, so the
@@ -1061,6 +1070,7 @@ int d3d8_SetOffscreenTarget(uint32_t key, UINT w, UINT h)
 void d3d8_RestoreDefaultTarget(void)
 {
     if (!g_device_state.d3d11_context) return;
+    g_srv_bindings.valid = 0; /* Target hazards can unbind PS resources. */
     ID3D11DeviceContext_OMSetRenderTargets(g_device_state.d3d11_context, 1,
                                             &g_device_state.default_rtv, g_device_state.default_dsv);
     {   /* back to the guest frame's viewport (see d3d8_SetOffscreenTarget) */
@@ -1105,8 +1115,8 @@ int d3d8_BindOffscreenTexture(uint32_t key, UINT stage)
                 (ID3D11Resource *)g_offrt[slot].tex, NULL, &g_offrt[slot].srv)))
             { g_offrt[slot].srv = NULL; return 0; }
     }
-    ID3D11DeviceContext_PSSetShaderResources(g_device_state.d3d11_context, stage, 1,
-                                             &g_offrt[slot].srv);
+    d3d8_srv_bind(&g_srv_bindings, g_device_state.d3d11_context,
+                 g_d3d8_bind_epoch, stage, g_offrt[slot].srv);
     return 1;
 }
 
@@ -1154,7 +1164,8 @@ int d3d8_BindFramebufferCopy(UINT stage)
     ID3D11DeviceContext_CopyResource(g_device_state.d3d11_context,
                                      (ID3D11Resource *)g_fbcopy.tex,
                                      (ID3D11Resource *)g_device_state.default_tex);
-    ID3D11DeviceContext_PSSetShaderResources(g_device_state.d3d11_context, stage, 1, &g_fbcopy.srv);
+    d3d8_srv_bind(&g_srv_bindings, g_device_state.d3d11_context,
+                 g_d3d8_bind_epoch, stage, g_fbcopy.srv);
     return 1;
 }
 
@@ -1169,7 +1180,8 @@ int d3d8_BindPrevFrame(UINT stage)
 {
     /* also while an offscreen target is bound: the effect renders its after-image buffer from the frame on screen */
     if (!g_prevframe_valid) return d3d8_BindFramebufferCopy(stage);
-    ID3D11DeviceContext_PSSetShaderResources(g_device_state.d3d11_context, stage, 1, &g_prevframe.srv);
+    d3d8_srv_bind(&g_srv_bindings, g_device_state.d3d11_context,
+                 g_d3d8_bind_epoch, stage, g_prevframe.srv);
     return 1;
 }
 
@@ -1314,16 +1326,15 @@ static HRESULT __stdcall dev_SetTexture(IDirect3DDevice8 *self, DWORD Stage, IDi
     if (pTexture) {
         D3D8Texture *tex = (D3D8Texture *)pTexture;
         if (tex->srv) {
-            ID3D11DeviceContext_PSSetShaderResources(g_device_state.d3d11_context,
-                Stage, 1, &tex->srv);
+            d3d8_srv_bind(&g_srv_bindings, g_device_state.d3d11_context,
+                         g_d3d8_bind_epoch, Stage, tex->srv);
         }
         /* Mark texture stage as active */
         if (g_device_state.tss[Stage][D3DTSS_COLOROP] == D3DTOP_DISABLE)
             g_device_state.tss[Stage][D3DTSS_COLOROP] = D3DTOP_MODULATE;
     } else {
-        ID3D11ShaderResourceView *null_srv = NULL;
-        ID3D11DeviceContext_PSSetShaderResources(g_device_state.d3d11_context,
-            Stage, 1, &null_srv);
+        d3d8_srv_bind(&g_srv_bindings, g_device_state.d3d11_context,
+                     g_d3d8_bind_epoch, Stage, NULL);
         g_device_state.tss[Stage][D3DTSS_COLOROP] = D3DTOP_DISABLE;
     }
     return S_OK;

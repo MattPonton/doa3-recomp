@@ -137,37 +137,47 @@ static unsigned s_dropped;               /* batches discarded with the queue ful
 static void mix_ring_push(const int16_t *samples, int frames)
 {
     extern int doa3_auto_capture_enabled(void);
-    if (!doa3_auto_capture_enabled()) return;
+    if (!doa3_auto_capture_enabled() || frames <= 0) return;
     AcquireSRWLockExclusive(&s_ring_lock);
     if (!s_ring) s_ring = (int16_t *)calloc((size_t)MIX_RING_FRAMES * XA2_CHANNELS, sizeof(int16_t));
     if (s_ring) {
-        int i;
-        for (i = 0; i < frames; i++) {
-            s_ring[s_ring_pos * 2] = samples[i * 2];
-            s_ring[s_ring_pos * 2 + 1] = samples[i * 2 + 1];
-            s_ring_pos = (s_ring_pos + 1) % MIX_RING_FRAMES;
+        unsigned count = (unsigned)frames, first;
+        if (count > MIX_RING_FRAMES) {
+            unsigned skip = count - MIX_RING_FRAMES;
+            samples += (size_t)skip * XA2_CHANNELS;
+            s_ring_pos = (s_ring_pos + skip) % MIX_RING_FRAMES;
+            count = MIX_RING_FRAMES;
         }
-        s_ring_fill = (s_ring_fill + (unsigned)frames > MIX_RING_FRAMES) ? MIX_RING_FRAMES
-                                                                          : s_ring_fill + (unsigned)frames;
+        first = MIX_RING_FRAMES - s_ring_pos;
+        if (first > count) first = count;
+        memcpy(s_ring + (size_t)s_ring_pos * XA2_CHANNELS, samples,
+               (size_t)first * XA2_CHANNELS * sizeof(int16_t));
+        memcpy(s_ring, samples + (size_t)first * XA2_CHANNELS,
+               (size_t)(count - first) * XA2_CHANNELS * sizeof(int16_t));
+        s_ring_pos = (s_ring_pos + count) % MIX_RING_FRAMES;
+        s_ring_fill = s_ring_fill + count > MIX_RING_FRAMES ? MIX_RING_FRAMES : s_ring_fill + count;
     }
     ReleaseSRWLockExclusive(&s_ring_lock);
 }
 
-void apu_mix_dump(const char *tag)
+typedef struct MixDump {
+    char name[64];
+    unsigned frames;
+    int16_t samples[MIX_RING_FRAMES * XA2_CHANNELS];
+} MixDump;
+/* Only the guest/host thread requests dumps. One pending job bounds capture
+ * memory, and closing the game drains that job before process termination. */
+static HANDLE s_dump_thread;
+static unsigned s_dumps;
+
+static DWORD WINAPI mix_dump_write(void *parameter)
 {
     extern FILE *doa3_diag_fopen(const char *, const char *);
-    static int s_dumps;
-    char name[64];
-    FILE *f;
-    unsigned bytes, start, i;
+    MixDump *dump = (MixDump *)parameter;
+    FILE *f = doa3_diag_fopen(dump->name, "wb");
+    unsigned bytes = dump->frames * XA2_CHANNELS * sizeof(int16_t);
     unsigned char h[44];
-    if (!s_ring || !s_ring_fill || s_dumps >= 8) return;
-    _snprintf_s(name, sizeof name, _TRUNCATE, "apu_mix_%s.wav", tag);
-    f = doa3_diag_fopen(name, "wb");
-    if (!f) return;
-    s_dumps++;
-    AcquireSRWLockShared(&s_ring_lock);
-    bytes = s_ring_fill * XA2_CHANNELS * 2;
+    if (!f) { free(dump); return 0; }
     memcpy(h, "RIFF", 4); { unsigned v = 36 + bytes; memcpy(h + 4, &v, 4); }
     memcpy(h + 8, "WAVEfmt ", 8);
     { unsigned v = 16; memcpy(h + 16, &v, 4); }
@@ -175,18 +185,51 @@ void apu_mix_dump(const char *tag)
     { unsigned sr = 48000, br = 48000 * XA2_CHANNELS * 2; memcpy(h + 24, &sr, 4); memcpy(h + 28, &br, 4); }
     { unsigned short ba = XA2_CHANNELS * 2, bits = 16; memcpy(h + 32, &ba, 2); memcpy(h + 34, &bits, 2); }
     memcpy(h + 36, "data", 4); memcpy(h + 40, &bytes, 4);
-    fwrite(h, 1, sizeof h, f);
+    {
+        int ok = fwrite(h, 1, sizeof h, f) == sizeof h &&
+                 fwrite(dump->samples, 1, bytes, f) == bytes;
+        if (fclose(f) != 0) ok = 0;
+        fprintf(stderr, "[XA2] %s Diagnostics\\%s (last %.1f s of the mix)\n",
+                ok ? "wrote" : "failed writing", dump->name, dump->frames / 48000.0);
+    }
+    free(dump);
+    return 0;
+}
+
+void apu_mix_dump(const char *tag)
+{
+    extern int doa3_auto_capture_enabled(void);
+    int exiting = strcmp(tag, "exit") == 0;
+    MixDump *dump;
+    unsigned start, first;
+    if (s_dump_thread) {
+        if (WaitForSingleObject(s_dump_thread, exiting ? INFINITE : 0) != WAIT_OBJECT_0) return;
+        CloseHandle(s_dump_thread);
+        s_dump_thread = NULL;
+    }
+    if (!doa3_auto_capture_enabled() || s_dumps >= 8) return;
+    dump = (MixDump *)malloc(sizeof *dump);
+    if (!dump) return;
+    _snprintf_s(dump->name, sizeof dump->name, _TRUNCATE, "apu_mix_%s.wav", tag);
+    /* Snapshot only: neither file operations nor allocation hold the lock
+     * needed by the mixer. The worker owns this copy until writing finishes. */
+    AcquireSRWLockShared(&s_ring_lock);
+    dump->frames = s_ring_fill;
     start = (s_ring_pos + MIX_RING_FRAMES - s_ring_fill) % MIX_RING_FRAMES;
-    for (i = 0; i < s_ring_fill; ) {        /* oldest first, in up to two runs */
-        unsigned at = (start + i) % MIX_RING_FRAMES;
-        unsigned run = MIX_RING_FRAMES - at;
-        if (run > s_ring_fill - i) run = s_ring_fill - i;
-        fwrite(s_ring + (size_t)at * 2, XA2_CHANNELS * 2, run, f);
-        i += run;
+    first = MIX_RING_FRAMES - start;
+    if (first > s_ring_fill) first = s_ring_fill;
+    if (s_ring_fill) {
+        memcpy(dump->samples, s_ring + (size_t)start * XA2_CHANNELS,
+               (size_t)first * XA2_CHANNELS * sizeof(int16_t));
+        memcpy(dump->samples + (size_t)first * XA2_CHANNELS, s_ring,
+               (size_t)(s_ring_fill - first) * XA2_CHANNELS * sizeof(int16_t));
     }
     ReleaseSRWLockShared(&s_ring_lock);
-    fclose(f);
-    fprintf(stderr, "[XA2] wrote Diagnostics\\%s (last %.1f s of the mix)\n", name, s_ring_fill / 48000.0);
+    if (!dump->frames) { free(dump); return; }
+    if (exiting) { ++s_dumps; mix_dump_write(dump); return; }
+    s_dump_thread = CreateThread(NULL, 0, mix_dump_write, dump, 0, NULL);
+    if (s_dump_thread) ++s_dumps;
+    else free(dump);
 }
 
 /* Submit a buffer of mixed samples to XAudio2.

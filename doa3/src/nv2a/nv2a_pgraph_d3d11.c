@@ -760,7 +760,13 @@ static int texcache_make_room(uint32_t bytes, uint32_t w, uint32_t h,
     for (;;) {
         int i, free_slot = -1, lru = -1, lru_any = -1, reuse = -1;
         for (i = 0; i < TEXCACHE_N; i++) {
-            if (!g_pg.texcache[i].tex) { if (free_slot < 0) free_slot = i; continue; }
+            if (!g_pg.texcache[i].tex) {
+                /* With space available no eviction/reuse decision is needed.
+                 * Avoid walking all 4096 entries for each cold allocation. */
+                if (g_pg.texcache_bytes + bytes <= TEXCACHE_BUDGET) return i;
+                if (free_slot < 0) free_slot = i;
+                continue;
+            }
             if (lru_any < 0 ||
                 (int32_t)(g_pg.texcache[i].last_frame - g_pg.texcache[lru_any].last_frame) < 0)
                 lru_any = i;
@@ -946,7 +952,7 @@ static IDirect3DTexture8 *get_dynamic_texture_impl(IDirect3DDevice8 *dev)
             if (reused) s_texdiag.recycled++; else s_texdiag.created++;
             doa3_perf_end("Texture allocation/eviction", create_begin);
             if (create_begin) {
-                s_tex_perf.allocation_ticks += doa3_perf_begin() - create_begin;
+                s_tex_perf.allocation_ticks += doa3_perf_now() - create_begin;
                 if (reused) s_tex_perf.reused++; else s_tex_perf.created++;
             }
             g_pg.texcache[slot].bytes = bytes;
@@ -1157,7 +1163,7 @@ static IDirect3DTexture8 *get_dynamic_texture_impl(IDirect3DDevice8 *dev)
         g_pg.texcache[upload_slot].sig = sig;
         doa3_perf_end("Texture decode/upload", upload_begin);
         if (upload_begin) {
-            s_tex_perf.upload_ticks += doa3_perf_begin() - upload_begin;
+            s_tex_perf.upload_ticks += doa3_perf_now() - upload_begin;
             s_tex_perf.uploaded++;
         }
     }
@@ -3322,13 +3328,13 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     g_nv_draw_has_uv = 1;
     g_nv_draw_inline = 0;
     memset(&post, 0, sizeof post);
-    if (dt0) dt1 = doa3_perf_begin();
+    if (dt0) dt1 = doa3_perf_now();
     nv_apply_draw_state(dev, &sum, &post);
     g_pg.gtss_valid = 0;
     g_pg.tss3_valid = 0;
     g_pg.tss1_valid = 0;
     g_pg.tss0_alpha_valid = 0;
-    if (dt0) dt2 = doa3_perf_begin();
+    if (dt0) dt2 = doa3_perf_now();
 
     /* Constants. */
     memset(&cb, 0, sizeof cb);
@@ -3429,7 +3435,7 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
         if (s_s1 < 0) { const char *e = getenv("DOA3_COMB_STAGE1_ONLY"); s_s1 = (e && *e == '1'); }
         use_comb = !s_off && (!s_s1 || (g_pg.tex[1].enabled && ((g_pg.shader_prog >> 5) & 0x1Fu) != 0u));
     }
-    {   /* DOA3 DIAG: every distinct combiner configuration seen on this path. */
+    if (doa3_perf_enabled > 0) { /* Census is diagnostic work, not draw state. */
         static uint32_t s_seen[64][4]; static int s_n;
         uint32_t key[4] = { NVREG(0x0AC0) ^ (NVREG(0x0AC4) * 3u) ^ (NVREG(0x0AC8) * 7u), NVREG(0x0260) ^ (NVREG(0x0264) * 3u),
                             NVREG(0x0288), NVREG(0x028C) ^ (NVREG(0x1E60) << 20) ^ (g_pg.shader_prog << 8) ^ (g_pg.tex[1].enabled << 31) };
@@ -3444,7 +3450,7 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
                     NVREG(0x03B8), lit, NVREG(0x0A60), use_comb ? " [combiner path]" : "");
         }
     }
-    if (dt0) dt3 = doa3_perf_begin();
+    if (dt0) dt3 = doa3_perf_now();
     if (use_comb) {
         NV2ACombinerState cs;
         int st;
@@ -3462,7 +3468,7 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     }
     dev->lpVtbl->SetRenderState(dev, D3DRS_SPECULARENABLE,
                                 (cb.spec[1] != 0.0f && nv_final_reads_v1()) ? TRUE : FALSE);
-    if (dt0) dt4 = doa3_perf_begin();
+    if (dt0) dt4 = doa3_perf_now();
     {
         int clipped = nv_apply_window_clip(0);
         dev->lpVtbl->BeginScene(dev);
@@ -3471,7 +3477,7 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
                         &cb);
         if (clipped) { extern void d3d8_ResetScissorRect(void); d3d8_ResetScissorRect(); }
     }
-    if (dt0) dt5 = doa3_perf_begin();
+    if (dt0) dt5 = doa3_perf_now();
     dev->lpVtbl->SetRenderState(dev, D3DRS_SPECULARENABLE, FALSE);
     if (use_comb) {
         int st;
@@ -3484,7 +3490,7 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     g_pg.stats.draw_calls++;
     g_pg.stats.vertices_submitted += ni;
     if (dt0) {
-        LONGLONG end = doa3_perf_begin();
+        LONGLONG end = doa3_perf_now();
         g_doa3_dt[0] += dt1 - dt0;  g_doa3_dt[1] += dt2 - dt1;
         g_doa3_dt[2] += dt3 - dt2;  g_doa3_dt[3] += dt4 - dt3;
         g_doa3_dt[4] += dt5 - dt4;  g_doa3_dt[5] += end - dt5;

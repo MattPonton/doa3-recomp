@@ -4,3 +4,5 @@ enable_testing()
 add_executable(debug_settings_test debug_settings_test.c ../../src/game/debug_settings.c)
 target_include_directories(debug_settings_test PRIVATE ../../src/game ../../src)
 add_test(NAME debug_settings COMMAND debug_settings_test)
+
+target_sources(debug_settings_test PRIVATE ../../src/perf_capture.c)
