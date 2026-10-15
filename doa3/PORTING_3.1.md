@@ -2091,3 +2091,31 @@ all. Now each cache slot records the frame it was verified in
 is used without hashing, and only images up to 1 KB are hashed whole
 (256 samples above that). Load-time address reuse (Hitomi/Kasumi) is
 still caught on the first bind of the next frame.
+
+### 0.0.133: the 10-second freeze was our own trace writer; per-draw timing
+
+0.0.132 brought X Octagon at 16:9 to a steady 60 fps on the tester's
+low-end PC and the Steam Deck; at 32:9 it measures ~55 in the centre and
+~44 at a wall with the whole stage in view. The traces show why: the
+wider view makes the game draw more of the stage -- 2073 draws (centre)
+vs 2717-2734 (whole stage) -- and the difference costs about 4.5 ms, ~7 us
+of host work per draw on that machine. Resolution does not matter.
+
+The ~10 s freeze the tester saw is visible in his log's 5-second [DRAW]
+lines: frames 2971 -> 3000 -> 3002 -> 3155, i.e. ~30 frames in ~10 s,
+exactly where the periodic automatic traces wrote frames 3000-3003
+(~3 MB of text each on X Octagon, ~130k small fprintf calls). Those
+periodic traces (every 1500 frames, a development aid) are removed;
+event-triggered traces (multisampled screens, frame-buffer effects, movie
+ends) and DOA3_MTRACE ranges remain, and every trace file now gets a 4 MB
+stdio buffer (doa3_mtrace_open).
+
+Timing for the next round, all switched on together by the diagnostics
+setting (main.c sets DOA3_PERF_CAPTURE=1 through _putenv_s when it is on,
+so testers need no environment variable):
+- Jay's existing [PERF-PHASE] (frames >= 25 ms split into pacing,
+  workers, push-buffer translation and the rest) and [PERF-FRAME];
+- new [DRAWTIME] every 5 s: GPU fixed-function draws per frame and the
+  average microseconds per draw in vertex fetch, nv_apply_draw_state,
+  constant building, combiner setup and stage textures, d3d8_DrawNv2aFF,
+  and cleanup, plus the resulting ms per frame.

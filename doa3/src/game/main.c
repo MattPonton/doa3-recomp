@@ -106,6 +106,13 @@ static int doa3_init_graphics(void)
     video_settings_load();
     audio_settings_load();
     debug_settings_load();
+    /* Diagnostics on (Debug menu / [Debug] AutoCapture) also turns on the
+     * frame and draw timing lines ([PERF-PHASE], [PERF-FRAME], [DRAWTIME]),
+     * which otherwise need DOA3_PERF_CAPTURE set before launch. _putenv_s
+     * updates both the CRT and the process environment, before any timer
+     * caches its switch. */
+    if (doa3_auto_capture_enabled() && !getenv("DOA3_PERF_CAPTURE"))
+        _putenv_s("DOA3_PERF_CAPTURE", "1");
     {   /* online play: settings and winsock (no sockets until the user hosts or joins) */
         extern void netplay_init(void);
         netplay_init();

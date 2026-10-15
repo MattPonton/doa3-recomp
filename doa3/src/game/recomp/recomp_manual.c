@@ -1142,6 +1142,16 @@ static void d3d4134_capture_frame(unsigned frame)
 /* Method trace of chosen frames: DOA3_MTRACE="a-b,c-d" (off by default)
  * writes mtrace_NNNN.txt with every NV2A method of frame NNNN. Called at
  * each flip with the number of the frame that comes next. =0 turns it off. */
+/* Method-trace files: one ~3 MB text file per traced frame on busy stages,
+ * written by ~130k small fprintf calls. A 4 MB stdio buffer turns that into
+ * a handful of large writes instead of hundreds of 4 KB ones. */
+static FILE *doa3_mtrace_open(const char *name)
+{
+    FILE *f = doa3_diag_fopen(name, "w");
+    if (f) setvbuf(f, NULL, _IOFBF, 4u << 20);
+    return f;
+}
+
 static void doa3_mtrace_frame(unsigned next)
 {
     extern FILE *g_doa3_mtrace;
@@ -1166,7 +1176,7 @@ static void doa3_mtrace_frame(unsigned next)
         if (next >= s_lo[k] && next <= s_hi[k]) {
             char path[64];
             sprintf(path, "mtrace_%04u.txt", next);
-            g_doa3_mtrace = doa3_diag_fopen(path, "w");
+            g_doa3_mtrace = doa3_mtrace_open(path);
             return;
         }
     if (!doa3_auto_capture_enabled()) return;
@@ -1182,7 +1192,7 @@ static void doa3_mtrace_frame(unsigned next)
                 s_cnt++; s_last = next;
                 g_doa3_aa_shot = next;
                 sprintf(path, "mtrace_fb_%05u.txt", next);
-                g_doa3_mtrace = doa3_diag_fopen(path, "w");
+                g_doa3_mtrace = doa3_mtrace_open(path);
                 fprintf(stderr, "[FBFX] frame-buffer sampling effect: tracing frame %u -> %s + aa_%05u.bmp\n", next, path, next);
                 return;
             }
@@ -1205,7 +1215,7 @@ static void doa3_mtrace_frame(unsigned next)
                     char path[64];
                     g_doa3_mv_shot[q] = next;
                     sprintf(path, "mtrace_mvend_%05u.txt", next);
-                    g_doa3_mtrace = doa3_diag_fopen(path, "w");
+                    g_doa3_mtrace = doa3_mtrace_open(path);
                     if (q == 4) s_base = 0;
                     return;
                 }
@@ -1222,22 +1232,17 @@ static void doa3_mtrace_frame(unsigned next)
             s_at = 0;
             g_doa3_aa_shot = next;
             sprintf(path, "mtrace_aa_%05u.txt", next);
-            g_doa3_mtrace = doa3_diag_fopen(path, "w");
+            g_doa3_mtrace = doa3_mtrace_open(path);
             fprintf(stderr, "[AA] tracing frame %u (multisampled screen) -> %s + aa_%05u.bmp\n", next, path, next);
             return;
         }
     }
-    /* In-engine screens: two consecutive frames every 25 s past frame 1500
-     * (at most 40 files), to compare what changes between frames of the
-     * same scene -- the 3D geometry differs from frame to frame. */
-    {   static int s_auto;
-        if (next > 1500 && (next % 1500u) <= 3 && s_auto < 48) {   /* four consecutive frames */
-            char path[64];
-            s_auto++;
-            sprintf(path, "mtrace_%05u.txt", next);
-            g_doa3_mtrace = doa3_diag_fopen(path, "w");
-        }
-    }
+    /* The periodic traces (four consecutive frames every 1500, at most 48
+     * files) are gone: on a tester's low-end PC the four ~3 MB X Octagon
+     * traces at frame 3000 froze the game for ~10 s (the log's 5-second
+     * [DRAW] lines: frames 2971 -> 3000 -> 3002). Event-triggered traces
+     * (multisampled screens, frame-buffer effects, movie ends) and explicit
+     * DOA3_MTRACE ranges remain. */
 }
 
 static void d3d4134_frame_done(uint32_t dev)
@@ -1329,6 +1334,27 @@ void sub_001E27C0(void)
             s_dnext = GetTickCount() + 5000;
             fprintf(stderr, "[DRAW] frame %u, last 5 s of array draws: drawn %u, dropped (non-finite vertex) %u (%u verts), clipped away %u\n",
                     g_doa3_frames_presented, g_doa3_drop[2], g_doa3_drop[0], g_doa3_drop[3], g_doa3_drop[1]);
+            {   /* per-draw cost of the GPU fixed-function path (timing on only) */
+                extern LONGLONG g_doa3_dt[6];
+                extern unsigned g_doa3_dt_n;
+                static unsigned s_frames_at;
+                if (g_doa3_dt_n) {
+                    LARGE_INTEGER f; double us, tot = 0; int k;
+                    unsigned frames = g_doa3_frames_presented - s_frames_at;
+                    QueryPerformanceFrequency(&f);
+                    us = 1e6 / (double)f.QuadPart / (double)g_doa3_dt_n;
+                    for (k = 0; k < 6; k++) tot += (double)g_doa3_dt[k];
+                    fprintf(stderr, "[DRAWTIME] last 5 s: %u GPU draws (%.0f per frame), us per draw: fetch %.2f state %.2f "
+                            "constants %.2f combiners %.2f d3d-draw %.2f cleanup %.2f total %.2f (%.2f ms per frame)\n",
+                            g_doa3_dt_n, frames ? (double)g_doa3_dt_n / frames : 0.0,
+                            g_doa3_dt[0] * us, g_doa3_dt[1] * us, g_doa3_dt[2] * us, g_doa3_dt[3] * us,
+                            g_doa3_dt[4] * us, g_doa3_dt[5] * us, tot * us,
+                            frames ? tot * us * g_doa3_dt_n / frames / 1000.0 : 0.0);
+                    for (k = 0; k < 6; k++) g_doa3_dt[k] = 0;
+                    g_doa3_dt_n = 0;
+                }
+                s_frames_at = g_doa3_frames_presented;
+            }
             g_doa3_drop[0] = g_doa3_drop[1] = g_doa3_drop[2] = g_doa3_drop[3] = 0;
         }
     }

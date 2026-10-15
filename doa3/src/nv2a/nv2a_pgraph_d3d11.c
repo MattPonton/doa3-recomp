@@ -3053,6 +3053,11 @@ static int nv_attr_enabled(int slot)
 }
 
 /* 1 = drawn (or legitimately dropped) on the GPU, 0 = use the CPU path. */
+/* Per-draw timing of the GPU fixed-function path (DOA3_PERF_CAPTURE or
+ * diagnostics on): QPC ticks per phase, summed over successful draws and
+ * reported every 5 s as [DRAWTIME] by recomp_manual.c. */
+LONGLONG g_doa3_dt[6];       /* fetch, state, constants, combiners, d3d draw, cleanup */
+unsigned g_doa3_dt_n;
 static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int prim, int is_quads)
 {
     uint32_t n = g_pg.idx_count, i, lo = 0, nv = 0, ni = 0, need_idx;
@@ -3065,6 +3070,7 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     static int s_flip = -1;
     if (s_flip < 0) { const char *e = getenv("DOA3_FLIPW"); s_flip = (e && *e == '1'); }
 
+    LONGLONG dt0 = doa3_perf_begin(), dt1 = 0, dt2 = 0, dt3 = 0, dt4 = 0, dt5 = 0;
     if (ctx->run_program || !g_pg.composite_seen || s_flip) return 0;
     if (prim != D3DPT_TRIANGLELIST && prim != D3DPT_TRIANGLESTRIP && prim != D3DPT_TRIANGLEFAN) return 0;
     if (g_pg.tex[0].offset && nv_samples_framebuffer(g_pg.tex[0].offset)) return 0;
@@ -3148,11 +3154,13 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     g_nv_draw_has_uv = 1;
     g_nv_draw_inline = 0;
     memset(&post, 0, sizeof post);
+    if (dt0) dt1 = doa3_perf_begin();
     nv_apply_draw_state(dev, &sum, &post);
     g_pg.gtss_valid = 0;
     g_pg.tss3_valid = 0;
     g_pg.tss1_valid = 0;
     g_pg.tss0_alpha_valid = 0;
+    if (dt0) dt2 = doa3_perf_begin();
 
     /* Constants. */
     memset(&cb, 0, sizeof cb);
@@ -3268,6 +3276,7 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
                     NVREG(0x03B8), lit, NVREG(0x0A60), use_comb ? " [combiner path]" : "");
         }
     }
+    if (dt0) dt3 = doa3_perf_begin();
     if (use_comb) {
         NV2ACombinerState cs;
         int st;
@@ -3285,6 +3294,7 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     }
     dev->lpVtbl->SetRenderState(dev, D3DRS_SPECULARENABLE,
                                 (cb.spec[1] != 0.0f && nv_final_reads_v1()) ? TRUE : FALSE);
+    if (dt0) dt4 = doa3_perf_begin();
     {
         int clipped = nv_apply_window_clip(0);
         dev->lpVtbl->BeginScene(dev);
@@ -3293,6 +3303,7 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
                         &cb);
         if (clipped) { extern void d3d8_ResetScissorRect(void); d3d8_ResetScissorRect(); }
     }
+    if (dt0) dt5 = doa3_perf_begin();
     dev->lpVtbl->SetRenderState(dev, D3DRS_SPECULARENABLE, FALSE);
     if (use_comb) {
         int st;
@@ -3304,6 +3315,13 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     g_gpuff_stat[2] += nv;
     g_pg.stats.draw_calls++;
     g_pg.stats.vertices_submitted += ni;
+    if (dt0) {
+        LONGLONG end = doa3_perf_begin();
+        g_doa3_dt[0] += dt1 - dt0;  g_doa3_dt[1] += dt2 - dt1;
+        g_doa3_dt[2] += dt3 - dt2;  g_doa3_dt[3] += dt4 - dt3;
+        g_doa3_dt[4] += dt5 - dt4;  g_doa3_dt[5] += end - dt5;
+        g_doa3_dt_n++;
+    }
     return 1;
 }
 
