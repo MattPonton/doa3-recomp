@@ -2312,3 +2312,31 @@ tests on the v0.0.136 baseline showed no meaningful FPS improvement: both
 builds held approximately 60 FPS, with mixed 1% lows. These measurements
 predate integration of upstream v0.0.137-v0.0.142; see OPTIMIZATION_REVIEW.md
 for exact results and limits.
+
+### 0.0.144: texture-cache experiments for the long-session glitches
+
+A ~66-minute session (0.0.143, Story with several characters, the Nine
+Lives demo) ended with Zack's first Story cutscene (vs Gen Fu) black from
+start to finish while the game kept drawing 360-560 draws a frame. The
+0.0.138 counters show the texture cache filled its 192 MB budget at frame
+~56,000 (~16 min) and stayed full; from then on every new texture recycles
+or evicts a slot, and the cutscene's start recycled 40 slots at once. The
+Beach flicker also appeared only after long sessions. Both point at the
+cache's full-budget path, which short sessions never reach.
+
+Experiments, in doa3_settings.ini [Debug] (read at the first texture
+binding, logged as "[TEXCACHE] budget N MB, recycling on/off"):
+- TextureCacheMB=N (16-2048, default 192): a small budget (e.g. 32)
+  reaches the full-cache state within minutes instead of an hour;
+- TextureCacheRecycle=0: under pressure, free the oldest texture and
+  create a new one instead of reusing a same-sized allocation.
+TEXCACHE_BUDGET is now the variable g_texcache_budget
+(TEXCACHE_BUDGET_DEFAULT keeps the 192 MB value; the texture_cache test
+maps TEXCACHE_BUDGET to it and defines g_texcache_recycle).
+
+Separately, the same log had 200 "binding resolved to no texture" events
+for one 128x128 DXT1 texture (offset 020D2E00, format 07750C2A) in
+stretches around frames 53,000-104,000, with no failed creations. Each
+NULL return in get_dynamic_texture_impl now records its source line, and
+the [TEXDIAG] line prints it (once per texture and failure point) with
+control0.

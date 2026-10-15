@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include "cache_limits.h"
+/* Production defines TEXCACHE_BUDGET as a runtime variable (an ini override). */
+#define TEXCACHE_BUDGET TEXCACHE_BUDGET_DEFAULT
+static int g_texcache_recycle = 1;
 #define CHECK(x) do { if (!(x)) { fprintf(stderr,"line %d: %s\n",__LINE__,#x); exit(1); } } while(0)
 static struct {
     struct {

@@ -320,7 +320,8 @@ static struct {
      * Lookups go through a hash instead of scanning every slot. */
 #define TEXCACHE_N      4096
 #define TEXCACHE_HASH_N 16384                      /* power of two */
-#define TEXCACHE_BUDGET (192u * 1024u * 1024u)     /* host bytes: GPU + staging */
+#define TEXCACHE_BUDGET_DEFAULT (192u * 1024u * 1024u) /* host bytes: GPU + staging */
+#define TEXCACHE_BUDGET g_texcache_budget          /* [Debug] TextureCacheMB overrides */
     struct {
         IDirect3DTexture8 *tex;
         uint32_t off, w, h, fmt, levels;
@@ -414,6 +415,31 @@ static struct {
     unsigned pal_checks, pal_changes, pal_bad, pal_zero, gaps;
 } s_texdiag;
 static unsigned s_texdiag_lines[4];   /* null, palette bad, palette zero, gap */
+static unsigned s_tex_fail_line;      /* source line of the last NULL return in get_dynamic_texture_impl */
+
+/* Texture-cache experiments (0.0.144), from doa3_settings.ini [Debug]:
+ *   TextureCacheMB=N        budget in MB (default 192), so the budget pressure
+ *                           a long session reaches can be reproduced in minutes;
+ *   TextureCacheRecycle=0   under pressure, free the oldest texture and create a
+ *                           new one instead of reusing a same-sized allocation.
+ * Both are read once, at the first texture binding. */
+static uint32_t g_texcache_budget = TEXCACHE_BUDGET_DEFAULT;
+static int      g_texcache_recycle = 1;
+static void nv_texcache_config(void)
+{
+    static int s_done;
+    const char *ini;
+    int mb;
+    if (s_done) return;
+    s_done = 1;
+    ini = doa3_settings_ini_path();
+    mb = (int)GetPrivateProfileIntA("Debug", "TextureCacheMB", 192, ini);
+    if (mb < 16) mb = 16;
+    if (mb > 2048) mb = 2048;
+    g_texcache_budget = (uint32_t)mb * 1024u * 1024u;
+    g_texcache_recycle = GetPrivateProfileIntA("Debug", "TextureCacheRecycle", 1, ini) != 0;
+    fprintf(stderr, "[TEXCACHE] budget %d MB, recycling %s\n", mb, g_texcache_recycle ? "on" : "off");
+}
 static IDirect3DTexture8 *get_dynamic_texture_impl(IDirect3DDevice8 *dev);
 
 void pgraph_texdiag_report(void)
@@ -788,7 +814,7 @@ static int texcache_make_room(uint32_t bytes, uint32_t w, uint32_t h,
          * been used this frame. The caller resets its identity and uploads
          * every mip. Keeping the D3D resource avoids free/create driver work;
          * ordered UpdateSubresource preserves previously submitted draws. */
-        if (reuse >= 0) {
+        if (reuse >= 0 && g_texcache_recycle) {
             texcache_hash_remove(reuse);
             g_pg.texcache_bytes -= g_pg.texcache[reuse].bytes;
             g_pg.texcache[reuse].bytes = 0;
@@ -802,13 +828,21 @@ static int texcache_make_room(uint32_t bytes, uint32_t w, uint32_t h,
 
 static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
 {
-    IDirect3DTexture8 *t = get_dynamic_texture_impl(dev);
+    IDirect3DTexture8 *t;
+    nv_texcache_config();
+    s_tex_fail_line = 0;
+    t = get_dynamic_texture_impl(dev);
     if (!t && g_pg.tex[0].offset) {
+        static uint32_t s_last_key[2];
         s_texdiag.null_tex++;
-        if (s_texdiag_lines[0] < 200) {
+        /* One line per distinct texture and failure point (at most 200). */
+        if (s_texdiag_lines[0] < 200 &&
+            (s_last_key[0] != g_pg.tex[0].offset || s_last_key[1] != s_tex_fail_line)) {
+            s_last_key[0] = g_pg.tex[0].offset; s_last_key[1] = s_tex_fail_line;
             s_texdiag_lines[0]++;
-            fprintf(stderr, "[TEXDIAG] frame %u: binding resolved to no texture: offset %08X format %08X palette %08X rect %08X\n",
-                    g_pg.frame, g_pg.tex[0].offset, g_pg.tex[0].format, g_pg.tex[0].palette, g_pg.tex[0].image_rect);
+            fprintf(stderr, "[TEXDIAG] frame %u: binding resolved to no texture (nv2a_pgraph_d3d11.c:%u): offset %08X format %08X palette %08X rect %08X control0 %08X\n",
+                    g_pg.frame, s_tex_fail_line, g_pg.tex[0].offset, g_pg.tex[0].format, g_pg.tex[0].palette,
+                    g_pg.tex[0].image_rect, g_pg.tex[0].control0);
         }
     }
     return t;
@@ -826,7 +860,7 @@ static IDirect3DTexture8 *get_dynamic_texture_impl(IDirect3DDevice8 *dev)
     D3DFORMAT d3dfmt;
     int upload_slot = -1;
 
-    if (!off || off >= 0x08000000u) return NULL; /* DOA3: guest RAM to 128 MB */
+    if (!off || off >= 0x08000000u) return (s_tex_fail_line = __LINE__, (IDirect3DTexture8 *)NULL); /* DOA3: guest RAM to 128 MB */
     {   /* DOA3 DIAG: why textures do or do not materialise. */
         extern uint32_t g_texfmt[64], g_texnull[4];
         g_texfmt[nvfmt & 63]++;
@@ -836,7 +870,7 @@ static IDirect3DTexture8 *get_dynamic_texture_impl(IDirect3DDevice8 *dev)
                            &palettised)) {
         extern uint32_t g_texnull[4];
         g_texnull[1]++;
-        return NULL;
+        return (s_tex_fail_line = __LINE__, (IDirect3DTexture8 *)NULL);
     }
 
     /* Size: swizzled/compressed carry log2 dims in the format register;
@@ -845,14 +879,14 @@ static IDirect3DTexture8 *get_dynamic_texture_impl(IDirect3DDevice8 *dev)
         uint32_t lu = (fmtreg & NV097_SET_TEXTURE_FORMAT_BASE_SIZE_U) >> 20;
         uint32_t lv = (fmtreg & NV097_SET_TEXTURE_FORMAT_BASE_SIZE_V) >> 24;
         if (swizzled || compressed) {
-            if (lu > 12 || lv > 12) return NULL;
+            if (lu > 12 || lv > 12) return (s_tex_fail_line = __LINE__, (IDirect3DTexture8 *)NULL);
             w = 1u << lu;
             h = 1u << lv;
         } else {
             w = g_pg.tex[0].image_rect >> 16;
             h = g_pg.tex[0].image_rect & 0xFFFF;
             if (!w || !h) {
-                if (lu > 12 || lv > 12) return NULL;
+                if (lu > 12 || lv > 12) return (s_tex_fail_line = __LINE__, (IDirect3DTexture8 *)NULL);
                 w = 1u << lu;
                 h = 1u << lv;
             }
@@ -861,7 +895,7 @@ static IDirect3DTexture8 *get_dynamic_texture_impl(IDirect3DDevice8 *dev)
     if (w == 0 || h == 0 || w > 2048 || h > 2048) {
         extern uint32_t g_texnull[4];
         g_texnull[2]++;
-        return NULL;
+        return (s_tex_fail_line = __LINE__, (IDirect3DTexture8 *)NULL);
     }
 
     /* Mip levels. SET_TEXTURE_FORMAT bits 19:16 hold the number of levels
@@ -908,7 +942,7 @@ static IDirect3DTexture8 *get_dynamic_texture_impl(IDirect3DDevice8 *dev)
         if ((unsigned long long)off + need > 0x08000000ull) {
             extern uint32_t g_texnull[4];
             g_texnull[3]++;
-            return NULL;
+            return (s_tex_fail_line = __LINE__, (IDirect3DTexture8 *)NULL);
         }
     }
 
@@ -947,7 +981,7 @@ static IDirect3DTexture8 *get_dynamic_texture_impl(IDirect3DDevice8 *dev)
                  !g_pg.texcache[slot].tex)) {
                 g_pg.texcache[slot].tex = NULL;
                 s_texdiag.create_fail++;
-                return NULL;
+                return (s_tex_fail_line = __LINE__, (IDirect3DTexture8 *)NULL);
             }
             if (reused) s_texdiag.recycled++; else s_texdiag.created++;
             doa3_perf_end("Texture allocation/eviction", create_begin);
@@ -1149,8 +1183,8 @@ static IDirect3DTexture8 *get_dynamic_texture_impl(IDirect3DDevice8 *dev)
                                srcp + (size_t)yy * lp, row_bytes);
                 }
                 if (g_pg.dyn_tex->lpVtbl->UnlockRect(g_pg.dyn_tex, l) != 0 || !decoded)
-                    return NULL;
-            } else return NULL;
+                    return (s_tex_fail_line = __LINE__, (IDirect3DTexture8 *)NULL);
+            } else return (s_tex_fail_line = __LINE__, (IDirect3DTexture8 *)NULL);
             srcp += lsize;
             lw = (lw > 1) ? lw / 2 : 1;
             lh = (lh > 1) ? lh / 2 : 1;
@@ -1158,7 +1192,7 @@ static IDirect3DTexture8 *get_dynamic_texture_impl(IDirect3DDevice8 *dev)
         /* Supply the complete mip chain at creation instead of creating an
          * empty allocation and issuing one driver upload per mip. Cached
          * allocations continue to use their normal ordered update path. */
-        if (d3d8_TextureFinishUpload(g_pg.dyn_tex) != 0) return NULL;
+        if (d3d8_TextureFinishUpload(g_pg.dyn_tex) != 0) return (s_tex_fail_line = __LINE__, (IDirect3DTexture8 *)NULL);
         g_pg.texcache[upload_slot].uploaded = (swizzled || compressed);
         g_pg.texcache[upload_slot].sig = sig;
         doa3_perf_end("Texture decode/upload", upload_begin);
