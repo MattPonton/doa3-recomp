@@ -926,6 +926,23 @@ ID3D11PixelShader *d3d8_combiners_get_shader(const NV2ACombinerState *state)
  * Initialization / Shutdown
  * ================================================================ */
 
+/* What the last NV2A draw left bound (see d3d8_BindInvalidate): the combiner
+ * state its shader was looked up for, that shader, and the constants in
+ * g_combiner_cb. Consecutive draws mostly share all three. */
+static NV2ACombinerState  g_last_state;
+static ID3D11PixelShader *g_last_ps;
+static NV2APSConstants    g_last_consts;
+static int                g_last_consts_valid;
+static unsigned           g_last_epoch;
+
+static void d3d8_combiners_forget_bound(void)
+{
+    memset(&g_last_state, 0, sizeof g_last_state);
+    g_last_ps = NULL;
+    g_last_consts_valid = 0;
+    g_last_epoch = 0;
+}
+
 HRESULT d3d8_combiners_init(void)
 {
     D3D11_BUFFER_DESC cbd;
@@ -936,6 +953,7 @@ HRESULT d3d8_combiners_init(void)
     g_ps_token = 0;
     g_dirty = TRUE;
     g_frame_counter = 0;
+    d3d8_combiners_forget_bound();
 
     /* Create the PS constant buffer for combiner shaders.
      * Size must match NV2APSConstants, rounded up to 16-byte alignment. */
@@ -974,6 +992,7 @@ void d3d8_combiners_shutdown(void)
         ID3D11Buffer_Release(g_combiner_cb);
         g_combiner_cb = NULL;
     }
+    d3d8_combiners_forget_bound();
 
     fprintf(stderr, "NV2A combiners: Shut down\n");
 }
@@ -1018,6 +1037,9 @@ BOOL d3d8_combiners_prepare_draw(void)
     ID3D11PixelShader *ps;
     D3D11_MAPPED_SUBRESOURCE mapped;
     const DWORD *rs;
+    const NV2ACombinerState *cs;
+    NV2APSConstants consts;
+    BOOL rebind;
     HRESULT hr;
     int i;
 
@@ -1036,56 +1058,63 @@ BOOL d3d8_combiners_prepare_draw(void)
         d3d8_combiners_parse_token(g_ps_token, rs, &g_combiner_state);
         g_dirty = FALSE;
     }
+    cs = g_direct_on ? &g_direct_state : &g_combiner_state;
 
-    /* Get or compile the pixel shader for this combiner state */
-    ps = d3d8_combiners_get_shader(g_direct_on ? &g_direct_state : &g_combiner_state);
-    if (!ps) {
-        fprintf(stderr, "NV2A combiners: Failed to get shader, "
-                "falling back to FFP\n");
-        return FALSE;
+    /* Get or compile the pixel shader for this combiner state. The same
+     * state as the last draw needs no key, hash or probe. The LRU counter
+     * advances per lookup, so a shader reused this way is still the most
+     * recently used one. */
+    if (g_last_ps && !memcmp(cs, &g_last_state, sizeof *cs)) {
+        ps = g_last_ps;
+    } else {
+        ps = d3d8_combiners_get_shader(cs);
+        if (!ps) {
+            fprintf(stderr, "NV2A combiners: Failed to get shader, "
+                    "falling back to FFP\n");
+            g_last_ps = NULL;
+            return FALSE;
+        }
+        g_frame_counter++;   /* LRU tracking */
+        memcpy(&g_last_state, cs, sizeof *cs);
     }
 
-    /* Bind the combiner pixel shader */
-    ID3D11DeviceContext_PSSetShader(ctx, ps, NULL, 0);
+    rebind = g_last_epoch != g_d3d8_bind_epoch;
+    if (rebind || ps != g_last_ps)
+        ID3D11DeviceContext_PSSetShader(ctx, ps, NULL, 0);
+    g_last_ps = ps;
 
-    /* Update the PS constant buffer with current values.
-     *
-     * Even though the shader structure doesn't change, the constant
-     * values (C0, C1, fog, alpha ref) can change every frame via
-     * render state writes. So we always re-upload. */
-    hr = ID3D11DeviceContext_Map(ctx, (ID3D11Resource *)g_combiner_cb,
-                                0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-    if (SUCCEEDED(hr)) {
-        NV2APSConstants *cb = (NV2APSConstants *)mapped.pData;
+    /* The constant values (C0, C1, fog, alpha ref) can change with any
+     * render state write, so build them every draw -- but only upload when
+     * they differ from what the buffer already holds. */
+    memset(&consts, 0, sizeof consts);
+    for (i = 0; i < NV2A_MAX_COMBINER_STAGES; i++) {
+        d3dcolor_to_float4(cs->c0[i], consts.c0[i]);
+        d3dcolor_to_float4(cs->c1[i], consts.c1[i]);
+    }
+    d3dcolor_to_float4(cs->final_c0, consts.final_c0);
+    d3dcolor_to_float4(cs->final_c1, consts.final_c1);
+    d3dcolor_to_float4(rs[D3DRS_FOGCOLOR], consts.fog_color);
+    consts.alpha_ref = rs[D3DRS_ALPHAREF] / 255.0f;
+    consts.alpha_func = rs[D3DRS_ALPHAFUNC];
+    consts.alpha_test_enable = rs[D3DRS_ALPHATESTENABLE] ? 1 : 0;
+    consts.fog_enable = (!g_direct_on && rs[D3DRS_FOGENABLE]) ? 1 : 0;
 
-        const NV2ACombinerState *cs = g_direct_on ? &g_direct_state : &g_combiner_state;
-        /* Per-stage constants */
-        for (i = 0; i < NV2A_MAX_COMBINER_STAGES; i++) {
-            d3dcolor_to_float4(cs->c0[i], cb->c0[i]);
-            d3dcolor_to_float4(cs->c1[i], cb->c1[i]);
+    if (!g_last_consts_valid || memcmp(&consts, &g_last_consts, sizeof consts)) {
+        g_last_consts_valid = 0;
+        hr = ID3D11DeviceContext_Map(ctx, (ID3D11Resource *)g_combiner_cb,
+                                    0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+        if (SUCCEEDED(hr)) {
+            memcpy(mapped.pData, &consts, sizeof consts);
+            ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource *)g_combiner_cb, 0);
+            memcpy(&g_last_consts, &consts, sizeof consts);
+            g_last_consts_valid = 1;
         }
-
-        /* Final combiner constants */
-        d3dcolor_to_float4(cs->final_c0, cb->final_c0);
-        d3dcolor_to_float4(cs->final_c1, cb->final_c1);
-
-        /* Fog color from render state */
-        d3dcolor_to_float4(rs[D3DRS_FOGCOLOR], cb->fog_color);
-
-        /* Alpha test parameters */
-        cb->alpha_ref = rs[D3DRS_ALPHAREF] / 255.0f;
-        cb->alpha_func = rs[D3DRS_ALPHAFUNC];
-        cb->alpha_test_enable = rs[D3DRS_ALPHATESTENABLE] ? 1 : 0;
-        cb->fog_enable = (!g_direct_on && rs[D3DRS_FOGENABLE]) ? 1 : 0;
-
-        ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource *)g_combiner_cb, 0);
     }
 
     /* Bind the constant buffer to PS slot 0 */
-    ID3D11DeviceContext_PSSetConstantBuffers(ctx, 0, 1, &g_combiner_cb);
-
-    /* Advance frame counter for LRU tracking */
-    g_frame_counter++;
+    if (rebind)
+        ID3D11DeviceContext_PSSetConstantBuffers(ctx, 0, 1, &g_combiner_cb);
+    g_last_epoch = g_d3d8_bind_epoch;
 
     return TRUE;
 }

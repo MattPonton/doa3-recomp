@@ -27,9 +27,26 @@ static ID3D11DepthStencilState *g_ds_state = NULL;
 static ID3D11RasterizerState   *g_raster_state = NULL;
 static ID3D11SamplerState      *g_sampler_states[4] = { NULL, NULL, NULL, NULL };
 
-/* Last known render state hash for dirty detection */
-static DWORD g_last_blend_hash = 0;
-static DWORD g_last_ds_hash = 0;
+/* State objects, kept by their full descriptor. The NV2A translator applies
+ * state per draw and switches between a handful of combinations; this used
+ * to release and recreate the object at every switch. Entries are owned
+ * here; the g_*_state pointers above point into these caches. */
+#define D3D8_STATECACHE_N 64
+static struct { D3D11_BLEND_DESC desc; ID3D11BlendState *state; } g_blendcache[D3D8_STATECACHE_N];
+static unsigned g_blendcache_n;
+static struct { D3D11_DEPTH_STENCIL_DESC desc; ID3D11DepthStencilState *state; } g_dscache[D3D8_STATECACHE_N];
+static unsigned g_dscache_n;
+static D3D11_BLEND_DESC g_last_blend_desc;
+static D3D11_DEPTH_STENCIL_DESC g_last_ds_desc;
+
+/* What d3d8_states_apply last bound (see d3d8_BindInvalidate). */
+static unsigned g_states_epoch;
+static ID3D11BlendState *g_bound_blend;
+static float g_bound_blend_factor[4];
+static ID3D11DepthStencilState *g_bound_ds;
+static UINT g_bound_stencil_ref;
+static ID3D11RasterizerState *g_bound_raster;
+
 static D3D11_RASTERIZER_DESC g_last_raster_desc;
 static int g_polygon_bias;
 static float g_polygon_slope;
@@ -132,27 +149,6 @@ static D3D11_BLEND_OP d3d8_to_d3d11_blendop(DWORD op)
     }
 }
 
-/* Simple hash of relevant render state values for dirty detection */
-static DWORD hash_blend_states(const DWORD *rs)
-{
-    return rs[D3DRS_ALPHABLENDENABLE] ^
-           (rs[D3DRS_SRCBLEND] << 4) ^
-           (rs[D3DRS_DESTBLEND] << 8) ^
-           (rs[D3DRS_BLENDOP] << 12) ^
-           (rs[D3DRS_COLORWRITEENABLE] << 16);
-}
-
-static DWORD hash_ds_states(const DWORD *rs)
-{
-    return rs[D3DRS_ZENABLE] ^
-           (rs[D3DRS_ZWRITEENABLE] << 2) ^
-           (rs[D3DRS_ZFUNC] << 4) ^
-           (rs[D3DRS_STENCILENABLE] << 8) ^
-           (rs[D3DRS_STENCILFUNC] << 10) ^
-           (rs[D3DRS_STENCILREF] << 14) ^
-           (rs[D3DRS_STENCILMASK] << 18);
-}
-
 /* ================================================================
  * State object creation
  * ================================================================ */
@@ -172,17 +168,9 @@ static D3D11_BLEND d3d11_blend_alpha_equiv(D3D11_BLEND f)
 
 static void update_blend_state(const DWORD *rs)
 {
-    DWORD hash = hash_blend_states(rs);
     D3D11_BLEND_DESC bd;
     HRESULT hr;
-
-    if (hash == g_last_blend_hash && g_blend_state) return;
-    g_last_blend_hash = hash;
-
-    if (g_blend_state) {
-        ID3D11BlendState_Release(g_blend_state);
-        g_blend_state = NULL;
-    }
+    unsigned i;
 
     memset(&bd, 0, sizeof(bd));
     bd.RenderTarget[0].BlendEnable = rs[D3DRS_ALPHABLENDENABLE] ? TRUE : FALSE;
@@ -200,22 +188,31 @@ static void update_blend_state(const DWORD *rs)
     bd.RenderTarget[0].BlendOpAlpha = bd.RenderTarget[0].BlendOp;
     bd.RenderTarget[0].RenderTargetWriteMask = (UINT8)(rs[D3DRS_COLORWRITEENABLE] & 0x0F);
 
+    if (g_blend_state && !memcmp(&bd, &g_last_blend_desc, sizeof bd)) return;
+    for (i = 0; i < g_blendcache_n; i++)
+        if (!memcmp(&bd, &g_blendcache[i].desc, sizeof bd)) {
+            g_blend_state = g_blendcache[i].state;
+            g_last_blend_desc = bd;
+            return;
+        }
+    if (g_blendcache_n == D3D8_STATECACHE_N) {     /* full: start over */
+        for (i = 0; i < g_blendcache_n; i++) ID3D11BlendState_Release(g_blendcache[i].state);
+        g_blendcache_n = 0;
+    }
+    g_blend_state = NULL;
     hr = ID3D11Device_CreateBlendState(d3d8_GetD3D11Device(), &bd, &g_blend_state);
+    if (FAILED(hr) || !g_blend_state) { g_blend_state = NULL; return; }
+    g_blendcache[g_blendcache_n].desc = bd;
+    g_blendcache[g_blendcache_n].state = g_blend_state;
+    g_blendcache_n++;
+    g_last_blend_desc = bd;
 }
 
 static void update_depth_stencil_state(const DWORD *rs)
 {
-    DWORD hash = hash_ds_states(rs);
     D3D11_DEPTH_STENCIL_DESC dsd;
     HRESULT hr;
-
-    if (hash == g_last_ds_hash && g_ds_state) return;
-    g_last_ds_hash = hash;
-
-    if (g_ds_state) {
-        ID3D11DepthStencilState_Release(g_ds_state);
-        g_ds_state = NULL;
-    }
+    unsigned i;
 
     memset(&dsd, 0, sizeof(dsd));
     dsd.DepthEnable = rs[D3DRS_ZENABLE] ? TRUE : FALSE;
@@ -232,14 +229,43 @@ static void update_depth_stencil_state(const DWORD *rs)
     dsd.FrontFace.StencilPassOp = d3d8_to_d3d11_stencilop(rs[D3DRS_STENCILPASS]);
     dsd.BackFace = dsd.FrontFace;
 
+    if (g_ds_state && !memcmp(&dsd, &g_last_ds_desc, sizeof dsd)) return;
+    for (i = 0; i < g_dscache_n; i++)
+        if (!memcmp(&dsd, &g_dscache[i].desc, sizeof dsd)) {
+            g_ds_state = g_dscache[i].state;
+            g_last_ds_desc = dsd;
+            return;
+        }
+    if (g_dscache_n == D3D8_STATECACHE_N) {        /* full: start over */
+        for (i = 0; i < g_dscache_n; i++) ID3D11DepthStencilState_Release(g_dscache[i].state);
+        g_dscache_n = 0;
+    }
+    g_ds_state = NULL;
     hr = ID3D11Device_CreateDepthStencilState(d3d8_GetD3D11Device(), &dsd, &g_ds_state);
+    if (FAILED(hr) || !g_ds_state) { g_ds_state = NULL; return; }
+    g_dscache[g_dscache_n].desc = dsd;
+    g_dscache[g_dscache_n].state = g_ds_state;
+    g_dscache_n++;
+    g_last_ds_desc = dsd;
 }
 
 static void update_rasterizer_state(const DWORD *rs)
 {
+    /* Kept by descriptor like the blend and depth states; rs == NULL
+     * releases them all (shutdown). */
+    static struct { D3D11_RASTERIZER_DESC desc; ID3D11RasterizerState *state; } cache[64];
+    static unsigned cache_n;
     D3D11_RASTERIZER_DESC rd;
     HRESULT hr;
+    unsigned i;
 
+    if (!rs) {
+        for (i = 0; i < cache_n; i++) ID3D11RasterizerState_Release(cache[i].state);
+        cache_n = 0;
+        g_raster_state = NULL;
+        memset(&g_last_raster_desc, 0, sizeof g_last_raster_desc);
+        return;
+    }
     memset(&rd, 0, sizeof(rd));
 
     switch (rs[D3DRS_FILLMODE]) {
@@ -270,13 +296,23 @@ static void update_rasterizer_state(const DWORD *rs)
     /* Compare the complete descriptor: changing only polygon offset must
      * invalidate the rasterizer, including the next unbiased draw. */
     if (g_raster_state && !memcmp(&rd, &g_last_raster_desc, sizeof(rd))) return;
-    if (g_raster_state) {
-        ID3D11RasterizerState_Release(g_raster_state);
-        g_raster_state = NULL;
+    for (i = 0; i < cache_n; i++)
+        if (!memcmp(&rd, &cache[i].desc, sizeof rd)) {
+            g_raster_state = cache[i].state;
+            g_last_raster_desc = rd;
+            return;
+        }
+    if (cache_n == sizeof cache / sizeof cache[0]) {   /* full: start over */
+        for (i = 0; i < cache_n; i++) ID3D11RasterizerState_Release(cache[i].state);
+        cache_n = 0;
     }
-
+    g_raster_state = NULL;
     hr = ID3D11Device_CreateRasterizerState(d3d8_GetD3D11Device(), &rd, &g_raster_state);
-    if (SUCCEEDED(hr)) g_last_raster_desc = rd;
+    if (FAILED(hr) || !g_raster_state) { g_raster_state = NULL; return; }
+    cache[cache_n].desc = rd;
+    cache[cache_n].state = g_raster_state;
+    cache_n++;
+    g_last_raster_desc = rd;
 }
 
 /* ================================================================
@@ -434,20 +470,20 @@ HRESULT d3d8_states_init(void)
 
 void d3d8_states_shutdown(void)
 {
+    unsigned i;
     d3d8_debug_views_shutdown();
-    int i;
-    if (g_blend_state)  { ID3D11BlendState_Release(g_blend_state); g_blend_state = NULL; }
-    if (g_ds_state)     { ID3D11DepthStencilState_Release(g_ds_state); g_ds_state = NULL; }
-    if (g_raster_state) { ID3D11RasterizerState_Release(g_raster_state); g_raster_state = NULL; }
-    for (i = 0; i < 4; i++) {
-        if (g_sampler_states[i]) {
-            g_sampler_states[i] = NULL;   /* owned by the sampler cache */
-            g_sampler_states[i] = NULL;
-        }
-    }
-    g_last_blend_hash = 0;
-    g_last_ds_hash = 0;
-    memset(&g_last_raster_desc, 0, sizeof(g_last_raster_desc));
+    for (i = 0; i < g_blendcache_n; i++) ID3D11BlendState_Release(g_blendcache[i].state);
+    for (i = 0; i < g_dscache_n; i++) ID3D11DepthStencilState_Release(g_dscache[i].state);
+    g_blendcache_n = g_dscache_n = 0;
+    g_blend_state = NULL;
+    g_ds_state = NULL;
+    update_rasterizer_state(NULL);
+    for (i = 0; i < 4; i++)
+        g_sampler_states[i] = NULL;   /* owned by the sampler cache */
+    memset(&g_last_blend_desc, 0, sizeof g_last_blend_desc);
+    memset(&g_last_ds_desc, 0, sizeof g_last_ds_desc);
+    g_states_epoch = 0;
+    g_bound_blend = NULL; g_bound_ds = NULL; g_bound_raster = NULL;
     d3d8_SetPolygonOffset(0, 0, 0, 0, 1);
 }
 
@@ -456,6 +492,7 @@ void d3d8_states_apply(void)
     const DWORD *rs = d3d8_GetRenderStates();
     ID3D11DeviceContext *ctx = d3d8_GetD3D11Context();
     const float *blend_factor = g_blend_factor;
+    BOOL rebind;
 
     if (!rs || !ctx) return;
 
@@ -463,12 +500,30 @@ void d3d8_states_apply(void)
     update_depth_stencil_state(rs);
     update_rasterizer_state(rs);
 
-    if (g_blend_state)
+    /* Bind only what changed since the last apply, unless other code bound
+     * its own state in between. */
+    rebind = g_states_epoch != g_d3d8_bind_epoch;
+    if (g_blend_state && (rebind || g_blend_state != g_bound_blend ||
+                          memcmp(blend_factor, g_bound_blend_factor, sizeof g_bound_blend_factor))) {
         ID3D11DeviceContext_OMSetBlendState(ctx, g_blend_state, blend_factor, 0xFFFFFFFF);
-    if (g_ds_state)
+        g_bound_blend = g_blend_state;
+        memcpy(g_bound_blend_factor, blend_factor, sizeof g_bound_blend_factor);
+    }
+    if (g_ds_state && (rebind || g_ds_state != g_bound_ds ||
+                       (UINT)rs[D3DRS_STENCILREF] != g_bound_stencil_ref)) {
         ID3D11DeviceContext_OMSetDepthStencilState(ctx, g_ds_state, rs[D3DRS_STENCILREF]);
-    if (g_raster_state)
+        g_bound_ds = g_ds_state;
+        g_bound_stencil_ref = (UINT)rs[D3DRS_STENCILREF];
+    }
+    if (g_raster_state && (rebind || g_raster_state != g_bound_raster)) {
         ID3D11DeviceContext_RSSetState(ctx, g_raster_state);
+        g_bound_raster = g_raster_state;
+    }
+    if (rebind) {
+        unsigned k;
+        for (k = 0; k < 4; k++) g_sampler_key[k] = ~0ull;   /* rebind the samplers too */
+    }
+    g_states_epoch = g_d3d8_bind_epoch;
 
     /* Apply samplers for all 4 texture stages */
     {

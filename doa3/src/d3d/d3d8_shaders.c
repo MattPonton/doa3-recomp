@@ -727,6 +727,11 @@ void d3d8_shaders_shutdown(void)
  * Pre-draw binding
  * ================================================================ */
 
+/* See d3d8_internal.h. Starts at 1 so a cache whose epoch is still 0 has
+ * never bound anything. */
+unsigned g_d3d8_bind_epoch = 1;
+void d3d8_BindInvalidate(void) { g_d3d8_bind_epoch++; if (!g_d3d8_bind_epoch) g_d3d8_bind_epoch = 1; }
+
 void d3d8_shaders_prepare_draw(DWORD fvf)
 {
     ID3D11DeviceContext *ctx = d3d8_GetD3D11Context();
@@ -738,6 +743,7 @@ void d3d8_shaders_prepare_draw(DWORD fvf)
     UINT tex_count;
 
     if (!ctx || !g_vs || !g_ps) return;
+    d3d8_BindInvalidate();   /* rebinds VS, PS, layout and both CB slots */
 
     rs = d3d8_GetRenderStates();
     tex_count = (fvf & D3DFVF_TEXCOUNT_MASK) >> D3DFVF_TEXCOUNT_SHIFT;
@@ -1122,6 +1128,7 @@ static const char g_nv2aff_vs_source[] =
 static ID3D11VertexShader *g_nv2aff_vs;
 static ID3D11InputLayout  *g_nv2aff_layout;
 static ID3D11Buffer       *g_nv2aff_cb;
+static unsigned            g_nv2aff_bound_epoch;   /* epoch of the last full bind */
 
 long d3d8_Nv2aFF_Init(void)
 {
@@ -1163,6 +1170,7 @@ long d3d8_Nv2aFF_Init(void)
 
 void d3d8_Nv2aFF_Shutdown(void)
 {
+    g_nv2aff_bound_epoch = 0;
     if (g_nv2aff_cb)     { ID3D11Buffer_Release(g_nv2aff_cb); g_nv2aff_cb = NULL; }
     if (g_nv2aff_layout) { ID3D11InputLayout_Release(g_nv2aff_layout); g_nv2aff_layout = NULL; }
     if (g_nv2aff_vs)     { ID3D11VertexShader_Release(g_nv2aff_vs); g_nv2aff_vs = NULL; }
@@ -1180,8 +1188,13 @@ int d3d8_Nv2aFF_Bind(const Nv2aFFConstants *cb)
         return 0;
     memcpy(mapped.pData, cb, sizeof *cb);
     ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource *)g_nv2aff_cb, 0);
-    ID3D11DeviceContext_VSSetShader(ctx, g_nv2aff_vs, NULL, 0);
-    ID3D11DeviceContext_IASetInputLayout(ctx, g_nv2aff_layout);
-    ID3D11DeviceContext_VSSetConstantBuffers(ctx, 0, 1, &g_nv2aff_cb);
+    /* The constants change per draw; the shader, layout and slot do not,
+     * unless something else bound its own since (see d3d8_BindInvalidate). */
+    if (g_nv2aff_bound_epoch != g_d3d8_bind_epoch) {
+        ID3D11DeviceContext_VSSetShader(ctx, g_nv2aff_vs, NULL, 0);
+        ID3D11DeviceContext_IASetInputLayout(ctx, g_nv2aff_layout);
+        ID3D11DeviceContext_VSSetConstantBuffers(ctx, 0, 1, &g_nv2aff_cb);
+        g_nv2aff_bound_epoch = g_d3d8_bind_epoch;
+    }
     return 1;
 }

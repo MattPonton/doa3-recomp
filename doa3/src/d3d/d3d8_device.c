@@ -798,6 +798,10 @@ static HRESULT d3d8_compose_and_present(void)
         if (dss) ID3D11DepthStencilState_Release(dss);
         if (rtv) ID3D11RenderTargetView_Release(rtv);
         if (dsv) ID3D11DepthStencilView_Release(dsv);
+        /* The blit, the overlay and the combat view bound their own state;
+         * the restore above put the old objects back, but the constant
+         * buffer slots and samplers are not part of it. */
+        d3d8_BindInvalidate();
     }
 
     hr = d3d8_present_swap_chain(s->swap_chain, s->swap_flags);

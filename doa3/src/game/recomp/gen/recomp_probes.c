@@ -9,11 +9,20 @@ extern int g_fn_trace_on;
  * time slice (xbox_fiber_timeslice) when the 4 ms tick is due, the way the
  * hardware scheduler would preempt a polling loop. */
 void doa3_fn_register(uint32_t va, unsigned *count);   /* call profile, recomp_manual.c */
+/* The stack-balance check, call profile (DOA3_PROF) and function trace
+ * (DOA3_TRACE_FN) are development aids: built only with DOA3_PROBES
+ * (CMake option DOA3_PROBES=ON). Ordinary builds keep just the
+ * scheduling point, which every build needs. */
+#if defined(DOA3_PROBES)
 #define P(va, n) static unsigned c_##va; void sub_##va##_gen(void); void sub_##va(void) { \
     uint32_t e0 = g_esp; if (!c_##va++) doa3_fn_register(0x##va##u, &c_##va); sub_##va##_gen(); \
     if (g_fib_slice_due) xbox_fiber_timeslice(); \
     if (g_fn_trace_on) doa3_fn_trace(0x##va##u, e0); \
     if (g_esp - e0 != 4u + (n)) esp_probe_report(0x##va##u, e0, g_esp, 4u + (n)); }
+#else
+#define P(va, n) void sub_##va##_gen(void); void sub_##va(void) { \
+    sub_##va##_gen(); if (g_fib_slice_due) xbox_fiber_timeslice(); }
+#endif
 P(00011000, 0)
 P(00011B00, 0)
 P(00011C20, 0)

@@ -170,4 +170,13 @@ void    d3d8_states_apply(void);
 /* Create sampler state from TSS and apply to slot */
 void    d3d8_states_apply_sampler(DWORD stage);
 
+/* Bind cache. The NV2A draw path (combiner PS and its constants, blend /
+ * depth / rasterizer state, samplers, the NV2A VS, layout and VS b0) skips
+ * D3D11 calls that would rebind what is already bound. Any code that binds
+ * shaders, constant buffers, input layouts or OM/RS state outside that path
+ * must call d3d8_BindInvalidate() so the next NV2A draw binds everything
+ * again. Defined in d3d8_shaders.c. */
+extern unsigned g_d3d8_bind_epoch;
+void    d3d8_BindInvalidate(void);
+
 #endif /* DOA3_D3D8_INTERNAL_H */

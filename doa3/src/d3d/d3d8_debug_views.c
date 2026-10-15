@@ -133,6 +133,7 @@ void d3d8_debug_views_apply(void)
         ID3D11DeviceContext_OMSetBlendState(ctx, s_opaque[mask], NULL, 0xFFFFFFFF);
     }
     if (raster) ID3D11DeviceContext_RSSetState(ctx, raster);
+    d3d8_BindInvalidate();   /* the next draw must restore the normal PS/blend/raster */
 }
 
 void d3d8_debug_views_shutdown(void)

@@ -1435,6 +1435,7 @@ BOOL d3d8_vsh_prepare_draw(DWORD handle)
     }
 
     /* Bind the vertex shader */
+    d3d8_BindInvalidate();   /* VS, layout and VS b1 are no longer the NV2A path's */
     ID3D11DeviceContext_VSSetShader(ctx, entry->vs, NULL, 0);
 
     /* Bind the input layout */

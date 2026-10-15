@@ -14,6 +14,8 @@ ID3D11DeviceContext *d3d8_GetD3D11Context(void) { return ctx; }
 const DWORD *d3d8_GetRenderStates(void) { return states; }
 const DWORD *d3d8_GetTSS(DWORD stage) { (void)stage; return tss; }
 int d3d8_OffscreenTargetActive(void) { return 0; }
+unsigned g_d3d8_bind_epoch = 1;
+void d3d8_BindInvalidate(void) { g_d3d8_bind_epoch++; }
 
 static int compare(const void *a, const void *b)
 {

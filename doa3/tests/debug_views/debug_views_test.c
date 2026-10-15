@@ -19,6 +19,8 @@ ID3D11Device *d3d8_GetD3D11Device(void) { return device; }
 ID3D11DeviceContext *d3d8_GetD3D11Context(void) { return ctx; }
 const DWORD *d3d8_GetRenderStates(void) { return states; }
 int d3d8_OffscreenTargetActive(void) { return offscreen; }
+unsigned g_d3d8_bind_epoch = 1;
+void d3d8_BindInvalidate(void) { g_d3d8_bind_epoch++; }
 
 static ID3DBlob *compile(const char *text, const char *profile)
 {

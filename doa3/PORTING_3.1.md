@@ -2129,3 +2129,44 @@ only exported DOA3_PERF_CAPTURE at startup and doa3_perf_begin cached the
 switch forever. doa3_auto_capture_set now sets/clears DOA3_PERF_CAPTURE
 (unless the user set it before launch), and doa3_perf_begin re-reads it
 about once a second, so the timing lines start and stop with the checkbox.
+
+### 0.0.135: fewer D3D11 calls per draw, probes out of ordinary builds
+
+From the tester's 0.0.134 [DRAWTIME]/[PERF-PHASE] lines on X Octagon at
+32:9 (wall view, ~2860 GPU draws a frame, 25.7 ms frames): ~9 ms is the
+draws themselves, of which d3d8_DrawNv2aFF alone is ~1.7 us a draw, and
+~12 ms is game code. Two changes aimed at those:
+
+Bind cache (d3d8_internal.h: g_d3d8_bind_epoch / d3d8_BindInvalidate).
+The NV2A draw path no longer re-issues D3D11 calls for what is already
+bound:
+- combiners: the same combiner state as the last draw reuses its shader
+  without the key/hash/probe; PSSetShader only when the shader changes;
+  the PS constants are built every draw but only mapped and uploaded when
+  they differ from what the buffer holds; PSSetConstantBuffers only after
+  an invalidation. The LRU counter now advances per lookup instead of per
+  draw, which keeps the same eviction order.
+- render states: blend, depth-stencil and rasterizer objects are kept by
+  their full descriptor (64 of each) instead of released and recreated at
+  every change, and OMSetBlendState / OMSetDepthStencilState / RSSetState
+  run only when the object, blend factor or stencil ref changed. The old
+  dirty check hashed a few render states with XOR, so two different
+  states could collide (and STENCILWRITEMASK and the stencil ops were not
+  in the hash at all); comparing the whole descriptor removes that.
+- samplers: already cached; they are now also rebound after an
+  invalidation (the movie draw sets sampler 0 and did not restore it).
+- NV2A VS: the per-draw constants are still uploaded; VSSetShader,
+  IASetInputLayout and VSSetConstantBuffers only after an invalidation.
+Everything else that binds shaders or OM/RS state calls
+d3d8_BindInvalidate: the generic D3D8 shader path, the programmable VS
+path, the debug views (when active), the movie draw, and the end of the
+Present blit (overlay, combat view). Comparing object pointers is safe
+because an object that is still bound is kept alive by the context.
+
+Probes. Every recompiled function's wrapper (gen/recomp_probes.c) did a
+stack-balance check, a first-call registration for the call profile and a
+trace test on every call. These are development aids and are now built
+only with the CMake option DOA3_PROBES=ON (esp_probes.py emits both
+forms); ordinary builds keep only the fiber scheduling point, which every
+build needs. With probes off, DOA3_PROF and DOA3_TRACE_FN have nothing to
+report.

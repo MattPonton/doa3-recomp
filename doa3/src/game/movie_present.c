@@ -635,6 +635,7 @@ static void movie_upload(ID3D11DeviceContext *ctx, const void *src, int pitch)
 /* True while the host presenter still owns the screen (the intro movie is
  * being played by this module, not by the guest's own draws). Guest geometry
  * submitted in that window must not be composited over the movie. */
+void d3d8_BindInvalidate(void);   /* d3d8_internal.h */
 static void movie_draw_to_guest(ID3D11DeviceContext *ctx);
 static void movie_restore_guest_viewport(ID3D11DeviceContext *ctx);
 static DWORD    s_guest_movie_tick;   /* last guest-decoded frame shown (non-3.0) */
@@ -744,6 +745,7 @@ static void movie_draw_to_guest(ID3D11DeviceContext *ctx)
     vp.TopLeftY = 0.0f;
     vp.MinDepth = 0.0f; vp.MaxDepth = 1.0f;
 
+    d3d8_BindInvalidate();   /* the next NV2A draw rebinds its shaders, layout and samplers */
     ID3D11DeviceContext_OMSetRenderTargets(ctx, 1, &rtv, NULL);
     ID3D11DeviceContext_ClearRenderTargetView(ctx, rtv, black);
     ID3D11DeviceContext_RSSetViewports(ctx, 1, &vp);

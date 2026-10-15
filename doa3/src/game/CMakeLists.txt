@@ -76,6 +76,15 @@ target_include_directories(doa3 PRIVATE
     ${NV2A_DIR}
 )
 
+# Development aid: per-function guest-stack checks, the DOA3_PROF call
+# profile and DOA3_TRACE_FN (gen/recomp_probes.c). Off by default: every
+# guest call pays for them, and ordinary builds only need the wrappers'
+# fiber scheduling point.
+option(DOA3_PROBES "Build the guest-stack probes and call profiler into every recompiled function" OFF)
+if(DOA3_PROBES)
+    target_compile_definitions(doa3 PRIVATE DOA3_PROBES=1)
+endif()
+
 if(MSVC)
     target_compile_options(doa3 PRIVATE
         /W3
