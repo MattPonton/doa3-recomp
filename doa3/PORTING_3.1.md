@@ -2256,3 +2256,23 @@ single apu_mix_exit.wav at shutdown remains.
 Zack's black character-select portrait in two aa_*.bmp shots was the
 model still loading (no costume list yet; the frame had 418 draws instead
 of 562); not a bug.
+
+### 0.0.139: README, debug guide, LICENSE and .recomp.json
+
+- README.md rewritten for this fork: the Japanese release (TC-001, XBE
+  certificate version 1, "v3.1"), current features (aspect ratios up to
+  32:9, game volume, streamer mode, training), first-run setup, the files
+  the port keeps next to DOA3.exe, every player-facing Escape-menu tab,
+  bug-report instructions, credits (including parkerallan/doa3-recomp and
+  the bundled libraries), a legal notice and the license summary. The
+  animated image and the outdated menu screenshot are gone.
+- docs/DEBUG.md: the Debug tab (unlockables, camera, combat diagnostics
+  and stage hazards, performance, vision modes, screenshots/UI,
+  diagnostics) and Online > Developer Settings, kept apart so tools can be
+  dropped before v1.0 without touching the README.
+- LICENSE: MIT text (the project had only the README statement), noting
+  that xemu-derived code stays LGPL-2.1-or-later (src/nv2a/nv2a_core.c
+  says so) and third_party libraries keep their own licenses.
+- .recomp.json at the repository root for recomp.fyi (see
+  parkerallan/doa3-recomp issue #4): Japan, revision 1 (the XBE
+  certificate version), status playable.

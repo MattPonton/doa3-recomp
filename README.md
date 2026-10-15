@@ -1,196 +1,169 @@
 # Dead or Alive 3 — Static Recompilation for Windows
 
-Translation of the original Xbox binary of Dead or Alive 3 into native C
-that compiles and runs on Windows as a native x86-64 executable.
+A native Windows port of the original Xbox **Dead or Alive 3**, made by
+translating the game's executable into C and running it on a purpose-built
+runtime (kernel, Direct3D 11 renderer, XAudio2 audio, input and networking).
+No emulator is involved.
 
-**Status:** All game modes are fully playable
+This fork targets the **Japanese release** (title ID TC-001, XBE certificate
+version 1), the version the community calls **v3.1**. The goal for v1.0 is a
+faithful 1:1 port of that version; PC additions are kept optional.
+
+**Status:** every game mode is playable. Work continues on accuracy and on
+performance for low-end PCs.
 
 ## Features
-- New online mode added for single and tag matches
-- Capped at 60 FPS
-- Windowed/Borderless and 4:3/16:9 options
-- Internal resolution scaling to 1440p (3x)
 
-<img width="640" height="480" alt="izuna" src="https://github.com/user-attachments/assets/cb91f3eb-0e5c-4043-b23a-96ab06497ac8" />
+- Native x86-64 Windows executable; also runs on Steam Deck through Proton
+  (Proton Experimental recommended)
+- Windowed or borderless fullscreen
+- Aspect ratios: 4:3 (full screen or anamorphic), 16:9, 21:9 and 32:9
+- Internal resolution 1x (480p), 2x (960p) or 3x (1440p)
+- Keyboard, Xbox and PS4 controllers, up to four players, with per-player
+  bindings
+- Online play for single and tag matches, with automatic or manual input delay
+- Master volume plus the game's own Music / Sound effects / Voice levels
+- Streamer mode: mutes the licensed Aerosmith songs wherever they play
+- Training: record and replay the Sparring dummy's inputs
+- Screenshots (PNG) at render resolution, without the overlay
+
+## Getting started
+
+1. Download the latest release from the **Releases** tab and extract it.
+2. Run `DOA3.exe`.
+3. On first launch, choose your own disc image of Dead or Alive 3 (Japanese
+   release) in `.xiso` or `.iso` format. The game files are extracted into an
+   `assets` folder next to `DOA3.exe` and save data is created; after that the
+   game starts normally.
+
+Game files are **not** included and are never downloaded. You need your own
+legally obtained copy.
+
+Files the port keeps next to `DOA3.exe`:
+
+| File / folder | Contents |
+| --- | --- |
+| `doa3_settings.ini` | Video, audio and general settings |
+| `doa3_input.ini` | Controller and keyboard bindings |
+| `HDD\E\UDATA\54430001\` | The game's save data |
+| `Screenshots\` | Screenshots |
+| `doa3_log.txt` | Log, only when **Write log files** is on |
+| `Diagnostics\` | Developer captures, only when diagnostics are on; cleared at each launch |
+
+## Settings (Escape menu)
+
+Press **Escape** at any time to open the settings overlay. Most tabs have
+**Reset to defaults** and **Save** buttons; changes apply immediately, and
+**Save** keeps them for the next launch.
+
+### Online
+
+Host a match and share **Your code**, or paste a friend's code under **Join**.
+**Input delay** is picked from the ping (**Auto**) or set by hand (**Manual**,
+1–8 frames). **Disconnect** ends the session.
+
+### Controls
+
+- **Input only when focused**: ignore input while another window is active.
+- **Capture gameplay input in Escape menu** (on by default): while the menu is
+  open, controllers drive the menu and the game sees no input. Turn it off to
+  keep playing behind the menu.
+- **Player 1–4** tabs: choose a device (Automatic, keyboard or a specific
+  controller) and the Xbox controller type, then click a row to rebind it.
+  Right-click a binding to clear it. Player 1 defaults to Automatic; Players
+  2–4 default to None until assigned.
+
+### Video
+
+**Window type** (windowed / borderless fullscreen), **Aspect ratio** and
+**Internal resolution**.
+
+### Audio
+
+- **Master volume**: the PC port's overall output level, applied after the
+  game's own mix (including movies).
+- **Game volume**: the game's own **Music**, **Sound effects** and **Voice**
+  settings, the same as Options > Audio Setting, in steps of 5. They are
+  stored in the game's save the next time the game saves.
+- **Streamer mode**: silences "Nine Lives", "Amazing" and "Home Tonight"
+  wherever they play (opening, credits, sound test) and restores your music
+  level afterwards. Your saved music volume is never changed.
+
+### General
+
+**Write log files** writes `doa3_log.txt`, which is useful when reporting a
+bug.
+
+### Training
+
+Available in offline Sparring only. Three slots record up to ten seconds of
+dummy input each; play a slot once or on a loop. **Record dummy** temporarily
+gives you control of the dummy with your normal bindings; **Escape** finishes
+the recording or stops playback. Recordings last for the current Sparring
+session. Guard, counter-action and counter-hit settings stay in the game's own
+Sparring pause menu.
+
+### Debug
+
+Developer and inspection tools: unlock-all, free camera and field of view,
+hitbox and frame-data overlays, render views, a performance overlay, hiding the
+HUD or fighters, and diagnostic captures. Some of these may change or be
+removed before v1.0. See [docs/DEBUG.md](docs/DEBUG.md).
 
 ## Building
 
-Needs Visual Studio 2022 (C11) and CMake 3.20+.
+Requires Visual Studio 2022 (C11) and CMake 3.20 or newer.
 
 ```bash
 cmake -S doa3 -B doa3/build
 cmake --build doa3/build --config Release --target doa3
 ```
 
-The binary lands in `doa3/build/release/DOA3.exe`.
+The executable is written to `doa3/build/release/DOA3.exe`.
 
-## Running
+## Reporting bugs and contributing
 
-Download the latest release from the releases tab
-
-Game files are **not** included. On first launch of DOA3.exe, select your legally obtained copy of Dead or Alive 3 (USA) in `.xiso` or
-`.xiso` format. Asset files are automatically extracted, save data is created, and then the game will be ready to play once this completes.
-
-Press the **Escape** key to open the overlay menu. This has online, controller mapping, and other settings.
-
-Under **Controls**, use the **Player 1–4** tabs to configure each player.
-Player 1 defaults to **Automatic**; Players 2–4 default to **None** until
-assigned. Existing saved assignments still load. Select a device and controller type, then click **Save** to keep
-the assignments between launches.
-**Capture gameplay input in Escape menu** is enabled by default: while settings
-are open, game input stays neutral and controller navigation still works. Turn
-it off to let controller input reach the game behind the menu, then **Save**
-to remember your preference.
-
-Under **Audio**, adjust **Master volume** from 0% (mute) to 100%. It affects all
-game audio, including movies. Changes apply immediately; click **Save** to keep
-the level between launches. **Reset to defaults** restores 100%.
-
-<img width="642" height="512" alt="Screenshot 2026-10-05 172951" src="https://github.com/user-attachments/assets/a3f0d351-4e54-43b4-bb78-0d2f4bedec8b" />
+Please open an issue with steps to reproduce. Turn on **General > Write log
+files** first and attach `doa3_log.txt`; for graphics or timing problems, also
+enable **Debug > Diagnostics > Automatic diagnostic captures** and attach the
+`Diagnostics` folder. Copy both before relaunching, since a new launch
+replaces them. Pull requests are welcome.
 
 ## Credits
 
-This project stands on the amazing work of **Ned Heller (sp00nz)**:
+- [parkerallan/doa3-recomp](https://github.com/parkerallan/doa3-recomp) — the
+  original Dead or Alive 3 recompilation this fork is based on.
+- **Ned Heller (sp00nz)** — [xboxrecomp](https://github.com/sp00nznet/xboxrecomp),
+  the static recompilation toolkit the project started from (x86→C lifter,
+  XBE parser, kernel layer, D3D8→D3D11 layer, NV2A translator), and
+  [burnout3](https://github.com/sp00nznet/burnout3), the first static
+  recompilation of a retail Xbox game, from which the NV2A push-buffer
+  translator comes.
+- [Cxbx-Reloaded](https://github.com/Cxbx-Reloaded/Cxbx-Reloaded) — used as a
+  debugging reference.
+- [xemu](https://github.com/xemu-project/xemu) — NV2A documentation and code
+  for texture unswizzling.
+- [Xbox Dev Wiki](https://xboxdevwiki.net) — XBE format, kernel exports, NV2A
+  registers.
+- Third-party libraries: [Dear ImGui](https://github.com/ocornut/imgui),
+  [GekkoNet](https://github.com/HeatXD/GekkoNet),
+  [miniupnpc](https://github.com/miniupnp/miniupnp),
+  [pl_mpeg](https://github.com/phoboslab/pl_mpeg) and
+  [stb_image_write](https://github.com/nothings/stb).
 
-- [xboxrecomp](https://github.com/sp00nznet/xboxrecomp) — the static recompilation toolkit this is
-  built with: the x86→C lifter, XBE parser, kernel layer, D3D8→D3D11 compat layer, and NV2A
-  translator.
-- [burnout3](https://github.com/sp00nznet/burnout3) — the first static recompilation of a retail
-  original Xbox game, and the reference this port follows. The NV2A→D3D11 push-buffer translator
-  comes from it directly.
+## Legal
 
-Also relies on:
-
-- [Cxbx-Reloaded](https://github.com/Cxbx-Reloaded/Cxbx-Reloaded) — used as a debugging oracle;
-  Breakpointing the emulator and diffing its behaviour against ours found most of the bugs.
-- [xemu](https://github.com/xemu-project/xemu) — NV2A documentation and the texture unswizzling
-  algorithm.
-- [Xbox Dev Wiki](https://xboxdevwiki.net) — XBE format, kernel exports, NV2A registers.
+This project is not affiliated with, endorsed by or sponsored by Koei Tecmo,
+Team Ninja or Microsoft. *Dead or Alive* and all related names, characters,
+artwork, music and other game content are the property of their respective
+owners. This repository contains no game assets, data files or disc images;
+you must supply your own legally obtained copy of the game. The project's
+license grants no rights to the game or its content.
 
 ## License
 
-Project code is MIT, following xboxrecomp. Dead or Alive 3 and its assets are property of Tecmo /
-Koei Tecmo; nothing from the game is distributed here. You need your own copy.
-
-## Bugs & Contributing
-
-- Come across any issues? Be sure to open an issue ticket with reproduction steps. Error logs written to `doa3_log.txt` are also helpful.
-- Pull requests are welcome.
-
-## Debug unlocks
-
-Open **Escape > Debug > Unlockables** and tick **Unlock all unlockables** to access characters,
-costumes and Theater movies. Re-enter the selection screen to refresh its list.
-Unticking restores normal unlock checks; earned progress and the game save are
-preserved. Choose **Save** to remember the toggle in `doa3_settings.ini`.
-
-## Debug free camera
-
-Enter a stage, open **Escape > Debug > Camera controls**, enable **Free camera**, then close the
-overlay. **Reset to game camera** moves it back to the current normal view;
-unticking **Free camera** returns control to the game's camera.
-
-| Action | Keyboard / mouse | Controller |
-| --- | --- | --- |
-| Move forward/back and strafe | WASD | Left stick |
-| Look around | Mouse | Right stick |
-| Up / down | E / Q | RT / LT |
-| Faster / slower | Shift / Ctrl | LB / RB |
-
-Adjust **Camera speed** in Debug for close inspection or travelling across a
-stage. Escape opens the settings and releases the mouse; switching to another
-application also releases it. Fighter input is suppressed while free camera is
-enabled, but the fight continues, so Practice is useful for inspection.
-Camera mode and speed are temporary and do not change the save file. Free camera
-is unavailable during online play. The camera can pass through scenery; stages
-may have missing backsides or distant geometry outside the normal playable view.
-
-**Field of view** adjusts the vertical viewing angle from 15 to 120 degrees.
-It works with the normal game camera as well as free camera: lower values zoom
-in, higher values show more of the scene. **Reset field of view** restores the
-game's scripted zoom. FOV is temporary and does not apply during online play.
-
-## Debug vision modes
-
-### Combat diagnostics
-
-In **Escape > Debug > Combat diagnostics**, independently enable **Show
-hitboxes**, **Show hurtboxes**, and **Show attack frame data**. The overlays
-work with both the normal camera and free camera. Translucent solid red/pink
-spheres show strike volumes; green/cyan wireframe spheres and cylinders show
-body collision volumes. Amber
-indicates an attack that already registered contact. These outlines draw through
-scenery and characters and use the game's actual collision geometry, including
-stance mirroring. Throw ranges and special projectile collision are not shown.
-
-Frame data shows both players' move IDs and native move-frame counters, plus
-current and previous observed strike timing. Startup is the first active frame
-(1-based); active is the number of active frames observed, and recovery is the
-time observed after the final active frame. Partial captures and interruptions
-are marked. This is a live measurement, not a move-list database: cancels can
-shorten recovery, and hit/block advantage is not calculated. These settings last
-for the session and are disabled during online play. Like the Escape menu, these
-host overlays are not included in the game's clean PNG screenshots.
-
-### Performance
-
-**Escape > Debug > Performance > Show performance overlay** displays a compact
-panel at the top right with presentation FPS, current/average frame interval,
-99th-percentile and worst frame time, a rolling 240-frame graph, and render
-resolution. **Reset performance history** clears the samples. Timing includes
-pacing and presentation waits; it does not measure GPU render time or simulation
-FPS. The toggle is session-only and writes no profiling files.
-
-### Training
-
-**Escape > Training** is available only in offline Sparring. It adds three
-dummy input recording slots (up to 600 frames / ten seconds each), single
-playback and looped playback. Record temporarily controls the dummy using your
-normal keyboard/controller bindings. Press **Escape** to save the recording
-or stop playback. Directions replay as recorded, without resetting positions.
-Slots last for the current Sparring session. Recording/playback requires a
-solo fight with Exercise, the native pause menu and free camera disabled.
-
-Guard, counter-action and counter-hit settings remain in the original
-Sparring pause menu; the new tab does not duplicate those controls.
-
-### Rendering
-
-In **Escape > Debug > Vision modes**, choose a **Render view**:
-
-- **Normal:** original game rendering.
-- **Wireframe:** triangle edges for inspecting meshes and intersections.
-- **Vertex colors:** vertex lighting/color without textures or fog.
-- **UV checker:** the first texture coordinate set, with U in red, V in green,
-  and a repeating blue checker to inspect texture mapping.
-- **Distance:** view-axis distance in grayscale, near black to far white.
-  Adjust **Distance range** for close character inspection or a whole stage.
-
-**Show backfaces** disables GPU face culling for eligible draws. It can reveal
-the reverse side of submitted surfaces, but cannot restore geometry the game
-omits. These views affect depth-tested color draws; offscreen reflection/mask
-targets and draws with depth testing disabled retain normal rendering. Surface
-alpha tests and blending are replaced, so transparency and cutouts may look
-solid. The Escape overlay remains readable. Use **Restore normal rendering**
-to clear both the view mode and backface override. Options reset on launch and
-work independently of the free camera.
-
-## Screenshots and hidden UI
-
-Debug sections start collapsed; click a section heading to expand its controls.
-Open **Escape > Debug > Screenshots and UI** to assign a screenshot hotkey
-(default **F12**). Key changes save automatically. Close the settings and press
-the assigned key, or use **Take screenshot** inside the menu. PNGs save in the
-**Screenshots** folder beside `DOA3.exe`, at the game's render resolution and
-without the Escape overlay. Use a key not already assigned to game controls.
-
-Enable **Hide UI** for unobstructed stage and character views. This hides game
-screen overlays, including HUD and menus; some fades may also disappear.
-**Escape** still opens settings so you can untick it. Hide UI resets on launch.
-
-**Hide Player 1** and **Hide Player 2** independently hide the fighters during
-battle, including their model shadows and reflections. These session-only
-options do not stop attacks, movement, or collision diagnostics, and reset on
-launch or when resetting Debug settings. They are unavailable online.
-Hitboxes and hurtboxes also remain visible while the native Start menu pauses
-a fight, including when enabled after pausing.
+The original source code in this repository is released under the
+[MIT License](LICENSE). Code derived from xemu keeps its original license,
+LGPL-2.1-or-later, as noted in those files' headers. Third-party libraries in
+`doa3/third_party` remain under their own licenses, included with each
+library.
