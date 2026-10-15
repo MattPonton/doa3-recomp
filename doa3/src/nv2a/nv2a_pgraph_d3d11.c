@@ -327,6 +327,7 @@ static struct {
         uint32_t pal;       /* palette register this upload was expanded with */
         int uploaded;       /* static source already uploaded */
         uint32_t sig;       /* sampled fingerprint of level 0 at that upload */
+        uint32_t sig_frame; /* g_pg.frame the fingerprint was last verified in */
         uint32_t last_frame;/* g_pg.frame of the last draw that bound it */
         uint32_t bytes;     /* host bytes held: D3D11 texture + D3D8 staging copy */
     } texcache[TEXCACHE_N];
@@ -631,14 +632,18 @@ static void nv_apply_tex_address(IDirect3DDevice8 *dev, int stage)
     dev->lpVtbl->SetTextureStageState(dev, stage, 14 /*ADDRESSV*/, nv_d3d_address(a >> 8));
 }
 
-/* Fingerprint of a texture's level-0 bytes, taken on every cache hit.
- * Images up to 16 KB are hashed whole; larger ones by 256 dwords spread
- * across the image. 64 samples missed animations that rewrite only part of
- * a small texture in place. */
+/* Fingerprint of a texture's level-0 bytes: images up to 1 KB are hashed
+ * whole, larger ones by 256 dwords spread across the image. It is checked at
+ * most once per frame per texture (see sig_frame): the 0.0.74 version hashed
+ * every texture up to 16 KB in full on EVERY bind, and X Octagon binds ~4000
+ * textures a frame (2073 draws, two stages) -- up to ~20 ms of serial
+ * hashing per frame on a fast CPU, far more on the testers' low-end PCs.
+ * (The Beach shoreline it was meant for turned out to be a stage-0 texture
+ * matrix, fixed separately.) */
 static uint32_t nv_tex_signature(const uint8_t *p, size_t n)
 {
     uint32_t h = 2166136261u ^ (uint32_t)n;
-    size_t i, step = (n <= 16384) ? 4 : (n / 256) & ~(size_t)3;
+    size_t i, step = (n <= 1024) ? 4 : (n / 256) & ~(size_t)3;
     if (step < 4) step = 4;
     for (i = 0; i + 4 <= n; i += step) {
         uint32_t v;
@@ -859,23 +864,6 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
             return NULL;
         }
     }
-    {   size_t l0 = compressed ? (size_t)pitch * ((h + 3) / 4) : (size_t)pitch * h;
-        sig = nv_tex_signature((const uint8_t *)((uintptr_t)off + g_xbox_mem_offset), l0);
-        /* A palettised texture's look also depends on its palette, which the
-         * game can rewrite in place at the same address (palette-cycled
-         * animation, e.g. the Beach's shoreline waves): the cache key holds
-         * only the palette register, so fold the table's bytes in too. */
-        if (palettised) {
-            uint32_t paloff = palreg & 0xFFFFFFC0u, pcount = 256u >> ((palreg >> 2) & 3u);
-            if (paloff && (unsigned long long)paloff + 4ull * pcount <= 0x08000000ull) {
-                const uint8_t *pp = (const uint8_t *)((uintptr_t)paloff + g_xbox_mem_offset);
-                size_t i;
-                for (i = 0; i < 4u * pcount; i += 4) {
-                    uint32_t v; memcpy(&v, pp + i, 4);
-                    sig = (sig ^ v) * 16777619u;
-                }
-            }
-        } }
 
     /* One texture per distinct binding, kept alive.
      *
@@ -937,6 +925,7 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
             g_pg.texcache[slot].pal = palettised ? palreg : 0u;
             g_pg.texcache[slot].uploaded = 0;
             g_pg.texcache[slot].sig = 0;
+            g_pg.texcache[slot].sig_frame = g_pg.frame - 1u;
             texcache_hash_insert(slot);
         }
         g_pg.texcache[slot].last_frame = g_pg.frame;
@@ -957,6 +946,29 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
          * cache kept serving Kasumi's blue costume as Hitomi's face. Compare
          * a sampled fingerprint of the source on every hit and re-upload when
          * the bytes behind the address have changed. */
+        /* An uploaded swizzled/DXT texture already verified this frame is
+         * current: its source cannot change between draws of one frame. */
+        if ((swizzled || compressed) && g_pg.texcache[slot].uploaded &&
+            g_pg.texcache[slot].sig_frame == g_pg.frame)
+            return g_pg.dyn_tex;
+        {   size_t l0 = compressed ? (size_t)pitch * ((h + 3) / 4) : (size_t)pitch * h;
+            sig = nv_tex_signature((const uint8_t *)((uintptr_t)off + g_xbox_mem_offset), l0);
+            /* A palettised texture's look also depends on its palette, which the
+             * game can rewrite in place at the same address (palette-cycled
+             * animation, e.g. the Beach's shoreline waves): the cache key holds
+             * only the palette register, so fold the table's bytes in too. */
+            if (palettised) {
+                uint32_t paloff = palreg & 0xFFFFFFC0u, pcount = 256u >> ((palreg >> 2) & 3u);
+                if (paloff && (unsigned long long)paloff + 4ull * pcount <= 0x08000000ull) {
+                    const uint8_t *pp = (const uint8_t *)((uintptr_t)paloff + g_xbox_mem_offset);
+                    size_t i;
+                    for (i = 0; i < 4u * pcount; i += 4) {
+                        uint32_t v; memcpy(&v, pp + i, 4);
+                        sig = (sig ^ v) * 16777619u;
+                    }
+                }
+            } }
+        g_pg.texcache[slot].sig_frame = g_pg.frame;
         if ((swizzled || compressed) && g_pg.texcache[slot].uploaded &&
             g_pg.texcache[slot].sig == sig)
             return g_pg.dyn_tex;

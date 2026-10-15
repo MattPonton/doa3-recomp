@@ -2068,3 +2068,26 @@ Still open: why the KO slow-motion frames take 30-51 ms on PC. That is a
 rendering/CPU cost in those frames (no diagnostic capture fired there) and
 is the next thing to measure; it may also explain the KO sequence running
 ~1.2 s shorter than on hardware.
+
+### 0.0.132: texture freshness check once per frame (low-end frame rate)
+
+A tester's low-end PC idling on X Octagon at 32:9 averaged 37 fps (47 s,
+apu_voices.txt timestamps) with spikes past 300 ms, and its method traces
+(frames 3000-3003) show why the CPU side is heavy: 2073 draws a frame,
+2005 of them on the GPU fixed-function path, median 12 indices (87,611
+indices in total -- trivial for the GPU). 1556 draws repeat the previous
+draw's state; between draws the game mostly sends new matrices (1742 of
+2072 gaps), vertex array offsets and re-sent render states. So the frame
+cost is per-draw host overhead, not geometry or resolution.
+
+One per-draw cost was a regression from 0.0.74: get_dynamic_texture
+fingerprinted the source of every swizzled/DXT texture on every bind, and
+since 0.0.74 hashed textures up to 16 KB in full -- a serial FNV chain.
+At ~4000 binds a frame (two stages) that is up to ~21 ms per frame on a
+fast server CPU (measured: 4146 x 16 KB = 21.1 ms full, 1.3 ms sampled).
+The Beach shoreline it was meant for was a stage-0 texture matrix after
+all. Now each cache slot records the frame it was verified in
+(sig_frame), an uploaded swizzled/DXT texture already verified this frame
+is used without hashing, and only images up to 1 KB are hashed whole
+(256 samples above that). Load-time address reuse (Hitomi/Kasumi) is
+still caught on the first bind of the next frame.
