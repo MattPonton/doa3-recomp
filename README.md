@@ -139,8 +139,11 @@ replaces them. Pull requests are welcome.
   [burnout3](https://github.com/sp00nznet/burnout3), the first static
   recompilation of a retail Xbox game, from which the NV2A push-buffer
   translator comes.
+- [SkillerCMP/xemu-Cheats](https://github.com/SkillerCMP/xemu-Cheats) — the
+  xemu build used as the debugging reference for this fork, running the game
+  side by side with the port to compare behaviour.
 - [Cxbx-Reloaded](https://github.com/Cxbx-Reloaded/Cxbx-Reloaded) — used as a
-  debugging reference.
+  debugging reference for the original port.
 - [xemu](https://github.com/xemu-project/xemu) — NV2A documentation and code
   for texture unswizzling.
 - [Xbox Dev Wiki](https://xboxdevwiki.net) — XBE format, kernel exports, NV2A

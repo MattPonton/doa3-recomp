@@ -2287,3 +2287,9 @@ Jay-Collins (https://github.com/Jay-Collins).
 Online play has not been tested on the 3.1 build. It is removed from the
 README feature list, and the Online section says it is experimental and
 expected not to work yet.
+
+### 0.0.142: credit SkillerCMP/xemu-Cheats
+
+The README credits SkillerCMP/xemu-Cheats, the xemu build used as the
+debugging reference for this fork. Cxbx-Reloaded stays listed as the
+reference used for the original port.
