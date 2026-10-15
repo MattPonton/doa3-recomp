@@ -111,6 +111,8 @@ static int doa3_init_graphics(void)
      * which otherwise need DOA3_PERF_CAPTURE set before launch. _putenv_s
      * updates both the CRT and the process environment, before any timer
      * caches its switch. */
+    /* (doa3_auto_capture_set, called by debug_settings_load and the Debug
+     * menu, keeps DOA3_PERF_CAPTURE in step with the setting from here on.) */
     if (doa3_auto_capture_enabled() && !getenv("DOA3_PERF_CAPTURE"))
         _putenv_s("DOA3_PERF_CAPTURE", "1");
     {   /* online play: settings and winsock (no sockets until the user hosts or joins) */

@@ -8,12 +8,18 @@
  * the frame capture without depending on game symbols in renderer tests. */
 static inline LONGLONG doa3_perf_begin(void)
 {
+    /* Re-read the switch about once a second, so turning diagnostics on or
+     * off in the Debug menu (which sets/clears DOA3_PERF_CAPTURE) takes
+     * effect without a relaunch. */
     static volatile LONG enabled = -1;
+    static volatile ULONGLONG recheck;
     LARGE_INTEGER now;
     LONG on = InterlockedCompareExchange(&enabled, -1, -1);
-    if (on < 0) {
+    ULONGLONG tick = GetTickCount64();
+    if (on < 0 || tick >= recheck) {
         on = GetEnvironmentVariableA("DOA3_PERF_CAPTURE", NULL, 0) != 0;
         InterlockedExchange(&enabled, on);
+        recheck = tick + 1000;
     }
     if (!on) return 0;
     QueryPerformanceCounter(&now);

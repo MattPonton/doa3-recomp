@@ -30,7 +30,12 @@ int doa3_auto_capture_enabled(void)
 }
 void doa3_auto_capture_set(int enabled)
 {
+    /* Diagnostics also drive the frame/draw timing (DOA3_PERF_CAPTURE), live.
+     * A variable the user set before launch is left alone. */
+    static int s_user_env = -1;
     InterlockedExchange(&g_auto_capture, enabled != 0);
+    if (s_user_env < 0) s_user_env = GetEnvironmentVariableA("DOA3_PERF_CAPTURE", NULL, 0) != 0;
+    if (!s_user_env) _putenv_s("DOA3_PERF_CAPTURE", doa3_auto_capture_enabled() ? "1" : "");
 }
 
 int doa3_diag_clear(void)

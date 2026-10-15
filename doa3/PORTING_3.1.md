@@ -2119,3 +2119,13 @@ so testers need no environment variable):
   average microseconds per draw in vertex fetch, nv_apply_draw_state,
   constant building, combiner setup and stage textures, d3d8_DrawNv2aFF,
   and cleanup, plus the resulting ms per frame.
+
+### 0.0.134: timing follows the Diagnostics switch live
+
+The tester's 0.0.133 logs (centre ~55 fps, wall ~44 fps from the 5-second
+[DRAW] lines; no freeze any more) had no [DRAWTIME]/[PERF-PHASE] lines:
+diagnostics were switched on from the menu after launch, while 0.0.133
+only exported DOA3_PERF_CAPTURE at startup and doa3_perf_begin cached the
+switch forever. doa3_auto_capture_set now sets/clears DOA3_PERF_CAPTURE
+(unless the user set it before launch), and doa3_perf_begin re-reads it
+about once a second, so the timing lines start and stop with the checkbox.
