@@ -1,5 +1,6 @@
 #include "debug_settings.h"
 #include "debug_capture.h"
+#include "../perf_capture.h"
 #include "video_settings.h"
 #include "recomp/recomp_types.h"
 #include "recomp/gen/xbe_layout.h"
@@ -36,6 +37,7 @@ void doa3_auto_capture_set(int enabled)
     InterlockedExchange(&g_auto_capture, enabled != 0);
     if (s_user_env < 0) s_user_env = GetEnvironmentVariableA("DOA3_PERF_CAPTURE", NULL, 0) != 0;
     if (!s_user_env) _putenv_s("DOA3_PERF_CAPTURE", doa3_auto_capture_enabled() ? "1" : "");
+    doa3_perf_refresh();
 }
 
 int doa3_diag_clear(void)

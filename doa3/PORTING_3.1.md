@@ -2293,3 +2293,22 @@ expected not to work yet.
 The README credits SkillerCMP/xemu-Cheats, the xemu build used as the
 debugging reference for this fork. Cxbx-Reloaded stays listed as the
 reference used for the original port.
+
+### 0.0.143: reduce rendering and diagnostic overhead
+
+Skip redundant pixel-shader resource bindings with render-target and
+external-renderer invalidation. Share the diagnostic enable flag so disabled
+timing checks avoid repeated clock and locked operations. Reuse the SHA-256
+provider and avoid full texture-cache scans when a free slot fits the budget.
+
+Frame CSV formatting and writes now run on a bounded worker queue; live
+capture toggles reset timestamps and preserve the two-hour recording limit.
+Audio capture uses bulk ring copies and writes snapshots outside the mixer
+lock. Added lifecycle, concurrency, SRV binding and real streaming-ring
+regression coverage, and repaired standalone test integration.
+
+Measured CPU component costs improved, but matched 3D demo presentation
+tests on the v0.0.136 baseline showed no meaningful FPS improvement: both
+builds held approximately 60 FPS, with mixed 1% lows. These measurements
+predate integration of upstream v0.0.137-v0.0.142; see OPTIMIZATION_REVIEW.md
+for exact results and limits.

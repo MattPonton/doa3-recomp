@@ -11,6 +11,7 @@
 #include "d3d8_nv2aff.h"
 static ID3D11Device *device;
 static ID3D11DeviceContext *context;
+static unsigned g_d3d8_bind_epoch = 1;
 static ID3D11Device *d3d8_GetD3D11Device(void) { return device; }
 static ID3D11DeviceContext *d3d8_GetD3D11Context(void) { return context; }
 #include "nv2aff_impl.h"

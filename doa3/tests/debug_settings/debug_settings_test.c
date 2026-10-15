@@ -1,5 +1,6 @@
 #include "debug_settings.h"
 #include "debug_capture.h"
+#include "perf_capture.h"
 #include "recomp/recomp_types.h"
 #include <windows.h>
 #include <stdio.h>
@@ -13,6 +14,7 @@ const char *doa3_settings_ini_path(void) { return ini_path; }
 
 int main(void)
 {
+    int explicit_perf = GetEnvironmentVariableA("DOA3_PERF_CAPTURE", NULL, 0) != 0;
     char temp[MAX_PATH];
     int result = 0;
     const uint32_t flags[] = {0x59FB3C, 0x59FB3D, 0x5A0B47, 0x5A0C72};
@@ -90,9 +92,11 @@ int main(void)
         CHECK(!doa3_auto_capture_enabled());
         doa3_auto_capture_set(1);
         CHECK(doa3_auto_capture_enabled());
+        CHECK(doa3_perf_enabled == 1 && doa3_perf_begin() > 0);
         CHECK(debug_settings_save());
         doa3_auto_capture_set(0);
         CHECK(!doa3_auto_capture_enabled());
+        if (!explicit_perf) CHECK(doa3_perf_enabled == 0 && !doa3_perf_begin());
         CHECK(debug_settings_load());
         CHECK(doa3_auto_capture_enabled());
         CHECK(GetPrivateProfileIntA("Debug", "AutoCapture", 0, ini_path) == 1);

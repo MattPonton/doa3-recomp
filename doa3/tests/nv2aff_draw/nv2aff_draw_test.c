@@ -12,10 +12,12 @@
 #define HR(x) CHECK(SUCCEEDED(x))
 static ID3D11Device *device;
 static ID3D11DeviceContext *context;
-static struct { ID3D11DeviceContext *d3d11_context; } g_device_state;
+static struct { ID3D11Device *d3d11_device; ID3D11DeviceContext *d3d11_context; } g_device_state;
 static DWORD rs[256], tss[4][32];
 static D3DMATRIX identity;
-static ID3D11Buffer *g_ring;
+#define NV2AFF_RING_SIZE 4096
+static ID3D11Buffer *g_nv2aff_ring;
+static UINT g_nv2aff_ring_off;
 static ID3D11Buffer *g_nv2aff_ia_ring;
 static unsigned g_nv2aff_ia_epoch;
 static int g_nv2aff_ia_topology = -1;
@@ -36,29 +38,7 @@ UINT d3d8_GetNumLights(void) { return 0; }
 UINT d3d8_GetBackbufferWidth(void) { return 16; }
 UINT d3d8_GetBackbufferHeight(void) { return 16; }
 void d3d8_states_apply(void) {}
-/* A fresh immutable buffer per draw, holding the vertices at a non-zero
- * base vertex and the indices after them, so the draw's first-index and
- * base-vertex arguments are exercised. */
-static int nv2aff_ring_upload(const void *verts, UINT vsize, UINT stride,
-                              const void *idx, UINT isize,
-                              ID3D11Buffer **ring, UINT *base_vertex, UINT *first_index)
-{
-    D3D11_BUFFER_DESC bd = {0}; D3D11_SUBRESOURCE_DATA sd = {0};
-    static unsigned char data[4096];
-    UINT voff = 2 * stride, ioff = (voff + vsize + 3) & ~3u;
-    CHECK(ioff + isize <= sizeof data);
-    memset(data, 0, sizeof data);
-    memcpy(data + voff, verts, vsize);
-    memcpy(data + ioff, idx, isize);
-    if (g_ring) ID3D11Buffer_Release(g_ring);
-    g_ring = NULL;
-    bd.ByteWidth = sizeof data; bd.Usage = D3D11_USAGE_IMMUTABLE;
-    bd.BindFlags = D3D11_BIND_VERTEX_BUFFER | D3D11_BIND_INDEX_BUFFER;
-    sd.pSysMem = data;
-    HR(ID3D11Device_CreateBuffer(device, &bd, &sd, &g_ring));
-    *ring = g_ring; *base_vertex = voff / stride; *first_index = ioff / 2;
-    return 1;
-}
+/* Exercise the production uploader with a small ring to force wraps. */
 #include "draw_impl.h"
 static ID3D11Texture2D *target, *readback;
 static Nv2aFFVertex vertices[3];
@@ -90,6 +70,7 @@ int main(void)
     D3D11_RASTERIZER_DESC rd={0}; ID3D11RasterizerState *raster;
     NV2ACombinerState combiner={0};
     HR(D3D11CreateDevice(NULL,D3D_DRIVER_TYPE_WARP,NULL,0,NULL,0,D3D11_SDK_VERSION,&device,NULL,&context));
+    g_device_state.d3d11_device=device;
     g_device_state.d3d11_context=context;
     for(int i=0;i<4;i++) { ((float *)&identity)[i*5]=1; constants.clip[i][i]=1; combiner.tex_mode[i]=NV2A_TEXMODE_NONE; }
     constants.flags=NV2AFF_FLAG_HAS_COLOR;
@@ -120,9 +101,20 @@ int main(void)
     constants.clip[0][3]=0; draw_check(NULL,0x204080);
     for(int i=0;i<3;i++) vertices[i].color=0xff907020;
     draw_check(NULL,0x907020); draw_check(&combiner,0x10c030);
+    /* Appends must preserve base/index offsets, DISCARD wraps must retain
+     * the ring binding, and externally replaced IA state must be rebound. */
+    for (int i=0;i<80;i++) {
+        if (i%7==0) {
+            ID3D11Buffer *null_buffer=NULL; UINT zero=0;
+            ID3D11DeviceContext_IASetVertexBuffers(context,0,1,&null_buffer,&zero,&zero);
+            ID3D11DeviceContext_IASetIndexBuffer(context,NULL,DXGI_FORMAT_R16_UINT,0);
+            d3d8_BindInvalidate();
+        }
+        draw_check(i%2 ? &combiner : NULL,i%2 ? 0x10c030 : 0x907020);
+    }
     ID3D11DeviceContext_ClearState(context);
     d3d8_combiners_shutdown(); d3d8_Nv2aFF_Shutdown(); d3d8_shaders_shutdown();
-    ID3D11Buffer_Release(g_ring);
+    ID3D11Buffer_Release(g_nv2aff_ring);
     ID3D11RasterizerState_Release(raster); ID3D11Texture2D_Release(target); ID3D11Texture2D_Release(readback);
     ID3D11DeviceContext_Release(context); ID3D11Device_Release(device);
     puts("NV2A combiner/fallback transitions, changing colors and transforms pass");

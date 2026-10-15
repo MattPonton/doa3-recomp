@@ -1,5 +1,6 @@
 #define COBJMACROS
 #include "d3d8_shader_cache.h"
+#include "../perf_capture.h"
 #include <bcrypt.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -16,23 +17,32 @@ typedef struct CacheHeader {
     unsigned char digest[32];
 } CacheHeader;
 
+/* The algorithm provider is immutable and shared; each digest still owns
+ * its hash state. Keep the provider for the lifetime of the process. */
+static INIT_ONCE s_sha_once = INIT_ONCE_STATIC_INIT;
+static BCRYPT_ALG_HANDLE s_sha_algorithm;
+static BOOL CALLBACK init_sha(PINIT_ONCE once, PVOID parameter, PVOID *context)
+{
+    (void)once; (void)parameter; (void)context;
+    return BCryptOpenAlgorithmProvider(&s_sha_algorithm,
+        BCRYPT_SHA256_ALGORITHM, NULL, 0) >= 0;
+}
+
 static BOOL digest(const void *a, ULONG na, const void *b, ULONG nb,
                    const void *c, ULONG nc, const void *d, ULONG nd,
                    unsigned char out[32])
 {
-    BCRYPT_ALG_HANDLE algorithm = NULL;
     BCRYPT_HASH_HANDLE hash = NULL;
     BOOL ok = FALSE;
-    if (BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, NULL, 0) < 0)
+    if (!InitOnceExecuteOnce(&s_sha_once, init_sha, NULL, NULL))
         return FALSE;
-    if (BCryptCreateHash(algorithm, &hash, NULL, 0, NULL, 0, 0) >= 0 &&
+    if (BCryptCreateHash(s_sha_algorithm, &hash, NULL, 0, NULL, 0, 0) >= 0 &&
         BCryptHashData(hash, (PUCHAR)a, na, 0) >= 0 &&
         (!nb || BCryptHashData(hash, (PUCHAR)b, nb, 0) >= 0) &&
         (!nc || BCryptHashData(hash, (PUCHAR)c, nc, 0) >= 0) &&
         (!nd || BCryptHashData(hash, (PUCHAR)d, nd, 0) >= 0) &&
         BCryptFinishHash(hash, out, 32, 0) >= 0) ok = TRUE;
     if (hash) BCryptDestroyHash(hash);
-    BCryptCloseAlgorithmProvider(algorithm, 0);
     return ok;
 }
 
@@ -123,7 +133,6 @@ HRESULT d3d8_compile_shader_cached(const char *source, SIZE_T length,
     unsigned char key[32];
     wchar_t path[MAX_PATH];
     BOOL persistent = FALSE;
-    static int timing = -1;
     LARGE_INTEGER begin = {0}, end, frequency;
     HRESULT hr;
     if (cache_hit) *cache_hit = FALSE;
@@ -131,15 +140,14 @@ HRESULT d3d8_compile_shader_cached(const char *source, SIZE_T length,
     if (!code) return E_INVALIDARG;
     *code = NULL;
     if (!source || !entry || !profile || !length) return E_INVALIDARG;
-    if (timing < 0) timing = GetEnvironmentVariableA("DOA3_PERF_CAPTURE", NULL, 0) != 0;
-    if (timing) QueryPerformanceCounter(&begin);
+    begin.QuadPart = doa3_perf_begin();
     if (length <= UINT32_MAX &&
         digest(source, (ULONG)length, entry, (ULONG)strlen(entry) + 1,
                profile, (ULONG)strlen(profile) + 1, &flags, sizeof(flags), key))
         persistent = cache_path(key, path);
     if (persistent && (*code = load_bytecode(path, key)) != NULL) {
         if (cache_hit) *cache_hit = TRUE;
-        if (timing) {
+        if (begin.QuadPart) {
             QueryPerformanceCounter(&end); QueryPerformanceFrequency(&frequency);
             fprintf(stderr, "[SHADER] %s disk hit %.3f ms\n", profile,
                 1000.0 * (end.QuadPart - begin.QuadPart) / frequency.QuadPart);
@@ -149,7 +157,7 @@ HRESULT d3d8_compile_shader_cached(const char *source, SIZE_T length,
     hr = D3DCompile(source, length, name, NULL, NULL, entry, profile,
                     flags, 0, code, errors);
     if (SUCCEEDED(hr) && persistent) save_bytecode(path, key, *code);
-    if (timing) {
+    if (begin.QuadPart) {
         QueryPerformanceCounter(&end); QueryPerformanceFrequency(&frequency);
         fprintf(stderr, "[SHADER] %s compile%s %.3f ms\n", profile,
             FAILED(hr) ? " failed" : "", 1000.0 * (end.QuadPart - begin.QuadPart) / frequency.QuadPart);

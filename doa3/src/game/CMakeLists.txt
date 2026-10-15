@@ -26,6 +26,8 @@ set(NV2A_SOURCES
 # Game host sources
 set(GAME_SOURCES
     main.c
+    ../perf_capture.c
+    ../perf_frame_log.c
     doa3.rc                  # window/taskbar/exe icon
     movie_present.c
     video_settings.c

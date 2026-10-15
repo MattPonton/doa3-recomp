@@ -11,6 +11,7 @@
 #define HR(x) CHECK(SUCCEEDED(x))
 static ID3D11Device *device;
 static ID3D11DeviceContext *context;
+unsigned g_d3d8_bind_epoch = 1;
 static DWORD render_states[256];
 ID3D11Device *d3d8_GetD3D11Device(void) { return device; }
 ID3D11DeviceContext *d3d8_GetD3D11Context(void) { return context; }

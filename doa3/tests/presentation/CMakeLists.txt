@@ -5,3 +5,5 @@ add_executable(presentation_test presentation_test.c ../../src/d3d/d3d8_presenta
 target_include_directories(presentation_test PRIVATE ../../src/d3d)
 target_link_libraries(presentation_test PRIVATE d3d11 dxgi dxguid user32)
 add_test(NAME presentation COMMAND presentation_test)
+
+target_sources(presentation_test PRIVATE ../../src/perf_capture.c)

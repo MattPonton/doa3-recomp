@@ -18,6 +18,10 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "../perf_capture.h"
+#include "../perf_frame_log.h"
+
+static void doa3_perf_shutdown(void);
 
 #include "../kernel/kernel.h"
 #include "../kernel/xbox_memory_layout.h"
@@ -115,6 +119,7 @@ static int doa3_init_graphics(void)
      * menu, keeps DOA3_PERF_CAPTURE in step with the setting from here on.) */
     if (doa3_auto_capture_enabled() && !getenv("DOA3_PERF_CAPTURE"))
         _putenv_s("DOA3_PERF_CAPTURE", "1");
+    doa3_perf_refresh();
     {   /* online play: settings and winsock (no sockets until the user hosts or joins) */
         extern void netplay_init(void);
         netplay_init();
@@ -167,6 +172,8 @@ void doa3_pump_messages(void)
             fprintf(stderr, "[EXIT] window closed by user%c", 10);
             fflush(stderr);
             netplay_shutdown();
+            doa3_perf_shutdown();
+            { extern void apu_mix_dump(const char *tag); apu_mix_dump("exit"); }
             ExitProcess(0);
         }
         TranslateMessage(&msg);
@@ -300,9 +307,9 @@ static void doa3_watchdog_start(void)
     }
 }
 
-/* Opt-in, bounded frame capture for performance investigations. No per-frame
- * timer/file work in normal runs. Buffered output is flushed every 300 frames. */
-static int s_perf_enabled = -1;
+/* Opt-in, bounded frame capture. The render thread only queues samples;
+ * formatting, disk writes and periodic flushes run on the capture worker. */
+static int s_perf_enabled;
 static LARGE_INTEGER s_perf_input, s_perf_logic, s_perf_logic_input, s_perf_present;
 static unsigned s_perf_input_reads;
 void doa3_perf_input_sample(unsigned port)
@@ -319,53 +326,67 @@ void doa3_perf_logic_sample(void)
         s_perf_logic_input = s_perf_input;
     }
 }
+static void doa3_perf_shutdown(void)
+{
+    if (s_perf_enabled) {
+        unsigned dropped = doa3_perf_log_stop();
+        if (dropped) fprintf(stderr, "[PERF] dropped %u capture rows (writer busy)\n", dropped);
+        s_perf_enabled = 0;
+    }
+}
 static void doa3_perf_frame(void)
 {
     extern unsigned g_doa3_frames_presented;
-    static FILE *file;
+    extern int doa3_movie_host_owns_screen(void);
+    static int requested = -1, started;
     static LARGE_INTEGER frequency, first, previous;
     static unsigned count;
     LARGE_INTEGER now;
-    if (s_perf_enabled < 0) {
-        s_perf_enabled = getenv("DOA3_PERF_CAPTURE") != NULL;
-        if (s_perf_enabled) {
-            file = doa3_diag_fopen("performance_frames.csv", "w");
-            if (!file) { s_perf_enabled = 0; return; }
-            setvbuf(file, NULL, _IOFBF, 65536);
-            fputs("seconds,frame_ms,mode,movie,foreground,free_camera,input_age_ms,input_to_logic_ms,present_ms,logic_input_age_ms,input_reads\n", file);
-            QueryPerformanceFrequency(&frequency);
-            QueryPerformanceCounter(&first); previous = first;
+    int want = doa3_perf_enabled > 0;
+    Doa3PerfFrame frame;
+    if (requested != want) {
+        doa3_perf_shutdown();
+        requested = want;
+        s_perf_input.QuadPart = s_perf_logic.QuadPart = s_perf_logic_input.QuadPart = s_perf_present.QuadPart = 0;
+        s_perf_input_reads = 0;
+        if (want) {
+            s_perf_enabled = doa3_perf_log_start(
+                doa3_diag_fopen("performance_frames.csv", started ? "a" : "w"), !started);
+            if (s_perf_enabled) {
+                QueryPerformanceFrequency(&frequency);
+                QueryPerformanceCounter(&previous);
+                if (!started) first = previous;
+                started = 1;
+                count = 0;
+            }
         }
         return;
     }
     if (!s_perf_enabled) return;
     QueryPerformanceCounter(&now);
-    {
-        extern int doa3_movie_host_owns_screen(void);
-        fprintf(file, "%.6f,%.6f,%u,%d,%d,%d,%.6f,%.6f,%.6f,%.6f,%u\n",
-            (double)(now.QuadPart-first.QuadPart)/frequency.QuadPart,
-            1000.0*(now.QuadPart-previous.QuadPart)/frequency.QuadPart,
-            MEM32(0x5A2858), doa3_movie_host_owns_screen(),
-            GetForegroundWindow() == g_hwnd, free_camera_enabled(),
-            s_perf_input.QuadPart ? 1000.0*(now.QuadPart-s_perf_input.QuadPart)/frequency.QuadPart : -1.0,
-            s_perf_logic_input.QuadPart && s_perf_logic.QuadPart >= s_perf_logic_input.QuadPart ?
-                1000.0*(s_perf_logic.QuadPart-s_perf_logic_input.QuadPart)/frequency.QuadPart : -1.0,
-            s_perf_present.QuadPart ? 1000.0*(now.QuadPart-s_perf_present.QuadPart)/frequency.QuadPart : -1.0,
-            s_perf_logic_input.QuadPart ? 1000.0*(now.QuadPart-s_perf_logic_input.QuadPart)/frequency.QuadPart : -1.0,
-            s_perf_input_reads);
-    }
-    if (now.QuadPart - previous.QuadPart > frequency.QuadPart / 40)
+    frame.seconds = (double)(now.QuadPart-first.QuadPart)/frequency.QuadPart;
+    frame.frame_ms = 1000.0*(now.QuadPart-previous.QuadPart)/frequency.QuadPart;
+    frame.mode = MEM32(0x5A2858);
+    frame.movie = doa3_movie_host_owns_screen();
+    frame.foreground = GetForegroundWindow() == g_hwnd;
+    frame.free_camera = free_camera_enabled();
+    frame.input_age_ms = s_perf_input.QuadPart ? 1000.0*(now.QuadPart-s_perf_input.QuadPart)/frequency.QuadPart : -1.0;
+    frame.input_to_logic_ms = s_perf_logic_input.QuadPart && s_perf_logic.QuadPart >= s_perf_logic_input.QuadPart ?
+        1000.0*(s_perf_logic.QuadPart-s_perf_logic_input.QuadPart)/frequency.QuadPart : -1.0;
+    frame.present_ms = s_perf_present.QuadPart ? 1000.0*(now.QuadPart-s_perf_present.QuadPart)/frequency.QuadPart : -1.0;
+    frame.logic_input_age_ms = s_perf_logic_input.QuadPart ? 1000.0*(now.QuadPart-s_perf_logic_input.QuadPart)/frequency.QuadPart : -1.0;
+    frame.input_reads = s_perf_input_reads;
+    doa3_perf_log_push(&frame);
+    if (frame.frame_ms > 25.0)
         fprintf(stderr, "[PERF-FRAME] frame %u %.3f ms end-qpc %lld foreground %d\n",
-            g_doa3_frames_presented, 1000.0 * (now.QuadPart - previous.QuadPart) / frequency.QuadPart,
-            (long long)now.QuadPart, GetForegroundWindow() == g_hwnd);
+            g_doa3_frames_presented, frame.frame_ms, (long long)now.QuadPart, frame.foreground);
     previous = now;
     /* Keep the last poll across presents: some guest tasks consume a sample
      * after a flip. Preserve that age instead of hiding it as missing data. */
     s_perf_logic.QuadPart = s_perf_logic_input.QuadPart = s_perf_present.QuadPart = 0;
     s_perf_input_reads = 0;
-    if (++count % 300 == 0) fflush(file);
     /* 2 hours at 60 fps (~40 MB): long sessions are what the rare glitches need. */
-    if (count >= 432000) { fclose(file); file = NULL; s_perf_enabled = 0; }
+    if (++count >= 432000) doa3_perf_shutdown();
 }
 
 void doa3_present_frame(void)
@@ -382,6 +403,8 @@ void doa3_present_frame(void)
             fprintf(stderr, "[EXIT] window closed by user\n");
             fflush(stderr);
             netplay_shutdown();
+            doa3_perf_shutdown();
+            { extern void apu_mix_dump(const char *tag); apu_mix_dump("exit"); }
             ExitProcess(0);
         }
         TranslateMessage(&msg);
@@ -1344,6 +1367,7 @@ static DWORD WINAPI diag_sampler(LPVOID p)
 
 static void doa3_atexit(void)
 {
+    doa3_perf_shutdown();
     extern void netplay_shutdown(void);
     xbox_InputStopRumble();
     {   extern void apu_mix_dump(const char *tag); apu_mix_dump("exit"); }   /* diagnostics only */

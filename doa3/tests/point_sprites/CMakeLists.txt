@@ -23,3 +23,5 @@ add_executable(point_sprite_test point_sprite_test.c "${D3D}/d3d8_combiners.c" "
 target_include_directories(point_sprite_test PRIVATE "${D3D}" "${CMAKE_CURRENT_BINARY_DIR}")
 target_link_libraries(point_sprite_test PRIVATE d3d11 d3dcompiler dxguid bcrypt)
 add_test(NAME point_sprite_warp COMMAND point_sprite_test)
+
+target_sources(point_sprite_test PRIVATE ../../src/perf_capture.c)

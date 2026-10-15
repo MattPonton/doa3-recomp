@@ -984,7 +984,7 @@ static void pb4134_translate(uint32_t from, uint32_t to, int translate)
     LONGLONG begin = doa3_perf_begin();
     pb4134_translate_span(from, to, translate, g_pb4134_ring_lo, g_pb4134_ring_hi, 0);
     if (begin) {
-        s_frame_perf.pb += doa3_perf_begin() - begin;
+        s_frame_perf.pb += doa3_perf_now() - begin;
         ++s_frame_perf.kicks;
     }
 }
@@ -1045,7 +1045,7 @@ static void d3d4134_pace(void)
             LONGLONG worker_begin = doa3_perf_begin();
             xbox_fiber_yield();             /* a worker lap while we wait */
             if (worker_begin) {
-                LONGLONG elapsed = doa3_perf_begin() - worker_begin;
+                LONGLONG elapsed = doa3_perf_now() - worker_begin;
                 s_frame_perf.workers += elapsed;
                 if (elapsed > s_frame_perf.longest_worker)
                     s_frame_perf.longest_worker = elapsed;
@@ -1224,15 +1224,15 @@ static void d3d4134_frame_done(uint32_t dev)
     uint32_t sv_esi = esi, sv_edi = edi, sv_esp = esp, sv_seh = g_seh_ebp;
     LONGLONG entry = doa3_perf_begin(), flushed, prepared, presented;
     pgraph_d3d11_flush();
-    flushed = entry ? doa3_perf_begin() : 0;
+    flushed = entry ? doa3_perf_now() : 0;
     d3d4134_capture_frame(++g_doa3_frames_presented);
     doa3_mtrace_frame(g_doa3_frames_presented + 1);
     { void doa3_adx_frame(unsigned frame); doa3_adx_frame(g_doa3_frames_presented); }
     game_audio_frame();               /* game volumes, streamer mode */
 
-    prepared = entry ? doa3_perf_begin() : 0;
+    prepared = entry ? doa3_perf_now() : 0;
     doa3_present_frame();
-    presented = entry ? doa3_perf_begin() : 0;
+    presented = entry ? doa3_perf_now() : 0;
     if (entry) {
         LARGE_INTEGER frequency;
         QueryPerformanceFrequency(&frequency);
@@ -1253,9 +1253,10 @@ static void d3d4134_frame_done(uint32_t dev)
         s_frame_perf.pb = s_frame_perf.workers = s_frame_perf.longest_worker = 0;
         s_frame_perf.kicks = 0;
     }
-    LONGLONG pace_begin = entry ? doa3_perf_begin() : 0;
+    LONGLONG pace_begin = entry ? doa3_perf_now() : 0;
     d3d4134_pace();
-    if (entry) s_frame_perf.pace = doa3_perf_begin() - pace_begin;
+    if (entry) s_frame_perf.pace = doa3_perf_now() - pace_begin;
+    else memset(&s_frame_perf, 0, sizeof s_frame_perf);
     { extern void doa3_fn_profile_tick(void); doa3_fn_profile_tick(); }
     eax = sv_eax; ecx = sv_ecx; edx = sv_edx; ebx = sv_ebx;    /* the worker laps */
     esi = sv_esi; edi = sv_edi; esp = sv_esp; g_seh_ebp = sv_seh;

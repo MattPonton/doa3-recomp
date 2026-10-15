@@ -165,7 +165,7 @@ static void voice_lock(MCPXAPUState *d, uint16_t v, bool lock)
     LONGLONG begin = doa3_perf_begin(), acquired = 0;
     assert(v < MCPX_HW_MAX_VOICES);
     qemu_mutex_lock(&d->lock);
-    if (begin) acquired = doa3_perf_begin();
+    if (begin) acquired = doa3_perf_now();
 
     uint64_t mask = 1ULL << (v % 64);
     if (lock) {

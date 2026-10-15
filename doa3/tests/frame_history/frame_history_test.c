@@ -7,6 +7,9 @@
 #include <d3dcompiler.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "../../src/d3d/d3d8_srv_bindings.h"
+static D3D8SrvBindings g_srv_bindings;
+static unsigned g_d3d8_bind_epoch = 1;
 static struct {
     ID3D11Device *d3d11_device;
     ID3D11DeviceContext *d3d11_context;
