@@ -4088,44 +4088,9 @@ static void submit_draw(void)
             }
         }
     }
-    if (doa3_auto_capture_enabled()) {
-        /* DOA3 DIAG: dump presented frames after the movie hand-off, timed
-         * relative to it (g_doa3_post_movie is set when the movie teardown
-         * sub_0009E340 returns) -- absolute draw marks either land inside the
-         * movie or never arrive, depending on how far a debug run gets. */
-        extern void doa3_capture_backbuffer(const char *path);
-        extern volatile int g_doa3_post_movie;
-        static unsigned s_base = 0;
-        static int s_shot = 0;
-        static const unsigned offs[4] = { 200u, 2000u, 8000u, 20000u };
-        /* DOA3: early diagnostic captures -- runs reach ~3k draws, so the
-         * 5000/60000 marks below and the post-movie offsets never fire. */
-        if (g_pg.stats.draw_calls == 5u || g_pg.stats.draw_calls == 15u ||
-            g_pg.stats.draw_calls == 30u ||
-            g_pg.stats.draw_calls == 400u || g_pg.stats.draw_calls == 1200u ||
-            g_pg.stats.draw_calls == 2400u ||
-            g_pg.stats.draw_calls == 5000u || g_pg.stats.draw_calls == 60000u) {
-            char ep[64];
-            extern unsigned g_doa3_frames_presented, g_doa3_frame_at_draw30, g_doa3_frame_at_draw400;
-            /* stored +1 so that 0 means "not yet" */
-            if (g_pg.stats.draw_calls == 30u)  g_doa3_frame_at_draw30  = g_doa3_frames_presented + 1;
-            if (g_pg.stats.draw_calls == 400u) g_doa3_frame_at_draw400 = g_doa3_frames_presented + 1;
-            sprintf(ep, "frame_at%u.bmp", g_pg.stats.draw_calls);
-            doa3_capture_backbuffer(ep);
-            fprintf(stderr, "[CAPTURE] draw %u = presented frame %u\n",
-                    g_pg.stats.draw_calls, g_doa3_frames_presented);
-        }
-        if (g_doa3_post_movie) {
-            if (!s_base) s_base = g_pg.stats.draw_calls;
-            if (s_shot < 4 && g_pg.stats.draw_calls == s_base + offs[s_shot]) {
-                char path[64];
-                sprintf(path, "frame_post%u.bmp", offs[s_shot]);
-                s_shot++;
-                doa3_capture_backbuffer(path);
-            }
-        }
-    }
-
+    /* The draw-numbered boot captures (frame_at5/15/30/400/1200/2400.bmp)
+     * and the post-movie frame_postN.bmp shots are gone (0.0.136): ~11-22 MB
+     * each at 32:9, written mid-frame, and nothing needs them any more. */
     if (g_pg.stats.draw_calls <= 5 || (g_pg.stats.draw_calls % 1000) == 0) {
     }
 }

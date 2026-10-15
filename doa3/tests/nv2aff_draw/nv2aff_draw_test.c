@@ -15,7 +15,10 @@ static ID3D11DeviceContext *context;
 static struct { ID3D11DeviceContext *d3d11_context; } g_device_state;
 static DWORD rs[256], tss[4][32];
 static D3DMATRIX identity;
-static ID3D11Buffer *g_up_ring_buffer, *g_nv2aff_idx_ring;
+static ID3D11Buffer *g_ring;
+static ID3D11Buffer *g_nv2aff_ia_ring;
+static unsigned g_nv2aff_ia_epoch;
+static int g_nv2aff_ia_topology = -1;
 static IDirect3DVertexBuffer8 *g_cur_vb;
 static IDirect3DIndexBuffer8 *g_cur_ib;
 static UINT g_cur_vb_stride;
@@ -33,20 +36,29 @@ UINT d3d8_GetNumLights(void) { return 0; }
 UINT d3d8_GetBackbufferWidth(void) { return 16; }
 UINT d3d8_GetBackbufferHeight(void) { return 16; }
 void d3d8_states_apply(void) {}
-static UINT upload(ID3D11Buffer **buffer, const void *data, UINT size, UINT bind)
+/* A fresh immutable buffer per draw, holding the vertices at a non-zero
+ * base vertex and the indices after them, so the draw's first-index and
+ * base-vertex arguments are exercised. */
+static int nv2aff_ring_upload(const void *verts, UINT vsize, UINT stride,
+                              const void *idx, UINT isize,
+                              ID3D11Buffer **ring, UINT *base_vertex, UINT *first_index)
 {
     D3D11_BUFFER_DESC bd = {0}; D3D11_SUBRESOURCE_DATA sd = {0};
-    if (*buffer) ID3D11Buffer_Release(*buffer);
-    *buffer = NULL;
-    bd.ByteWidth = size; bd.BindFlags = bind; bd.Usage = D3D11_USAGE_IMMUTABLE;
+    static unsigned char data[4096];
+    UINT voff = 2 * stride, ioff = (voff + vsize + 3) & ~3u;
+    CHECK(ioff + isize <= sizeof data);
+    memset(data, 0, sizeof data);
+    memcpy(data + voff, verts, vsize);
+    memcpy(data + ioff, idx, isize);
+    if (g_ring) ID3D11Buffer_Release(g_ring);
+    g_ring = NULL;
+    bd.ByteWidth = sizeof data; bd.Usage = D3D11_USAGE_IMMUTABLE;
+    bd.BindFlags = D3D11_BIND_VERTEX_BUFFER | D3D11_BIND_INDEX_BUFFER;
     sd.pSysMem = data;
-    HR(ID3D11Device_CreateBuffer(device, &bd, &sd, buffer));
-    return 0;
+    HR(ID3D11Device_CreateBuffer(device, &bd, &sd, &g_ring));
+    *ring = g_ring; *base_vertex = voff / stride; *first_index = ioff / 2;
+    return 1;
 }
-static UINT up_ring_upload(const void *data, UINT size)
-{ return upload(&g_up_ring_buffer,data,size,D3D11_BIND_VERTEX_BUFFER); }
-static UINT nv2aff_idx_upload(const void *data, UINT size)
-{ return upload(&g_nv2aff_idx_ring,data,size,D3D11_BIND_INDEX_BUFFER); }
 #include "draw_impl.h"
 static ID3D11Texture2D *target, *readback;
 static Nv2aFFVertex vertices[3];
@@ -110,7 +122,7 @@ int main(void)
     draw_check(NULL,0x907020); draw_check(&combiner,0x10c030);
     ID3D11DeviceContext_ClearState(context);
     d3d8_combiners_shutdown(); d3d8_Nv2aFF_Shutdown(); d3d8_shaders_shutdown();
-    ID3D11Buffer_Release(g_up_ring_buffer); ID3D11Buffer_Release(g_nv2aff_idx_ring);
+    ID3D11Buffer_Release(g_ring);
     ID3D11RasterizerState_Release(raster); ID3D11Texture2D_Release(target); ID3D11Texture2D_Release(readback);
     ID3D11DeviceContext_Release(context); ID3D11Device_Release(device);
     puts("NV2A combiner/fallback transitions, changing colors and transforms pass");

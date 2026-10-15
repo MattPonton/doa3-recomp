@@ -1129,6 +1129,8 @@ static ID3D11VertexShader *g_nv2aff_vs;
 static ID3D11InputLayout  *g_nv2aff_layout;
 static ID3D11Buffer       *g_nv2aff_cb;
 static unsigned            g_nv2aff_bound_epoch;   /* epoch of the last full bind */
+static Nv2aFFConstants     g_nv2aff_cb_last;       /* what g_nv2aff_cb holds */
+static int                 g_nv2aff_cb_valid;
 
 long d3d8_Nv2aFF_Init(void)
 {
@@ -1171,6 +1173,7 @@ long d3d8_Nv2aFF_Init(void)
 void d3d8_Nv2aFF_Shutdown(void)
 {
     g_nv2aff_bound_epoch = 0;
+    g_nv2aff_cb_valid = 0;
     if (g_nv2aff_cb)     { ID3D11Buffer_Release(g_nv2aff_cb); g_nv2aff_cb = NULL; }
     if (g_nv2aff_layout) { ID3D11InputLayout_Release(g_nv2aff_layout); g_nv2aff_layout = NULL; }
     if (g_nv2aff_vs)     { ID3D11VertexShader_Release(g_nv2aff_vs); g_nv2aff_vs = NULL; }
@@ -1184,10 +1187,17 @@ int d3d8_Nv2aFF_Bind(const Nv2aFFConstants *cb)
     ID3D11DeviceContext *ctx = d3d8_GetD3D11Context();
     D3D11_MAPPED_SUBRESOURCE mapped;
     if (!ctx || !g_nv2aff_vs || !g_nv2aff_cb) return 0;
-    if (FAILED(ID3D11DeviceContext_Map(ctx, (ID3D11Resource *)g_nv2aff_cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
-        return 0;
-    memcpy(mapped.pData, cb, sizeof *cb);
-    ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource *)g_nv2aff_cb, 0);
+    /* Consecutive draws of one object share their constants: upload only
+     * when they differ from what the buffer holds (it is ours alone). */
+    if (!g_nv2aff_cb_valid || memcmp(cb, &g_nv2aff_cb_last, sizeof *cb)) {
+        g_nv2aff_cb_valid = 0;
+        if (FAILED(ID3D11DeviceContext_Map(ctx, (ID3D11Resource *)g_nv2aff_cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+            return 0;
+        memcpy(mapped.pData, cb, sizeof *cb);
+        ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource *)g_nv2aff_cb, 0);
+        memcpy(&g_nv2aff_cb_last, cb, sizeof *cb);
+        g_nv2aff_cb_valid = 1;
+    }
     /* The constants change per draw; the shader, layout and slot do not,
      * unless something else bound its own since (see d3d8_BindInvalidate). */
     if (g_nv2aff_bound_epoch != g_d3d8_bind_epoch) {

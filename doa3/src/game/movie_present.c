@@ -873,8 +873,8 @@ void doa3_capture_backbuffer(const char *path)
 
 /* The periodic scene snapshots (scene_NNNNN.bmp every 3 s) and, before
  * them, the boot-screen glitch finder that shared this spot were removed in
- * 0.0.125-0.0.126. Targeted captures (aa_*, mvend_*, the method traces)
- * remain in recomp_manual.c. */
+ * 0.0.125-0.0.126, the movie-end and draw-numbered shots in 0.0.136.
+ * Targeted captures (aa_*, the method traces) remain in recomp_manual.c. */
 
 void doa3_movie_repaint(void)
 {

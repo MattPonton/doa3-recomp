@@ -18,8 +18,12 @@
 #include "d3d8_internal.h"
 #include "d3d8_presentation.h"
 #include "d3d8_nv2aff.h"
-static ID3D11Buffer *g_nv2aff_idx_ring;   /* NV2A FF index ring, see d3d8_DrawNv2aFF */
-static UINT          g_nv2aff_idx_off;
+static ID3D11Buffer *g_nv2aff_ring;   /* NV2A FF vertices + indices, see d3d8_DrawNv2aFF */
+static UINT          g_nv2aff_ring_off;
+/* What the last NV2A draw left in the input assembler, see d3d8_DrawNv2aFF. */
+static ID3D11Buffer *g_nv2aff_ia_ring;
+static unsigned      g_nv2aff_ia_epoch;
+static int           g_nv2aff_ia_topology = -1;
 #include "ui/doa3_ui.h"
 #include "ui/combat_world.h"
 #include <stdio.h>
@@ -509,7 +513,8 @@ static ULONG __stdcall dev_Release(IDirect3DDevice8 *self)
     if (ref <= 0) {
         /* Cleanup subsystems first */
         up_ring_shutdown();
-        if (g_nv2aff_idx_ring) { ID3D11Buffer_Release(g_nv2aff_idx_ring); g_nv2aff_idx_ring = NULL; g_nv2aff_idx_off = 0; }
+        if (g_nv2aff_ring) { ID3D11Buffer_Release(g_nv2aff_ring); g_nv2aff_ring = NULL; g_nv2aff_ring_off = 0; }
+        g_nv2aff_ia_ring = NULL;
         d3d8_Nv2aFF_Shutdown();
         d3d8_vsh_shutdown();
         d3d8_combiners_shutdown();
@@ -1336,6 +1341,7 @@ static HRESULT __stdcall dev_SetStreamSource(IDirect3DDevice8 *self, UINT Stream
     if (StreamNumber != 0) return S_OK; /* Only stream 0 supported */
     g_cur_vb = pStreamData;
     g_cur_vb_stride = Stride;
+    d3d8_BindInvalidate();
 
     if (pStreamData) {
         D3D8VertexBuffer *vb = (D3D8VertexBuffer *)pStreamData;
@@ -1357,6 +1363,7 @@ static HRESULT __stdcall dev_SetIndices(IDirect3DDevice8 *self, IDirect3DIndexBu
     (void)self;
     g_cur_ib = pIndexData;
     g_cur_ib_base_vertex = BaseVertexIndex;
+    d3d8_BindInvalidate();
 
     if (pIndexData) {
         D3D8IndexBuffer *ib = (D3D8IndexBuffer *)pIndexData;
@@ -2085,53 +2092,69 @@ IDirect3D8 *xbox_Direct3DCreate8(UINT SDKVersion)
  * NV2A fixed-function GPU draw (see d3d8_nv2aff.h)
  * ================================================================ */
 
-#define NV2AFF_IDX_RING_SIZE (4 * 1024 * 1024)   /* 2M 16-bit indices */
+#define NV2AFF_RING_SIZE (16 * 1024 * 1024)
 
-/* Same ring discipline as the vertex ring above. Returns the byte offset. */
-static UINT nv2aff_idx_upload(const void *data, UINT size)
+/* One ring holds both a draw's vertices and its indices (a D3D11 buffer may
+ * be a vertex and an index buffer at once), so a draw costs one Map instead
+ * of two, and the ring stays bound at offset 0: each draw addresses its data
+ * through DrawIndexed's first-index and base-vertex arguments instead of
+ * rebinding the buffers at a new offset. Vertices start on a multiple of
+ * the vertex size for that. NO_OVERWRITE appends; a full ring starts over
+ * with DISCARD. Returns 0 on failure. */
+static int nv2aff_ring_upload(const void *verts, UINT vsize, UINT stride,
+                              const void *idx, UINT isize,
+                              ID3D11Buffer **ring, UINT *base_vertex, UINT *first_index)
 {
     D3D11_MAPPED_SUBRESOURCE mapped;
-    D3D11_MAP map_type;
-    UINT off;
-    if (!g_nv2aff_idx_ring) {
+    D3D11_MAP map_type = D3D11_MAP_WRITE_NO_OVERWRITE;
+    UINT voff, ioff;
+    if (!g_nv2aff_ring) {
         D3D11_BUFFER_DESC bd;
         memset(&bd, 0, sizeof bd);
-        bd.ByteWidth = NV2AFF_IDX_RING_SIZE;
+        bd.ByteWidth = NV2AFF_RING_SIZE;
         bd.Usage = D3D11_USAGE_DYNAMIC;
-        bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+        bd.BindFlags = D3D11_BIND_VERTEX_BUFFER | D3D11_BIND_INDEX_BUFFER;
         bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-        if (FAILED(ID3D11Device_CreateBuffer(g_device_state.d3d11_device, &bd, NULL, &g_nv2aff_idx_ring)))
-            return (UINT)-1;
-    }
-    if (size > NV2AFF_IDX_RING_SIZE) return (UINT)-1;
-    if (g_nv2aff_idx_off + size > NV2AFF_IDX_RING_SIZE) {
-        g_nv2aff_idx_off = 0;
+        if (FAILED(ID3D11Device_CreateBuffer(g_device_state.d3d11_device, &bd, NULL, &g_nv2aff_ring))) {
+            g_nv2aff_ring = NULL;
+            return 0;
+        }
+        g_nv2aff_ring_off = 0;
         map_type = D3D11_MAP_WRITE_DISCARD;
-    } else {
-        map_type = D3D11_MAP_WRITE_NO_OVERWRITE;
+    }
+    if (vsize + isize + stride + 16 > NV2AFF_RING_SIZE) return 0;
+    voff = (g_nv2aff_ring_off + stride - 1) / stride * stride;
+    ioff = (voff + vsize + 3) & ~3u;
+    if (ioff + isize > NV2AFF_RING_SIZE) {
+        voff = 0;
+        ioff = (vsize + 3) & ~3u;
+        map_type = D3D11_MAP_WRITE_DISCARD;
     }
     if (FAILED(ID3D11DeviceContext_Map(g_device_state.d3d11_context,
-            (ID3D11Resource *)g_nv2aff_idx_ring, 0, map_type, 0, &mapped)))
-        return (UINT)-1;
-    off = g_nv2aff_idx_off;
-    memcpy((BYTE *)mapped.pData + off, data, size);
-    ID3D11DeviceContext_Unmap(g_device_state.d3d11_context, (ID3D11Resource *)g_nv2aff_idx_ring, 0);
-    g_nv2aff_idx_off = (off + size + 15) & ~15u;
-    return off;
+            (ID3D11Resource *)g_nv2aff_ring, 0, map_type, 0, &mapped)))
+        return 0;
+    memcpy((BYTE *)mapped.pData + voff, verts, vsize);
+    memcpy((BYTE *)mapped.pData + ioff, idx, isize);
+    ID3D11DeviceContext_Unmap(g_device_state.d3d11_context, (ID3D11Resource *)g_nv2aff_ring, 0);
+    g_nv2aff_ring_off = ioff + isize;
+    *ring = g_nv2aff_ring;
+    *base_vertex = voff / stride;
+    *first_index = ioff / 2;
+    return 1;
 }
 
 long d3d8_DrawNv2aFF(const Nv2aFFVertex *verts, unsigned nverts,
                      const uint16_t *idx, unsigned nidx, int topology,
                      const Nv2aFFConstants *cb)
 {
-    UINT stride = sizeof(Nv2aFFVertex), vb_off, ib_off;
+    UINT stride = sizeof(Nv2aFFVertex), zero = 0, base_vertex, first_index;
+    ID3D11Buffer *ring;
     if (!verts || !idx || !nverts || !nidx) return E_INVALIDARG;
     g_d3d_draw_count++; if (g_off_active) g_d3d_draw_off++;
 
-    vb_off = up_ring_upload(verts, nverts * stride);
-    if (vb_off == (UINT)-1) return E_OUTOFMEMORY;
-    ib_off = nv2aff_idx_upload(idx, nidx * 2);
-    if (ib_off == (UINT)-1) return E_OUTOFMEMORY;
+    if (!nv2aff_ring_upload(verts, nverts * stride, stride, idx, nidx * 2,
+                            &ring, &base_vertex, &first_index))
+        return E_OUTOFMEMORY;
 
     /* The combiner supplies PS b0; Nv2aFF_Bind supplies the VS, layout and
      * VS b0. Preparing the generic shaders first uploads three discarded
@@ -2142,21 +2165,33 @@ long d3d8_DrawNv2aFF(const Nv2aFFVertex *verts, unsigned nverts,
     d3d8_states_apply();
     if (!d3d8_Nv2aFF_Bind(cb)) return E_FAIL;
 
-    ID3D11DeviceContext_IASetVertexBuffers(g_device_state.d3d11_context, 0, 1, &g_up_ring_buffer, &stride, &vb_off);
-    ID3D11DeviceContext_IASetIndexBuffer(g_device_state.d3d11_context, g_nv2aff_idx_ring, DXGI_FORMAT_R16_UINT, 0);
-    ID3D11DeviceContext_IASetPrimitiveTopology(g_device_state.d3d11_context, (D3D11_PRIMITIVE_TOPOLOGY)topology);
-    ID3D11DeviceContext_DrawIndexed(g_device_state.d3d11_context, nidx, ib_off / 2, 0);
+    /* Rebind the ring only when something else bound its own buffers since
+     * (see d3d8_BindInvalidate) or the ring was recreated. */
+    if (ring != g_nv2aff_ia_ring || g_nv2aff_ia_epoch != g_d3d8_bind_epoch) {
+        ID3D11DeviceContext_IASetVertexBuffers(g_device_state.d3d11_context, 0, 1, &ring, &stride, &zero);
+        ID3D11DeviceContext_IASetIndexBuffer(g_device_state.d3d11_context, ring, DXGI_FORMAT_R16_UINT, 0);
+        ID3D11DeviceContext_IASetPrimitiveTopology(g_device_state.d3d11_context, (D3D11_PRIMITIVE_TOPOLOGY)topology);
+        g_nv2aff_ia_ring = ring;
+        g_nv2aff_ia_epoch = g_d3d8_bind_epoch;
+        g_nv2aff_ia_topology = topology;
+    } else if (topology != g_nv2aff_ia_topology) {
+        ID3D11DeviceContext_IASetPrimitiveTopology(g_device_state.d3d11_context, (D3D11_PRIMITIVE_TOPOLOGY)topology);
+        g_nv2aff_ia_topology = topology;
+    }
+    ID3D11DeviceContext_DrawIndexed(g_device_state.d3d11_context, nidx, first_index, (INT)base_vertex);
 
     /* Restore the game's own bindings, as DrawPrimitiveUP does. */
     if (g_cur_vb) {
         D3D8VertexBuffer *vb = (D3D8VertexBuffer *)g_cur_vb;
         UINT restore_offset = 0;
         ID3D11DeviceContext_IASetVertexBuffers(g_device_state.d3d11_context, 0, 1, &vb->d3d11_buffer, &g_cur_vb_stride, &restore_offset);
+        g_nv2aff_ia_ring = NULL;
     }
     if (g_cur_ib) {
         D3D8IndexBuffer *ib = (D3D8IndexBuffer *)g_cur_ib;
         ID3D11DeviceContext_IASetIndexBuffer(g_device_state.d3d11_context, ib->d3d11_buffer,
             (ib->format == D3DFMT_INDEX32) ? DXGI_FORMAT_R32_UINT : DXGI_FORMAT_R16_UINT, 0);
+        g_nv2aff_ia_ring = NULL;
     }
     return S_OK;
 }

@@ -2170,3 +2170,35 @@ only with the CMake option DOA3_PROBES=ON (esp_probes.py emits both
 forms); ordinary builds keep only the fiber scheduling point, which every
 build needs. With probes off, DOA3_PROF and DOA3_TRACE_FN have nothing to
 report.
+
+### 0.0.136: one upload per NV2A draw; fewer diagnostic screenshots
+
+The tester's 0.0.135 run (X Octagon 32:9, diagnostics on): centre 57.4 fps
+(17.4 ms frames, was ~55), wall 46.1 fps (21.7 ms, was ~44); draw cost per
+frame 6.7 -> 5.3 ms centre and 9.0 -> 6.8 ms wall, d3d-draw 1.68 -> 1.02 us
+per draw. Frame times are steady (p99 21.3 / 23.4 ms); the one slow frame
+every 300 is the diagnostics CSV flush. The frame gain (~1 ms) is smaller
+than the draw saving, so part of the cost moved into the driver.
+
+d3d8_DrawNv2aFF still mapped two rings per draw (vertices into the shared
+DrawPrimitiveUP ring, indices into their own) and rebound both buffers at
+the new offsets every draw, plus the VS constants:
+- one ring now holds a draw's vertices and indices (a D3D11 buffer can be
+  a vertex and an index buffer at once): one Map per draw;
+- it stays bound at offset 0 and each draw addresses its data through
+  DrawIndexed's first-index and base-vertex arguments (vertices are placed
+  on a multiple of the 40-byte vertex), so IASetVertexBuffers /
+  IASetIndexBuffer / IASetPrimitiveTopology run only after an
+  invalidation, a ring rebuild or a topology change. SetStreamSource and
+  SetIndices now invalidate too;
+- the NV2A VS constants are uploaded only when they differ from the last
+  upload (consecutive draws of one object share them).
+tests/nv2aff_draw stubs the new upload with a non-zero base vertex and
+first index.
+
+Diagnostic screenshots cut back: the draw-numbered boot captures
+(frame_at5/15/30/400/1200/2400.bmp), the post-movie frame_postN.bmp and
+the movie-end captures (mvend_*.bmp plus mtrace_mvend_*.txt, five per
+movie for the first four movies, ~22 MB per screenshot at 32:9) are gone.
+aa_*.bmp with its trace, movie_030/200.bmp and explicit DOA3_MTRACE ranges
+remain.
