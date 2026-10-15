@@ -2276,3 +2276,8 @@ of 562); not a bug.
 - .recomp.json at the repository root for recomp.fyi (see
   parkerallan/doa3-recomp issue #4): Japan, revision 1 (the XBE
   certificate version), status playable.
+
+### 0.0.140: Jay-Collins in LICENSE and .recomp.json
+
+The LICENSE copyright line and the .recomp.json maintainers now include
+Jay-Collins (https://github.com/Jay-Collins).
