@@ -2224,3 +2224,35 @@ CPU path. Results are identical to nv_fetch_attr (checked against it over
 that an index whose address would wrap past 4 GB is rejected instead of
 read). Measured on this machine, 20-23 ns -> 6-12 ns per vertex for a
 typical position + normal + colour + texcoord layout.
+
+### 0.0.138: texture-cache diagnostics for the Beach flicker; no movie WAVs
+
+After a long session (~47 min, 32:9) the Beach (Sunset) stage-select
+background lost its water and sand detail for two frames at a time,
+repeatedly (captured on video; frames 2-3 of 4 smooth, 1 and 4 normal).
+It did not happen right after a restart, and the run's log was
+overwritten. Suspects: the palette-animated shoreline texture (the cache
+must notice the in-place palette rewrite; 0.0.132 verifies once per
+frame), the 192 MB texture budget that only long sessions reach (then
+every new texture evicts or recycles a slot), or the guest rewriting the
+palette after the kick-off. Diagnostics to tell them apart, all in the
+log:
+- [TEXCACHE] every 5 s with [DRAW]: resident MB / slots, textures
+  created and recycled, failed creations, bindings that resolved to no
+  texture, palettised checks, palette changes, bad / all-zero palettes,
+  bind gaps;
+- [TEXDIAG] events (at most 200 per kind): a binding that resolved to no
+  texture (offset, format, palette, rect), a palette register outside RAM,
+  an all-zero palette, and a texture bound on every frame for 120+ frames
+  that then misses one to three frames (get_dynamic_texture is now a thin
+  wrapper over get_dynamic_texture_impl; the texture_cache test's
+  extraction boundary is unchanged);
+- performance_frames.csv runs for two hours instead of 20 minutes.
+
+The per-movie audio dumps (apu_mix_movieNN_fNNNNN.wav, ~5.7 MB each) are
+gone: they served the KO-before-ending stutter, since fixed. The
+single apu_mix_exit.wav at shutdown remains.
+
+Zack's black character-select portrait in two aa_*.bmp shots was the
+model still loading (no costume list yet; the frame had 418 draws instead
+of 562); not a bug.

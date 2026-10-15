@@ -1325,6 +1325,9 @@ void sub_001E27C0(void)
                 }
                 s_frames_at = g_doa3_frames_presented;
             }
+            {   extern void pgraph_texdiag_report(void);
+                pgraph_texdiag_report();   /* [TEXCACHE] */
+            }
             g_doa3_drop[0] = g_doa3_drop[1] = g_doa3_drop[2] = g_doa3_drop[3] = 0;
         }
     }

@@ -329,6 +329,7 @@ static struct {
         uint32_t sig;       /* sampled fingerprint of level 0 at that upload */
         uint32_t sig_frame; /* g_pg.frame the fingerprint was last verified in */
         uint32_t last_frame;/* g_pg.frame of the last draw that bound it */
+        uint32_t streak;    /* consecutive frames it has been bound (diagnostics) */
         uint32_t bytes;     /* host bytes held: D3D11 texture + D3D8 staging copy */
     } texcache[TEXCACHE_N];
     int16_t  texhash[TEXCACHE_HASH_N];   /* slot index + 1, 0 = empty bucket */
@@ -401,6 +402,32 @@ static struct {
     unsigned created, reused, uploaded;
     LONGLONG allocation_ticks, upload_ticks;
 } s_tex_perf;
+
+/* Diagnostics (0.0.138): the texture cache's state every 5 s, reported with
+ * [DRAW] by recomp_manual.c, plus individual events that can blank a
+ * surface for a frame or two -- a binding that resolves to no texture, a
+ * palette that is missing or all zero, and a texture bound on every frame
+ * for 2+ seconds that misses one to three frames. Each event kind logs at
+ * most 200 lines a run. */
+static struct {
+    unsigned created, recycled, create_fail, null_tex;
+    unsigned pal_checks, pal_changes, pal_bad, pal_zero, gaps;
+} s_texdiag;
+static unsigned s_texdiag_lines[4];   /* null, palette bad, palette zero, gap */
+static IDirect3DTexture8 *get_dynamic_texture_impl(IDirect3DDevice8 *dev);
+
+void pgraph_texdiag_report(void)
+{
+    unsigned i, slots = 0;
+    for (i = 0; i < TEXCACHE_N; i++) if (g_pg.texcache[i].tex) slots++;
+    fprintf(stderr, "[TEXCACHE] frame %u resident %.1f of %u MB in %u of %u slots; last 5 s: created %u, recycled %u, "
+            "create failed %u, bindings without a texture %u; palettised checks %u, palette changes %u, bad palette %u, "
+            "all-zero palette %u; bind gaps %u\n",
+            g_pg.frame, g_pg.texcache_bytes / (1024.0 * 1024.0), TEXCACHE_BUDGET >> 20, slots, TEXCACHE_N,
+            s_texdiag.created, s_texdiag.recycled, s_texdiag.create_fail, s_texdiag.null_tex,
+            s_texdiag.pal_checks, s_texdiag.pal_changes, s_texdiag.pal_bad, s_texdiag.pal_zero, s_texdiag.gaps);
+    memset(&s_texdiag, 0, sizeof s_texdiag);
+}
 
 /* ══════════════════════════════════════════════════════════════════════
  * Float/uint32 conversion
@@ -769,6 +796,20 @@ static int texcache_make_room(uint32_t bytes, uint32_t w, uint32_t h,
 
 static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
 {
+    IDirect3DTexture8 *t = get_dynamic_texture_impl(dev);
+    if (!t && g_pg.tex[0].offset) {
+        s_texdiag.null_tex++;
+        if (s_texdiag_lines[0] < 200) {
+            s_texdiag_lines[0]++;
+            fprintf(stderr, "[TEXDIAG] frame %u: binding resolved to no texture: offset %08X format %08X palette %08X rect %08X\n",
+                    g_pg.frame, g_pg.tex[0].offset, g_pg.tex[0].format, g_pg.tex[0].palette, g_pg.tex[0].image_rect);
+        }
+    }
+    return t;
+}
+
+static IDirect3DTexture8 *get_dynamic_texture_impl(IDirect3DDevice8 *dev)
+{
     uint32_t fmtreg = g_pg.tex[0].format;
     uint32_t off    = g_pg.tex[0].offset;
     uint32_t nvfmt  = (fmtreg >> 8) & 0xFF;
@@ -899,8 +940,10 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
                                            &g_pg.texcache[slot].tex) != 0 ||
                  !g_pg.texcache[slot].tex)) {
                 g_pg.texcache[slot].tex = NULL;
+                s_texdiag.create_fail++;
                 return NULL;
             }
+            if (reused) s_texdiag.recycled++; else s_texdiag.created++;
             doa3_perf_end("Texture allocation/eviction", create_begin);
             if (create_begin) {
                 s_tex_perf.allocation_ticks += doa3_perf_begin() - create_begin;
@@ -926,7 +969,25 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
             g_pg.texcache[slot].uploaded = 0;
             g_pg.texcache[slot].sig = 0;
             g_pg.texcache[slot].sig_frame = g_pg.frame - 1u;
+            g_pg.texcache[slot].streak = 0;
+            g_pg.texcache[slot].last_frame = g_pg.frame;
             texcache_hash_insert(slot);
+        }
+        {   /* diagnostics: a texture bound every frame for 2+ s that skips 1-3 frames */
+            uint32_t prev = g_pg.texcache[slot].last_frame, gap = g_pg.frame - prev;
+            if (gap == 1u) g_pg.texcache[slot].streak++;
+            else if (gap != 0u) {
+                if (g_pg.texcache[slot].streak >= 120u && gap <= 4u) {
+                    s_texdiag.gaps++;
+                    if (s_texdiag_lines[3] < 200) {
+                        s_texdiag_lines[3]++;
+                        fprintf(stderr, "[TEXDIAG] frame %u: texture %08X (%ux%u fmt %u%s) bound every frame for %u frames, then not for %u frame(s)\n",
+                                g_pg.frame, off, w, h, (unsigned)d3dfmt, palettised ? ", palettised" : "",
+                                g_pg.texcache[slot].streak, gap - 1u);
+                    }
+                }
+                g_pg.texcache[slot].streak = 0;
+            }
         }
         g_pg.texcache[slot].last_frame = g_pg.frame;
         g_pg.dyn_tex = g_pg.texcache[slot].tex;
@@ -959,12 +1020,30 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
              * only the palette register, so fold the table's bytes in too. */
             if (palettised) {
                 uint32_t paloff = palreg & 0xFFFFFFC0u, pcount = 256u >> ((palreg >> 2) & 3u);
+                s_texdiag.pal_checks++;
                 if (paloff && (unsigned long long)paloff + 4ull * pcount <= 0x08000000ull) {
                     const uint8_t *pp = (const uint8_t *)((uintptr_t)paloff + g_xbox_mem_offset);
                     size_t i;
+                    uint32_t any = 0;
                     for (i = 0; i < 4u * pcount; i += 4) {
                         uint32_t v; memcpy(&v, pp + i, 4);
                         sig = (sig ^ v) * 16777619u;
+                        any |= v;
+                    }
+                    if (!any) {
+                        s_texdiag.pal_zero++;
+                        if (s_texdiag_lines[2] < 200) {
+                            s_texdiag_lines[2]++;
+                            fprintf(stderr, "[TEXDIAG] frame %u: texture %08X (%ux%u) palette %08X is all zero\n",
+                                    g_pg.frame, off, w, h, palreg);
+                        }
+                    }
+                } else {
+                    s_texdiag.pal_bad++;
+                    if (s_texdiag_lines[1] < 200) {
+                        s_texdiag_lines[1]++;
+                        fprintf(stderr, "[TEXDIAG] frame %u: texture %08X (%ux%u) palette register %08X points outside RAM\n",
+                                g_pg.frame, off, w, h, palreg);
                     }
                 }
             } }
@@ -972,6 +1051,7 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
         if ((swizzled || compressed) && g_pg.texcache[slot].uploaded &&
             g_pg.texcache[slot].sig == sig)
             return g_pg.dyn_tex;
+        if (palettised && g_pg.texcache[slot].uploaded) s_texdiag.pal_changes++;
         /* Publish the fingerprint only after every level and the GPU resource
          * succeed. A failed first upload must be retried on the next binding. */
         upload_slot = slot;

@@ -364,7 +364,8 @@ static void doa3_perf_frame(void)
     s_perf_logic.QuadPart = s_perf_logic_input.QuadPart = s_perf_present.QuadPart = 0;
     s_perf_input_reads = 0;
     if (++count % 300 == 0) fflush(file);
-    if (count >= 72000) { fclose(file); file = NULL; s_perf_enabled = 0; }
+    /* 2 hours at 60 fps (~40 MB): long sessions are what the rare glitches need. */
+    if (count >= 432000) { fclose(file); file = NULL; s_perf_enabled = 0; }
 }
 
 void doa3_present_frame(void)
