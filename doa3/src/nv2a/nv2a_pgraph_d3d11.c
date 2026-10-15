@@ -3052,6 +3052,68 @@ static int nv_attr_enabled(int slot)
     return ((fmt >> 4) & 0xF) != 0 && base != 0 && base < 0x08000000u;
 }
 
+/* nv_fetch_attr with the format decoded once per draw instead of once per
+ * attribute per vertex: host pointer, stride, type, component count and the
+ * highest index whose 16 bytes still lie inside guest RAM (the same bound
+ * nv_fetch_attr checks per call). Reads give exactly nv_fetch_attr's
+ * results. */
+typedef struct {
+    const uint8_t *p;
+    uint32_t stride, type, count, max_index;
+} NvAttrReader;
+
+static int nv_attr_reader(int slot, NvAttrReader *r)
+{
+    extern ptrdiff_t g_xbox_mem_offset;
+    uint32_t fmt = g_pg.attr_fmt[slot], base = g_pg.attr_off[slot];
+    r->type = fmt & 0xF;
+    r->count = (fmt >> 4) & 0xF;
+    r->stride = fmt >> 8;
+    if (r->count == 0 || base == 0 || base >= 0x08000000u) return 0;
+    if (r->type != 0 && r->type != 1 && r->type != 2 && r->type != 4 && r->type != 5) return 0;
+    if (base + 16u > 0x08000000u) return 0;
+    r->max_index = r->stride ? (0x08000000u - 16u - base) / r->stride : 0xFFFFFFFFu;
+    if (r->count > 4) r->count = 4;
+    r->p = (const uint8_t *)((uintptr_t)base + g_xbox_mem_offset);
+    return 1;
+}
+
+/* Components 0..count-1 into out[], the rest left as the caller set them. */
+static __inline void nv_attr_read(const NvAttrReader *r, uint32_t index, float *out)
+{
+    const uint8_t *p = r->p + (size_t)index * r->stride;
+    uint32_t c, n = r->count;
+    switch (r->type) {
+    case 2:   /* float32, the common case: fixed-size copies */
+        switch (n) {
+        case 4: memcpy(out, p, 16); break;
+        case 3: memcpy(out, p, 12); break;
+        case 2: memcpy(out, p, 8); break;
+        default: memcpy(out, p, 4); break;
+        }
+        break;
+    case 0: case 4:
+        for (c = 0; c < n; c++) out[c] = (float)p[c] * (1.0f / 255.0f);
+        break;
+    case 1:
+        for (c = 0; c < n; c++) { int16_t v; memcpy(&v, p + c * 2, 2); out[c] = (float)v * (1.0f / 32767.0f); }
+        break;
+    default:   /* 5 */
+        for (c = 0; c < n; c++) { int16_t v; memcpy(&v, p + c * 2, 2); out[c] = (float)v; }
+        break;
+    }
+}
+
+/* The colour nv_fetch_attr reports: only ubyte formats have one. */
+static __inline uint32_t nv_attr_color(const NvAttrReader *r, uint32_t index, uint32_t dflt)
+{
+    const uint8_t *p = r->p + (size_t)index * r->stride;
+    uint32_t c;
+    if (r->type == 0) { memcpy(&c, p, 4); return c; }
+    if (r->type == 4) return ((uint32_t)p[3] << 24) | ((uint32_t)p[0] << 16) | ((uint32_t)p[1] << 8) | (uint32_t)p[2];
+    return dflt;
+}
+
 /* 1 = drawn (or legitimately dropped) on the GPU, 0 = use the CPU path. */
 /* Per-draw timing of the GPU fixed-function path (DOA3_PERF_CAPTURE or
  * diagnostics on): QPC ticks per phase, summed over successful draws and
@@ -3063,8 +3125,9 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     uint32_t n = g_pg.idx_count, i, lo = 0, nv = 0, ni = 0, need_idx;
     int has_color, has_uv, has_uv1, need_nrm, tex_gen[2], lit, all_zero = 1, k;
     Nv2aFFConstants cb;
-    int use_comb = 0;
+    int use_comb = 0, want_nrm;
     uint32_t bound_mask = 0;
+    NvAttrReader r_pos, r_nrm, r_uv1, r_col, r_uv;
     NvDrawSummary sum;
     NvPostOps post;
     static int s_flip = -1;
@@ -3101,28 +3164,53 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     if (s_gi_cap < need_idx) { void *b = realloc(s_gi, need_idx * sizeof *s_gi); if (!b) return 0; s_gi = b; s_gi_cap = need_idx; }
     if (s_gs_cap < n)        { void *b = realloc(s_gs, n * sizeof *s_gs); if (!b) return 0; s_gs = b; s_gs_cap = n; }
 
+    /* The attribute formats are fixed for the batch: decode them once. A
+     * format nv_fetch_attr cannot read sends the batch to the CPU path, as a
+     * failed fetch did. */
+    want_nrm = lit || (need_nrm && nv_attr_enabled(2));
+    if (!nv_attr_reader(0, &r_pos)) return 0;
+    if (want_nrm  && !nv_attr_reader(2, &r_nrm)) return 0;
+    if (has_uv1   && !nv_attr_reader(10, &r_uv1)) return 0;
+    if (has_color && !nv_attr_reader(3, &r_col)) return 0;
+    if (has_uv    && !nv_attr_reader(9, &r_uv)) return 0;
+
     /* Pack each unique vertex once; map every source index to its slot. */
     for (i = 0; i < n; i++) {
         uint32_t idx = g_pg.idx[i], d = idx - lo;
         if (s_vstamp[d] == s_vgen) { s_gs[i] = (uint16_t)s_vslot[d]; continue; }
         {
             Nv2aFFVertex *v = &s_gv[nv];
-            float tmp[4];
-            uint32_t colour = 0xFFFFFFFFu;
             if (nv >= 65535) return 0;
-            if (!nv_fetch_attr(0, idx, v->pos, NULL)) return 0;
+            if (idx > r_pos.max_index) return 0;
+            v->pos[0] = v->pos[1] = v->pos[2] = 0.0f; v->pos[3] = 1.0f;
+            nv_attr_read(&r_pos, idx, v->pos);
             if (!isfinite(v->pos[0]) || !isfinite(v->pos[1]) || !isfinite(v->pos[2]) || !isfinite(v->pos[3])) {
                 g_gpuff_stat[3]++;              /* the CPU path drops such a batch too */
                 return 1;
             }
-            if (lit || (need_nrm && nv_attr_enabled(2))) { if (!nv_fetch_attr(2, idx, tmp, NULL)) return 0; v->nrm[0] = tmp[0]; v->nrm[1] = tmp[1]; v->nrm[2] = tmp[2]; }
-            else     { v->nrm[0] = v->nrm[1] = v->nrm[2] = 0.0f; }
-            if (has_uv1) { if (!nv_fetch_attr(10, idx, tmp, NULL)) return 0; v->uv1[0] = tmp[0]; v->uv1[1] = tmp[1]; }
-            else         { v->uv1[0] = v->uv1[1] = 0.0f; }
-            if (has_color) { if (!nv_fetch_attr(3, idx, tmp, &colour)) return 0; if (colour) all_zero = 0; }
-            v->color = colour;
-            if (has_uv) { if (!nv_fetch_attr(9, idx, tmp, NULL)) return 0; v->uv[0] = tmp[0]; v->uv[1] = tmp[1]; }
-            else        { v->uv[0] = v->uv[1] = 0.0f; }
+            if (want_nrm) {
+                float tmp[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+                if (idx > r_nrm.max_index) return 0;
+                nv_attr_read(&r_nrm, idx, tmp);
+                v->nrm[0] = tmp[0]; v->nrm[1] = tmp[1]; v->nrm[2] = tmp[2];
+            } else { v->nrm[0] = v->nrm[1] = v->nrm[2] = 0.0f; }
+            if (has_uv1) {
+                float tmp[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+                if (idx > r_uv1.max_index) return 0;
+                nv_attr_read(&r_uv1, idx, tmp);
+                v->uv1[0] = tmp[0]; v->uv1[1] = tmp[1];
+            } else { v->uv1[0] = v->uv1[1] = 0.0f; }
+            if (has_color) {
+                if (idx > r_col.max_index) return 0;
+                v->color = nv_attr_color(&r_col, idx, 0xFFFFFFFFu);
+                if (v->color) all_zero = 0;
+            } else v->color = 0xFFFFFFFFu;
+            if (has_uv) {
+                float tmp[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+                if (idx > r_uv.max_index) return 0;
+                nv_attr_read(&r_uv, idx, tmp);
+                v->uv[0] = tmp[0]; v->uv[1] = tmp[1];
+            } else { v->uv[0] = v->uv[1] = 0.0f; }
             s_vstamp[d] = s_vgen; s_vslot[d] = nv;
             s_gs[i] = (uint16_t)nv;
             nv++;

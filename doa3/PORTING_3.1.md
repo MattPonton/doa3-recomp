@@ -2202,3 +2202,25 @@ the movie-end captures (mvend_*.bmp plus mtrace_mvend_*.txt, five per
 movie for the first four movies, ~22 MB per screenshot at 32:9) are gone.
 aa_*.bmp with its trace, movie_030/200.bmp and explicit DOA3_MTRACE ranges
 remain.
+
+### 0.0.137: vertex fetch decodes each attribute format once per draw
+
+The tester's 0.0.136 run: centre 58.5 fps (median frame 16.9 ms), wall
+45.3 fps at ~6% more draws than the 0.0.135 spot; d3d-draw down to
+0.91/0.86 us per draw. Vertex fetch (0.83 us per draw, ~1.7 ms per centre
+frame) is now the largest draw phase.
+
+nv_gpu_ff_submit read every attribute of every unique vertex through
+nv_fetch_attr, which decodes SET_VERTEX_DATA_ARRAY_FORMAT, re-checks the
+slot and its bounds, defaults all four components and switches on the
+type on each call (four to five calls per vertex). NvAttrReader now
+decodes position, normal, both texcoord sets and colour once per draw
+(host pointer, stride, type, count and the highest index whose 16 bytes
+stay inside guest RAM, the same bound nv_fetch_attr applies), and the
+loop reads with fixed-size copies for float32 and the colour word
+directly. A format nv_fetch_attr cannot read still sends the batch to the
+CPU path. Results are identical to nv_fetch_attr (checked against it over
+1.6M random formats, strides, bases and indices; the only difference is
+that an index whose address would wrap past 4 GB is rejected instead of
+read). Measured on this machine, 20-23 ns -> 6-12 ns per vertex for a
+typical position + normal + colour + texcoord layout.
