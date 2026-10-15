@@ -21,7 +21,6 @@ performance for low-end PCs.
 - Internal resolution 1x (480p), 2x (960p) or 3x (1440p)
 - Keyboard, Xbox and PS4 controllers, up to four players, with per-player
   bindings
-- Online play for single and tag matches, with automatic or manual input delay
 - Master volume plus the game's own Music / Sound effects / Voice levels
 - Streamer mode: mutes the licensed Aerosmith songs wherever they play
 - Training: record and replay the Sparring dummy's inputs
@@ -58,9 +57,10 @@ Press **Escape** at any time to open the settings overlay. Most tabs have
 
 ### Online
 
-Host a match and share **Your code**, or paste a friend's code under **Join**.
-**Input delay** is picked from the ping (**Auto**) or set by hand (**Manual**,
-1–8 frames). **Disconnect** ends the session.
+**Experimental and untested on this version.** The Online tab comes from the
+original USA-based port and has not been tested with the Japanese release;
+expect it not to work yet. It lets you host a match and share **Your code**,
+or join with a friend's code, with an automatic or manual input delay.
 
 ### Controls
 

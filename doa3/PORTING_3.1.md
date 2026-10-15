@@ -2281,3 +2281,9 @@ of 562); not a bug.
 
 The LICENSE copyright line and the .recomp.json maintainers now include
 Jay-Collins (https://github.com/Jay-Collins).
+
+### 0.0.141: README marks online play as experimental
+
+Online play has not been tested on the 3.1 build. It is removed from the
+README feature list, and the Online section says it is experimental and
+expected not to work yet.
