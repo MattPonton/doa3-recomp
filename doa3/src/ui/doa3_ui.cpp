@@ -307,6 +307,7 @@ static void DrawPlayerControls()
 }
 
 extern "C" volatile LONG g_doa3_trace_request;   /* recomp_manual.c */
+extern "C" volatile LONG g_doa3_texdump_request;  /* nv2a_pgraph_d3d11.c */
 
 void DrawControlsSection()
 {
@@ -732,6 +733,13 @@ void DrawDebugSection()
         ImGui::TextWrapped("Records the next frame's graphics commands (mtrace_manual_*.txt) and a "
                            "screenshot (aa_*.bmp) in the Diagnostics folder. Use it while a visual bug "
                            "is on screen; the game keeps running behind this menu.");
+        if (ImGui::Button("Save the next frame's textures")) {
+            InterlockedExchange(&g_doa3_texdump_request, 1);
+            SetStatus("The next frame's textures will be saved to the Textures folder");
+        }
+        ImGui::TextWrapped("Saves every texture drawn in the next frame as a .dds file in a Textures "
+                           "folder next to the game, named by its memory address and size. Files are "
+                           "kept between launches.");
     }
     if (ImGui::CollapsingHeader("Camera controls")) {
         float fov = free_camera_fov();

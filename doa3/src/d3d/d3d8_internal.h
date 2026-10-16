@@ -134,6 +134,7 @@ HRESULT d3d8_CreateTextureImpl(UINT Width, UINT Height, UINT Levels, DWORD Usage
  * in one CreateTexture2D call. Subsequent Lock/Unlock updates stay immediate. */
 HRESULT d3d8_CreateUploadTexture(UINT Width, UINT Height, UINT Levels, D3DFORMAT Format, IDirect3DTexture8 **ppTex);
 HRESULT d3d8_TextureFinishUpload(IDirect3DTexture8 *tex);
+int     d3d8_TextureWriteDDS(IDirect3DTexture8 *tex, const char *path);
 
 /* ================================================================
  * Shader management (d3d8_shaders.c)

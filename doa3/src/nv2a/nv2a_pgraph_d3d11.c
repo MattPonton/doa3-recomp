@@ -866,12 +866,38 @@ static int texcache_make_room(uint32_t bytes, uint32_t w, uint32_t h,
     }
 }
 
+/* Debug > Diagnostics > "Save the next frame's textures": every texture
+ * bound during one frame, written once each as Textures\doa3_<address>_
+ * <w>x<h>.dds next to the game (decoded host data: unswizzled, palettes
+ * expanded; DXT kept compressed). */
+volatile LONG g_doa3_texdump_request;
+static uint32_t s_texdump_frame = 0xFFFFFFFFu;
+static uint32_t s_texdump_keys[1024];
+static unsigned s_texdump_n;
+static void nv_texdump(IDirect3DTexture8 *t)
+{
+    extern int d3d8_TextureWriteDDS(IDirect3DTexture8 *tex, const char *path);
+    uint32_t key = g_pg.tex[0].offset ^ (g_pg.tex[0].format * 2654435761u) ^ g_pg.tex[0].palette;
+    unsigned i;
+    char path[96];
+    for (i = 0; i < s_texdump_n; i++) if (s_texdump_keys[i] == key) return;
+    if (s_texdump_n >= 1024) return;
+    s_texdump_keys[s_texdump_n++] = key;
+    CreateDirectoryA("Textures", NULL);
+    sprintf(path, "Textures\\doa3_%08X_%ux%u_f%02X%s.dds", g_pg.tex[0].offset & 0x07FFFFFFu,
+            g_pg.dyn_w, g_pg.dyn_h, (g_pg.tex[0].format >> 8) & 0xFFu,
+            ((g_pg.tex[0].format >> 8) & 0xFFu) == 0x0Bu ? "_pal" : "");
+    if (d3d8_TextureWriteDDS(t, path) > 0)
+        fprintf(stderr, "[TEXDUMP] frame %u: %s\n", g_pg.frame, path);
+}
+
 static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
 {
     IDirect3DTexture8 *t;
     nv_texcache_config();
     s_tex_fail_line = 0;
     t = get_dynamic_texture_impl(dev);
+    if (t && g_pg.frame == s_texdump_frame) nv_texdump(t);
     if (!t && g_pg.tex[0].offset) {
         static uint32_t s_last_key[2];
         s_texdiag.null_tex++;
@@ -5165,6 +5191,10 @@ void pgraph_d3d11_flush(void)
         g_pg.in_draw = 0;
     }
     g_pg.stats.frames++;
+    if (InterlockedExchange(&g_doa3_texdump_request, 0)) {
+        s_texdump_frame = g_pg.frame + 1u;   /* the next frame, from its start */
+        s_texdump_n = 0;
+    }
     if (s_tex_perf.created || s_tex_perf.reused || s_tex_perf.uploaded) {
         LARGE_INTEGER frequency;
         QueryPerformanceFrequency(&frequency);

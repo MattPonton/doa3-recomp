@@ -128,6 +128,14 @@ with **General > Write log files**, when collecting data for a bug report.
 folder, whether or not automatic captures are on. Open the menu while a visual
 bug is on screen and press it; the game keeps running behind the menu.
 
+**Save the next frame's textures** writes every texture drawn in the next
+frame as a `.dds` file in a `Textures` folder next to `DOA3.exe` (kept between
+launches), named `doa3_<memory address>_<width>x<height>_f<format>.dds`. The
+data is what the port uploads: unswizzled, palettised textures expanded to
+32-bit colour, DXT textures kept compressed. Images rendered by the game at
+run time (reflections, environment maps captured from the stage) are not
+included, only textures loaded from the game's files.
+
 ## Online developer settings
 
 **Online > Developer Settings** runs a local two-player session on one PC

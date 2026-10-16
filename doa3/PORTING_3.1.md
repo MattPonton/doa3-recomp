@@ -2489,3 +2489,16 @@ from hardware:
    surface again. This also covers the heap handing a render target's old
    address to an unrelated texture (the cause the 0.0.148 format rule
    addressed), for any format.
+
+### 0.0.152: save the textures of a frame as .dds
+
+Debug > Diagnostics > "Save the next frame's textures" (g_doa3_texdump_request)
+writes each texture bound during the next pgraph frame once, as
+Textures\doa3_<address>_<w>x<h>_f<NV format>.dds next to the exe (not under
+Diagnostics, so it survives the launch-time clear). d3d8_TextureWriteDDS
+(d3d8_resources.c) writes the D3D8 texture's staged levels: the
+translator's host rows (unswizzled, I8 palettes expanded to A8R8G8B8, DXT1/3/5
+blocks as is) with a matching DDS pixel format, every uploaded mip level.
+Render-target substitutions are not textures and are not saved. Asked for to
+extract the default environment map of Zack's costume 3 (Beach, day) at
+character select for Blender.

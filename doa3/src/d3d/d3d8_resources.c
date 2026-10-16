@@ -557,6 +557,60 @@ static HRESULT d3d8_tex_create_gpu(D3D8Texture *tex, BOOL initial_data)
     return S_OK;
 }
 
+/* Write the texture's staged levels as a .dds file (Debug > Diagnostics >
+ * "Save the next frame's textures"). The staging copy holds every uploaded
+ * level as host rows -- unswizzled, palettes expanded to A8R8G8B8, DXT blocks
+ * as they are -- which is exactly a DDS body. Returns the levels written, 0
+ * for a format with no DDS equivalent here. */
+int d3d8_TextureWriteDDS(IDirect3DTexture8 *iface, const char *path)
+{
+    D3D8Texture *t;
+    uint32_t h[32];
+    FILE *f;
+    UINT levels = 0, l;
+    uint32_t *pf;
+    if (!iface || !path) return 0;
+    t = tex_from_iface(iface);
+    while (levels < t->levels && (t->initialized_levels & (1u << levels)) && t->level_mem[levels]) levels++;
+    if (!levels) return 0;
+    memset(h, 0, sizeof h);
+    h[0] = 0x20534444u;                  /* "DDS " */
+    h[1] = 124;                          /* header size */
+    h[2] = 0x1u | 0x2u | 0x4u | 0x1000u | (levels > 1 ? 0x20000u : 0);  /* CAPS HEIGHT WIDTH PIXELFORMAT MIPMAPCOUNT */
+    h[3] = t->height;
+    h[4] = t->width;
+    h[5] = t->level_pitch[0];
+    h[7] = levels;
+    pf = &h[19];                         /* DDS_PIXELFORMAT */
+    pf[0] = 32;
+    switch (t->dxgi_format) {
+    case DXGI_FORMAT_BC1_UNORM: pf[1] = 0x4; pf[2] = 0x31545844u; break;   /* DXT1 */
+    case DXGI_FORMAT_BC2_UNORM: pf[1] = 0x4; pf[2] = 0x33545844u; break;   /* DXT3 */
+    case DXGI_FORMAT_BC3_UNORM: pf[1] = 0x4; pf[2] = 0x35545844u; break;   /* DXT5 */
+    case DXGI_FORMAT_B8G8R8A8_UNORM: pf[1] = 0x41; pf[3] = 32; pf[4] = 0x00FF0000u; pf[5] = 0x0000FF00u; pf[6] = 0x000000FFu; pf[7] = 0xFF000000u; break;
+    case DXGI_FORMAT_B8G8R8X8_UNORM: pf[1] = 0x40; pf[3] = 32; pf[4] = 0x00FF0000u; pf[5] = 0x0000FF00u; pf[6] = 0x000000FFu; break;
+    case DXGI_FORMAT_B5G6R5_UNORM:   pf[1] = 0x40; pf[3] = 16; pf[4] = 0xF800u; pf[5] = 0x07E0u; pf[6] = 0x001Fu; break;
+    case DXGI_FORMAT_B5G5R5A1_UNORM: pf[1] = 0x41; pf[3] = 16; pf[4] = 0x7C00u; pf[5] = 0x03E0u; pf[6] = 0x001Fu; pf[7] = 0x8000u; break;
+    case DXGI_FORMAT_B4G4R4A4_UNORM: pf[1] = 0x41; pf[3] = 16; pf[4] = 0x0F00u; pf[5] = 0x00F0u; pf[6] = 0x000Fu; pf[7] = 0xF000u; break;
+    case DXGI_FORMAT_R8_UNORM:       pf[1] = 0x20000; pf[3] = 8; pf[4] = 0xFFu; break;               /* luminance */
+    case DXGI_FORMAT_A8_UNORM:       pf[1] = 0x2; pf[3] = 8; pf[7] = 0xFFu; break;                   /* alpha */
+    case DXGI_FORMAT_R8G8_UNORM:     pf[1] = 0x20001; pf[3] = 16; pf[4] = 0xFFu; pf[7] = 0xFF00u; break; /* luminance + alpha */
+    default: return 0;
+    }
+    h[2] |= (pf[1] & 0x4) ? 0x80000u : 0x8u;                      /* LINEARSIZE or PITCH */
+    if (pf[1] & 0x4) h[5] = t->level_pitch[0] * ((t->level_h[0] + 3) / 4);
+    h[27] = 0x1000u | (levels > 1 ? 0x400008u : 0);              /* caps: TEXTURE (+ MIPMAP COMPLEX) */
+    f = fopen(path, "wb");
+    if (!f) return 0;
+    fwrite(h, 4, 32, f);
+    for (l = 0; l < levels; l++) {
+        UINT rows = (pf[1] & 0x4) ? (t->level_h[l] + 3) / 4 : t->level_h[l];
+        fwrite(t->level_mem[l], 1, (size_t)t->level_pitch[l] * rows, f);
+    }
+    fclose(f);
+    return (int)levels;
+}
+
 HRESULT d3d8_TextureFinishUpload(IDirect3DTexture8 *iface)
 {
     if (!iface) return E_INVALIDARG;
