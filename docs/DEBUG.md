@@ -33,11 +33,6 @@ Camera mode and speed are temporary and do not change the save file. Free camera
 is unavailable during online play. The camera can pass through scenery; stages
 may have missing backsides or distant geometry outside the normal playable view.
 
-**Field of view** adjusts the vertical viewing angle from 15 to 120 degrees.
-It works with the normal game camera as well as free camera: lower values zoom
-in, higher values show more of the scene. **Reset field of view** restores the
-game's scripted zoom. FOV is temporary and does not apply during online play.
-
 ## Combat diagnostics
 
 Independently enable **Show hitboxes**, **Show hurtboxes** and **Show attack

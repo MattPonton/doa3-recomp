@@ -762,10 +762,22 @@ static struct {
     int active; uint32_t key, frame; unsigned draws, wrote, logged;
     unsigned long long pixels; int rt; float vp[4]; long sc[4];
 } s_rtpass;
+/* Diagnostics (0.0.154): the first one-off passes also get every draw and
+ * clear written to Diagnostics\rtpass_<surface>_<frame>.txt, in the method
+ * trace's @DRAW format (state, screen box, w and z/w ranges, pixels written). */
+#define NV_RTPASS_FILES 24
+static FILE *s_rtpass_f;
+static unsigned s_rtpass_files;
 static void nv_rtpass_end(void)
 {
     if (!s_rtpass.active) return;
     s_rtpass.active = 0;
+    if (s_rtpass_f) {
+        fprintf(s_rtpass_f, "@END %u GPU draws, %u wrote pixels (%llu pixels)\n",
+                s_rtpass.draws, s_rtpass.wrote, s_rtpass.pixels);
+        fclose(s_rtpass_f);
+        s_rtpass_f = NULL;
+    }
     if (s_rtpass.logged >= 100) return;
     s_rtpass.logged++;
     fprintf(stderr, "[RTT] pass into surface %08X at frame %u: %u GPU draws, %u wrote pixels (%llu pixels); "
@@ -773,6 +785,19 @@ static void nv_rtpass_end(void)
             s_rtpass.key, s_rtpass.frame, s_rtpass.draws, s_rtpass.wrote, s_rtpass.pixels, s_rtpass.rt,
             s_rtpass.vp[0], s_rtpass.vp[1], s_rtpass.vp[2], s_rtpass.vp[3],
             s_rtpass.sc[0], s_rtpass.sc[1], s_rtpass.sc[2], s_rtpass.sc[3]);
+}
+static void nv_rtpass_open(uint32_t pitch)
+{
+    extern FILE *doa3_diag_fopen(const char *, const char *);
+    char name[64];
+    if (s_rtpass_files >= NV_RTPASS_FILES) return;
+    sprintf(name, "rtpass_%08X_%u.txt", s_rtpass.key, s_rtpass.frame);
+    s_rtpass_f = doa3_diag_fopen(name, "w");
+    if (!s_rtpass_f) return;
+    s_rtpass_files++;
+    fprintf(s_rtpass_f, "@PASS surface %08X frame %u clip %ux%u pitch %08X (zeta:colour) format %08X\n",
+            s_rtpass.key, s_rtpass.frame, (g_pg.surface_clip_h >> 16) & 0xFFFF,
+            (g_pg.surface_clip_v >> 16) & 0xFFFF, pitch, g_pg.surface_fmt);
 }
 /* 1 = the guest memory still holds what it held when the game last rendered
  * into this surface (or we never saw that render), so the host target is
@@ -2869,6 +2894,7 @@ static void nv_sync_render_target(void)
                         s_rtpass.logged = logged;
                         s_rtpass.active = 1; s_rtpass.key = g_pg_surf_coff;
                         s_rtpass.frame = g_doa3_frames_presented; s_rtpass.rt = -1;
+                        nv_rtpass_open(g_pg_surf_pitch);
                     }
                     s_bound_key = g_pg_surf_coff;
                 }
@@ -2897,7 +2923,9 @@ static void nv_mtrace_draw(const char *path, const OutputVertex *o, uint32_t n)
     float x0 = 1e9f, x1 = -1e9f, y0 = 1e9f, y1 = -1e9f, z0 = 1e9f, z1 = -1e9f;
     unsigned amin = 255, amax = 0;
     uint32_t i;
-    if (!g_doa3_mtrace) return;
+    FILE *fs[2]; int fi;
+    fs[0] = g_doa3_mtrace; fs[1] = s_rtpass_f;
+    if (!fs[0] && !fs[1]) return;
     for (i = 0; i < n; i++) {
         unsigned a = o[i].color >> 24;
         if (o[i].x < x0) x0 = o[i].x;
@@ -2909,14 +2937,18 @@ static void nv_mtrace_draw(const char *path, const OutputVertex *o, uint32_t n)
         if (a < amin) amin = a;
         if (a > amax) amax = a;
     }
-    fprintf(g_doa3_mtrace, "@DRAW %s mode%u n%u box(%.1f,%.1f)-(%.1f,%.1f) z[%.5f,%.5f] col0=%08X a[%02X,%02X] tex0=%08X%c zt=%d zf=%X zw=%d bl=%d %X/%X cm=%08X st=%d off=%d\n",
-            path, g_pg.draw_mode, n, x0, y0, x1, y1, z0, z1, n ? o[0].color : 0, amin, amax,
-            g_pg.tex[0].offset, g_pg.tex[0].enabled ? 'E' : '-', g_pg.depth_test, g_pg.depth_func,
-            g_pg.depth_mask, g_pg.blend_enable, g_pg.blend_sfactor, g_pg.blend_dfactor,
-            g_pg.color_mask, g_pg.stencil_enable, d3d8_OffscreenTargetActive());
-    for (i = 0; i < n && i < 4; i++)
-        fprintf(g_doa3_mtrace, "@   v%u %.2f %.2f z%.5f rhw%.5f %08X uv %.3f %.3f\n",
-                i, o[i].x, o[i].y, o[i].z, o[i].rhw, o[i].color, o[i].u, o[i].v);
+    for (fi = 0; fi < 2; fi++) {
+        FILE *f = fs[fi];
+        if (!f) continue;
+        fprintf(f, "@DRAW %s mode%u n%u box(%.1f,%.1f)-(%.1f,%.1f) z[%.5f,%.5f] col0=%08X a[%02X,%02X] tex0=%08X%c zt=%d zf=%X zw=%d bl=%d %X/%X cm=%08X st=%d off=%d\n",
+                path, g_pg.draw_mode, n, x0, y0, x1, y1, z0, z1, n ? o[0].color : 0, amin, amax,
+                g_pg.tex[0].offset, g_pg.tex[0].enabled ? 'E' : '-', g_pg.depth_test, g_pg.depth_func,
+                g_pg.depth_mask, g_pg.blend_enable, g_pg.blend_sfactor, g_pg.blend_dfactor,
+                g_pg.color_mask, g_pg.stencil_enable, d3d8_OffscreenTargetActive());
+        for (i = 0; i < n && i < 4; i++)
+            fprintf(f, "@   v%u %.2f %.2f z%.5f rhw%.5f %08X uv %.3f %.3f\n",
+                    i, o[i].x, o[i].y, o[i].z, o[i].rhw, o[i].color, o[i].u, o[i].v);
+    }
 }
 
 /* Growable heap scratch for the array path's vertex batches. A 65K-vertex
@@ -3323,7 +3355,7 @@ extern uint64_t g_d3d8_probe_pixels;
 extern int      g_d3d8_probe_rt;
 extern float    g_d3d8_probe_vp[4];
 extern long     g_d3d8_probe_sc[4];
-static float    s_dbg_box[6];     /* x0, y0, x1, y1, wmin, wmax */
+static float    s_dbg_box[8];     /* x0, y0, x1, y1, wmin, wmax, z/w min, z/w max */
 static unsigned s_dbg_behind, s_dbg_n;
 static uint16_t     *s_gi;  static uint32_t s_gi_cap;
 static uint16_t     *s_gs;  static uint32_t s_gs_cap;   /* source index -> packed slot */
@@ -3500,10 +3532,10 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
         }
     }
     {   extern FILE *g_doa3_mtrace;
-        if (g_doa3_mtrace) {
+        if (g_doa3_mtrace || s_rtpass_f) {
             uint32_t v;
-            s_dbg_box[0] = s_dbg_box[1] = s_dbg_box[4] = 1e30f;
-            s_dbg_box[2] = s_dbg_box[3] = s_dbg_box[5] = -1e30f;
+            s_dbg_box[0] = s_dbg_box[1] = s_dbg_box[4] = s_dbg_box[6] = 1e30f;
+            s_dbg_box[2] = s_dbg_box[3] = s_dbg_box[5] = s_dbg_box[7] = -1e30f;
             s_dbg_behind = 0; s_dbg_n = nv;
             for (v = 0; v < nv; v++) {
                 const float *in = s_gv[v].pos;
@@ -3514,7 +3546,9 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
                 if (c[3] < s_dbg_box[4]) s_dbg_box[4] = c[3];
                 if (c[3] > s_dbg_box[5]) s_dbg_box[5] = c[3];
                 if (c[3] <= 0.0f) { s_dbg_behind++; continue; }
-                c[0] /= c[3]; c[1] /= c[3];
+                c[0] /= c[3]; c[1] /= c[3]; c[2] /= c[3];
+                if (c[2] < s_dbg_box[6]) s_dbg_box[6] = c[2];
+                if (c[2] > s_dbg_box[7]) s_dbg_box[7] = c[2];
                 if (c[0] < s_dbg_box[0]) s_dbg_box[0] = c[0];
                 if (c[1] < s_dbg_box[1]) s_dbg_box[1] = c[1];
                 if (c[0] > s_dbg_box[2]) s_dbg_box[2] = c[0];
@@ -3719,6 +3753,28 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     return 1;
 }
 
+/* DOA3 DIAG: one @DRAW line for a GPU-path draw (method trace, rtpass files). */
+static void nv_gpu_draw_line(FILE *f, uint32_t n, int lit)
+{
+    fprintf(f, "@DRAW gpu mode%u idx%u tex0=%08X%c zt=%d zf=%X zw=%d bl=%d %X/%X cm=%08X st=%d off=%d"
+            " | sf=%X ref=%X rm=%X wm=%X op=%X/%X/%X fog=%u/%X/%u col=%d lit=%d tex1=%08X%c"
+            " | verts %u box(%.0f,%.0f)-(%.0f,%.0f) w[%.3g,%.3g] z/w[%.4g,%.4g] behind %u"
+            " | pixels %llu rt %d vp(%.0f,%.0f %.0fx%.0f) sc(%ld,%ld)-(%ld,%ld)\n",
+            g_pg.draw_mode, n, g_pg.tex[0].offset, g_pg.tex[0].enabled ? 'E' : '-',
+            g_pg.depth_test, g_pg.depth_func, g_pg.depth_mask, g_pg.blend_enable,
+            g_pg.blend_sfactor, g_pg.blend_dfactor, g_pg.color_mask, g_pg.stencil_enable,
+            d3d8_OffscreenTargetActive(),
+            g_pg.stencil_func, g_pg.stencil_ref, g_pg.stencil_func_mask, g_pg.stencil_mask,
+            g_pg.stencil_fail, g_pg.stencil_zfail, g_pg.stencil_zpass,
+            g_pg.fog_enable, g_pg.fog_mode, g_pg.fog_gen, nv_attr_enabled(3), lit,
+            g_pg.tex[1].offset, g_pg.tex[1].enabled ? 'E' : '-',
+            s_dbg_n, s_dbg_box[0], s_dbg_box[1], s_dbg_box[2], s_dbg_box[3],
+            s_dbg_box[4], s_dbg_box[5], s_dbg_box[6], s_dbg_box[7], s_dbg_behind,
+            (unsigned long long)g_d3d8_probe_pixels, g_d3d8_probe_rt,
+            g_d3d8_probe_vp[0], g_d3d8_probe_vp[1], g_d3d8_probe_vp[2], g_d3d8_probe_vp[3],
+            g_d3d8_probe_sc[0], g_d3d8_probe_sc[1], g_d3d8_probe_sc[2], g_d3d8_probe_sc[3]);
+}
+
 /* Array-draw outcomes, reported every 5 s by pgraph_d3d11_flush's caller:
  * [0] batches dropped for a non-finite vertex, [1] batches clipped away
  * entirely, [2] batches drawn, [3] vertices in the NaN-dropped batches. */
@@ -3773,24 +3829,8 @@ static void submit_array_draw(void)
     }
     if (!is_points && nv_gpu_ff_submit(dev, &ctx, prim, is_quads)) {
         {   extern FILE *g_doa3_mtrace;
-            if (g_doa3_mtrace)
-                fprintf(g_doa3_mtrace, "@DRAW gpu mode%u idx%u tex0=%08X%c zt=%d zf=%X zw=%d bl=%d %X/%X cm=%08X st=%d off=%d"
-                        " | sf=%X ref=%X rm=%X wm=%X op=%X/%X/%X fog=%u/%X/%u col=%d lit=%d tex1=%08X%c"
-                        " | verts %u box(%.0f,%.0f)-(%.0f,%.0f) w[%.3g,%.3g] behind %u"
-                        " | pixels %llu rt %d vp(%.0f,%.0f %.0fx%.0f) sc(%ld,%ld)-(%ld,%ld)\n",
-                        g_pg.draw_mode, n, g_pg.tex[0].offset, g_pg.tex[0].enabled ? 'E' : '-',
-                        g_pg.depth_test, g_pg.depth_func, g_pg.depth_mask, g_pg.blend_enable,
-                        g_pg.blend_sfactor, g_pg.blend_dfactor, g_pg.color_mask, g_pg.stencil_enable,
-                        d3d8_OffscreenTargetActive(),
-                        g_pg.stencil_func, g_pg.stencil_ref, g_pg.stencil_func_mask, g_pg.stencil_mask,
-                        g_pg.stencil_fail, g_pg.stencil_zfail, g_pg.stencil_zpass,
-                        g_pg.fog_enable, g_pg.fog_mode, g_pg.fog_gen, nv_attr_enabled(3), ctx.lit,
-                        g_pg.tex[1].offset, g_pg.tex[1].enabled ? 'E' : '-',
-                        s_dbg_n, s_dbg_box[0], s_dbg_box[1], s_dbg_box[2], s_dbg_box[3],
-                        s_dbg_box[4], s_dbg_box[5], s_dbg_behind,
-                        (unsigned long long)g_d3d8_probe_pixels, g_d3d8_probe_rt,
-                        g_d3d8_probe_vp[0], g_d3d8_probe_vp[1], g_d3d8_probe_vp[2], g_d3d8_probe_vp[3],
-                        g_d3d8_probe_sc[0], g_d3d8_probe_sc[1], g_d3d8_probe_sc[2], g_d3d8_probe_sc[3]);
+            if (g_doa3_mtrace) nv_gpu_draw_line(g_doa3_mtrace, n, ctx.lit);
+            if (s_rtpass_f) nv_gpu_draw_line(s_rtpass_f, n, ctx.lit);
         }
         if (s_rtpass.active) {   /* one-off offscreen pass: count what it wrote */
             if (!s_rtpass.draws) {
@@ -4894,6 +4934,10 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
             if (param & 0x01) flags |= 2;  /* D3DCLEAR_ZBUFFER */
             if (param & 0x02) flags |= 4;  /* D3DCLEAR_STENCIL */
             dev->lpVtbl->Clear(dev, 0, NULL, flags, g_pg.clear_color, 1.0f, 0);
+            if (s_rtpass_f)
+                fprintf(s_rtpass_f, "@CLEAR %08X colour %08X rect h %08X v %08X offscreen %d\n",
+                        param, g_pg.clear_color, g_pg.clear_rect_h, g_pg.clear_rect_v,
+                        d3d8_OffscreenTargetActive());
             {   /* DOA3 DIAG: clear trace alongside [RTT] SETRT lines. */
                 extern volatile int g_doa3_post_movie; extern volatile LONG g_doa3_heartbeat;
                 static int s_t = 0; static uint32_t s_lp, s_lc, s_k;

@@ -105,9 +105,9 @@ Sparring pause menu.
 
 ### Debug
 
-Developer and inspection tools: unlock-all, free camera and field of view,
-hitbox and frame-data overlays, render views, a performance overlay, hiding the
-HUD or fighters, and diagnostic captures. Some of these may change or be
+Developer and inspection tools: unlock-all, free camera, hitbox and
+frame-data overlays, render views, a performance overlay, hiding the HUD or
+fighters, and diagnostic captures. Some of these may change or be
 removed before v1.0. See [docs/DEBUG.md](docs/DEBUG.md).
 
 ## Building

@@ -2529,3 +2529,25 @@ uses the stage's environment map like the main model. Two issues remain.
    away from it: "[RTT] pass into surface X at frame N: D GPU draws, W wrote
    pixels (P pixels); first draw rt/vp/sc", using the 0.0.150 occlusion
    probe for that pass only (at most 100 lines).
+
+## 0.0.154
+
+1. Zack costume 3, results of the 0.0.153 pass log (five Story runs on one
+   boot). Character select now shows the default map. The cutscene capture
+   before Fight 3 happens about 6 frames before the same three reads
+   (loadfile.afs offsets 19BFF000, 19529800, 06D5E000) in every run, and
+   the stage's own reads finish about 300 frames earlier in all runs, so
+   the stage data is in memory each time. What the pass wrote varies:
+   - first run (black suit): 106 draws, none wrote a pixel;
+   - a partial run: 135 draws, 2 wrote (128523 pixels, about two full
+     256x256 layers, likely the sky);
+   - good runs: 177 to 331 draws, 65 to 154 wrote.
+   Draws that write nothing while full-screen layers do points at the
+   depth or stencil test, or the camera, rather than missing data. To see
+   which, the first 24 one-off passes now also write every draw and clear
+   to Diagnostics\rtpass_<surface>_<frame>.txt in the method trace's @DRAW
+   format (depth/stencil/blend state, screen box, w and new z/w ranges,
+   pixels written), plus @CLEAR lines and a closing @END total.
+2. Debug > Camera controls: the Field of view slider and its reset button
+   were removed (they caused more false bug reports than they helped). The
+   free camera is unchanged; docs/DEBUG.md and README.md updated.

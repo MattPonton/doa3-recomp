@@ -742,13 +742,6 @@ void DrawDebugSection()
                            "kept between launches.");
     }
     if (ImGui::CollapsingHeader("Camera controls")) {
-        float fov = free_camera_fov();
-        if (ImGui::SliderFloat("Field of view", &fov, 15.0f, 120.0f, "%.1f degrees", ImGuiSliderFlags_AlwaysClamp))
-            free_camera_set_fov(fov);
-        if (ImGui::Button("Reset field of view")) free_camera_reset_fov();
-        ImGui::TextWrapped("Vertical field of view. Works with the normal camera or free camera. "
-                           "Temporary and unavailable during online play. Reset follows the game's camera zoom.");
-        ImGui::Separator();
         bool camera = free_camera_enabled() != 0;
         if (ImGui::Checkbox("Free camera", &camera)) {
             if (!free_camera_set_enabled(camera ? 1 : 0))
