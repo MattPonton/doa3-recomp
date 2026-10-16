@@ -2052,8 +2052,15 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, const NvDrawSummary *sum,
              * header band are untextured draws whose stale offset is a
              * render target (0x01ADD400); binding it textured them with that
              * target's changing contents, so both blinked on and off. */
+            /* A render target is never block-compressed or palettised. The
+             * guest heap reuses addresses, so an ordinary DXT texture can sit
+             * where an earlier scene rendered into a surface; Zack's Story
+             * cutscene drew two 64x64 DXT1 textures (0x0190FC00, 0x0200FC00)
+             * with a render left behind there an hour earlier. */
+            uint32_t tcf = (g_pg.tex[0].format >> 8) & 0xFFu;
+            int rt_format = tcf != 0x0Cu && tcf != 0x0Eu && tcf != 0x0Fu && tcf != 0x0Bu;
             if (g_pg.tex[0].enabled && g_pg.tex[0].offset &&
-                (samples_fb || (!d3d8_OffscreenTargetActive() &&
+                (samples_fb || (rt_format && !d3d8_OffscreenTargetActive() &&
                                 d3d8_HasOffscreenTexture(g_pg.tex[0].offset)))) {
                 int use_diffuse = use_vertex_diffuse;
                 if (samples_fb) {

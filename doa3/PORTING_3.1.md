@@ -2397,3 +2397,25 @@ draw samples surface X, whose host target was last rendered N frames ago"
 with the texture's format, control0 and rect (once per surface per 10 s,
 at most 200). The reflection targets are rendered every frame and stay
 silent.
+
+### 0.0.148: never substitute a render target for a DXT or palettised texture
+
+From the 0.0.147 session with ten "Trace the next frame" captures of the
+black Zack cutscene (costume 3, the metallic snowboard suit) and one of the
+fight that follows:
+- The black frames are fully black in the guest frame (aa_*.bmp max 0) while
+  the game issues ~550 GPU draws, all to the default target (off=0), with
+  sane composite matrices and the usual frame-start clear; there are no
+  inline/2D draws in them. The fight frame (705 draws) renders normally.
+- 0x028D4600 is a real render target, Zack costume 3's environment map
+  (rendered every few hundred frames, sampled as stage 0 by his model with
+  the 1440x960 rect), in both the black frames and the fight. It is not the
+  cause by itself.
+- The stale-target log did catch a real bug: two 64x64 DXT1 textures
+  (0x0190FC00, 0x0200FC00, format 06610C2A) were drawn with the host target
+  of a surface the game had rendered into 40,000-97,000 frames earlier.
+  A render target is never block-compressed or palettised, so the
+  host-target substitution now requires a texture colour format other than
+  DXT1/3/5 (0x0C/0x0E/0x0F) and I8 (0x0B).
+Still needed: a trace of the same cutscene rendering correctly (fresh
+launch) to diff against the black one.
