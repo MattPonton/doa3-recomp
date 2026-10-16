@@ -2595,3 +2595,18 @@ from hardware.
   before the pass, normally the previous frame) and ends with @AFTER lines
   for the next six draws on the main target, so the capture's camera can be
   compared with the cameras either side of it.
+
+## 0.0.157
+
+1. The shader disk cache moved from `%LOCALAPPDATA%\DOA3\shader-cache-v1`
+   to a `ShaderCache` folder next to DOA3.exe (found from the executable's
+   own path), so the port keeps nothing in AppData. `DOA3_SHADER_CACHE_DIR`
+   still overrides it. The old AppData folder is not touched; it can be
+   deleted by hand. README's file table lists the new folder.
+2. Zack costume 3: the second set of five runs was on 0.0.155, so the
+   pass files have no @BEFORE/@AFTER lines yet. Notable in them: two
+   fight-start captures that wrote little (run 1 frame 2983, 21 of 271
+   draws; run 5 frame 1551, 29 of 256) draw everything after their first
+   object with the w row exactly (0, 0, -1), an unrotated camera looking
+   down -Z, unlike every full capture. The character-select capture is
+   still identical in all ten runs.

@@ -48,6 +48,7 @@ Files the port keeps next to `DOA3.exe`:
 | `Screenshots\` | Screenshots |
 | `doa3_log.txt` | Log, only when **Write log files** is on |
 | `Diagnostics\` | Developer captures, only when diagnostics are on; cleared at each launch |
+| `ShaderCache\` | Compiled shaders, kept so later launches start faster; safe to delete |
 
 ## Settings (Escape menu)
 

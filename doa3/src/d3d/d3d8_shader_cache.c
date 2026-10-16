@@ -54,12 +54,15 @@ static BOOL cache_path(const unsigned char key[32], wchar_t path[MAX_PATH])
     /* Override is for test/profiling isolation; an existing directory is used
      * as-is, and an invalid/unwritable location simply disables persistence. */
     if (!n) {
-        n = GetEnvironmentVariableW(L"LOCALAPPDATA", folder, MAX_PATH);
+        /* Default: a ShaderCache folder next to DOA3.exe, like the port's
+         * other files (no AppData). */
+        wchar_t *slash;
+        n = GetModuleFileNameW(NULL, folder, MAX_PATH);
         if (!n || n >= MAX_PATH - 100) return FALSE;
-        wcscat_s(folder, MAX_PATH, L"\\DOA3");
-        if (!CreateDirectoryW(folder, NULL) && GetLastError() != ERROR_ALREADY_EXISTS)
-            return FALSE;
-        wcscat_s(folder, MAX_PATH, L"\\shader-cache-v1");
+        slash = wcsrchr(folder, L'\\');
+        if (!slash) return FALSE;
+        wcscpy_s(slash + 1, MAX_PATH - (size_t)(slash + 1 - folder), L"ShaderCache");
+        n = (DWORD)wcslen(folder);
     }
     if (n >= MAX_PATH - 100 || wcslen(folder) >= MAX_PATH - 100) return FALSE;
     if (!CreateDirectoryW(folder, NULL) && GetLastError() != ERROR_ALREADY_EXISTS)
