@@ -771,6 +771,19 @@ static unsigned s_rtpass_files;
 static char s_rtpass_name[64];
 static float s_rtpass_cam[16];          /* composite matrix last written to the file */
 static unsigned s_rtpass_cams;          /* @CAMERA lines in this file */
+static unsigned s_rtpass_tail;          /* main-target draws still to record after the pass */
+static void nv_rtpass_write_matrix(const char *tag, const float *m)
+{
+    int r;
+    fprintf(s_rtpass_f, "%s composite", tag);
+    for (r = 0; r < 16; r++) fprintf(s_rtpass_f, " %.6g", m[r]);
+    fprintf(s_rtpass_f, "\n");
+}
+static void nv_rtpass_close(void)
+{
+    if (s_rtpass_f) { fclose(s_rtpass_f); s_rtpass_f = NULL; }
+    s_rtpass_tail = 0;
+}
 static void nv_rtpass_end(void)
 {
     if (!s_rtpass.active) return;
@@ -778,8 +791,10 @@ static void nv_rtpass_end(void)
     if (s_rtpass_f) {
         fprintf(s_rtpass_f, "@END %u GPU draws, %u wrote pixels (%llu pixels)\n",
                 s_rtpass.draws, s_rtpass.wrote, s_rtpass.pixels);
-        fclose(s_rtpass_f);
-        s_rtpass_f = NULL;
+        /* keep the file for the next few draws, to compare the capture's
+         * camera with the one the game draws its frame with afterwards */
+        s_rtpass_tail = s_rtpass.draws ? 6 : 0;
+        if (!s_rtpass_tail) nv_rtpass_close();
         if (!s_rtpass.draws) {
             /* nothing drawn (the 03C24000 passes): drop the file, keep the slot */
             char path[96];
@@ -799,6 +814,7 @@ static void nv_rtpass_end(void)
 static void nv_rtpass_open(uint32_t pitch)
 {
     extern FILE *doa3_diag_fopen(const char *, const char *);
+    nv_rtpass_close();
     if (s_rtpass_files >= NV_RTPASS_FILES) return;
     sprintf(s_rtpass_name, "rtpass_%08X_%u.txt", s_rtpass.key, s_rtpass.frame);
     s_rtpass_f = doa3_diag_fopen(s_rtpass_name, "w");
@@ -808,6 +824,9 @@ static void nv_rtpass_open(uint32_t pitch)
     fprintf(s_rtpass_f, "@PASS surface %08X frame %u clip %ux%u pitch %08X (zeta:colour) format %08X\n",
             s_rtpass.key, s_rtpass.frame, (g_pg.surface_clip_h >> 16) & 0xFFFF,
             (g_pg.surface_clip_v >> 16) & 0xFFFF, pitch, g_pg.surface_fmt);
+    /* the matrix left from the last draw before the pass (normally the
+     * game's previous frame) */
+    nv_rtpass_write_matrix("@BEFORE", g_pg.composite);
 }
 /* 1 = the guest memory still holds what it held when the game last rendered
  * into this surface (or we never saw that render), so the host target is
@@ -3834,13 +3853,18 @@ static void submit_array_draw(void)
         g_pg.shader_prog == 0x21u;
 
     {   extern FILE *g_doa3_mtrace;
-        g_d3d8_draw_probe = g_doa3_mtrace != NULL || s_rtpass.active;
+        g_d3d8_draw_probe = g_doa3_mtrace != NULL || s_rtpass.active || s_rtpass_f;
         g_d3d8_probe_pixels = 0; g_d3d8_probe_rt = -1;
     }
     if (!is_points && nv_gpu_ff_submit(dev, &ctx, prim, is_quads)) {
         {   extern FILE *g_doa3_mtrace;
             if (g_doa3_mtrace) nv_gpu_draw_line(g_doa3_mtrace, n, ctx.lit);
-            if (s_rtpass_f) {
+            if (s_rtpass_f && !s_rtpass.active) {
+                /* after the pass: the frame's own draws */
+                nv_rtpass_write_matrix(ctx.run_program ? "@AFTER (vertex program)" : "@AFTER", g_pg.composite);
+                nv_gpu_draw_line(s_rtpass_f, n, ctx.lit);
+                if (!--s_rtpass_tail) nv_rtpass_close();
+            } else if (s_rtpass_f) {
                 /* the camera (fixed-function composite matrix) whenever it changes */
                 if (!ctx.run_program && s_rtpass_cams < 16 &&
                     (!s_rtpass_cams || memcmp(s_rtpass_cam, g_pg.composite, sizeof s_rtpass_cam))) {

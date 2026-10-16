@@ -2571,3 +2571,27 @@ were the first Fight 3 cutscene after a fresh launch, which points at timing
 - Each file records the composite matrix (the fixed-function camera and
   projection) as @CAMERA lines whenever it changes (up to 16 per pass), so a
   bad capture's camera can be compared with a good one.
+
+## 0.0.156
+
+Zack costume 3, five fresh-launch runs with the 0.0.155 camera lines. Every
+environment-map pass draws the scene several times with the camera turned in
+90-degree steps around the vertical axis (the composite matrix's w row
+rotates between, for example, (0.94, 0.02, 0.34), (-0.94, 0.02, -0.34) and
+(0.34, 0.02, -0.94)), so the map is built from the capture point looking
+around the stage. The character-select capture is identical in every run
+(level camera, w row (-1, 0, 0)). The in-fight and cutscene captures differ
+from run to run and their tilt follows the game's current camera: the worst
+one this time (run 5, frame 3908, the capture at the start of fight 2, 58
+draws of which 3 wrote, each covering the whole map) was taken with the
+camera pointing straight up or down (w row (0.03, -0.999, 0.03)), so only
+the sky or floor layers landed in the map. That matches the partial maps
+seen on other stages too, and the black one is the same thing with nothing
+in view. The open question is which camera the game should be using at
+that moment; if it is the previous scene's last camera (the win pose or
+results screen), the order of the capture and the camera update differs
+from hardware.
+- Each pass file now starts with @BEFORE (the matrix left by the last draw
+  before the pass, normally the previous frame) and ends with @AFTER lines
+  for the next six draws on the main target, so the capture's camera can be
+  compared with the cameras either side of it.
