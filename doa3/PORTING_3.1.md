@@ -2376,3 +2376,24 @@ it and every sample of it, and a full table replaces the least recently used
 target that is not currently bound for rendering. Each replacement logs
 "[RTT] host targets full: surface X replaces Y" (first 100). Worst case is 16
 live targets instead of 8; full-size ones are back-buffer sized.
+
+### 0.0.147: not the slot table; log stale offscreen targets substituted for textures
+
+0.0.146 did not fix the black Zack cutscene: the run logged 13 guest
+render-target surfaces and no "[RTT] host targets full" line, so the 16-slot
+table never filled and slot thrashing was not the cause (the LRU stays; it
+is still better than overwriting slot 7).
+
+Next suspect: a draw whose texture address matches a guest surface the game
+rendered into earlier gets the HOST target for that surface instead of the
+texture in memory (nv_apply_draw_state). Host targets are never dropped, so
+after many stages the guest heap can place an ordinary cutscene texture at
+an address that was a render target in an earlier scene, and the draw
+samples that old, unrelated (often cleared) render instead. A fresh launch
+has no such stale targets. Each host target now records the presented
+frame it was last rendered into (d3d8_OffscreenTextureAge), and a draw that
+samples one last rendered more than 30 frames earlier logs "[RTT] frame N:
+draw samples surface X, whose host target was last rendered N frames ago"
+with the texture's format, control0 and rect (once per surface per 10 s,
+at most 200). The reflection targets are rendered every frame and stay
+silent.

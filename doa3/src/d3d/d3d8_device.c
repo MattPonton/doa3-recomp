@@ -980,6 +980,7 @@ static HRESULT __stdcall dev_EndScene(IDirect3DDevice8 *self)
 typedef struct {
     uint32_t key;                       /* guest SET_SURFACE_COLOR_OFFSET */
     uint32_t last_use;                  /* g_offrt_clock at the last render or sample */
+    unsigned rendered_frame;            /* presented-frame count when last rendered into */
     ID3D11Texture2D           *tex;
     ID3D11RenderTargetView    *rtv;
     ID3D11Texture2D           *depth;
@@ -1084,9 +1085,23 @@ int d3d8_SetOffscreenTarget(uint32_t key, UINT w, UINT h)
         vp.MinDepth = 0.0f; vp.MaxDepth = 1.0f;
         ID3D11DeviceContext_RSSetViewports(g_device_state.d3d11_context, 1, &vp);
     }
+    {   extern unsigned g_doa3_frames_presented;
+        g_offrt[slot].rendered_frame = g_doa3_frames_presented; }
     g_off_cur = slot;
     g_off_active = 1;
     return 1;
+}
+
+/* Frames since the host target for `key` was last rendered into, or -1 if
+ * there is none (diagnostics: a stale target substituted for a texture). */
+int d3d8_OffscreenTextureAge(uint32_t key)
+{
+    extern unsigned g_doa3_frames_presented;
+    int i;
+    for (i = 0; i < OFFRT_N; i++)
+        if (g_offrt[i].tex && g_offrt[i].key == key)
+            return (int)(g_doa3_frames_presented - g_offrt[i].rendered_frame);
+    return -1;
 }
 
 void d3d8_RestoreDefaultTarget(void)

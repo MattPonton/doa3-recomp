@@ -2082,6 +2082,24 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, const NvDrawSummary *sum,
                     post->fold = 1;
                     post->fold_factor = g_pg.comb_factor0[0];
                 }
+                if (!samples_fb) {
+                    /* Diagnostics: a host target substituted for a texture
+                     * long after the game last rendered into it -- the guest
+                     * heap may have reused that address for an ordinary
+                     * texture (suspected for the black Zack cutscene). */
+                    extern int d3d8_OffscreenTextureAge(uint32_t key);
+                    extern unsigned g_doa3_frames_presented;
+                    static unsigned s_lines, s_key, s_at;
+                    int age = d3d8_OffscreenTextureAge(g_pg.tex[0].offset);
+                    if (age > 30 && s_lines < 200 &&
+                        (s_key != g_pg.tex[0].offset || g_doa3_frames_presented - s_at >= 600)) {
+                        s_lines++; s_key = g_pg.tex[0].offset; s_at = g_doa3_frames_presented;
+                        fprintf(stderr, "[RTT] frame %u: draw samples surface %08X, whose host target was last rendered %d frames ago "
+                                "(texture format %08X control0 %08X rect %08X)\n",
+                                g_doa3_frames_presented, g_pg.tex[0].offset, age, g_pg.tex[0].format,
+                                g_pg.tex[0].control0, g_pg.tex[0].image_rect);
+                    }
+                }
                 dev->lpVtbl->SetTexture(dev, 0, NULL);
                 if (samples_fb ? d3d8_BindPrevFrame(0)
                                : d3d8_BindOffscreenTexture(g_pg.tex[0].offset, 0)) {
