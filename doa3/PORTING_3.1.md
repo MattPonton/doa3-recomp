@@ -2502,3 +2502,30 @@ blocks as is) with a matching DDS pixel format, every uploaded mip level.
 Render-target substitutions are not textures and are not saved. Asked for to
 extract the default environment map of Zack's costume 3 (Beach, day) at
 character select for Blender.
+
+### 0.0.153: costume 3 at character select; counting what one-off captures draw
+
+User test of 0.0.151: the low-poly floor reflection of Zack's costume 3 now
+uses the stage's environment map like the main model. Two issues remain.
+
+1. Character select still shows the last stage's map. The 0.0.151
+   fingerprint cannot see the reload: in the port the render never reached
+   guest memory, so the memory still holds the default map, and the game
+   writing the same default map back leaves it byte-for-byte unchanged. On
+   hardware the memory held the render and the reload overwrote it. Now a
+   one-off render (a target not rendered for more than 60 frames, i.e. not
+   the per-frame reflections) writes a marker into the fingerprinted words
+   of its guest memory when it starts, so any later reload changes them and
+   the draw samples the memory again. The per-frame reflection targets are
+   not marked (a stage-1 read of one, which has no host substitution, would
+   otherwise show the marks).
+2. In Zack's Story cutscene before Fight 3 (vs Gen Fu), the suit is black on
+   one attempt and shows a partial capture (the base environment without the
+   full stage) on another; the fight's own capture at the end of the
+   cutscene is correct. The game captures the map once at the cutscene start
+   (~330 frames before the traced frames) and samples it for the whole
+   scene, so whatever that one pass produced is what shows. To see what it
+   produced, every one-off pass now logs one line when the game switches
+   away from it: "[RTT] pass into surface X at frame N: D GPU draws, W wrote
+   pixels (P pixels); first draw rt/vp/sc", using the 0.0.150 occlusion
+   probe for that pass only (at most 100 lines).

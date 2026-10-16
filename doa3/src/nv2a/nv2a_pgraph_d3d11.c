@@ -725,14 +725,54 @@ static uint32_t nv_rtsig_of(uint32_t key, uint32_t bytes)
     if (!a || !bytes || (unsigned long long)a + bytes > 0x08000000ull) return 0;
     return nv_tex_signature((const uint8_t *)((uintptr_t)a + g_xbox_mem_offset), bytes);
 }
-static void nv_rtsig_record(uint32_t key, uint32_t bytes)
+static void nv_rtsig_record(uint32_t key, uint32_t bytes, int mark)
 {
+    extern ptrdiff_t g_xbox_mem_offset;
     unsigned i;
+    uint32_t a = key & 0x07FFFFFFu;
     for (i = 0; i < NV_RTSIG_N; i++) if (s_rtsig[i].key == key) break;
     if (i == NV_RTSIG_N) { i = s_rtsig_next; s_rtsig_next = (s_rtsig_next + 1) % NV_RTSIG_N; }
+    /* On hardware this render overwrites the memory. Here it goes to the
+     * host target, so mark the fingerprinted words instead (0.0.153): a
+     * later reload of the texture that was there before -- byte for byte
+     * the same data, as character select does with costume 3's default
+     * environment map -- must still count as a write. Only for one-off
+     * renders (mark): the per-frame reflection targets are never reloaded,
+     * and a draw that reads one through its second texture stage (no host
+     * substitution there) would otherwise show the marks. */
+    if (mark && a && bytes && (unsigned long long)a + bytes <= 0x08000000ull) {
+        uint8_t *p = (uint8_t *)((uintptr_t)a + g_xbox_mem_offset);
+        size_t k, step = (bytes <= 1024) ? 4 : (bytes / 256) & ~(size_t)3;
+        if (step < 4) step = 4;
+        for (k = 0; k + 4 <= bytes; k += step) {
+            uint32_t v = 0xD0A3D0A3u ^ (uint32_t)k ^ key;
+            memcpy(p + k, &v, 4);
+        }
+    }
     s_rtsig[i].key = key;
     s_rtsig[i].bytes = bytes;
     s_rtsig[i].sig = nv_rtsig_of(key, bytes);
+}
+
+/* Diagnostics (0.0.153): a render into a target that has not been rendered
+ * for over a second -- a one-off capture like costume 3's environment map,
+ * not the per-frame reflections -- gets every draw's written pixels counted
+ * and one summary line when the game switches away from it. */
+static struct {
+    int active; uint32_t key, frame; unsigned draws, wrote, logged;
+    unsigned long long pixels; int rt; float vp[4]; long sc[4];
+} s_rtpass;
+static void nv_rtpass_end(void)
+{
+    if (!s_rtpass.active) return;
+    s_rtpass.active = 0;
+    if (s_rtpass.logged >= 100) return;
+    s_rtpass.logged++;
+    fprintf(stderr, "[RTT] pass into surface %08X at frame %u: %u GPU draws, %u wrote pixels (%llu pixels); "
+            "first draw rt %d vp(%.0f,%.0f %.0fx%.0f) sc(%ld,%ld)-(%ld,%ld)\n",
+            s_rtpass.key, s_rtpass.frame, s_rtpass.draws, s_rtpass.wrote, s_rtpass.pixels, s_rtpass.rt,
+            s_rtpass.vp[0], s_rtpass.vp[1], s_rtpass.vp[2], s_rtpass.vp[3],
+            s_rtpass.sc[0], s_rtpass.sc[1], s_rtpass.sc[2], s_rtpass.sc[3]);
 }
 /* 1 = the guest memory still holds what it held when the game last rendered
  * into this surface (or we never saw that render), so the host target is
@@ -2804,6 +2844,7 @@ static void nv_sync_render_target(void)
             int seen = 0;
             for (k = 0; k < g_fb_offs_n; k++) if (g_fb_offs[k] == (g_pg_surf_coff & 0x07FFFFFFu)) seen = 1;
             if (!seen && g_fb_offs_n < 4) g_fb_offs[g_fb_offs_n++] = g_pg_surf_coff & 0x07FFFFFFu;
+            nv_rtpass_end();
             if (d3d8_OffscreenTargetActive()) d3d8_RestoreDefaultTarget();
         } else {
             /* Full-size targets take the host back-buffer size so the
@@ -2811,10 +2852,26 @@ static void nv_sync_render_target(void)
             unsigned w = (g_pg.surface_clip_h >> 16) & 0xFFFF;
             if (w < 16 || w > 2048) w = pw;
             if (h < 16 || h > 2048) h = w;
-            {   /* fingerprint the guest memory (guest pitch x guest height) */
-                unsigned gh = (g_pg.surface_clip_v >> 16) & 0xFFFF;
-                if (gh < 1 || gh > 2048) gh = (h >= 1 && h <= 2048) ? h : 1;
-                nv_rtsig_record(g_pg_surf_coff, (g_pg_surf_pitch & 0xFFFF) * gh);
+            {   static uint32_t s_bound_key;
+                extern int d3d8_OffscreenTextureAge(uint32_t key);
+                if (!d3d8_OffscreenTargetActive() || s_bound_key != g_pg_surf_coff) {
+                    /* entering this target: fingerprint the guest memory
+                     * (guest pitch x guest height) and maybe count the pass */
+                    unsigned gh = (g_pg.surface_clip_v >> 16) & 0xFFFF;
+                    int age = d3d8_OffscreenTextureAge(g_pg_surf_coff);
+                    extern unsigned g_doa3_frames_presented;
+                    if (gh < 1 || gh > 2048) gh = (h >= 1 && h <= 2048) ? h : 1;
+                    nv_rtsig_record(g_pg_surf_coff, (g_pg_surf_pitch & 0xFFFF) * gh, age < 0 || age > 60);
+                    nv_rtpass_end();
+                    if (age < 0 || age > 60) {
+                        unsigned logged = s_rtpass.logged;
+                        memset(&s_rtpass, 0, sizeof s_rtpass);
+                        s_rtpass.logged = logged;
+                        s_rtpass.active = 1; s_rtpass.key = g_pg_surf_coff;
+                        s_rtpass.frame = g_doa3_frames_presented; s_rtpass.rt = -1;
+                    }
+                    s_bound_key = g_pg_surf_coff;
+                }
             }
             if (w >= 512) { w = d3d8_GetBackbufferWidth(); h = d3d8_GetBackbufferHeight(); }
             d3d8_SetOffscreenTarget(g_pg_surf_coff, w, h);
@@ -3711,7 +3768,7 @@ static void submit_array_draw(void)
         g_pg.shader_prog == 0x21u;
 
     {   extern FILE *g_doa3_mtrace;
-        g_d3d8_draw_probe = g_doa3_mtrace != NULL;
+        g_d3d8_draw_probe = g_doa3_mtrace != NULL || s_rtpass.active;
         g_d3d8_probe_pixels = 0; g_d3d8_probe_rt = -1;
     }
     if (!is_points && nv_gpu_ff_submit(dev, &ctx, prim, is_quads)) {
@@ -3734,6 +3791,16 @@ static void submit_array_draw(void)
                         (unsigned long long)g_d3d8_probe_pixels, g_d3d8_probe_rt,
                         g_d3d8_probe_vp[0], g_d3d8_probe_vp[1], g_d3d8_probe_vp[2], g_d3d8_probe_vp[3],
                         g_d3d8_probe_sc[0], g_d3d8_probe_sc[1], g_d3d8_probe_sc[2], g_d3d8_probe_sc[3]);
+        }
+        if (s_rtpass.active) {   /* one-off offscreen pass: count what it wrote */
+            if (!s_rtpass.draws) {
+                s_rtpass.rt = g_d3d8_probe_rt;
+                memcpy(s_rtpass.vp, g_d3d8_probe_vp, sizeof s_rtpass.vp);
+                memcpy(s_rtpass.sc, g_d3d8_probe_sc, sizeof s_rtpass.sc);
+            }
+            s_rtpass.draws++;
+            if (g_d3d8_probe_pixels) s_rtpass.wrote++;
+            s_rtpass.pixels += g_d3d8_probe_pixels;
         }
         g_doa3_drop[2]++;
         g_pg.idx_count = 0;
