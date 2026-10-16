@@ -39,6 +39,8 @@ UINT d3d8_GetBackbufferWidth(void) { return 16; }
 UINT d3d8_GetBackbufferHeight(void) { return 16; }
 void d3d8_states_apply(void) {}
 /* Exercise the production uploader with a small ring to force wraps. */
+static ID3D11Query *d3d8_probe_begin(void) { return NULL; }
+static void d3d8_probe_end(ID3D11Query *q) { (void)q; }
 #include "draw_impl.h"
 static ID3D11Texture2D *target, *readback;
 static Nv2aFFVertex vertices[3];

@@ -2141,6 +2141,59 @@ IDirect3D8 *xbox_Direct3DCreate8(UINT SDKVersion)
  * NV2A fixed-function GPU draw (see d3d8_nv2aff.h)
  * ================================================================ */
 
+/* Method-trace probe (set by the pgraph translator while a trace is open):
+ * how many pixels the next NV2A draw actually wrote (occlusion query), and
+ * where D3D11 sent it -- render target (0 = the guest frame, 1 = an
+ * offscreen target, 2 = something else), viewport and scissor. */
+int      g_d3d8_draw_probe;
+uint64_t g_d3d8_probe_pixels;
+int      g_d3d8_probe_rt;
+float    g_d3d8_probe_vp[4];
+long     g_d3d8_probe_sc[4];
+static void d3d8_probe_target(void)
+{
+    ID3D11DeviceContext *ctx = g_device_state.d3d11_context;
+    ID3D11RenderTargetView *rtv = NULL;
+    ID3D11DepthStencilView *dsv = NULL;
+    D3D11_VIEWPORT vp; D3D11_RECT sc; UINT n = 1, i;
+    ID3D11DeviceContext_OMGetRenderTargets(ctx, 1, &rtv, &dsv);
+    g_d3d8_probe_rt = 2;
+    if (rtv == g_device_state.default_rtv) g_d3d8_probe_rt = 0;
+    else for (i = 0; i < OFFRT_N; i++) if (rtv && rtv == g_offrt[i].rtv) g_d3d8_probe_rt = 1;
+    if (rtv) ID3D11RenderTargetView_Release(rtv);
+    if (dsv) ID3D11DepthStencilView_Release(dsv);
+    memset(&vp, 0, sizeof vp);
+    ID3D11DeviceContext_RSGetViewports(ctx, &n, &vp);
+    g_d3d8_probe_vp[0] = vp.TopLeftX; g_d3d8_probe_vp[1] = vp.TopLeftY;
+    g_d3d8_probe_vp[2] = vp.Width;    g_d3d8_probe_vp[3] = vp.Height;
+    n = 1; memset(&sc, 0, sizeof sc);
+    ID3D11DeviceContext_RSGetScissorRects(ctx, &n, &sc);
+    g_d3d8_probe_sc[0] = sc.left; g_d3d8_probe_sc[1] = sc.top;
+    g_d3d8_probe_sc[2] = sc.right; g_d3d8_probe_sc[3] = sc.bottom;
+}
+static ID3D11Query *d3d8_probe_begin(void)
+{
+    ID3D11Query *q = NULL;
+    D3D11_QUERY_DESC qd;
+    if (!g_d3d8_draw_probe) return NULL;
+    d3d8_probe_target();
+    qd.Query = D3D11_QUERY_OCCLUSION; qd.MiscFlags = 0;
+    if (FAILED(ID3D11Device_CreateQuery(g_device_state.d3d11_device, &qd, &q))) return NULL;
+    ID3D11DeviceContext_Begin(g_device_state.d3d11_context, (ID3D11Asynchronous *)q);
+    return q;
+}
+static void d3d8_probe_end(ID3D11Query *q)
+{
+    UINT64 pixels = 0;
+    int spins = 0;
+    if (!q) return;
+    ID3D11DeviceContext_End(g_device_state.d3d11_context, (ID3D11Asynchronous *)q);
+    while (ID3D11DeviceContext_GetData(g_device_state.d3d11_context, (ID3D11Asynchronous *)q,
+                                       &pixels, sizeof pixels, 0) == S_FALSE && ++spins < 2000000) {}
+    g_d3d8_probe_pixels = pixels;
+    ID3D11Query_Release(q);
+}
+
 #define NV2AFF_RING_SIZE (16 * 1024 * 1024)
 
 /* One ring holds both a draw's vertices and its indices (a D3D11 buffer may
@@ -2227,7 +2280,10 @@ long d3d8_DrawNv2aFF(const Nv2aFFVertex *verts, unsigned nverts,
         ID3D11DeviceContext_IASetPrimitiveTopology(g_device_state.d3d11_context, (D3D11_PRIMITIVE_TOPOLOGY)topology);
         g_nv2aff_ia_topology = topology;
     }
-    ID3D11DeviceContext_DrawIndexed(g_device_state.d3d11_context, nidx, first_index, (INT)base_vertex);
+    {   ID3D11Query *probe = d3d8_probe_begin();   /* method traces only */
+        ID3D11DeviceContext_DrawIndexed(g_device_state.d3d11_context, nidx, first_index, (INT)base_vertex);
+        d3d8_probe_end(probe);
+    }
 
     /* Restore the game's own bindings, as DrawPrimitiveUP does. */
     if (g_cur_vb) {

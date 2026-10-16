@@ -2437,3 +2437,26 @@ To see whether those draws are on screen at all, a traced GPU draw now
 appends "verts N box(x0,y0)-(x1,y1) w[min,max] behind K": its vertices
 through the composite matrix in guest pixels, the w range and the number
 behind the camera (computed only while a trace is open).
+
+### 0.0.150: traced GPU draws report the pixels they wrote and where they went
+
+0.0.149 session (Zack costume 3, five Story attempts on one boot; black on
+the first, correct on the other four), traces of black frames 04974-05099
+and good ones 10616-10795 of the same cutscene:
+- the projected geometry is the same in both (e.g. the 107-vertex draw at
+  box(-22104,485)-(3844,3841) w[-12.8,15.6] vs (-8585,494)-(4964,1780)
+  w[-12.6,15.3]; the same draw sizes, 53 vertices behind the camera in
+  both), so the camera is fine and the draws are on screen;
+- the register state of the black frames is a subset of the good ones;
+- the costume-3 environment map (0x028D4600) was rendered ~330 frames
+  before both, at the cutscene start;
+- yet the black frames end entirely 0, with no trace of the fogged
+  (grey-tinted) colour every one of those draws would produce: the draws
+  write no pixels to the guest frame at all.
+To tell which (depth/stencil/scissor rejection, or the wrong render target
+or viewport), a traced GPU draw now also reports "pixels N rt R vp(x,y WxH)
+sc(l,t)-(r,b)": the samples it actually wrote (a D3D11 occlusion query,
+waited on; traces only), the bound render target (0 guest frame,
+1 offscreen target, 2 other), the viewport and the scissor rectangle.
+The probe code sits before nv2aff_ring_upload, outside the nv2aff_draw
+test's extraction; the test stubs d3d8_probe_begin/end.

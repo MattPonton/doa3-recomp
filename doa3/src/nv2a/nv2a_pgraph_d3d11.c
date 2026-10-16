@@ -3190,6 +3190,11 @@ static Nv2aFFVertex *s_gv;  static uint32_t s_gv_cap;
 /* Method-trace only: where the last GPU draw's vertices land (guest pixels,
  * c.xy/w through the composite matrix), its w range and how many vertices
  * are behind the camera (w <= 0). */
+extern int      g_d3d8_draw_probe;        /* d3d8_device.c */
+extern uint64_t g_d3d8_probe_pixels;
+extern int      g_d3d8_probe_rt;
+extern float    g_d3d8_probe_vp[4];
+extern long     g_d3d8_probe_sc[4];
 static float    s_dbg_box[6];     /* x0, y0, x1, y1, wmin, wmax */
 static unsigned s_dbg_behind, s_dbg_n;
 static uint16_t     *s_gi;  static uint32_t s_gi_cap;
@@ -3634,12 +3639,17 @@ static void submit_array_draw(void)
         g_pg.tex[0].enabled && g_pg.tex[1].enabled &&
         g_pg.shader_prog == 0x21u;
 
+    {   extern FILE *g_doa3_mtrace;
+        g_d3d8_draw_probe = g_doa3_mtrace != NULL;
+        g_d3d8_probe_pixels = 0; g_d3d8_probe_rt = -1;
+    }
     if (!is_points && nv_gpu_ff_submit(dev, &ctx, prim, is_quads)) {
         {   extern FILE *g_doa3_mtrace;
             if (g_doa3_mtrace)
                 fprintf(g_doa3_mtrace, "@DRAW gpu mode%u idx%u tex0=%08X%c zt=%d zf=%X zw=%d bl=%d %X/%X cm=%08X st=%d off=%d"
                         " | sf=%X ref=%X rm=%X wm=%X op=%X/%X/%X fog=%u/%X/%u col=%d lit=%d tex1=%08X%c"
-                        " | verts %u box(%.0f,%.0f)-(%.0f,%.0f) w[%.3g,%.3g] behind %u\n",
+                        " | verts %u box(%.0f,%.0f)-(%.0f,%.0f) w[%.3g,%.3g] behind %u"
+                        " | pixels %llu rt %d vp(%.0f,%.0f %.0fx%.0f) sc(%ld,%ld)-(%ld,%ld)\n",
                         g_pg.draw_mode, n, g_pg.tex[0].offset, g_pg.tex[0].enabled ? 'E' : '-',
                         g_pg.depth_test, g_pg.depth_func, g_pg.depth_mask, g_pg.blend_enable,
                         g_pg.blend_sfactor, g_pg.blend_dfactor, g_pg.color_mask, g_pg.stencil_enable,
@@ -3649,7 +3659,10 @@ static void submit_array_draw(void)
                         g_pg.fog_enable, g_pg.fog_mode, g_pg.fog_gen, nv_attr_enabled(3), ctx.lit,
                         g_pg.tex[1].offset, g_pg.tex[1].enabled ? 'E' : '-',
                         s_dbg_n, s_dbg_box[0], s_dbg_box[1], s_dbg_box[2], s_dbg_box[3],
-                        s_dbg_box[4], s_dbg_box[5], s_dbg_behind);
+                        s_dbg_box[4], s_dbg_box[5], s_dbg_behind,
+                        (unsigned long long)g_d3d8_probe_pixels, g_d3d8_probe_rt,
+                        g_d3d8_probe_vp[0], g_d3d8_probe_vp[1], g_d3d8_probe_vp[2], g_d3d8_probe_vp[3],
+                        g_d3d8_probe_sc[0], g_d3d8_probe_sc[1], g_d3d8_probe_sc[2], g_d3d8_probe_sc[3]);
         }
         g_doa3_drop[2]++;
         g_pg.idx_count = 0;
