@@ -2356,3 +2356,23 @@ Debug > Diagnostics > "Trace the next frame" (g_doa3_trace_request,
 recomp_manual.c) writes mtrace_manual_NNNNN.txt and aa_NNNNN.bmp for the
 next frame, with or without automatic captures: a method trace of the black
 cutscene shows what the game draws there.
+
+### 0.0.146: offscreen render targets replaced least-recently-used (black Zack cutscene)
+
+The black cutscene happens only late in a session (a fresh launch straight
+into Zack's Story plays it fine) and the guest frame itself is black. The
+host keeps one colour+depth target per guest surface the game renders into
+(d3d8_device.c, offrt_slot). There were 8 slots for the whole session, never
+released, and once full every new surface went into slot 7. Each stage and
+cutscene renders into surfaces at its own heap addresses (Run 1 logged 15
+distinct ones before Zack's cutscene), so after enough Story runs the table
+was full of stale targets, and a scene that renders into two new surfaces
+per frame had both share slot 7: rendering the second freed the first, the
+fullscreen pass that samples the first found nothing, and the frame came out
+black until the fight (which uses neither) started.
+
+Now there are 16 slots, each stamped with a use counter on every render into
+it and every sample of it, and a full table replaces the least recently used
+target that is not currently bound for rendering. Each replacement logs
+"[RTT] host targets full: surface X replaces Y" (first 100). Worst case is 16
+live targets instead of 8; full-size ones are back-buffer sized.

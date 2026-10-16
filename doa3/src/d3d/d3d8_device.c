@@ -968,9 +968,18 @@ static HRESULT __stdcall dev_EndScene(IDirect3DDevice8 *self)
  *
  * Key each target by the guest colour offset that owns it, so a pass renders
  * into its own texture and a later draw samples back exactly that one. */
-#define OFFRT_N 8
+/* Slots are reused least-recently-used first (0.0.146). The table used to
+ * hold 8 targets for the whole session and, once full, put every new surface
+ * into the last slot: stale targets from earlier stages and cutscenes stayed
+ * forever, and a scene that renders into two new surfaces in one frame had
+ * both share slot 7, each wiping the other. After an hour of Story mode
+ * Zack's first cutscene (vs Gen Fu) composed its frame from a target that
+ * had just been thrown away and came out black from start to finish; after a
+ * fresh launch it was fine. */
+#define OFFRT_N 16
 typedef struct {
     uint32_t key;                       /* guest SET_SURFACE_COLOR_OFFSET */
+    uint32_t last_use;                  /* g_offrt_clock at the last render or sample */
     ID3D11Texture2D           *tex;
     ID3D11RenderTargetView    *rtv;
     ID3D11Texture2D           *depth;
@@ -980,6 +989,7 @@ typedef struct {
 } OffRT;
 static OffRT g_offrt[OFFRT_N];
 static int   g_off_cur = -1;            /* slot currently bound for rendering */
+static uint32_t g_offrt_clock;          /* bumped on every render into / sample of a target */
 
 static ID3D11RenderTargetView *cur_rtv(void)
 {
@@ -1012,11 +1022,22 @@ static int offrt_slot(uint32_t key, UINT w, UINT h)
         for (i = 0; i < OFFRT_N; i++)
             if (!g_offrt[i].tex) { slot = i; break; }
     if (slot < 0) {
-        /* Full: reuse the last slot rather than grow without bound. */
-        slot = OFFRT_N - 1;
+        /* Full: replace the target used least recently (never the one bound
+         * for rendering right now). */
+        static unsigned s_logged;
+        for (i = 0; i < OFFRT_N; i++) {
+            if (i == g_off_cur && g_off_active) continue;
+            if (slot < 0 || (int32_t)(g_offrt[i].last_use - g_offrt[slot].last_use) < 0) slot = i;
+        }
+        if (slot < 0) return -1;
+        if (s_logged < 100) {
+            s_logged++;
+            fprintf(stderr, "[RTT] host targets full: surface %08X replaces %08X (%ux%u, last used %u uses ago)\n",
+                    key, g_offrt[slot].key, g_offrt[slot].w, g_offrt[slot].h,
+                    (unsigned)(g_offrt_clock - g_offrt[slot].last_use));
+        }
         offrt_free(&g_offrt[slot]);
     }
-    if (slot < 0) return -1;
     if (!g_offrt[slot].rtv || g_offrt[slot].w != w || g_offrt[slot].h != h) {
         D3D11_TEXTURE2D_DESC td; HRESULT hr;
         offrt_free(&g_offrt[slot]);
@@ -1039,6 +1060,7 @@ static int offrt_slot(uint32_t key, UINT w, UINT h)
         g_offrt[slot].w = w; g_offrt[slot].h = h;
     }
     g_offrt[slot].key = key;
+    g_offrt[slot].last_use = ++g_offrt_clock;
     return slot;
 }
 
@@ -1107,6 +1129,7 @@ int d3d8_BindOffscreenTexture(uint32_t key, UINT stage)
     for (i = 0; i < OFFRT_N; i++)
         if (g_offrt[i].tex && g_offrt[i].key == key) { slot = i; break; }
     if (slot < 0) return 0;
+    g_offrt[slot].last_use = ++g_offrt_clock;
     /* Refuse while this very target is still bound for rendering: D3D11 would
      * silently unbind it and the draw would sample nothing. */
     if (g_off_active && g_off_cur == slot) return 0;
