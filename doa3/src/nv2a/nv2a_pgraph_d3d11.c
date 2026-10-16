@@ -3187,6 +3187,11 @@ static IDirect3DTexture8 *nv_stage_texture(IDirect3DDevice8 *dev, int stage)
 }
 
 static Nv2aFFVertex *s_gv;  static uint32_t s_gv_cap;
+/* Method-trace only: where the last GPU draw's vertices land (guest pixels,
+ * c.xy/w through the composite matrix), its w range and how many vertices
+ * are behind the camera (w <= 0). */
+static float    s_dbg_box[6];     /* x0, y0, x1, y1, wmin, wmax */
+static unsigned s_dbg_behind, s_dbg_n;
 static uint16_t     *s_gi;  static uint32_t s_gi_cap;
 static uint16_t     *s_gs;  static uint32_t s_gs_cap;   /* source index -> packed slot */
 uint32_t g_gpuff_stat[4];   /* 0 = GPU draws, 1 = CPU fallbacks, 2 = GPU verts, 3 = dropped (non-finite) */
@@ -3359,6 +3364,29 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
             s_vstamp[d] = s_vgen; s_vslot[d] = nv;
             s_gs[i] = (uint16_t)nv;
             nv++;
+        }
+    }
+    {   extern FILE *g_doa3_mtrace;
+        if (g_doa3_mtrace) {
+            uint32_t v;
+            s_dbg_box[0] = s_dbg_box[1] = s_dbg_box[4] = 1e30f;
+            s_dbg_box[2] = s_dbg_box[3] = s_dbg_box[5] = -1e30f;
+            s_dbg_behind = 0; s_dbg_n = nv;
+            for (v = 0; v < nv; v++) {
+                const float *in = s_gv[v].pos;
+                float c[4]; int r;
+                for (r = 0; r < 4; r++)
+                    c[r] = in[0] * g_pg.composite[r * 4 + 0] + in[1] * g_pg.composite[r * 4 + 1] +
+                           in[2] * g_pg.composite[r * 4 + 2] + in[3] * g_pg.composite[r * 4 + 3];
+                if (c[3] < s_dbg_box[4]) s_dbg_box[4] = c[3];
+                if (c[3] > s_dbg_box[5]) s_dbg_box[5] = c[3];
+                if (c[3] <= 0.0f) { s_dbg_behind++; continue; }
+                c[0] /= c[3]; c[1] /= c[3];
+                if (c[0] < s_dbg_box[0]) s_dbg_box[0] = c[0];
+                if (c[1] < s_dbg_box[1]) s_dbg_box[1] = c[1];
+                if (c[0] > s_dbg_box[2]) s_dbg_box[2] = c[0];
+                if (c[1] > s_dbg_box[3]) s_dbg_box[3] = c[1];
+            }
         }
     }
     if (is_quads) {
@@ -3610,7 +3638,8 @@ static void submit_array_draw(void)
         {   extern FILE *g_doa3_mtrace;
             if (g_doa3_mtrace)
                 fprintf(g_doa3_mtrace, "@DRAW gpu mode%u idx%u tex0=%08X%c zt=%d zf=%X zw=%d bl=%d %X/%X cm=%08X st=%d off=%d"
-                        " | sf=%X ref=%X rm=%X wm=%X op=%X/%X/%X fog=%u/%X/%u col=%d lit=%d tex1=%08X%c\n",
+                        " | sf=%X ref=%X rm=%X wm=%X op=%X/%X/%X fog=%u/%X/%u col=%d lit=%d tex1=%08X%c"
+                        " | verts %u box(%.0f,%.0f)-(%.0f,%.0f) w[%.3g,%.3g] behind %u\n",
                         g_pg.draw_mode, n, g_pg.tex[0].offset, g_pg.tex[0].enabled ? 'E' : '-',
                         g_pg.depth_test, g_pg.depth_func, g_pg.depth_mask, g_pg.blend_enable,
                         g_pg.blend_sfactor, g_pg.blend_dfactor, g_pg.color_mask, g_pg.stencil_enable,
@@ -3618,7 +3647,9 @@ static void submit_array_draw(void)
                         g_pg.stencil_func, g_pg.stencil_ref, g_pg.stencil_func_mask, g_pg.stencil_mask,
                         g_pg.stencil_fail, g_pg.stencil_zfail, g_pg.stencil_zpass,
                         g_pg.fog_enable, g_pg.fog_mode, g_pg.fog_gen, nv_attr_enabled(3), ctx.lit,
-                        g_pg.tex[1].offset, g_pg.tex[1].enabled ? 'E' : '-');
+                        g_pg.tex[1].offset, g_pg.tex[1].enabled ? 'E' : '-',
+                        s_dbg_n, s_dbg_box[0], s_dbg_box[1], s_dbg_box[2], s_dbg_box[3],
+                        s_dbg_box[4], s_dbg_box[5], s_dbg_behind);
         }
         g_doa3_drop[2]++;
         g_pg.idx_count = 0;

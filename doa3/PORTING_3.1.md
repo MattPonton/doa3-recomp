@@ -2419,3 +2419,21 @@ fight that follows:
   DXT1/3/5 (0x0C/0x0E/0x0F) and I8 (0x0B).
 Still needed: a trace of the same cutscene rendering correctly (fresh
 launch) to diff against the black one.
+
+### 0.0.149: GPU draws in method traces show where they land
+
+The black Zack cutscene is not tied to session length: on 0.0.148 it
+appeared on the first attempt after a fresh launch, and played correctly on
+another fresh attempt. So far it has only been seen with costume 3 (the
+metallic snowboard suit, whose environment map is the render target
+0x028D4600). Traces of black frames (04969-05621) and good ones from the
+same session (fight 05799, fight-2 intro/outro 08666 and 10761):
+- no register value appears only in the black frames;
+- the black frames draw only lit geometry (col=0 lit=1, 262-480 draws); the
+  good cutscene frames also draw ~65-75 prelit stage draws (col=1 lit=0)
+  and the stencil-shadow passes; yet even the lit draws leave nothing in a
+  frame that is entirely 0.
+To see whether those draws are on screen at all, a traced GPU draw now
+appends "verts N box(x0,y0)-(x1,y1) w[min,max] behind K": its vertices
+through the composite matrix in guest pixels, the w range and the number
+behind the camera (computed only while a trace is open).
