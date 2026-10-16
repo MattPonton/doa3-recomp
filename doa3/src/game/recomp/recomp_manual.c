@@ -1141,6 +1141,7 @@ static FILE *doa3_mtrace_open(const char *name)
     return f;
 }
 
+volatile LONG g_doa3_trace_request;   /* set by the Debug tab */
 static void doa3_mtrace_frame(unsigned next)
 {
     extern FILE *g_doa3_mtrace;
@@ -1161,6 +1162,18 @@ static void doa3_mtrace_frame(unsigned next)
         }
     }
     if (g_doa3_mtrace) { pgraph_mtrace_flush_run(); fclose(g_doa3_mtrace); g_doa3_mtrace = NULL; }
+    {   /* Debug > Diagnostics > "Trace the next frame": one method trace plus
+         * its screenshot, on demand (works with automatic captures off). */
+        extern volatile LONG g_doa3_trace_request;
+        if (InterlockedExchange(&g_doa3_trace_request, 0)) {
+            char path[64];
+            g_doa3_aa_shot = next;
+            sprintf(path, "mtrace_manual_%05u.txt", next);
+            g_doa3_mtrace = doa3_mtrace_open(path);
+            fprintf(stderr, "[TRACE] requested from the menu: tracing frame %u -> %s + aa_%05u.bmp\n", next, path, next);
+            return;
+        }
+    }
     for (k = 0; k < s_n; k++)
         if (next >= s_lo[k] && next <= s_hi[k]) {
             char path[64];

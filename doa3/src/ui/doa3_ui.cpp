@@ -306,6 +306,8 @@ static void DrawPlayerControls()
 
 }
 
+extern "C" volatile LONG g_doa3_trace_request;   /* recomp_manual.c */
+
 void DrawControlsSection()
 {
     static const char *players[] = { "Player 1", "Player 2", "Player 3", "Player 4" };
@@ -723,6 +725,13 @@ void DrawDebugSection()
                            "Choose Save to keep this setting for next time.");
         if (env_forced)
             ImGui::TextDisabled("Set by the DOA3_AUTO_CAPTURE environment variable for this launch.");
+        if (ImGui::Button("Trace the next frame")) {
+            InterlockedExchange(&g_doa3_trace_request, 1);
+            SetStatus("The next frame will be traced to the Diagnostics folder");
+        }
+        ImGui::TextWrapped("Records the next frame's graphics commands (mtrace_manual_*.txt) and a "
+                           "screenshot (aa_*.bmp) in the Diagnostics folder. Use it while a visual bug "
+                           "is on screen; the game keeps running behind this menu.");
     }
     if (ImGui::CollapsingHeader("Camera controls")) {
         float fov = free_camera_fov();

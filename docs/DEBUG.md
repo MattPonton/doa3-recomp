@@ -123,6 +123,11 @@ draw timing lines to the log plus `performance_frames.csv`. The folder is
 emptied at every launch. Leave this off for normal play; turn it on, together
 with **General > Write log files**, when collecting data for a bug report.
 
+**Trace the next frame** records one frame's graphics commands
+(`mtrace_manual_*.txt`) and a screenshot (`aa_*.bmp`) in the `Diagnostics`
+folder, whether or not automatic captures are on. Open the menu while a visual
+bug is on screen and press it; the game keeps running behind the menu.
+
 ## Online developer settings
 
 **Online > Developer Settings** runs a local two-player session on one PC

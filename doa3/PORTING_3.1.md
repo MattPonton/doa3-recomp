@@ -2340,3 +2340,19 @@ stretches around frames 53,000-104,000, with no failed creations. Each
 NULL return in get_dynamic_texture_impl now records its source line, and
 the [TEXDIAG] line prints it (once per texture and failure point) with
 control0.
+
+### 0.0.145: the black Zack cutscene is not the texture cache; trace on demand
+
+Run 1 of the 0.0.144 experiment (TextureCacheMB=32): the cache was full
+from frame ~7,000 on, yet Zack's first Story cutscene (vs Gen Fu) went black
+only at frame ~255,000 (~71 min), at the same point in the session as the
+0.0.143 run, and F12 screenshots (the guest frame, before presentation) are
+black until the fight starts. So the game's own image is black, and the
+cache's full-budget path is not the trigger. Both sessions played several
+Story runs before Zack's, so the next test is Zack's Story first thing after
+launch.
+
+Debug > Diagnostics > "Trace the next frame" (g_doa3_trace_request,
+recomp_manual.c) writes mtrace_manual_NNNNN.txt and aa_NNNNN.bmp for the
+next frame, with or without automatic captures: a method trace of the black
+cutscene shows what the game draws there.
