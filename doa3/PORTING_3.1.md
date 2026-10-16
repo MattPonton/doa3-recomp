@@ -2551,3 +2551,23 @@ uses the stage's environment map like the main model. Two issues remain.
 2. Debug > Camera controls: the Field of view slider and its reset button
    were removed (they caused more false bug reports than they helped). The
    free camera is unchanged; docs/DEBUG.md and README.md updated.
+
+## 0.0.155
+
+Zack costume 3, results of the 0.0.154 pass files (five Story runs, no
+black suit this time). In every environment-map pass the draws that write
+nothing are simply outside the 256x256 map: their screen boxes lie past its
+edges (for example x 271..468), with ordinary depth (LEQUAL against a 1.0
+clear), stencil ALWAYS and z/w near the far plane. Nothing is being rejected
+by depth or stencil. So the black capture (106 draws, none wrote) means the
+whole scene was out of view of the capture's camera, and the partial ones
+mean only the sky was in view: the camera the game uses for that one pass
+is wrong on those attempts, not the rendering. Both black captures so far
+were the first Fight 3 cutscene after a fresh launch, which points at timing
+(the first visit's longer frames) moving the game's camera state.
+- The 24 files were used up by frame 15328, mostly by other surfaces and by
+  the empty 03C24000 passes. Now up to 64, and passes with no draws delete
+  their file and do not count.
+- Each file records the composite matrix (the fixed-function camera and
+  projection) as @CAMERA lines whenever it changes (up to 16 per pass), so a
+  bad capture's camera can be compared with a good one.

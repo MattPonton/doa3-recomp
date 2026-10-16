@@ -765,9 +765,12 @@ static struct {
 /* Diagnostics (0.0.154): the first one-off passes also get every draw and
  * clear written to Diagnostics\rtpass_<surface>_<frame>.txt, in the method
  * trace's @DRAW format (state, screen box, w and z/w ranges, pixels written). */
-#define NV_RTPASS_FILES 24
+#define NV_RTPASS_FILES 64
 static FILE *s_rtpass_f;
 static unsigned s_rtpass_files;
+static char s_rtpass_name[64];
+static float s_rtpass_cam[16];          /* composite matrix last written to the file */
+static unsigned s_rtpass_cams;          /* @CAMERA lines in this file */
 static void nv_rtpass_end(void)
 {
     if (!s_rtpass.active) return;
@@ -777,6 +780,13 @@ static void nv_rtpass_end(void)
                 s_rtpass.draws, s_rtpass.wrote, s_rtpass.pixels);
         fclose(s_rtpass_f);
         s_rtpass_f = NULL;
+        if (!s_rtpass.draws) {
+            /* nothing drawn (the 03C24000 passes): drop the file, keep the slot */
+            char path[96];
+            sprintf(path, "Diagnostics\\%s", s_rtpass_name);
+            remove(path);
+            s_rtpass_files--;
+        }
     }
     if (s_rtpass.logged >= 100) return;
     s_rtpass.logged++;
@@ -789,10 +799,10 @@ static void nv_rtpass_end(void)
 static void nv_rtpass_open(uint32_t pitch)
 {
     extern FILE *doa3_diag_fopen(const char *, const char *);
-    char name[64];
     if (s_rtpass_files >= NV_RTPASS_FILES) return;
-    sprintf(name, "rtpass_%08X_%u.txt", s_rtpass.key, s_rtpass.frame);
-    s_rtpass_f = doa3_diag_fopen(name, "w");
+    sprintf(s_rtpass_name, "rtpass_%08X_%u.txt", s_rtpass.key, s_rtpass.frame);
+    s_rtpass_f = doa3_diag_fopen(s_rtpass_name, "w");
+    s_rtpass_cams = 0;
     if (!s_rtpass_f) return;
     s_rtpass_files++;
     fprintf(s_rtpass_f, "@PASS surface %08X frame %u clip %ux%u pitch %08X (zeta:colour) format %08X\n",
@@ -3830,7 +3840,19 @@ static void submit_array_draw(void)
     if (!is_points && nv_gpu_ff_submit(dev, &ctx, prim, is_quads)) {
         {   extern FILE *g_doa3_mtrace;
             if (g_doa3_mtrace) nv_gpu_draw_line(g_doa3_mtrace, n, ctx.lit);
-            if (s_rtpass_f) nv_gpu_draw_line(s_rtpass_f, n, ctx.lit);
+            if (s_rtpass_f) {
+                /* the camera (fixed-function composite matrix) whenever it changes */
+                if (!ctx.run_program && s_rtpass_cams < 16 &&
+                    (!s_rtpass_cams || memcmp(s_rtpass_cam, g_pg.composite, sizeof s_rtpass_cam))) {
+                    int r;
+                    memcpy(s_rtpass_cam, g_pg.composite, sizeof s_rtpass_cam);
+                    s_rtpass_cams++;
+                    fprintf(s_rtpass_f, "@CAMERA composite");
+                    for (r = 0; r < 16; r++) fprintf(s_rtpass_f, " %.6g", g_pg.composite[r]);
+                    fprintf(s_rtpass_f, "\n");
+                }
+                nv_gpu_draw_line(s_rtpass_f, n, ctx.lit);
+            }
         }
         if (s_rtpass.active) {   /* one-off offscreen pass: count what it wrote */
             if (!s_rtpass.draws) {
