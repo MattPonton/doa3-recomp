@@ -706,6 +706,46 @@ static uint32_t nv_tex_signature(const uint8_t *p, size_t n)
     return h;
 }
 
+/* Guest memory behind each surface the game renders into, fingerprinted
+ * whenever the surface is bound for rendering (0.0.151). The host target
+ * holds what the game drew; the guest memory is never written by those
+ * draws, so it stays as it was -- until the game itself writes there: it
+ * reloads a texture into that memory (character select puts Zack costume
+ * 3's default environment map back at 0x028D4600) or the heap hands the
+ * address to an unrelated texture. On hardware the latest writer wins, so a
+ * changed fingerprint means the memory is newer than the render and the
+ * draw must sample the memory, not the host target. */
+#define NV_RTSIG_N 32
+static struct { uint32_t key, bytes, sig; } s_rtsig[NV_RTSIG_N];
+static unsigned s_rtsig_next;
+static uint32_t nv_rtsig_of(uint32_t key, uint32_t bytes)
+{
+    extern ptrdiff_t g_xbox_mem_offset;
+    uint32_t a = key & 0x07FFFFFFu;
+    if (!a || !bytes || (unsigned long long)a + bytes > 0x08000000ull) return 0;
+    return nv_tex_signature((const uint8_t *)((uintptr_t)a + g_xbox_mem_offset), bytes);
+}
+static void nv_rtsig_record(uint32_t key, uint32_t bytes)
+{
+    unsigned i;
+    for (i = 0; i < NV_RTSIG_N; i++) if (s_rtsig[i].key == key) break;
+    if (i == NV_RTSIG_N) { i = s_rtsig_next; s_rtsig_next = (s_rtsig_next + 1) % NV_RTSIG_N; }
+    s_rtsig[i].key = key;
+    s_rtsig[i].bytes = bytes;
+    s_rtsig[i].sig = nv_rtsig_of(key, bytes);
+}
+/* 1 = the guest memory still holds what it held when the game last rendered
+ * into this surface (or we never saw that render), so the host target is
+ * current; 0 = the game has written the memory since. */
+static int nv_rtsig_current(uint32_t key)
+{
+    unsigned i;
+    for (i = 0; i < NV_RTSIG_N; i++)
+        if (s_rtsig[i].key == key && s_rtsig[i].bytes)
+            return nv_rtsig_of(key, s_rtsig[i].bytes) == s_rtsig[i].sig;
+    return 1;
+}
+
 /* ---- texture cache: hash lookup + least-recently-used eviction ---- */
 static uint32_t texcache_hash(uint32_t off, uint32_t w, uint32_t h, uint32_t fmt, uint32_t pal)
 {
@@ -2060,8 +2100,8 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, const NvDrawSummary *sum,
             uint32_t tcf = (g_pg.tex[0].format >> 8) & 0xFFu;
             int rt_format = tcf != 0x0Cu && tcf != 0x0Eu && tcf != 0x0Fu && tcf != 0x0Bu;
             if (g_pg.tex[0].enabled && g_pg.tex[0].offset &&
-                (samples_fb || (rt_format && !d3d8_OffscreenTargetActive() &&
-                                d3d8_HasOffscreenTexture(g_pg.tex[0].offset)))) {
+                (samples_fb || (rt_format && d3d8_HasOffscreenTexture(g_pg.tex[0].offset) &&
+                                nv_rtsig_current(g_pg.tex[0].offset)))) {
                 int use_diffuse = use_vertex_diffuse;
                 if (samples_fb) {
                     /* The frame buffer is a linear (rect) surface, sampled
@@ -2745,6 +2785,11 @@ static void nv_sync_render_target(void)
             unsigned w = (g_pg.surface_clip_h >> 16) & 0xFFFF;
             if (w < 16 || w > 2048) w = pw;
             if (h < 16 || h > 2048) h = w;
+            {   /* fingerprint the guest memory (guest pitch x guest height) */
+                unsigned gh = (g_pg.surface_clip_v >> 16) & 0xFFFF;
+                if (gh < 1 || gh > 2048) gh = (h >= 1 && h <= 2048) ? h : 1;
+                nv_rtsig_record(g_pg_surf_coff, (g_pg_surf_pitch & 0xFFFF) * gh);
+            }
             if (w >= 512) { w = d3d8_GetBackbufferWidth(); h = d3d8_GetBackbufferHeight(); }
             d3d8_SetOffscreenTarget(g_pg_surf_coff, w, h);
         }

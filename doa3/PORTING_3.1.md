@@ -2460,3 +2460,32 @@ waited on; traces only), the bound render target (0 guest frame,
 1 offscreen target, 2 other), the viewport and the scissor rectangle.
 The probe code sits before nv2aff_ring_upload, outside the nv2aff_draw
 test's extraction; the test stubs d3d8_probe_begin/end.
+
+### 0.0.151: Zack costume 3's environment map in reflections and character select
+
+On 0.0.150 neither the user nor the testers can reproduce the black Zack
+cutscene any more. Of the changes since it was last seen, 0.0.148 (no
+render-target substitution for DXT/palettised textures) is the one that
+changes what those frames sample; most likely that was it.
+
+Zack's costume 3 (metallic suit) samples its environment map from the
+surface the game renders it into, 0x028D4600. Two remaining differences
+from hardware:
+1. His low-poly reflection in the floor showed the default environment map
+   (Beach day) instead of the stage's. The floor reflection is itself an
+   offscreen pass, and render-target substitution was disabled while any
+   offscreen target was bound, so that pass sampled the guest memory
+   (still the default map). d3d8_HasOffscreenTexture already refuses the
+   target being rendered into, so the blanket condition is gone: a draw
+   inside one offscreen pass now samples another pass's target.
+2. At character select he kept the last stage's environment map; hardware
+   shows the default one there, because the game loads the default map back
+   into 0x028D4600 and on hardware the latest writer of that memory wins.
+   Here the host target always won. Now each surface's guest memory is
+   fingerprinted (nv_tex_signature over guest pitch x height) whenever the
+   game binds it for rendering, and a draw samples the host target only
+   while that fingerprint still matches; once the game has written the
+   memory, the draw samples the memory, until the game renders into the
+   surface again. This also covers the heap handing a render target's old
+   address to an unrelated texture (the cause the 0.0.148 format rule
+   addressed), for any format.
