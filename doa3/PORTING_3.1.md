@@ -2632,3 +2632,26 @@ captures).
   target, fov and view matrix, so a bad capture shows which slot supplied
   the camera and whether its eye or target was stale.
 - tests/free_camera stubs the new diagnostics call.
+
+## 0.0.159
+
+Zack costume 3, conclusion: the environment map's partial captures and the
+fully black one both happen on real hardware (recorded by the user). The
+game builds the map from the current camera turned in 90-degree steps, and
+on some attempts that camera starts at floor height looking straight down,
+so nothing is in view. That is the original game's behaviour and the port
+matches it. The real port bugs found on the way stay fixed: character select
+showing the last stage's map instead of the default (0.0.153 guest-memory
+marks) and the low-poly floor reflection (0.0.151).
+
+Diagnostics added for the hunt are removed:
+- the per-pass Diagnostics\rtpass_*.txt files (@PASS/@DRAW/@CLEAR/@CAMERA/
+  @BEFORE/@AFTER/@SLOT/@CAMSLOT lines) from 0.0.154-0.0.158, which were
+  written for every player whether or not diagnostics were on;
+- the camera-activation ring in the sub_00029E30 hook and
+  src/nv2a/doa3_camlog.h (recomp_manual.c and tests/free_camera are back to
+  their 0.0.153 state).
+Kept: the one-line "[RTT] pass into surface ..." summary, now only with
+Debug > Diagnostics > Automatic diagnostic captures on, so the occlusion
+probe no longer runs in normal play; the z/w range in method-trace @DRAW
+lines; and the texture-dump button.

@@ -754,58 +754,20 @@ static void nv_rtsig_record(uint32_t key, uint32_t bytes, int mark)
     s_rtsig[i].sig = nv_rtsig_of(key, bytes);
 }
 
-/* Diagnostics (0.0.153): a render into a target that has not been rendered
- * for over a second -- a one-off capture like costume 3's environment map,
- * not the per-frame reflections -- gets every draw's written pixels counted
+/* Diagnostics (0.0.153, kept in 0.0.159): with automatic diagnostic captures
+ * on, a render into a target that has not been rendered for over a second --
+ * a one-off capture like costume 3's environment map, not the per-frame
+ * reflections -- gets every draw's written pixels counted (occlusion probe)
  * and one summary line when the game switches away from it. */
 static struct {
     int active; uint32_t key, frame; unsigned draws, wrote, logged;
     unsigned long long pixels; int rt; float vp[4]; long sc[4];
 } s_rtpass;
-/* Diagnostics (0.0.154): the first one-off passes also get every draw and
- * clear written to Diagnostics\rtpass_<surface>_<frame>.txt, in the method
- * trace's @DRAW format (state, screen box, w and z/w ranges, pixels written). */
-#define NV_RTPASS_FILES 64
-#include "doa3_camlog.h"
-Doa3CamLog g_doa3_camlog[DOA3_CAMLOG_N];
-unsigned g_doa3_camlog_n;
-static FILE *s_rtpass_f;
-static unsigned s_rtpass_files;
-static char s_rtpass_name[64];
-static float s_rtpass_cam[16];          /* composite matrix last written to the file */
-static unsigned s_rtpass_cams;          /* @CAMERA lines in this file */
-static unsigned s_rtpass_tail;          /* main-target draws still to record after the pass */
-static void nv_rtpass_write_matrix(const char *tag, const float *m)
-{
-    int r;
-    fprintf(s_rtpass_f, "%s composite", tag);
-    for (r = 0; r < 16; r++) fprintf(s_rtpass_f, " %.6g", m[r]);
-    fprintf(s_rtpass_f, "\n");
-}
-static void nv_rtpass_close(void)
-{
-    if (s_rtpass_f) { fclose(s_rtpass_f); s_rtpass_f = NULL; }
-    s_rtpass_tail = 0;
-}
+extern int doa3_auto_capture_enabled(void);
 static void nv_rtpass_end(void)
 {
     if (!s_rtpass.active) return;
     s_rtpass.active = 0;
-    if (s_rtpass_f) {
-        fprintf(s_rtpass_f, "@END %u GPU draws, %u wrote pixels (%llu pixels)\n",
-                s_rtpass.draws, s_rtpass.wrote, s_rtpass.pixels);
-        /* keep the file for the next few draws, to compare the capture's
-         * camera with the one the game draws its frame with afterwards */
-        s_rtpass_tail = s_rtpass.draws ? 6 : 0;
-        if (!s_rtpass_tail) nv_rtpass_close();
-        if (!s_rtpass.draws) {
-            /* nothing drawn (the 03C24000 passes): drop the file, keep the slot */
-            char path[96];
-            sprintf(path, "Diagnostics\\%s", s_rtpass_name);
-            remove(path);
-            s_rtpass_files--;
-        }
-    }
     if (s_rtpass.logged >= 100) return;
     s_rtpass.logged++;
     fprintf(stderr, "[RTT] pass into surface %08X at frame %u: %u GPU draws, %u wrote pixels (%llu pixels); "
@@ -813,49 +775,6 @@ static void nv_rtpass_end(void)
             s_rtpass.key, s_rtpass.frame, s_rtpass.draws, s_rtpass.wrote, s_rtpass.pixels, s_rtpass.rt,
             s_rtpass.vp[0], s_rtpass.vp[1], s_rtpass.vp[2], s_rtpass.vp[3],
             s_rtpass.sc[0], s_rtpass.sc[1], s_rtpass.sc[2], s_rtpass.sc[3]);
-}
-static void nv_rtpass_open(uint32_t pitch)
-{
-    extern FILE *doa3_diag_fopen(const char *, const char *);
-    nv_rtpass_close();
-    if (s_rtpass_files >= NV_RTPASS_FILES) return;
-    sprintf(s_rtpass_name, "rtpass_%08X_%u.txt", s_rtpass.key, s_rtpass.frame);
-    s_rtpass_f = doa3_diag_fopen(s_rtpass_name, "w");
-    s_rtpass_cams = 0;
-    if (!s_rtpass_f) return;
-    s_rtpass_files++;
-    fprintf(s_rtpass_f, "@PASS surface %08X frame %u clip %ux%u pitch %08X (zeta:colour) format %08X\n",
-            s_rtpass.key, s_rtpass.frame, (g_pg.surface_clip_h >> 16) & 0xFFFF,
-            (g_pg.surface_clip_v >> 16) & 0xFFFF, pitch, g_pg.surface_fmt);
-    /* the matrix left from the last draw before the pass (normally the
-     * game's previous frame) */
-    nv_rtpass_write_matrix("@BEFORE", g_pg.composite);
-    {   /* the five camera slots as they are now: eye, target, fov, view matrix */
-        extern uint32_t doa3_dbg_read32(uint32_t va);
-        extern uint32_t doa3_dbg_read8(uint32_t va);
-        unsigned c, r;
-        for (c = 0; c < 5; c++) {
-            uint32_t base = 0x4DAE90u + c * 0xC80u;
-            float v[3 + 3 + 1 + 16];
-            for (r = 0; r < 3; r++) { uint32_t x = doa3_dbg_read32(base + 0xA8 + 4*r); memcpy(&v[r], &x, 4); }
-            for (r = 0; r < 3; r++) { uint32_t x = doa3_dbg_read32(base + 0xB8 + 4*r); memcpy(&v[3+r], &x, 4); }
-            { uint32_t x = doa3_dbg_read32(base + 0xD8); memcpy(&v[6], &x, 4); }
-            for (r = 0; r < 16; r++) { uint32_t x = doa3_dbg_read32(base + 0x150 + 4*r); memcpy(&v[7+r], &x, 4); }
-            fprintf(s_rtpass_f, "@SLOT %u flag %u eye (%.3f %.3f %.3f) target (%.3f %.3f %.3f) fov %.4f view",
-                    c, doa3_dbg_read8(base + 0xABC), v[0], v[1], v[2], v[3], v[4], v[5], v[6]);
-            for (r = 0; r < 16; r++) fprintf(s_rtpass_f, " %.4g", v[7+r]);
-            fprintf(s_rtpass_f, "\n");
-        }
-    }
-    {   /* the game's last camera activations (oldest first) */
-        unsigned n = g_doa3_camlog_n, k = n > DOA3_CAMLOG_N ? n - DOA3_CAMLOG_N : 0;
-        for (; k < n; k++) {
-            const Doa3CamLog *e = &g_doa3_camlog[k % DOA3_CAMLOG_N];
-            fprintf(s_rtpass_f, "@CAMSLOT #%u frame %u slot %u flag %u eye (%.3f %.3f %.3f) target (%.3f %.3f %.3f) fov %.4f\n",
-                    k, e->frame, e->slot, e->flag, e->eye[0], e->eye[1], e->eye[2],
-                    e->target[0], e->target[1], e->target[2], e->fov);
-        }
-    }
 }
 /* 1 = the guest memory still holds what it held when the game last rendered
  * into this surface (or we never saw that render), so the host target is
@@ -2946,13 +2865,12 @@ static void nv_sync_render_target(void)
                     if (gh < 1 || gh > 2048) gh = (h >= 1 && h <= 2048) ? h : 1;
                     nv_rtsig_record(g_pg_surf_coff, (g_pg_surf_pitch & 0xFFFF) * gh, age < 0 || age > 60);
                     nv_rtpass_end();
-                    if (age < 0 || age > 60) {
+                    if ((age < 0 || age > 60) && doa3_auto_capture_enabled()) {
                         unsigned logged = s_rtpass.logged;
                         memset(&s_rtpass, 0, sizeof s_rtpass);
                         s_rtpass.logged = logged;
                         s_rtpass.active = 1; s_rtpass.key = g_pg_surf_coff;
                         s_rtpass.frame = g_doa3_frames_presented; s_rtpass.rt = -1;
-                        nv_rtpass_open(g_pg_surf_pitch);
                     }
                     s_bound_key = g_pg_surf_coff;
                 }
@@ -2981,9 +2899,7 @@ static void nv_mtrace_draw(const char *path, const OutputVertex *o, uint32_t n)
     float x0 = 1e9f, x1 = -1e9f, y0 = 1e9f, y1 = -1e9f, z0 = 1e9f, z1 = -1e9f;
     unsigned amin = 255, amax = 0;
     uint32_t i;
-    FILE *fs[2]; int fi;
-    fs[0] = g_doa3_mtrace; fs[1] = s_rtpass_f;
-    if (!fs[0] && !fs[1]) return;
+    if (!g_doa3_mtrace) return;
     for (i = 0; i < n; i++) {
         unsigned a = o[i].color >> 24;
         if (o[i].x < x0) x0 = o[i].x;
@@ -2995,9 +2911,8 @@ static void nv_mtrace_draw(const char *path, const OutputVertex *o, uint32_t n)
         if (a < amin) amin = a;
         if (a > amax) amax = a;
     }
-    for (fi = 0; fi < 2; fi++) {
-        FILE *f = fs[fi];
-        if (!f) continue;
+    {
+        FILE *f = g_doa3_mtrace;
         fprintf(f, "@DRAW %s mode%u n%u box(%.1f,%.1f)-(%.1f,%.1f) z[%.5f,%.5f] col0=%08X a[%02X,%02X] tex0=%08X%c zt=%d zf=%X zw=%d bl=%d %X/%X cm=%08X st=%d off=%d\n",
                 path, g_pg.draw_mode, n, x0, y0, x1, y1, z0, z1, n ? o[0].color : 0, amin, amax,
                 g_pg.tex[0].offset, g_pg.tex[0].enabled ? 'E' : '-', g_pg.depth_test, g_pg.depth_func,
@@ -3590,7 +3505,7 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
         }
     }
     {   extern FILE *g_doa3_mtrace;
-        if (g_doa3_mtrace || s_rtpass_f) {
+        if (g_doa3_mtrace) {
             uint32_t v;
             s_dbg_box[0] = s_dbg_box[1] = s_dbg_box[4] = s_dbg_box[6] = 1e30f;
             s_dbg_box[2] = s_dbg_box[3] = s_dbg_box[5] = s_dbg_box[7] = -1e30f;
@@ -3882,30 +3797,12 @@ static void submit_array_draw(void)
         g_pg.shader_prog == 0x21u;
 
     {   extern FILE *g_doa3_mtrace;
-        g_d3d8_draw_probe = g_doa3_mtrace != NULL || s_rtpass.active || s_rtpass_f;
+        g_d3d8_draw_probe = g_doa3_mtrace != NULL || s_rtpass.active;
         g_d3d8_probe_pixels = 0; g_d3d8_probe_rt = -1;
     }
     if (!is_points && nv_gpu_ff_submit(dev, &ctx, prim, is_quads)) {
         {   extern FILE *g_doa3_mtrace;
             if (g_doa3_mtrace) nv_gpu_draw_line(g_doa3_mtrace, n, ctx.lit);
-            if (s_rtpass_f && !s_rtpass.active) {
-                /* after the pass: the frame's own draws */
-                nv_rtpass_write_matrix(ctx.run_program ? "@AFTER (vertex program)" : "@AFTER", g_pg.composite);
-                nv_gpu_draw_line(s_rtpass_f, n, ctx.lit);
-                if (!--s_rtpass_tail) nv_rtpass_close();
-            } else if (s_rtpass_f) {
-                /* the camera (fixed-function composite matrix) whenever it changes */
-                if (!ctx.run_program && s_rtpass_cams < 16 &&
-                    (!s_rtpass_cams || memcmp(s_rtpass_cam, g_pg.composite, sizeof s_rtpass_cam))) {
-                    int r;
-                    memcpy(s_rtpass_cam, g_pg.composite, sizeof s_rtpass_cam);
-                    s_rtpass_cams++;
-                    fprintf(s_rtpass_f, "@CAMERA composite");
-                    for (r = 0; r < 16; r++) fprintf(s_rtpass_f, " %.6g", g_pg.composite[r]);
-                    fprintf(s_rtpass_f, "\n");
-                }
-                nv_gpu_draw_line(s_rtpass_f, n, ctx.lit);
-            }
         }
         if (s_rtpass.active) {   /* one-off offscreen pass: count what it wrote */
             if (!s_rtpass.draws) {
@@ -5009,10 +4906,6 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
             if (param & 0x01) flags |= 2;  /* D3DCLEAR_ZBUFFER */
             if (param & 0x02) flags |= 4;  /* D3DCLEAR_STENCIL */
             dev->lpVtbl->Clear(dev, 0, NULL, flags, g_pg.clear_color, 1.0f, 0);
-            if (s_rtpass_f)
-                fprintf(s_rtpass_f, "@CLEAR %08X colour %08X rect h %08X v %08X offscreen %d\n",
-                        param, g_pg.clear_color, g_pg.clear_rect_h, g_pg.clear_rect_v,
-                        d3d8_OffscreenTargetActive());
             {   /* DOA3 DIAG: clear trace alongside [RTT] SETRT lines. */
                 extern volatile int g_doa3_post_movie; extern volatile LONG g_doa3_heartbeat;
                 static int s_t = 0; static uint32_t s_lp, s_lc, s_k;

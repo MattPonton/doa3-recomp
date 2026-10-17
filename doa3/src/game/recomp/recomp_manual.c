@@ -25,7 +25,6 @@
 #include <windows.h>
 #include "online/netplay_session.h"
 #include "online/netplay.h"
-#include "nv2a/doa3_camlog.h"
 #include "input/xinput_xbox.h"
 #include "../free_camera.h"
 #include "../combat_debug.h"
@@ -92,26 +91,6 @@ void sub_000E8F60(void)
     combat_debug_hazard_disabled(index, eax != 0);
 }
 
-/* Diagnostics (0.0.158): the last camera activations, dumped into each
- * one-off render pass file (nv2a_pgraph_d3d11.c) to see which camera the
- * game used for Zack costume 3's environment map. */
-static void doa3_camlog_note(void)
-{
-    extern unsigned g_doa3_frames_presented;
-    Doa3CamLog *e = &g_doa3_camlog[g_doa3_camlog_n % DOA3_CAMLOG_N];
-    e->frame = g_doa3_frames_presented;
-    e->slot = ebx;
-    e->flag = 0;
-    memset(e->eye, 0, sizeof e->eye); memset(e->target, 0, sizeof e->target); e->fov = 0;
-    if (ebx < 5) {
-        uint32_t c = 0x4DAE90u + ebx * 0xC80u;
-        int i;
-        for (i = 0; i < 3; ++i) { e->eye[i] = MEMF(c + 0xA8 + 4*i); e->target[i] = MEMF(c + 0xB8 + 4*i); }
-        e->fov = MEMF(c + 0xD8);
-        e->flag = MEM8(c + 0xABC);
-    }
-    g_doa3_camlog_n++;
-}
 /* FREE_CAMERA_HOOK_BEGIN
  * 3.1 camera slots: base 4DAE90, stride C80; eye A8, target B8,
  * view 150, projection 190, combined 1D0. Reuse the game's builder so
@@ -126,7 +105,6 @@ void sub_00029E30(void)
     uint32_t camera;
     float eye[3], target[3], override_eye[3], override_target[3];
     unsigned char backup[0x210 - 0xA8];
-    doa3_camlog_note();
     if (ebx >= 5) { sub_00029E30_gen(); return; }
     camera = 0x4DAE90u + ebx * 0xC80u;
     if (!MEM8(camera + 0xABC)) { sub_00029E30_gen(); return; }
