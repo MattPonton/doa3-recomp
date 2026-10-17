@@ -52,7 +52,7 @@ int main(void)
     for (int aspect=0;aspect<VIDEO_ASPECT_COUNT;++aspect) {
         video_set_aspect(aspect);
         CHECK(fabsf(video_display_aspect(aspect)-display[aspect])<1e-6f);
-        for (int scale=1;scale<=3;++scale) {
+        for (int scale=1;scale<=4;++scale) {
             video_set_scale(scale);
             video_guest_target_size(aspect,&w,&h);
             CHECK(w==widths[aspect]*scale && h==480*scale);

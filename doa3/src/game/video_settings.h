@@ -54,13 +54,13 @@ int  video_settings_save(void);
 void video_set_window_mode(int mode);
 void video_set_aspect(int aspect);
 
-/* Internal resolution: 1 = 480 lines, 2 = 960, 3 = 1440 (default). Applied at the next
+/* Internal resolution: 1 = 480 lines, 2 = 960, 3 = 1440 (default), 4 = 1920. Applied at the next
  * frame boundary. */
 int  video_get_scale(void);
 void video_set_scale(int scale);
 
 /* Host size of the guest render target for an aspect at the current internal
- * resolution: 480 lines at 1x, 960 at 2x, 1440 at 3x. */
+ * resolution: 480 lines at 1x, 960 at 2x, 1440 at 3x, 1920 at 4x. */
 void video_guest_target_size(int aspect, unsigned *w, unsigned *h);
 
 /* XC_VIDEO (ExQueryNonVolatileSetting index 8) value for the current aspect. */

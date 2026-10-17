@@ -88,7 +88,7 @@ int video_settings_load(void)
     int sc = (int)GetPrivateProfileIntA("Video", "InternalResolution", 3, p);
     g_window_mode = (wm == VIDEO_WINDOWED) ? VIDEO_WINDOWED : VIDEO_BORDERLESS;
     g_aspect      = valid_aspect(ar);
-    g_scale       = (sc >= 1 && sc <= 3) ? sc : 3;
+    g_scale       = (sc >= 1 && sc <= 4) ? sc : 3;
     return GetFileAttributesA(p) != INVALID_FILE_ATTRIBUTES;
 }
 
@@ -100,14 +100,14 @@ int video_settings_save(void)
     /* WindowMode: 0 = windowed, 1 = borderless fullscreen.
      * AspectRatio: Full 4:3, Anamorphic 4:3, 16:9, 21:9, 32:9 (0..4).
      * Keep Widescreen for older builds: 0 = either 4:3 mode, 1 = wider.
-     * InternalResolution: 1 = 480 lines, 2 = 960, 3 = 1440. */
+     * InternalResolution: 1 = 480 lines, 2 = 960, 3 = 1440, 4 = 1920. */
     return WritePrivateProfileStringA("Video", "WindowMode",
                                       g_window_mode ? "1" : "0", p) &&
            WritePrivateProfileStringA("Video", "Widescreen",
                                       g_aspect <= VIDEO_ASPECT_4_3_ANAMORPHIC ? "0" : "1", p) &&
            WritePrivateProfileStringA("Video", "AspectRatio", aspect, p) &&
            WritePrivateProfileStringA("Video", "InternalResolution",
-                                      g_scale == 3 ? "3" : g_scale == 2 ? "2" : "1", p);
+                                      g_scale == 4 ? "4" : g_scale == 3 ? "3" : g_scale == 2 ? "2" : "1", p);
 }
 
 /* 480 lines at 1x. The translator maps every guest vertex onto whatever size
@@ -134,7 +134,7 @@ void video_guest_target_size(int aspect, unsigned *w, unsigned *h)
 void video_set_scale(int scale)
 {
     /* Applied at the next frame boundary, like the aspect. */
-    g_scale = (scale >= 1 && scale <= 3) ? scale : 3;
+    g_scale = (scale >= 1 && scale <= 4) ? scale : 3;
 }
 
 /* XC_VIDEO dword: XGetVideoFlags returns (value >> 16) & 0x5F, and

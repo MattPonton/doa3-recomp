@@ -18,7 +18,7 @@ performance for low-end PCs.
   (Proton Experimental recommended)
 - Windowed or borderless fullscreen
 - Aspect ratios: 4:3 (full screen or anamorphic), 16:9, 21:9 and 32:9
-- Internal resolution 1x (480p), 2x (960p) or 3x (1440p)
+- Internal resolution 1x (480p), 2x (960p), 3x (1440p) or 4x (1920p)
 - Keyboard, Xbox and PS4 controllers, up to four players, with per-player
   bindings
 - Master volume plus the game's own Music / Sound effects / Voice levels

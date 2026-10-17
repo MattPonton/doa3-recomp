@@ -2762,3 +2762,12 @@ not make the life bars look closer to hardware and introduced new problems
 on character select at higher resolutions, and F12 saved no screenshots on
 0.0.165 (with Screenshot resolution at "same as the game"). Both may be
 revisited separately.
+
+## 0.0.167
+
+Internal resolution 4x (1920 lines): Video > Internal resolution offers
+"4x (1920p)", and doa3_settings.ini InternalResolution accepts 4 (load, save
+and video_set_scale clamp to 1..4; unknown values still fall back to 3x).
+Guest targets at 4x: 2560x1920 (4:3), 3416x1920 (16:9), 4480x1920 (21:9),
+6828x1920 (32:9). tests/video_settings checks sizes up to 4x; README lists
+the option. Screenshots are unchanged (they save at the render resolution).
