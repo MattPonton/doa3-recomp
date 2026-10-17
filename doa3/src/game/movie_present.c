@@ -25,6 +25,7 @@
 
 #include "../apu/apu_xaudio2.h"
 #include "debug_capture.h"
+#include "video_settings.h"
 #include "recomp/gen/xbe_layout.h"   /* DOA3_XBE_ID_* */
 
 #define PL_MPEG_IMPLEMENTATION
@@ -726,10 +727,29 @@ void doa3_present_movie_guest(const void *src, int w, int h, int pitch)
     }
 }
 
-/* Draw the uploaded movie frame into the guest frame buffer, inside a centred
- * 4:3 area. The guest target is 16:9 in widescreen mode; the movie is 4:3 and
- * must not be stretched, so it is pillarboxed there and fills the target at
- * 4:3. The present path then scales the guest frame into the window. The
+/* The game's movie display option (Options, shown on hardware only when the
+ * console is set to widescreen): 0 = 4:3, 1 = 16:9. With 16:9 the console
+ * zooms the 4:3 movie until it fills the width of the 16:9 picture, cropping
+ * the top and bottom. */
+static int movie_wants_16_9(void)
+{
+#if defined(DOA3_XBE_ID_3_1)
+    extern uint32_t doa3_dbg_read8(uint32_t va);
+    return video_get_aspect() != VIDEO_ASPECT_4_3_FULL && doa3_dbg_read8(0x0059FB4Cu) == 1;
+#else
+    return 0;
+#endif
+}
+
+/* Draw the uploaded movie frame into the guest frame buffer.
+ * - Movie option 4:3 (and always in 4:3 Full Screen): a centred 4:3 area the
+ *   height of the target, pillarboxed in the wider targets; it fills the
+ *   4:3 targets.
+ * - Movie option 16:9: the movie fills the width of the 16:9 picture -- the
+ *   whole target at 4:3 Anamorphic (a squeezed 16:9 picture) and 16:9, the
+ *   centred 16:9 area at 21:9 and 32:9 -- and is 4/3 of that picture's
+ *   height, so the top and bottom eighths are cropped, as on the console.
+ * The present path then scales the guest frame into the window. The
  * translator's full-target viewport is put back afterwards. */
 static void movie_draw_to_guest(ID3D11DeviceContext *ctx)
 {
@@ -738,11 +758,20 @@ static void movie_draw_to_guest(ID3D11DeviceContext *ctx)
     FLOAT gw = (FLOAT)d3d8_GetBackbufferWidth(), gh = (FLOAT)d3d8_GetBackbufferHeight();
     D3D11_VIEWPORT vp;
     if (!rtv || gw <= 0.0f || gh <= 0.0f) return;
-    vp.Height = gh;
-    vp.Width = gh * 4.0f / 3.0f;
-    if (vp.Width > gw) vp.Width = gw;
+    if (movie_wants_16_9()) {
+        /* width of the 16:9 picture in target pixels */
+        FLOAT pw = video_get_aspect() == VIDEO_ASPECT_4_3_ANAMORPHIC ? gw : gh * 16.0f / 9.0f;
+        if (pw > gw) pw = gw;
+        vp.Width = pw;
+        vp.Height = gh * 4.0f / 3.0f;
+        vp.TopLeftY = (FLOAT)(int)((gh - vp.Height) * 0.5f);
+    } else {
+        vp.Height = gh;
+        vp.Width = gh * 4.0f / 3.0f;
+        if (vp.Width > gw) vp.Width = gw;
+        vp.TopLeftY = 0.0f;
+    }
     vp.TopLeftX = (FLOAT)(int)((gw - vp.Width) * 0.5f);
-    vp.TopLeftY = 0.0f;
     vp.MinDepth = 0.0f; vp.MaxDepth = 1.0f;
 
     d3d8_BindInvalidate();   /* the next NV2A draw rebinds its shaders, layout and samplers */

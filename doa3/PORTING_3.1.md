@@ -2655,3 +2655,16 @@ Kept: the one-line "[RTT] pass into surface ..." summary, now only with
 Debug > Diagnostics > Automatic diagnostic captures on, so the occlusion
 probe no longer runs in normal play; the z/w range in method-trace @DRAW
 lines; and the texture-dump button.
+
+## 0.0.160
+
+Movie display option (16:9 movies). On hardware set to widescreen the game's
+options add a movie display setting, stored at 0x0059FB4C (0 = 4:3,
+1 = 16:9); with 16:9 the console zooms each Sofdec movie until it fills the
+width of the 16:9 picture, cropping the top and bottom. The port always drew
+movies as a centred 4:3 picture. movie_draw_to_guest now reads the setting:
+with 16:9 the movie is drawn as wide as the 16:9 picture (the whole target
+at 4:3 Anamorphic and 16:9, the centred 16:9 area at 21:9 and 32:9, not the
+whole ultrawide frame) and 4/3 of its height, so an eighth is cropped at the
+top and at the bottom. 4:3 Full Screen always shows the 4:3 movie (the
+console has no option there), and the 4:3 setting is unchanged.
