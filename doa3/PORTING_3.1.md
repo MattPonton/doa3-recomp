@@ -2668,3 +2668,17 @@ at 4:3 Anamorphic and 16:9, the centred 16:9 area at 21:9 and 32:9, not the
 whole ultrawide frame) and 4/3 of its height, so an eighth is cropped at the
 top and at the bottom. 4:3 Full Screen always shows the 4:3 movie (the
 console has no option there), and the 4:3 setting is unchanged.
+
+## 0.0.161
+
+Timer backing shows as a black rounded box for about 7 frames during the
+GET READY fade of Christie's Story Fight 3 intro (vs Bayman); the round-start
+case was fixed on 2026-10-12 ("Timer shadow appears before the HUD") by
+honouring transparent black for one exact inline TEX0 * V0 combiner set in
+nv_use_vertex_diffuse. This scene most likely uses a different combiner set
+(fog, a second stage or another final combiner), so the zero colour falls
+back to the opaque texture again. No trace of the frame exists, so every
+distinct combiner set that takes that fallback for an inline draw with all
+vertex colours 00000000 is now logged once as "[HUDZERO] frame N: ...
+1E60/0AC0/0260/1E40/0AA0/0288/028C | stage1 ..." (at most 40 lines), to
+widen the rule to exactly the timer's variant.

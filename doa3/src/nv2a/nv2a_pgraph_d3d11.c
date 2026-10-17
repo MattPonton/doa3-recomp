@@ -1911,6 +1911,31 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, const NvDrawSummary *sum,
 {
     nv_apply_stage1_factor(dev);
     int use_vertex_diffuse = nv_use_vertex_diffuse(sum->all_zero);
+    if (sum->all_zero && !use_vertex_diffuse && g_nv_draw_inline) {
+        /* Diagnostics (0.0.161): an inline 2D draw whose vertex colours are
+         * all 00000000 is drawn from its texture alone (the fallback in
+         * nv_use_vertex_diffuse). The timer shadow's fade needs the zero
+         * colour honoured; log each distinct combiner set that falls back so
+         * the timer's black backing in Christie's Fight 3 intro can be
+         * matched. At most 40 lines. */
+        static uint32_t s_seen[40][9]; static unsigned s_n;
+        uint32_t k[9];
+        unsigned i;
+        extern unsigned g_doa3_frames_presented;
+        k[0] = g_pg.tex[0].offset; k[1] = NVREG(0x1E60); k[2] = NVREG(0x0AC0); k[3] = NVREG(0x0260);
+        k[4] = NVREG(0x1E40); k[5] = NVREG(0x0AA0); k[6] = NVREG(0x0288); k[7] = NVREG(0x028C);
+        k[8] = g_pg.draw_mode | (g_pg.tex[1].enabled ? 0x100u : 0) | (g_pg.depth_test ? 0x200u : 0);
+        for (i = 0; i < s_n; i++) if (!memcmp(s_seen[i], k, sizeof k)) break;
+        if (i == s_n && s_n < 40) {
+            memcpy(s_seen[s_n++], k, sizeof k);
+            fprintf(stderr, "[HUDZERO] frame %u: inline draw with all-zero colour drawn texture-only: "
+                    "mode %u tex0 %08X fmt %08X tex1 %c depth %d | 1E60 %08X 0AC0 %08X 0260 %08X "
+                    "1E40 %08X 0AA0 %08X 0288 %08X 028C %08X | stage1 0AC4 %08X 0264 %08X 1E44 %08X 0AA4 %08X\n",
+                    g_doa3_frames_presented, g_pg.draw_mode, k[0], g_pg.tex[0].format,
+                    g_pg.tex[1].enabled ? 'E' : '-', g_pg.depth_test, k[1], k[2], k[3], k[4], k[5], k[6], k[7],
+                    NVREG(0x0AC4), NVREG(0x0264), NVREG(0x1E44), NVREG(0x0AA4));
+        }
+    }
 
     /* Alpha blending stays on for the 2D menu path. Depth follows the
      * guest: DOA3's 3D screens draw with SET_DEPTH_TEST_ENABLE and rely on
