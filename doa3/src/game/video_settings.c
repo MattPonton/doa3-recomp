@@ -124,25 +124,11 @@ static void video_base_size(int aspect, unsigned *w, unsigned *h)
     }
 }
 
-/* Screenshot resolution (0.0.165): a one-frame override of the internal
- * resolution, 1..5, while a screenshot is taken at a different scale; 0 = none. */
-static volatile LONG g_scale_override;
-void video_set_scale_override(int scale)
-{
-    InterlockedExchange(&g_scale_override, (scale >= 1 && scale <= 5) ? scale : 0);
-}
-int video_get_effective_scale(void)
-{
-    LONG o = InterlockedCompareExchange(&g_scale_override, 0, 0);
-    return o ? (int)o : g_scale;
-}
-
 void video_guest_target_size(int aspect, unsigned *w, unsigned *h)
 {
-    int scale = video_get_effective_scale();
     video_base_size(aspect, w, h);
-    *w *= (unsigned)scale;
-    *h *= (unsigned)scale;
+    *w *= (unsigned)g_scale;
+    *h *= (unsigned)g_scale;
 }
 
 void video_set_scale(int scale)

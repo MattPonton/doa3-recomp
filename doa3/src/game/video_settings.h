@@ -63,12 +63,6 @@ void video_set_scale(int scale);
  * resolution: 480 lines at 1x, 960 at 2x, 1440 at 3x. */
 void video_guest_target_size(int aspect, unsigned *w, unsigned *h);
 
-/* Temporary internal-resolution override for a screenshot (1..5, 0 = none),
- * applied at the next frame boundary like a scale change; the scale the
- * target is actually built at is video_get_effective_scale(). */
-void video_set_scale_override(int scale);
-int  video_get_effective_scale(void);
-
 /* XC_VIDEO (ExQueryNonVolatileSetting index 8) value for the current aspect. */
 unsigned video_xc_video_value(void);
 

@@ -2753,3 +2753,12 @@ stays 1x-3x; only screenshots go to 4x and 5x. The capture's pixel cap is
 64 MP (32:9 at 5x is 8535x2400). Reset to defaults sets it back to "same as
 the game". tests/debug_views/screenshot_test stubs the new calls;
 docs/DEBUG.md and README updated.
+
+## 0.0.166
+
+Reverts 0.0.164 and 0.0.165: the code is back to 0.0.163 (the passthrough
+screen-space offset stays). User testing: the 2x/3x pixel-grid snapping did
+not make the life bars look closer to hardware and introduced new problems
+on character select at higher resolutions, and F12 saved no screenshots on
+0.0.165 (with Screenshot resolution at "same as the game"). Both may be
+revisited separately.
