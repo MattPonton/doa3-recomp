@@ -2719,3 +2719,22 @@ position. nv_hud_geometry's full-screen test allows 2 pixels at the edges
 (was 1) so full-screen quads at 0.53125 plus the offset are still treated as
 full-screen. This affects every inline 2D draw (HUD, menus, fades) by the
 same half pixel the hardware applies.
+
+## 0.0.164
+
+2D snapped to the console's pixel grid at 2x and 3x. At 480 lines (1x)
+0.0.163 matches hardware; at 2x and 3x the life bars and the character-
+select panel borders still showed 1-pixel slivers and steps. The NV2A draws
+2D at 480 lines, where each edge fills whole pixels (pixel k when its centre
+k + 0.5 is inside), so pieces placed a fraction of a pixel apart (the bars'
+mask at 33.53 against the frame at 32.5) meet on a row boundary; scaled, the
+exact fractional edges do not. nv_snap_2d now runs after the window fit for
+screen-space 2D (every vertex rhw = 1, not offscreen, target at least 1.5x
+the guest height): each vertex moves to the guest pixel edge the console
+fills to, ceil(e - 0.5) in guest pixels, and its texture coordinates and
+colour are re-evaluated from the draw's own linear mapping at the moved
+position, so the covered pixels sample what they did before. Draws whose
+vertices do not share one linear mapping are snapped per quad (lists of
+6), or left alone. Wide lines (character select's panel borders) are
+snapped per segment quad. 1x is unchanged. The window fit records its
+mapping (s_fit_*) for this.

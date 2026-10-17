@@ -2783,6 +2783,11 @@ static int nv_menu_panel_geometry(const OutputVertex *out, uint32_t n)
         out[1].x < (float)dw && out[2].y < (float)dh;
 }
 
+/* The last screen-space fit: host x = s_fit_ox + guest x * s_fit_sx,
+ * host y = guest y * s_fit_sy (nv_snap_2d). s_fit_valid = 0 when the
+ * fit left the coordinates alone. */
+static float s_fit_ox, s_fit_sx, s_fit_sy;
+static int   s_fit_valid;
 static int nv_fit_to_backbuffer(OutputVertex *out, uint32_t n, int screen_space)
 {
     unsigned gw = (g_pg.surface_clip_h >> 16) & 0xFFFF;
@@ -2817,9 +2822,11 @@ static int nv_fit_to_backbuffer(OutputVertex *out, uint32_t n, int screen_space)
     /* Projection already compensates for ultrawide; scaling it again would
      * squeeze the model. Only its panel centre moves into the HUD canvas. */
     float preview_shift = screen_space ? 0.0f : nv_menu_preview_shift(bw, gw);
+    s_fit_valid = 0;
     if (!hud && preview_shift == 0.0f && gw == bw && gh == bh) return 0;
     sx = hud_w / (float)gw;
     sy = (float)bh / (float)gh;
+    s_fit_ox = hud_x + preview_shift; s_fit_sx = sx; s_fit_sy = sy; s_fit_valid = 1;
     for (i = 0; i < n; i++) {
         out[i].x = hud_x + preview_shift + out[i].x * sx;
         out[i].y *= sy;
@@ -3732,6 +3739,95 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     return 1;
 }
 
+/* Snap 2D geometry to the console's pixel grid (0.0.164). The NV2A draws
+ * the game's 2D at its own resolution: every edge covers whole guest pixels
+ * (pixel k when its centre k + 0.5 is inside), so pieces placed a fraction
+ * of a pixel apart meet on the same row or the next. Scaled up, the exact
+ * fractional edges left 1-pixel slivers and steps between them at 2x and 3x
+ * (life-bar backing against its frame, character-select panel borders).
+ * After the window fit, each vertex of a screen-space 2D draw (rhw = 1) is
+ * moved to the guest pixel edge the console would fill to, ceil(e - 0.5),
+ * and its texture coordinates and colour are re-evaluated from the draw's
+ * own linear mapping at the moved position, so the covered pixels sample
+ * exactly what they would have. Only when the target is taller than the
+ * guest surface (2x and up); groups whose attributes are not one linear
+ * mapping (several sprites in a strip, perspective) are left alone. */
+static float nv_snap_edge(float h, float o, float s)
+{
+    float e = (h - o) / s;
+    return o + ceilf(e - 0.5f) * s;
+}
+static int nv_snap_group(OutputVertex *v, uint32_t n)
+{
+    /* attribute planes a*x + b*y + c for u, v, and the four colour bytes */
+    float pa[6], pb[6], pc[6], val[3][6];
+    uint32_t i, i0 = 0, i1 = 1, i2 = 2;
+    double det = 0.0;
+    int k, found = 0;
+    if (n < 3) return 0;
+    for (i2 = 2; i2 < n && !found; i2++) {
+        det = (double)(v[i1].x - v[i0].x) * (v[i2].y - v[i0].y) -
+              (double)(v[i2].x - v[i0].x) * (v[i1].y - v[i0].y);
+        if (fabs(det) > 1e-3) { found = 1; break; }
+    }
+    if (!found) return 0;
+    {   const OutputVertex *t[3] = { &v[i0], &v[i1], &v[i2] };
+        for (k = 0; k < 3; k++) {
+            uint32_t c = t[k]->color;
+            val[k][0] = t[k]->u; val[k][1] = t[k]->v;
+            val[k][2] = (float)(c & 0xFF); val[k][3] = (float)((c >> 8) & 0xFF);
+            val[k][4] = (float)((c >> 16) & 0xFF); val[k][5] = (float)(c >> 24);
+        }
+        for (k = 0; k < 6; k++) {
+            double d1 = val[1][k] - val[0][k], d2 = val[2][k] - val[0][k];
+            double x1 = t[1]->x - t[0]->x, y1 = t[1]->y - t[0]->y;
+            double x2 = t[2]->x - t[0]->x, y2 = t[2]->y - t[0]->y;
+            pa[k] = (float)((d1 * y2 - d2 * y1) / det);
+            pb[k] = (float)((x1 * d2 - x2 * d1) / det);
+            pc[k] = (float)(val[0][k] - pa[k] * t[0]->x - pb[k] * t[0]->y);
+        }
+    }
+    for (i = 0; i < n; i++) {        /* every vertex on the same mapping? */
+        uint32_t c = v[i].color;
+        float a[6];
+        a[0] = v[i].u; a[1] = v[i].v;
+        a[2] = (float)(c & 0xFF); a[3] = (float)((c >> 8) & 0xFF);
+        a[4] = (float)((c >> 16) & 0xFF); a[5] = (float)(c >> 24);
+        for (k = 0; k < 6; k++) {
+            float p = pa[k] * v[i].x + pb[k] * v[i].y + pc[k];
+            float tol = k < 2 ? 1e-4f + 1e-4f * fabsf(a[k]) : 0.75f;
+            if (fabsf(p - a[k]) > tol) return 0;
+        }
+    }
+    for (i = 0; i < n; i++) {
+        float x = nv_snap_edge(v[i].x, s_fit_ox, s_fit_sx);
+        float y = nv_snap_edge(v[i].y, 0.0f, s_fit_sy);
+        uint32_t c = 0;
+        if (x == v[i].x && y == v[i].y) continue;
+        v[i].x = x; v[i].y = y;
+        v[i].u = pa[0] * x + pb[0] * y + pc[0];
+        v[i].v = pa[1] * x + pb[1] * y + pc[1];
+        for (k = 0; k < 4; k++) {
+            float f = pa[2 + k] * x + pb[2 + k] * y + pc[2 + k];
+            int q = (int)floorf(f + 0.5f);
+            if (q < 0) q = 0; if (q > 255) q = 255;
+            c |= (uint32_t)q << (8 * k);
+        }
+        v[i].color = c;
+    }
+    return 1;
+}
+static void nv_snap_2d(OutputVertex *v, uint32_t n, int list)
+{
+    uint32_t i;
+    if (!s_fit_valid || s_fit_sy < 1.5f || d3d8_OffscreenTargetActive() || n < 3) return;
+    for (i = 0; i < n; i++)
+        if (v[i].rhw != 1.0f || !isfinite(v[i].x) || !isfinite(v[i].y)) return;
+    if (nv_snap_group(v, n)) return;
+    if (list && n % 6 == 0)          /* several quads in one list: per quad */
+        for (i = 0; i < n; i += 6) nv_snap_group(v + i, 6);
+}
+
 /* DOA3 DIAG: one @DRAW line for a GPU-path draw (method trace, rtpass files). */
 static void nv_gpu_draw_line(FILE *f, uint32_t n, int lit)
 {
@@ -4424,6 +4520,8 @@ static void submit_draw(void)
         if (debug_hide_ui_get() && !g_pg.depth_test && !d3d8_OffscreenTargetActive()) return;
     }
     int hud = nv_fit_to_backbuffer(out, out_vert_count, 1);
+    nv_snap_2d(out, out_vert_count,
+               timer_edge || g_pg.d3d_prim_type == D3DPT_TRIANGLELIST || is_quads);
     /* Begin scene if needed */
     dev->lpVtbl->BeginScene(dev);
 
@@ -4495,6 +4593,7 @@ static void submit_draw(void)
                     q[m++] = c[0]; q[m++] = c[2]; q[m++] = c[3];
                     q[m++] = c[0]; q[m++] = c[3]; q[m++] = c[1];
                 }
+                for (k = 0; k + 6 <= m; k += 6) nv_snap_2d(q + k, 6, 0);
                 nv_mtrace_draw("inline-wideline", q, m);
                 dev->lpVtbl->DrawPrimitiveUP(dev, D3DPT_TRIANGLELIST, m / 3, q, sizeof(OutputVertex));
                 if (clipped) { extern void d3d8_ResetScissorRect(void); d3d8_ResetScissorRect(); }
