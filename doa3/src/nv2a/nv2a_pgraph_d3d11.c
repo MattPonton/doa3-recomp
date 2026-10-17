@@ -766,6 +766,9 @@ static struct {
  * clear written to Diagnostics\rtpass_<surface>_<frame>.txt, in the method
  * trace's @DRAW format (state, screen box, w and z/w ranges, pixels written). */
 #define NV_RTPASS_FILES 64
+#include "doa3_camlog.h"
+Doa3CamLog g_doa3_camlog[DOA3_CAMLOG_N];
+unsigned g_doa3_camlog_n;
 static FILE *s_rtpass_f;
 static unsigned s_rtpass_files;
 static char s_rtpass_name[64];
@@ -827,6 +830,32 @@ static void nv_rtpass_open(uint32_t pitch)
     /* the matrix left from the last draw before the pass (normally the
      * game's previous frame) */
     nv_rtpass_write_matrix("@BEFORE", g_pg.composite);
+    {   /* the five camera slots as they are now: eye, target, fov, view matrix */
+        extern uint32_t doa3_dbg_read32(uint32_t va);
+        extern uint32_t doa3_dbg_read8(uint32_t va);
+        unsigned c, r;
+        for (c = 0; c < 5; c++) {
+            uint32_t base = 0x4DAE90u + c * 0xC80u;
+            float v[3 + 3 + 1 + 16];
+            for (r = 0; r < 3; r++) { uint32_t x = doa3_dbg_read32(base + 0xA8 + 4*r); memcpy(&v[r], &x, 4); }
+            for (r = 0; r < 3; r++) { uint32_t x = doa3_dbg_read32(base + 0xB8 + 4*r); memcpy(&v[3+r], &x, 4); }
+            { uint32_t x = doa3_dbg_read32(base + 0xD8); memcpy(&v[6], &x, 4); }
+            for (r = 0; r < 16; r++) { uint32_t x = doa3_dbg_read32(base + 0x150 + 4*r); memcpy(&v[7+r], &x, 4); }
+            fprintf(s_rtpass_f, "@SLOT %u flag %u eye (%.3f %.3f %.3f) target (%.3f %.3f %.3f) fov %.4f view",
+                    c, doa3_dbg_read8(base + 0xABC), v[0], v[1], v[2], v[3], v[4], v[5], v[6]);
+            for (r = 0; r < 16; r++) fprintf(s_rtpass_f, " %.4g", v[7+r]);
+            fprintf(s_rtpass_f, "\n");
+        }
+    }
+    {   /* the game's last camera activations (oldest first) */
+        unsigned n = g_doa3_camlog_n, k = n > DOA3_CAMLOG_N ? n - DOA3_CAMLOG_N : 0;
+        for (; k < n; k++) {
+            const Doa3CamLog *e = &g_doa3_camlog[k % DOA3_CAMLOG_N];
+            fprintf(s_rtpass_f, "@CAMSLOT #%u frame %u slot %u flag %u eye (%.3f %.3f %.3f) target (%.3f %.3f %.3f) fov %.4f\n",
+                    k, e->frame, e->slot, e->flag, e->eye[0], e->eye[1], e->eye[2],
+                    e->target[0], e->target[1], e->target[2], e->fov);
+        }
+    }
 }
 /* 1 = the guest memory still holds what it held when the game last rendered
  * into this surface (or we never saw that render), so the host target is

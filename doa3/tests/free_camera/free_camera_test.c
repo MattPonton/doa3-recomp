@@ -23,6 +23,7 @@ static uint16_t g_x87_cw;
 #define MEM8(a) (*(uint8_t *)XBOX_PTR(a))
 #define MEMF(a) (*(float *)XBOX_PTR(a))
 #define PUSH32(s,v) do { (s) -= 4; *(uint32_t *)XBOX_PTR(s) = (v); } while (0)
+static void doa3_camlog_note(void) {}   /* diagnostics ring, not under test */
 #include "camera_hook.inc"
 
 void sub_00027720_gen(void)

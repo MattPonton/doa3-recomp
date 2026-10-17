@@ -2610,3 +2610,25 @@ from hardware.
    object with the w row exactly (0, 0, -1), an unrotated camera looking
    down -Z, unlike every full capture. The character-select capture is
    still identical in all ten runs.
+
+## 0.0.158
+
+Zack costume 3, five runs on 0.0.157 including one black suit (run 2, the
+capture at frame 5067 before Fight 3: 107 draws, none wrote a pixel). In
+that capture every draw used a camera looking straight down (w row
+(-0.01, -1.00, -0.02)); the last draw before it was already steeply down
+(-0.69, -0.72, 0.10). The draws right after each capture use the same matrix
+as the capture's first draw, and every capture's look direction tilts with
+the game's camera of the moment, while the character-select capture is level
+and identical in all fifteen runs. Good fight-start captures (700+ draws
+writing) are nearly level too. So the environment camera takes its pitch
+from a game camera that, on the bad attempts, is still pointing somewhere
+unexpected (straight down, or the exact unrotated -Z of the earlier weak
+captures).
+- The camera-activation hook (sub_00029E30, already used by the free
+  camera) now records the last 32 activations: frame, slot, eye, target,
+  fov and the slot's +ABC flag. Each one-off pass file lists them as
+  @CAMSLOT lines, plus @SLOT lines with all five slots' current eye,
+  target, fov and view matrix, so a bad capture shows which slot supplied
+  the camera and whether its eye or target was stale.
+- tests/free_camera stubs the new diagnostics call.
