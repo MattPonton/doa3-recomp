@@ -1649,6 +1649,22 @@ static uint32_t nv_light_vertex(const float pos[4], const float nrm[3],
                 float den = a0 + a1 * d + a2 * d * d;
                 att = (den > 1e-12f) ? 1.0f / den : 1.0f; }
             if (g_pg.light[i].range > 0.0f && d > g_pg.light[i].range) att = 0.0f;
+            if (type == 3) {
+                /* NV2A spot cone (xemu vsh-ff, after US6417851B1): s = dot(spot
+                 * direction, L) + w, then (s + L) / (M s + N) from the falloff. */
+                const float *sd = g_pg.light[i].spot_dir, *sf = g_pg.light[i].spot_fall;
+                float s = sd[0] * L[0] + sd[1] * L[1] + sd[2] * L[2] + sd[3];
+                if (s <= 0.0f) att = 0.0f;
+                else if (s < 1.0f) {
+                    float f = 0.0f;
+                    if (s > -sf[0]) {
+                        float den2 = sf[1] * s + sf[2];
+                        if (den2 == 0.0f) f = 1.0f;
+                        else if (den2 > 0.0f) { f = (s + sf[0]) / den2; f = f < 0.0f ? 0.0f : (f > 1.0f ? 1.0f : f); }
+                    }
+                    att *= f;
+                }
+            }
         }
         ndotl = N[0] * L[0] + N[1] * L[1] + N[2] * L[2];
         if (ndotl < 0.0f) ndotl = 0.0f;
@@ -3647,7 +3663,12 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
         uint32_t t = ctx->ltype[k];
         if (!t) continue;
         if (t == 1) { cb.light_dir[k][0] = ctx->dir_n[k][0]; cb.light_dir[k][1] = ctx->dir_n[k][1]; cb.light_dir[k][2] = ctx->dir_n[k][2]; cb.light_dir[k][3] = 1.0f; }
-        else        { cb.light_dir[k][0] = g_pg.light[k].pos[0]; cb.light_dir[k][1] = g_pg.light[k].pos[1]; cb.light_dir[k][2] = g_pg.light[k].pos[2]; cb.light_dir[k][3] = 2.0f; }
+        else        { cb.light_dir[k][0] = g_pg.light[k].pos[0]; cb.light_dir[k][1] = g_pg.light[k].pos[1]; cb.light_dir[k][2] = g_pg.light[k].pos[2]; cb.light_dir[k][3] = (float)t; }
+        if (t == 3) {
+            int j;
+            for (j = 0; j < 4; j++) cb.light_spot_dir[k][j] = g_pg.light[k].spot_dir[j];
+            for (j = 0; j < 3; j++) cb.light_spot_fall[k][j] = g_pg.light[k].spot_fall[j];
+        }
         cb.light_amb[k][0] = g_pg.light[k].amb[0]; cb.light_amb[k][1] = g_pg.light[k].amb[1]; cb.light_amb[k][2] = g_pg.light[k].amb[2];
         cb.light_dif[k][0] = g_pg.light[k].dif[0]; cb.light_dif[k][1] = g_pg.light[k].dif[1]; cb.light_dif[k][2] = g_pg.light[k].dif[2];
         cb.light_att[k][0] = g_pg.light[k].att[0]; cb.light_att[k][1] = g_pg.light[k].att[1]; cb.light_att[k][2] = g_pg.light[k].att[2];

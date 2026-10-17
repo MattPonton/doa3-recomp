@@ -33,7 +33,7 @@ typedef struct {
 typedef struct {
     float    clip[4][4];      /* row i: coefficients of clip component i */
     float    mv[3][4];        /* model-view rows (xyz coefficients + translation) */
-    float    light_dir[4][4]; /* xyz: normalised direction (type 1) or eye-space position; w: type 0/1/2 */
+    float    light_dir[4][4]; /* xyz: normalised direction (type 1) or eye-space position; w: type 0/1/2/3 */
     float    light_amb[4][4];
     float    light_dif[4][4];
     float    light_att[4][4]; /* a0, a1, a2, range */
@@ -50,6 +50,8 @@ typedef struct {
     float    spec[4];          /* x: specular power, y: 1 = specular lighting on */
     float    texmat0[4][4];   /* stage-0 texture matrix, same convention as stage 1 */
     float    tex0_mode[4];    /* same texgen/matrix/projection controls as tex1_mode */
+    float    light_spot_dir[4][4];  /* spot lights (light_dir.w 3): SET_LIGHT_SPOT_DIRECTION */
+    float    light_spot_fall[4][4]; /* SET_LIGHT_SPOT_FALLOFF (L, M, N) */
 } Nv2aFFConstants;
 
 /* d3d8_device.c: upload, bind and draw. `topology` is a D3D11_PRIMITIVE_TOPOLOGY. */

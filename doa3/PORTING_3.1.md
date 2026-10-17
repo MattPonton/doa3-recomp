@@ -2857,3 +2857,22 @@ included), and the level that fit at 4x was the one 0.0.170 already uses.
 Why the DSP's decay runs 4x longer than the parameter says is not known;
 it is a measured factor. The rooms at indexes 37/38 (0.70/0.82 s) were not
 in the recordings, so their tails (~3 s) are extrapolated.
+
+## 0.0.172 - spot lights have a cone (Iron Hell flash)
+
+Iron Hell's periodic flash lit the fighters far brighter than on hardware.
+The method trace of a lit frame against an unlit one: the game switches
+SET_LIGHT_ENABLE_MASK (0x03BC) from 0x09 to 0x9F, turning lights 0 and 1
+into spot lights (type 3) with diffuse colours up to ~2.4, range 12 and
+narrow cones (SET_LIGHT_SPOT_DIRECTION e.g. (174.2, 180.8, -86.6, -262.3),
+falloff (0, -0.495, 1.494): full inside ~7.6 deg, nothing past ~9.2 deg).
+The fixed-function lighting (CPU nv_light_vertex and the GPU NvFF vertex
+shader) treated spot lights as plain local lights, so the whole cone-less
+light hit everyone in range.
+
+- Spot factor as xemu's vsh-ff computes it (US6417851B1): s =
+  dot(spot direction, L) + direction.w; 0 when s <= 0, 1 when s >= 1, else
+  (s + L) / (M s + N) clamped to 0..1, multiplying the attenuation (ambient,
+  diffuse and specular).
+- Nv2aFFConstants gains light_spot_dir / light_spot_fall (appended; the
+  shader cbuffer LSpotDir / LSpotFall), and light_dir.w carries type 3.
