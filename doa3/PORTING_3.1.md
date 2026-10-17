@@ -2786,3 +2786,17 @@ draw covers the whole centred 16:9 area and the full height, the clip row
 for x is scaled by (display aspect)/(16:9) (2 at 32:9, 21/16 at 21:9), which
 stretches it about the screen centre to the width it covers at 16:9. World
 geometry never shares a single w across its vertices, so it is unaffected.
+
+## 0.0.169
+
+Genra's flames stretched only on some frames (user). In every new trace the
+flame sheet is the same 31-vertex draw covering guest 152..568 x -89..569,
+which passes every 0.0.168 test except, most likely, the single-w test: the
+trace prints w to three digits (0.35), while the check required all
+vertices to agree within 1e-4 relative, and a camera-locked sheet picks up
+small differences as the camera moves. The tolerance is now 1%, and a draw
+that already spans the full width is never stretched (so a wide backdrop
+facing the camera cannot be widened). With a method trace open, each
+candidate (blended, w under 4, wider than a quarter of the surface) writes
+an @OVERLAY line with its w range, box, surface size and decision, so a
+frame that still is not stretched shows why.
