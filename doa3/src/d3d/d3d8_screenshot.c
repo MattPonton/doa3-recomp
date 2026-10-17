@@ -11,6 +11,17 @@
 /* One capture/encoder at a time bounds memory use and repeated key presses.
  * Only the requested frame is read back; PNG compression runs off-thread. */
 static volatile LONG s_pending, s_state, s_sequence;
+/* Screenshot at another internal resolution (0.0.165): the request sets a
+ * one-frame scale override, the target is rebuilt after the next present,
+ * the first frame rendered at that size is captured, and the override is
+ * cleared so the following frame boundary restores the game's scale. */
+static volatile LONG s_resize;
+static int s_resize_wait;
+extern int  debug_screenshot_scale_get(void);
+extern int  video_get_scale(void);
+extern int  video_get_aspect(void);
+extern void video_set_scale_override(int scale);
+extern void video_guest_target_size(int aspect, unsigned *w, unsigned *h);
 static HANDLE s_worker;
 enum { SHOT_IDLE, SHOT_SAVING, SHOT_SAVED, SHOT_FAILED };
 typedef struct { unsigned w, h; unsigned char *pixels; } Screenshot;
@@ -18,8 +29,17 @@ typedef struct { HANDLE file; int failed; } Output;
 
 void d3d8_screenshot_request(void)
 {
-    if (InterlockedCompareExchange(&s_state, 0, 0) != SHOT_SAVING)
+    int scale = debug_screenshot_scale_get();
+    if (InterlockedCompareExchange(&s_state, 0, 0) == SHOT_SAVING ||
+        InterlockedCompareExchange(&s_resize, 0, 0)) return;
+    if (scale && scale != video_get_scale()) {
+        s_resize_wait = 0;
+        video_set_scale_override(scale);
+        InterlockedExchange(&s_resize, 1);
+        InterlockedExchange(&s_state, SHOT_SAVING);
+    } else {
         InterlockedExchange(&s_pending, 1);
+    }
 }
 const char *d3d8_screenshot_status(void)
 {
@@ -89,12 +109,29 @@ void d3d8_screenshot_capture(ID3D11Texture2D *source)
     ID3D11Texture2D *staging = NULL;
     ID3D11DeviceContext *ctx = d3d8_GetD3D11Context();
     Screenshot *shot = NULL;
+    if (InterlockedCompareExchange(&s_resize, 0, 0) && source) {
+        unsigned ew, eh;
+        video_guest_target_size(video_get_aspect(), &ew, &eh);
+        ID3D11Texture2D_GetDesc(source, &td);
+        if (td.Width == ew && td.Height == eh) {
+            InterlockedExchange(&s_pending, 1);     /* this frame is at the new size */
+        } else if (++s_resize_wait > 30) {          /* never got there: give up */
+            video_set_scale_override(0);
+            InterlockedExchange(&s_resize, 0);
+            InterlockedExchange(&s_state, SHOT_FAILED);
+            return;
+        } else {
+            return;
+        }
+        video_set_scale_override(0);                /* back to the game's scale next frame */
+        InterlockedExchange(&s_resize, 0);
+    }
     if (!InterlockedExchange(&s_pending, 0) || !source || !ctx) return;
     if (s_worker) { CloseHandle(s_worker); s_worker = NULL; }
     InterlockedExchange(&s_state, SHOT_SAVING);
     ID3D11Texture2D_GetDesc(source, &td);
     if (td.Format != DXGI_FORMAT_R8G8B8A8_UNORM || td.SampleDesc.Count != 1 ||
-        !td.Width || !td.Height || (uint64_t)td.Width * td.Height > 16777216) goto fail;
+        !td.Width || !td.Height || (uint64_t)td.Width * td.Height > 67108864) goto fail;   /* 32:9 at 5x is 20.5 MP */
     shot = calloc(1, sizeof(*shot));
     if (!shot) goto fail;
     shot->w = td.Width; shot->h = td.Height;

@@ -124,6 +124,15 @@ int debug_screenshot_key_set(int key)
     g_screenshot_key = key;
     return 1;
 }
+static int g_screenshot_scale;
+int debug_screenshot_scale_get(void) { return g_screenshot_scale; }
+void debug_screenshot_scale_set(int scale) { g_screenshot_scale = (scale >= 1 && scale <= 5) ? scale : 0; }
+int debug_screenshot_scale_save(void)
+{
+    char value[16];
+    wsprintfA(value, "%d", g_screenshot_scale);
+    return WritePrivateProfileStringA("Debug", "ScreenshotScale", value, doa3_settings_ini_path()) != 0;
+}
 int debug_screenshot_key_save(void)
 {
     char value[16];
@@ -148,6 +157,7 @@ int debug_settings_load(void)
     doa3_auto_capture_set(GetPrivateProfileIntA("Debug", "AutoCapture", 0, path) != 0);
     g_screenshot_key = VK_F12;
     debug_screenshot_key_set(GetPrivateProfileIntA("Debug", "ScreenshotKey", VK_F12, path));
+    debug_screenshot_scale_set(GetPrivateProfileIntA("Debug", "ScreenshotScale", 0, path));
     g_hide_ui = 0;
     g_hide_players = 0;
     return GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES;

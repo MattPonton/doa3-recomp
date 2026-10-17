@@ -24,7 +24,7 @@ performance for low-end PCs.
 - Master volume plus the game's own Music / Sound effects / Voice levels
 - Streamer mode: mutes the licensed Aerosmith songs wherever they play
 - Training: record and replay the Sparring dummy's inputs
-- Screenshots (PNG) at render resolution, without the overlay
+- Screenshots (PNG) without the overlay, at the render resolution or up to 5x (2400 lines)
 
 ## Getting started
 

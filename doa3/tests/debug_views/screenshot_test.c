@@ -8,6 +8,12 @@ static ID3D11DeviceContext *ctx;
 ID3D11Device *d3d8_GetD3D11Device(void) { return device; }
 ID3D11DeviceContext *d3d8_GetD3D11Context(void) { return ctx; }
 void d3d8_screenshot_capture(ID3D11Texture2D *source);
+/* Screenshot resolution (0.0.165): "same as the game", so no override. */
+int debug_screenshot_scale_get(void) { return 0; }
+int video_get_scale(void) { return 3; }
+int video_get_aspect(void) { return 2; }
+void video_set_scale_override(int scale) { (void)scale; }
+void video_guest_target_size(int aspect, unsigned *w, unsigned *h) { (void)aspect; *w = 2562; *h = 1440; }
 #define CHECK(c) do { if (!(c)) { fprintf(stderr, "line %d: %s\n", __LINE__, #c); return 1; } } while (0)
 static int count_files(void)
 {

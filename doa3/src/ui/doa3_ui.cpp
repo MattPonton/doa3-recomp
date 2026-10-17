@@ -666,6 +666,8 @@ void DrawDebugSection()
         debug_hide_player_set(0, 0);
         debug_hide_player_set(1, 0);
         debug_screenshot_key_set(VK_F12);
+        debug_screenshot_scale_set(0);
+        debug_screenshot_scale_save();
         g_screenshot_listening = false;
         SetStatus("Debug settings reset to defaults");
         break;
@@ -785,9 +787,24 @@ void DrawDebugSection()
             debug_screenshot_key_set(VK_F12); g_screenshot_listening = false;
             SetStatus(debug_screenshot_key_save() ? "Screenshot key saved" : "Key changed; could not save settings");
         }
+        {
+            static const char *scales[] = {
+                "Same as the game", "1x (480 lines)", "2x (960 lines)", "3x (1440 lines)",
+                "4x (1920 lines)", "5x (2400 lines)"
+            };
+            int shot_scale = debug_screenshot_scale_get();
+            if (ImGui::Combo("Screenshot resolution", &shot_scale, scales, IM_ARRAYSIZE(scales))) {
+                debug_screenshot_scale_set(shot_scale);
+                SetStatus(debug_screenshot_scale_save() ? "Screenshot resolution saved"
+                                                        : "Screenshot resolution changed; could not save settings");
+            }
+            ImGui::TextWrapped("Renders the screenshot frame at this internal resolution, then returns to the "
+                               "game's own. Expect a brief hitch; 4x and 5x need a fast GPU and plenty of "
+                               "video memory, especially at 21:9 and 32:9.");
+        }
         if (ImGui::Button("Take screenshot")) d3d8_screenshot_request();
         ImGui::TextWrapped("%s", d3d8_screenshot_status());
-        ImGui::TextWrapped("Captures the game at its render resolution without this settings menu. "
+        ImGui::TextWrapped("Captures the game without this settings menu. "
                            "Use a key that is not assigned to fighter or camera controls. Hotkey changes save automatically.");
     } else {
         g_screenshot_listening = false;

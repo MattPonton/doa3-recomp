@@ -2738,3 +2738,18 @@ vertices do not share one linear mapping are snapped per quad (lists of
 6), or left alone. Wide lines (character select's panel borders) are
 snapped per segment quad. 1x is unchanged. The window fit records its
 mapping (s_fit_*) for this.
+
+## 0.0.165
+
+Screenshot resolution. Debug > Screenshots and UI has a "Screenshot
+resolution" setting ([Debug] ScreenshotScale: 0 = same as the game, 1..5).
+When it differs from the internal resolution, d3d8_screenshot_request sets a
+one-frame override (video_set_scale_override; video_guest_target_size now
+uses video_get_effective_scale), the existing frame-boundary target rebuild
+switches the guest target to that size, the first frame rendered at it is
+captured, and the override is cleared so the next boundary restores the
+game's scale (gives up after 30 frames). The game's own Internal resolution
+stays 1x-3x; only screenshots go to 4x and 5x. The capture's pixel cap is
+64 MP (32:9 at 5x is 8535x2400). Reset to defaults sets it back to "same as
+the game". tests/debug_views/screenshot_test stubs the new calls;
+docs/DEBUG.md and README updated.

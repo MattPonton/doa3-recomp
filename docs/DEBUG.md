@@ -95,8 +95,15 @@ work independently of the free camera.
 Open **Escape > Debug > Screenshots and UI** to assign a screenshot hotkey
 (default **F12**). Key changes save automatically. Close the settings and press
 the assigned key, or use **Take screenshot** inside the menu. PNGs save in the
-**Screenshots** folder beside `DOA3.exe`, at the game's render resolution and
-without the Escape overlay. Use a key not already assigned to game controls.
+**Screenshots** folder beside `DOA3.exe`, without the Escape overlay. Use a key
+not already assigned to game controls.
+
+**Screenshot resolution** chooses the internal resolution of the screenshot
+itself: **Same as the game**, or 1x to 5x (480 to 2400 lines). When it differs
+from Video > Internal resolution, the game renders one frame at that
+resolution, saves it and returns to its own, with a brief hitch. 5x at 32:9 is
+8535x2400 and needs a fast GPU with plenty of video memory. The setting saves
+automatically.
 
 Enable **Hide UI** for unobstructed stage and character views. This hides game
 screen overlays, including HUD and menus; some fades may also disappear.

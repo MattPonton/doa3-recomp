@@ -15,6 +15,11 @@ int debug_hide_player_vertices(uint32_t address);
 int debug_screenshot_key_get(void);
 int debug_screenshot_key_set(int key);
 int debug_screenshot_key_save(void);
+/* Screenshot resolution: 0 = the game's internal resolution, 1..5 = render
+ * the screenshot frame at that scale. Saved as [Debug] ScreenshotScale. */
+int debug_screenshot_scale_get(void);
+void debug_screenshot_scale_set(int scale);
+int debug_screenshot_scale_save(void);
 int debug_settings_load(void);
 int debug_settings_save(void);
 /* Only menu/selection reads use this; the save and reward code read real data. */
