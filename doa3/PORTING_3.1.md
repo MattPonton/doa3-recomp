@@ -2800,3 +2800,39 @@ facing the camera cannot be widened). With a method trace open, each
 candidate (blended, w under 4, wider than a quarter of the surface) writes
 an @OVERLAY line with its w range, box, surface size and decision, so a
 frame that still is not stretched shows why.
+
+## 0.0.170
+
+Room reverb (first pass). The user's Cmp recordings (Ayane's taunt on 15
+stages and several areas, hardware against port) show a reverb tail on
+every hardware recording and none on the port: on open stages (Beach, Snow,
+Forest, Lorelei areas 0/1/3) the tail starts about 17 dB under the voice
+peak and fades over ~0.5 s; in DOATECHK area 1, Danger Zone, Lorelei areas
+2/4, Aquarium, Iron Hell, Pancratium and X-Octagon it is much stronger (up
+to about the voice's own level) and longer.
+
+Cause: on the console the room reverb is the I3DL2 effect in the GP DSP
+program (dsstdfx.bin), fed by the I3DL2 send mixbin. The port stubs the
+effects-image download (sub_000A5C60) and apu_dsp.c passed only the stereo
+and positional bins through, so voices played dry. The game selects the
+room with IDirectSound_SetI3DL2Listener (sub_001F2A27, stdcall 12) from a
+table of DSI3DL2LISTENER structs at 0x2D3EB8: the 23 standard I3DL2 presets,
+"no reverb" at index 23 (0x2D4308), then 27 rooms of its own from 0x2D4338
+(index 24 on; decay 0.14-0.82 s, reflections -603 mB, reverb -159..-2318
+mB). The index is kept at 0x7FE2F0.
+
+- sub_001F2A27 is overridden (overrides_3.1.txt; its probe wrapper
+  removed): it hands the twelve parameters to the host reverb and logs
+  "[I3DL2] params <addr> (table index N): ..." (first 200 calls).
+- apu_dsp.c has a host I3DL2 reverb on mixbin 10 (DSMIXBIN_I3DL2): input
+  high-cut from lRoomHF at flHFReference, six early-reflection taps after
+  flReflectionsDelay at lReflections, and an 8-line feedback delay network
+  after flReverbDelay with flDecayTime / flDecayHFRatio damping, all-pass
+  diffusion from flDiffusion and line lengths from flDensity, at lReverb;
+  both scaled by lRoom. The wet signal goes to the front pair. Until the
+  game sets a listener the reverb is off, so tests/audio_mix is unchanged.
+- The first time each mixbin from 10 up carries audio, "[MIX] mixbin N
+  carries audio" is logged, to confirm the send bin.
+The send level and the exact DSP response are not known yet; the next step
+is to compare new port recordings against the hardware ones with the logged
+table index per area and calibrate.

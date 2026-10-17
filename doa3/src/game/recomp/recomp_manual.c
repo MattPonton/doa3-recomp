@@ -1499,6 +1499,35 @@ void sub_001C7920(void)
  * file name), ret 0. */
 void sub_000A5C60(void) { eax = 0; esp += 4; }
 
+/* IDirectSound_SetI3DL2Listener(pDS, pParams, dwApply), stdcall 12 (0.0.170).
+ * The room reverb runs on the console's GP DSP, which is not emulated; hand
+ * the parameters to the host reverb (apu_dsp.c). The game takes them from a
+ * table at 0x2D3EB8 (the standard I3DL2 presets, then its own rooms from
+ * 0x2D4338), index in 0x7FE2F0; 0x2D4308 (index 23) is "no reverb". */
+void sub_001F2A27_gen(void);
+void sub_001F2A27(void)
+{
+    extern void apu_reverb_set_i3dl2(const uint32_t raw[12]);
+    uint32_t p = MEM32(esp + 8);
+    if (p >= 0x10000u && p < 0x08000000u - 48u) {
+        static unsigned s_logged;
+        uint32_t raw[12];
+        int i;
+        for (i = 0; i < 12; i++) raw[i] = MEM32(p + 4u * (uint32_t)i);
+        apu_reverb_set_i3dl2(raw);
+        if (s_logged < 200) {
+            float f[12];
+            s_logged++;
+            memcpy(f, raw, sizeof f);
+            fprintf(stderr, "[I3DL2] params %08X (table index %d): room %d roomHF %d decay %.3f hfratio %.3f "
+                    "reflections %d delay %.3f reverb %d delay %.3f diffusion %.0f density %.0f hf %.0f\n",
+                    p, (p >= 0x2D3EB8u && (p - 0x2D3EB8u) % 0x30u == 0) ? (int)((p - 0x2D3EB8u) / 0x30u) : -1,
+                    (int)raw[0], (int)raw[1], f[3], f[4], (int)raw[5], f[6], (int)raw[7], f[8], f[9], f[10], f[11]);
+        }
+    }
+    sub_001F2A27_gen();
+}
+
 /* CRT memcpy/memmove (0x1B73D0 and 0x1B7CB0, the same two copies 3.0 has at
  * 0x18DF40/0x18EE90): the trailing-byte dispatch is an intra-function jump
  * table the lifter cannot follow, so copies lost their tail bytes. Native
