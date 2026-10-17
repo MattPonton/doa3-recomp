@@ -32,6 +32,7 @@ int main(void)
     NVREG(0x0260) = 0x18140000;
     NVREG(0x1E60) = 2; CHECK(!nv_use_vertex_diffuse(1));
     NVREG(0x1E60) = 1;
+    NVREG(0x0288) = 0xE; CHECK(nv_use_vertex_diffuse(1)); /* Story intro: spare0 + specular. */
     NVREG(0x0288) = 0x130C0300; CHECK(!nv_use_vertex_diffuse(1)); /* Different final combiner. */
     puts("PASS: transparent timer shadow, fade progression, and legacy fallback isolation");
     return 0;

@@ -2682,3 +2682,16 @@ distinct combiner set that takes that fallback for an inline draw with all
 vertex colours 00000000 is now logged once as "[HUDZERO] frame N: ...
 1E60/0AC0/0260/1E40/0AA0/0288/028C | stage1 ..." (at most 40 lines), to
 widen the rule to exactly the timer's variant.
+
+## 0.0.162
+
+The 0.0.161 log of Christie's Fight 3 intro shows the timer draw (mode 7,
+the 07710B2A timer atlas) with the round-start TEX0 * V0 program
+(0AC0 08040000, 0260 18140000, outputs 0C00) but final combiner
+CW0 0288 = 0000000E instead of 0000000C: D = spare0 + specular rather than
+spare0. These 2D draws supply no specular colour, so the result is the same
+TEX0 * V0, and the zero vertex colour is the transparent start of the fade.
+nv_use_vertex_diffuse accepts both final-combiner forms, so the backing fades
+in instead of showing black (and the timer-body edge path applies there
+too). tests/hud_fade checks the 0E form; a different final combiner still
+keeps the fallback. The [HUDZERO] logging is removed.
