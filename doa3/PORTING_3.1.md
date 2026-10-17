@@ -2771,3 +2771,18 @@ and video_set_scale clamp to 1..4; unknown values still fall back to 3x).
 Guest targets at 4x: 2560x1920 (4:3), 3416x1920 (16:9), 4480x1920 (21:9),
 6828x1920 (32:9). tests/video_settings checks sizes up to 4x; README lists
 the option. Screenshots are unchanged (they save at the render resolution).
+
+## 0.0.168
+
+Genra's flame overlay at 21:9 and 32:9. The traces (mtrace_manual_24191,
+24467, 24676; 32:9 at 4x) show it is not 2D: a GPU-path triangle strip of 31
+vertices with an animated texture (0181B780 / 0185B780), additive
+(SRCALPHA, ONE), every vertex at w = 0.35 (locked to the camera), covering
+guest x 152..568 and y -89..569. It is sized to overfill a 16:9 picture;
+the ultrawide projection widens the view around it, so it covered only the
+middle (about 18.5:9). nv_gpu_ff_submit now checks blended GPU draws of up
+to 256 vertices at 21:9 and 32:9: when every vertex has the same w and the
+draw covers the whole centred 16:9 area and the full height, the clip row
+for x is scaled by (display aspect)/(16:9) (2 at 32:9, 21/16 at 21:9), which
+stretches it about the screen centre to the width it covers at 16:9. World
+geometry never shares a single w across its vertices, so it is unaffected.

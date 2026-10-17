@@ -3510,6 +3510,48 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
             nv++;
         }
     }
+    /* Ultrawide camera overlay (0.0.168). Genra's final stage draws a sheet of
+     * animated flames locked to the camera: every vertex at the same small w
+     * (0.35), additive, sized to overfill a 16:9 picture. The ultrawide
+     * projection widens the view around it, so at 21:9 and 32:9 it covered
+     * only the middle. A blended draw whose vertices all share one w and that
+     * covers the whole centred 16:9 area and the full height is stretched
+     * horizontally about the screen centre by (display aspect)/(16:9), the
+     * width it covers at 16:9. World geometry never has a single w. */
+    int overlay_stretch = 0;
+    float overlay_k = 1.0f;
+    if (video_get_aspect() > VIDEO_ASPECT_16_9 && g_pg.blend_enable && nv >= 3 && nv <= 256 &&
+        !d3d8_OffscreenTargetActive()) {
+        unsigned sw = (g_pg.surface_clip_h >> 16) & 0xFFFF, sh = (g_pg.surface_clip_v >> 16) & 0xFFFF;
+        float ox = g_pg.vp_offset[0], oy = g_pg.vp_offset[1];
+        float x0 = 1e30f, x1 = -1e30f, y0 = 1e30f, y1 = -1e30f, w0 = 0.0f;
+        uint32_t v;
+        int ok = sw && sh;
+        if (!(ox >= 0.0f && oy >= 0.0f && ox < (float)sw && oy < (float)sh)) { ox = 0.0f; oy = 0.0f; }
+        for (v = 0; v < nv && ok; v++) {
+            const float *in = s_gv[v].pos;
+            float c[4]; int r;
+            for (r = 0; r < 4; r++)
+                c[r] = in[0] * g_pg.composite[r * 4 + 0] + in[1] * g_pg.composite[r * 4 + 1] +
+                       in[2] * g_pg.composite[r * 4 + 2] + in[3] * g_pg.composite[r * 4 + 3];
+            if (!(c[3] > 0.0f)) { ok = 0; break; }
+            if (!v) w0 = c[3];
+            else if (fabsf(c[3] - w0) > 1e-4f * w0 + 1e-6f) { ok = 0; break; }
+            c[0] = c[0] / c[3] + ox; c[1] = c[1] / c[3] + oy;
+            if (c[0] < x0) x0 = c[0]; if (c[0] > x1) x1 = c[0];
+            if (c[1] < y0) y0 = c[1]; if (c[1] > y1) y1 = c[1];
+        }
+        if (ok) {
+            float ar = video_display_aspect(video_get_aspect());
+            float half = (float)sw * 0.5f * (16.0f / 9.0f) / ar;      /* half the 16:9 area */
+            float mid = (float)sw * 0.5f;
+            if (x0 <= mid - half + 2.0f && x1 >= mid + half - 2.0f &&
+                y0 <= 2.0f && y1 >= (float)sh - 2.0f) {
+                overlay_stretch = 1;
+                overlay_k = ar / (16.0f / 9.0f);
+            }
+        }
+    }
     {   extern FILE *g_doa3_mtrace;
         if (g_doa3_mtrace) {
             uint32_t v;
@@ -3590,6 +3632,8 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
             cb.clip[2][k] =  r2 / zrange;
             cb.clip[3][k] =  r3;
         }
+        if (overlay_stretch && preview_shift == 0.0f)
+            for (k = 0; k < 4; k++) cb.clip[0][k] *= overlay_k;
     }
     for (k = 0; k < 3; k++) { int j; for (j = 0; j < 4; j++) cb.mv[k][j] = g_mv[k * 4 + j]; }
     for (k = 0; k < 4; k++) {
