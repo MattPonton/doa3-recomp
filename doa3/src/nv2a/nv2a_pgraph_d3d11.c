@@ -2757,8 +2757,11 @@ static int nv_hud_geometry(const OutputVertex *out, uint32_t n, unsigned w, unsi
         x0 = fminf(x0, out[i].x); x1 = fmaxf(x1, out[i].x);
         y0 = fminf(y0, out[i].y); y1 = fmaxf(y1, out[i].y);
     }
-    return !(x0 <= 1.0f && x1 >= (float)w-1.0f &&
-             y0 <= 1.0f && y1 >= (float)h-1.0f);
+    /* Full-screen quads start at -0.5 or 0.53125 and gain the 0.53125
+     * screen-space offset of the passthrough program (0.0.163), so allow
+     * up to 2 pixels at each edge. */
+    return !(x0 <= 2.0f && x1 >= (float)w-2.0f &&
+             y0 <= 2.0f && y1 >= (float)h-2.0f);
 }
 
 static int nv_menu_panel_geometry(const OutputVertex *out, uint32_t n)
@@ -4254,12 +4257,39 @@ static void submit_draw(void)
 
     /* Convert inline vertices to the shared screen-space format. */
     OutputVertex *out = (OutputVertex *)_alloca(out_vert_count * sizeof(OutputVertex));
+    /* Screen-space offset of the loaded transform program. For pre-
+     * transformed (XYZRHW) vertices the Xbox D3D runtime loads a passthrough
+     * program that adds the screen-space offset, 0.53125 by default
+     * (the HUD's: constants (1,1,2^24-1,1) and (0.53125,0.53125,0,0)). The
+     * NV2A samples pixel centres at +0.5, so the game's sprites at x.5 land
+     * on texel centres there. Leaving it out drew every inline 2D draw half
+     * a pixel up and left: 1:1 HUD textures were sampled between texel rows
+     * and the life bars' stencil mask (submitted at x.53, the frame at x.5)
+     * ended a pixel away from where it does on hardware. The offset is
+     * measured by running the program on two positions and applied only when
+     * the program is exactly that: unit scale plus a sub-pixel offset. */
+    float in_ox = 0.0f, in_oy = 0.0f;
+    if (g_pg.vp.have_program && (g_pg.xform_mode & 3) == 2 && lay_pos >= 2) {
+        float vin[NV2A_VP_NUM_INPUT][4], o0[NV2A_VP_NUM_OUTPUT][4], o1[NV2A_VP_NUM_OUTPUT][4];
+        int s_;
+        for (s_ = 0; s_ < NV2A_VP_NUM_INPUT; s_++) { vin[s_][0] = vin[s_][1] = vin[s_][2] = 0.0f; vin[s_][3] = 1.0f; }
+        if (nv2a_vp_execute(&g_pg.vp, vin, o0)) {
+            vin[0][0] = 100.0f; vin[0][1] = 100.0f;
+            if (nv2a_vp_execute(&g_pg.vp, vin, o1)) {
+                float sx_ = (o1[0][0] - o0[0][0]) / 100.0f, sy_ = (o1[0][1] - o0[0][1]) / 100.0f;
+                if (fabsf(sx_ - 1.0f) < 1e-4f && fabsf(sy_ - 1.0f) < 1e-4f &&
+                    o0[0][0] >= 0.0f && o0[0][0] < 1.0f && o0[0][1] >= 0.0f && o0[0][1] < 1.0f) {
+                    in_ox = o0[0][0]; in_oy = o0[0][1];
+                }
+            }
+        }
+    }
 
     /* Helper to convert one inline vertex */
     #define CONVERT_VERT(dst_idx, src_idx) do { \
         uint32_t _b = (src_idx) * stride; \
-        out[dst_idx].x     = u2f(src[_b + 0]); \
-        out[dst_idx].y     = u2f(src[_b + 1]); \
+        out[dst_idx].x     = u2f(src[_b + 0]) + in_ox; \
+        out[dst_idx].y     = u2f(src[_b + 1]) + in_oy; \
         /* The guest's own z. Hardcoding 0 put every 2D draw on the NEAR plane: \
          * character select submits its window backing quad at z = 1.0 with \
          * depth test and write on, so at z = 0 it stamped the near plane over \

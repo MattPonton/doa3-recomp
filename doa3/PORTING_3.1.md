@@ -2695,3 +2695,27 @@ nv_use_vertex_diffuse accepts both final-combiner forms, so the backing fades
 in instead of showing black (and the timer-body edge path applies there
 too). tests/hud_fade checks the 0E form; a different final combiner still
 keeps the fallback. The [HUDZERO] logging is removed.
+
+## 0.0.163
+
+Life bars a pixel off (user, 1x and 3x; Kasumi vs Hayate trace
+mtrace_manual_08583). The HUD block runs with SET_TRANSFORM_EXECUTION_MODE
+= program (1E94 = 6) and loads the Xbox D3D passthrough program for XYZRHW
+vertices with constants (1, 1, 2^24-1, 1) and (0.53125, 0.53125, 0, 0): on
+hardware every pre-transformed vertex gets the 0.53125 screen-space offset,
+and the NV2A samples pixel centres at +0.5, so the game's sprites at x.5
+(bar frame and dark backing at 46.5/32.5, 1:1 with their 128x128 atlases)
+land on texel centres. The inline path never ran that program, so all inline
+2D was drawn half a pixel up and left: 1:1 HUD textures were sampled
+halfway between texel rows (the light 1-pixel row under the bar's top edge,
+the uneven top line), and the bars' stencil mask (submitted at 47.53/33.53)
+started two pixels inside the frame instead of one.
+
+The inline path now measures the loaded program's effect on two positions
+and, when it is exactly unit scale plus a sub-pixel offset (the
+passthrough), adds that offset to every inline vertex before the usual
+window fit, so it scales with the internal resolution like the rest of the
+position. nv_hud_geometry's full-screen test allows 2 pixels at the edges
+(was 1) so full-screen quads at 0.53125 plus the offset are still treated as
+full-screen. This affects every inline 2D draw (HUD, menus, fades) by the
+same half pixel the hardware applies.
