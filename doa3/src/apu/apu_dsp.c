@@ -87,6 +87,13 @@ static void audio_mix_meter(MCPXAPUState *d,
 #define RV_MAXLINE   4096
 #define RV_AP        4
 #define RV_BIN       10            /* DSMIXBIN_I3DL2 */
+/* The console's tails decay about four times slower than flDecayTime says
+ * (0.0.171). Ayane's taunt recorded on hardware in 25 stage areas against
+ * 0.0.170: with each area's room at 4x the decay, the simulated tails match
+ * the hardware ones within ~2.5 dB rms over the 700 ms after the voice, at
+ * the 0.0.170 levels (2x-3x and 5x-6x fit worse). Light rooms (index 30,
+ * 0.2 s) ring for ~0.8 s; Ice Cave (25, 0.359 s) for ~1.4 s. */
+#define RV_DECAY_SCALE 4.0f
 
 typedef struct {
     int32_t room, room_hf; float rolloff, decay, decay_hf_ratio;
@@ -162,7 +169,9 @@ static void rv_configure(const Doa3I3DL2 *p)
     static const float line_ms[RV_N] = { 29.7f, 37.1f, 41.1f, 43.7f, 47.3f, 53.9f, 59.3f, 61.7f };
     static const int ap_len[RV_AP] = { 223, 337, 541, 727 };
     float room = rv_mb(p->room);
-    float decay = p->decay < 0.1f ? 0.1f : (p->decay > 20.0f ? 20.0f : p->decay);
+    float decay = p->decay * RV_DECAY_SCALE;
+    if (decay < 0.1f) decay = 0.1f;
+    if (decay > 20.0f) decay = 20.0f;
     float hfr = p->decay_hf_ratio < 0.1f ? 0.1f : (p->decay_hf_ratio > 1.0f ? 1.0f : p->decay_hf_ratio);
     float hf = p->hf_reference < 20.0f ? 5000.0f : p->hf_reference;
     float dens = (p->density < 0.0f ? 0.0f : (p->density > 100.0f ? 100.0f : p->density)) / 100.0f;

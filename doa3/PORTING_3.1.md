@@ -2836,3 +2836,24 @@ mB). The index is kept at 0x7FE2F0.
 The send level and the exact DSP response are not known yet; the next step
 is to compare new port recordings against the hardware ones with the logged
 table index per area and calibrate.
+
+## 0.0.171 - room reverb decays at the console's rate
+
+Compared the 0.0.170 recordings (release/Cmp, Ayane's taunt in 25 stage
+areas) with the hardware ones. The port's reverb level was right, but its
+tails died far too early: in the light rooms (index 30, flDecayTime 0.2 s)
+the console's tail rings for about 0.8 s, and in Ice Cave (index 25,
+0.359 s) for about 1.4 s.
+
+Method: a Python copy of the apu_dsp.c reverb simulated each area's room
+(identified by matching the port recording) on the dry voice, with the
+decay time scaled 1x-6x and a free level. 4x gave the best fit in almost
+every area (about 2.2-2.6 dB rms over the 700 ms after the voice in the
+strong rooms, ~3.2 dB in the light ones, with the capture's noise floor
+included), and the level that fit at 4x was the one 0.0.170 already uses.
+
+- apu_dsp.c: RV_DECAY_SCALE 4.0 multiplies flDecayTime before the delay
+  line gains are derived (still clamped to 0.1-20 s). Levels unchanged.
+Why the DSP's decay runs 4x longer than the parameter says is not known;
+it is a measured factor. The rooms at indexes 37/38 (0.70/0.82 s) were not
+in the recordings, so their tails (~3 s) are extrapolated.
