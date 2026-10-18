@@ -104,6 +104,7 @@ static float attenuate(uint16_t vol)
     return (vol == 0xFFF) ? 0.0f : powf(10.0f, vol / (64.0f * -20.0f));
 }
 
+
 /* ============================================================
  * Voice register accessors (read/write voice struct in RAM)
  * ============================================================ */
@@ -114,6 +115,48 @@ static uint32_t voice_get_mask(MCPXAPUState *d, uint16_t voice_handle,
     hwaddr voice = d->regs[NV_PAPU_VPVADDR] + voice_handle * NV_PAVS_SIZE;
     return (ldl_le_phys(address_space_memory, voice + offset) & mask) >>
            ctz32(mask);
+}
+
+/* 0.0.173 diagnostics: 3D voice routing. "[V3D]" when a 3D voice's HRTF
+ * handle, bins or volumes change; "[HRTF]" when DirectSound points a voice
+ * at an HRTF entry (ITD and per-ear FIR gain). Capped. */
+static void v3d_trace(MCPXAPUState *d, uint16_t v, const int bin[8],
+                      const uint16_t vol[8], bool hrtf_on)
+{
+    static struct { uint16_t vol[8]; uint8_t bin[8]; uint16_t h; uint8_t on, seen; } last[MCPX_HW_MAX_3D_VOICES];
+    static unsigned lines;
+    uint16_t h;
+    int b, changed = 0;
+    if (v >= MCPX_HW_MAX_3D_VOICES || lines >= 600) return;
+    h = (uint16_t)voice_get_mask(d, v, NV_PAVS_VOICE_CFG_HRTF_TARGET,
+                                 NV_PAVS_VOICE_CFG_HRTF_TARGET_HANDLE);
+    if (!last[v].seen || last[v].h != h || last[v].on != hrtf_on) changed = 1;
+    for (b = 0; b < 8; b++)
+        if (last[v].vol[b] != vol[b] || last[v].bin[b] != (uint8_t)bin[b]) changed = 1;
+    if (!changed) return;
+    last[v].seen = 1; last[v].h = h; last[v].on = hrtf_on;
+    for (b = 0; b < 8; b++) { last[v].vol[b] = vol[b]; last[v].bin[b] = (uint8_t)bin[b]; }
+    lines++;
+    fprintf(stderr, "[V3D] v%u hrtf=%04X%s bins/vol(dB):", v, h, hrtf_on ? "" : " (off)");
+    for (b = 0; b < 8; b++)
+        fprintf(stderr, " %u:%.1f", bin[b], vol[b] >= 0xFFF ? -99.0f : 20.0f * log10f(attenuate(vol[b]) + 1e-9f));
+    fprintf(stderr, " hr=%u\n", d->vp.hrtf_headroom);
+}
+
+static void hrtf_entry_trace(MCPXAPUState *d, int voice, int handle)
+{
+    static unsigned lines;
+    float sl = 0, sr = 0, el = 0, er = 0;
+    int k;
+    if (lines >= 300 || handle >= HRTF_ENTRY_COUNT) return;
+    lines++;
+    for (k = 0; k < HRTF_NUM_TAPS; k++) {
+        float a = d->vp.hrtf.entries[handle].hrir[0][k], b = d->vp.hrtf.entries[handle].hrir[1][k];
+        sl += a; sr += b; el += a * a; er += b * b;
+    }
+    fprintf(stderr, "[HRTF] v%d entry %d itd %+.2f smp  L sum %.3f rms %.3f  R sum %.3f rms %.3f  (L-R %+.1f dB)\n",
+            voice, handle, d->vp.hrtf.entries[handle].itd, sl, sqrtf(el), sr, sqrtf(er),
+            10.0f * log10f((el + 1e-12f) / (er + 1e-12f)));
 }
 
 /* Atomic read-modify-write. Two threads update the same voice words: the
@@ -437,6 +480,7 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
             hrtf_filter_set_target_params(&d->vp.filters[current_voice].hrtf,
                                           d->vp.hrtf.entries[handle].hrir,
                                           d->vp.hrtf.entries[handle].itd);
+            hrtf_entry_trace(d, current_voice, handle);
         }
         break;
     }
@@ -1287,18 +1331,48 @@ static void voice_process(MCPXAPUState *d,
         }
     }
 
-    /* HRTF processing for 3D voices */
-    if (v < MCPX_HW_MAX_3D_VOICES && g_config.audio.hrtf) {
+    /* HRTF processing for 3D voices.
+     *
+     * 0.0.173: the filter's two outputs are the two ears. Bins 0-3 of a 3D
+     * voice are the four HRTF submixes (3D front left/right, rear left/right,
+     * DSMIXBIN 6-9), so even bins take the left ear and odd bins the right.
+     * xemu mixed sample[b % channels] -- for a mono voice channel 0 into all
+     * four -- and the port had the filter off, so every 3D voice came out
+     * dead centre. Bins 4-7 (the I3DL2 send and other effect sends) take the
+     * unfiltered voice. A mono voice feeds the same signal to both ears. */
+    static int s_hrtf_env = -1;
+    float dry[NUM_SAMPLES_PER_FRAME][2];
+    bool hrtf_on = false;
+    if (s_hrtf_env < 0) {
+        char e[8];
+        DWORD n = GetEnvironmentVariableA("DOA3_HRTF", e, sizeof e);
+        s_hrtf_env = !(n && e[0] == '0');
+    }
+    if (v < MCPX_HW_MAX_3D_VOICES && g_config.audio.hrtf && s_hrtf_env) {
         uint16_t hrtf_handle =
             (uint16_t)voice_get_mask(d, v, NV_PAVS_VOICE_CFG_HRTF_TARGET,
                                      NV_PAVS_VOICE_CFG_HRTF_TARGET_HANDLE);
         if (hrtf_handle != HRTF_NULL_HANDLE) {
+            for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+                if (channels == 1) samples[i][1] = samples[i][0];
+                dry[i][0] = samples[i][0];
+                dry[i][1] = samples[i][1];
+            }
             hrtf_filter_process(&d->vp.filters[v].hrtf, samples, samples);
+            hrtf_on = true;
         }
     }
+    v3d_trace(d, v, bin, vol, hrtf_on);
 
     /* Mix into bins */
     for (int b = 0; b < 8; b++) {
+        if (hrtf_on) {
+            float g = ea_value * attenuate(vol[b]) /
+                      (float)(1 << (b < 4 ? d->vp.hrtf_headroom : d->vp.submix_headroom[bin[b]]));
+            for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++)
+                mixbins[bin[b]][i] += g * (b < 4 ? samples[i][b & 1] : dry[i][b % channels]);
+            continue;
+        }
         float g = ea_value;
         float hr;
         if ((v < MCPX_HW_MAX_3D_VOICES) && (b < 4)) {

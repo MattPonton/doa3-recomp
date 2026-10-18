@@ -2876,3 +2876,28 @@ light hit everyone in range.
   diffuse and specular).
 - Nv2aFFConstants gains light_spot_dir / light_spot_fall (appended; the
   shader cbuffer LSpotDir / LSpotFall), and light_dir.w carries type 3.
+
+## 0.0.173 - 3D voices through their HRTF filters (left/right placement)
+
+All 25 port recordings of Ayane's taunt were centred to within 0.1 dB; on
+hardware she sits 0.5-2 dB left, varying with position. DirectSound (the
+game's own recompiled code) positions 3D voices by writing an HRTF entry
+(31-tap FIR per ear + interaural delay, NV1BA0_PIO_SET_HRIR / _HRIR_X) and
+pointing the voice at it (SET_VOICE_TAR_HRTF); the VP filters the voice and
+mixes the ears into the four HRTF submixes (DSMIXBIN 6-9). The port had the
+filter switched off (g_config.audio.hrtf = false), and even with it on the
+xemu mix sent a mono voice's channel 0 into all four bins.
+
+- g_config.audio.hrtf on; DOA3_HRTF=0 in the environment turns it off.
+- 3D voice mix: bins 0-3 take the left ear (even) / right ear (odd) filter
+  output; bins 4-7 (I3DL2 and effect sends) the unfiltered voice. A mono
+  voice feeds both ears.
+- hrtf_filter_set_target_params no longer scales each ear to unity abs-sum
+  (that erased the level difference between the ears); one common factor,
+  only when the louder ear could exceed unity.
+- Diagnostics: "[HRTF] vN entry H itd ... L sum/rms R sum/rms (L-R dB)"
+  when a voice is pointed at an entry (first 300), "[V3D] vN hrtf=H
+  bins/vol(dB)" when a 3D voice's routing or volumes change (first 600).
+The FIR form, ITD sign and parameter smoothing are xemu's; whether the
+hardware applies the coefficients raw is to be checked against the new
+Beach (Day) left/right, near/far recordings.

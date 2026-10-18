@@ -227,18 +227,19 @@ hrtf_filter_set_target_params(HrtfFilter *f, float hrir_coeff[2][HRTF_NUM_TAPS],
                               float itd) {
     f->itd_tar = fmaxf(-(float)HRTF_MAX_DELAY_SAMPLES,
                         fminf(itd, (float)HRTF_MAX_DELAY_SAMPLES));
+    /* xemu scales each ear's FIR to unity abs-sum, which erases the level
+     * difference between the ears that DirectSound encodes in the
+     * coefficients. Keep it (0.0.173): one common factor for both ears, and
+     * only when the louder ear could exceed unity. */
+    float s[2] = { 0.0f, 0.0f }, m;
     for (int ch = 0; ch < 2; ch++) {
-        float *coeff = f->ch[ch].hrir_coeff_tar;
-        memcpy(coeff, hrir_coeff[ch], sizeof(f->ch[ch].hrir_coeff_tar));
-        float s = 0.0f;
-        for (int k = 0; k < HRTF_NUM_TAPS; k++) {
-            s += fabsf(coeff[k]);
-        }
-        if (s == 0.0f || s == 1.0f) break;
-        for (int k = 0; k < HRTF_NUM_TAPS; k++) {
-            coeff[k] /= s;
-        }
+        memcpy(f->ch[ch].hrir_coeff_tar, hrir_coeff[ch], sizeof(f->ch[ch].hrir_coeff_tar));
+        for (int k = 0; k < HRTF_NUM_TAPS; k++) s[ch] += fabsf(hrir_coeff[ch][k]);
     }
+    m = s[0] > s[1] ? s[0] : s[1];
+    if (m > 1.0f)
+        for (int ch = 0; ch < 2; ch++)
+            for (int k = 0; k < HRTF_NUM_TAPS; k++) f->ch[ch].hrir_coeff_tar[k] /= m;
 }
 
 static inline float hrtf_filter_smooth_param(float cur, float tar) {
