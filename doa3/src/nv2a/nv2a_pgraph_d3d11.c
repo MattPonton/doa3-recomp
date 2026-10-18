@@ -4550,9 +4550,20 @@ static void submit_draw(void)
         unsigned bw = d3d8_GetBackbufferWidth();
         float hx = 0.0f, hwid = (float)bw;
         video_hud_region(bw, &hx, &hwid);
-        if (hwid > 0.0f)
-            for (uint32_t i = 0; i < out_vert_count; i++)
+        if (hwid > 0.0f) {
+            /* The guest band runs 0.53..720.53 (the pixel-centre offset); pin
+             * its ends to the target edges so no sliver is left uncovered. */
+            float mn = 1e30f, mx = -1e30f;
+            for (uint32_t i = 0; i < out_vert_count; i++) {
                 out[i].x = (out[i].x - hx) * (float)bw / hwid;
+                if (out[i].x < mn) mn = out[i].x;
+                if (out[i].x > mx) mx = out[i].x;
+            }
+            for (uint32_t i = 0; i < out_vert_count; i++) {
+                if (out[i].x == mn) out[i].x = 0.0f;
+                else if (out[i].x == mx) out[i].x = (float)bw;
+            }
+        }
     }
     /* Begin scene if needed */
     dev->lpVtbl->BeginScene(dev);
@@ -4589,7 +4600,9 @@ static void submit_draw(void)
         dev->lpVtbl->SetVertexShader(dev,
             D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
 
-        int clipped = nv_apply_window_clip(hud);
+        /* 0.0.175: the widened vignette must not be scissored back to the
+         * HUD canvas by its full-screen window clip. */
+        int clipped = nv_apply_window_clip(vignette ? 0 : hud);
         /* Wide lines. D3D11 rasterises every line one pixel wide; the guest
          * asks for SET_LINE_WIDTH in surface pixels (character select's
          * panel borders: 0x10 = 2 px of the 1440x960 supersampled surface,

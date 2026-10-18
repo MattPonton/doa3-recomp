@@ -2930,3 +2930,16 @@ show which draw drops. Now:
   already on the GPU, the draw keeps the previous copy instead of drawing
   untextured; the slot stays marked not uploaded, so the next binding
   retries.
+
+## 0.0.175 - training vignette: no HUD scissor
+
+0.0.174 widened the vignette bands (trace: "@VIGNETTE ... -> full width",
+boxes 10..6838 of 6828 at 32:9), but the screen still showed them only in
+the middle: the bands carry the guest's full-screen window clip, and an
+inline draw judged HUD gets its scissor mapped into the HUD canvas
+(nv_apply_window_clip(hud)), which cut the widened band back to the centred
+16:9 area. The frame measured 0.63-0.67 darker just inside the 16:9 edge
+than just outside it over the bottom band. A vignette band now takes the
+scissor as a full-screen draw. Its ends are also pinned to the target
+edges (the guest band starts at x 0.53, which left a few pixels open on
+the left).
