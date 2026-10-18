@@ -7,6 +7,14 @@ typedef struct Doa3PerfFrame {
     int movie, foreground, free_camera;
     double input_age_ms, input_to_logic_ms, present_ms, logic_input_age_ms;
     unsigned input_reads;
+    /* 0.0.178 phase split of the host thread's frame (-1 = not measured):
+     * game = guest code between frames outside push-buffer translation,
+     * pb = push-buffer translation (state + draws), flush = end-of-frame
+     * translator flush, aux = capture/audio bookkeeping before present;
+     * the previous frame's present (compose + overlay + DXGI), pacing wait
+     * and CRI worker time inside that wait; draws and kick-offs. */
+    double game_ms, pb_ms, flush_ms, aux_ms, prev_present_ms, prev_pace_ms, prev_workers_ms;
+    unsigned draws, kicks;
 } Doa3PerfFrame;
 
 /* Single producer (the host thread), one background writer. start consumes

@@ -2993,3 +2993,24 @@ guest target, which is why that cleared it. It needs the overlay drawn
 - After the presenter restores the targets it re-derives g_off_active /
   g_off_cur from the view actually bound (d3d8_sync_target_flag), so no
   other path can leave them out of step this way.
+
+## 0.0.178 - per-frame CPU phase split in performance_frames.csv
+
+Puppy's 0.0.177 run: both Zack Story cutscenes render (05307, 11991,
+12387, 14784; all draws to the guest frame). Four Ice Cave traces at his
+slow spot (17750-22198) have ~900-1000 draws a frame, about 400 of them the
+floor reflection drawn again into its 256x256 target. They do not say
+where his CPU time goes: the frame capture only had the interval and
+present, and [PERF-PHASE] lines are written for frames of 25 ms or more
+(his slow frames are ~18-20 ms).
+
+performance_frames.csv (Debug > Automatic diagnostic captures) now has, per
+frame: game_ms (guest code between frames outside push-buffer translation),
+pb_ms (push-buffer translation, which includes building and submitting the
+draws), flush_ms, aux_ms (capture and audio bookkeeping before present),
+prev_present_ms (the previous frame's compose + overlay + DXGI Present),
+prev_pace_ms (the previous frame's 60 Hz wait) and prev_workers_ms (CRI
+worker fibers run inside that wait), draws and kick-offs. The values come
+from the counters recomp_manual.c already kept for [PERF-PHASE]
+(g_doa3_phase_ms). The first 11 columns are unchanged. The APU mixes on its
+own thread outside netplay, so it is not in the host thread's split.

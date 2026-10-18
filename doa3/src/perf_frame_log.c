@@ -15,7 +15,7 @@ static DWORD WINAPI write_frames(void *unused)
     (void)unused;
     setvbuf(s_file, NULL, _IOFBF, 65536);
     if (s_header)
-        fputs("seconds,frame_ms,mode,movie,foreground,free_camera,input_age_ms,input_to_logic_ms,present_ms,logic_input_age_ms,input_reads\n", s_file);
+        fputs("seconds,frame_ms,mode,movie,foreground,free_camera,input_age_ms,input_to_logic_ms,present_ms,logic_input_age_ms,input_reads,game_ms,pb_ms,flush_ms,aux_ms,prev_present_ms,prev_pace_ms,prev_workers_ms,draws,kicks\n", s_file);
     for (;;) {
         Doa3PerfFrame batch[64];
         unsigned count, i;
@@ -29,10 +29,12 @@ static DWORD WINAPI write_frames(void *unused)
         ReleaseSRWLockExclusive(&s_lock);
         for (i = 0; i < count; ++i) {
             const Doa3PerfFrame *f = &batch[i];
-            fprintf(s_file, "%.6f,%.6f,%u,%d,%d,%d,%.6f,%.6f,%.6f,%.6f,%u\n",
+            fprintf(s_file, "%.6f,%.6f,%u,%d,%d,%d,%.6f,%.6f,%.6f,%.6f,%u,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%u,%u\n",
                 f->seconds, f->frame_ms, f->mode, f->movie, f->foreground,
                 f->free_camera, f->input_age_ms, f->input_to_logic_ms,
-                f->present_ms, f->logic_input_age_ms, f->input_reads);
+                f->present_ms, f->logic_input_age_ms, f->input_reads,
+                f->game_ms, f->pb_ms, f->flush_ms, f->aux_ms, f->prev_present_ms,
+                f->prev_pace_ms, f->prev_workers_ms, f->draws, f->kicks);
         }
         written += count;
         if (written >= 300) { fflush(s_file); written = 0; }

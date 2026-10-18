@@ -20,6 +20,7 @@
 #include <stdbool.h>
 #include "../perf_capture.h"
 #include "../perf_frame_log.h"
+#include "../nv2a/nv2a_pgraph_d3d11.h"
 
 static void doa3_perf_shutdown(void);
 
@@ -376,6 +377,16 @@ static void doa3_perf_frame(void)
     frame.present_ms = s_perf_present.QuadPart ? 1000.0*(now.QuadPart-s_perf_present.QuadPart)/frequency.QuadPart : -1.0;
     frame.logic_input_age_ms = s_perf_logic_input.QuadPart ? 1000.0*(now.QuadPart-s_perf_logic_input.QuadPart)/frequency.QuadPart : -1.0;
     frame.input_reads = s_perf_input_reads;
+    {   extern double g_doa3_phase_ms[7]; extern unsigned g_doa3_phase_kicks;
+        static uint32_t s_draws_prev;
+        PgraphD3D11Stats st;
+        frame.game_ms = g_doa3_phase_ms[0]; frame.pb_ms = g_doa3_phase_ms[1];
+        frame.flush_ms = g_doa3_phase_ms[2]; frame.aux_ms = g_doa3_phase_ms[3];
+        frame.prev_present_ms = g_doa3_phase_ms[4]; frame.prev_pace_ms = g_doa3_phase_ms[5];
+        frame.prev_workers_ms = g_doa3_phase_ms[6]; frame.kicks = g_doa3_phase_kicks;
+        pgraph_d3d11_get_stats(&st);
+        frame.draws = st.draw_calls - s_draws_prev; s_draws_prev = st.draw_calls;
+    }
     doa3_perf_log_push(&frame);
     if (frame.frame_ms > 25.0)
         fprintf(stderr, "[PERF-FRAME] frame %u %.3f ms end-qpc %lld foreground %d\n",

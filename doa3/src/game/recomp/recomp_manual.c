@@ -977,6 +977,9 @@ static struct {
     LONGLONG presented, pace, workers, longest_worker, pb;
     unsigned kicks;
 } s_frame_perf;
+static LONGLONG s_phase_prev_present;      /* last frame's present, QPC ticks */
+double g_doa3_phase_ms[7] = { -1, -1, -1, -1, -1, -1, -1 };
+unsigned g_doa3_phase_kicks;
 
 static void pb4134_translate(uint32_t from, uint32_t to, int translate)
 {
@@ -1244,6 +1247,20 @@ static void d3d4134_frame_done(uint32_t dev)
     game_audio_frame();               /* game volumes, streamer mode */
 
     prepared = entry ? doa3_perf_now() : 0;
+    if (entry) {   /* hand the phase split to the frame capture (main.c) */
+        extern double g_doa3_phase_ms[7]; extern unsigned g_doa3_phase_kicks;
+        LARGE_INTEGER fq; double ms;
+        QueryPerformanceFrequency(&fq); ms = 1000.0 / fq.QuadPart;
+        g_doa3_phase_ms[0] = s_frame_perf.presented ?
+            (entry - s_frame_perf.presented - s_frame_perf.pace - s_frame_perf.pb) * ms : -1.0;
+        g_doa3_phase_ms[1] = s_frame_perf.pb * ms;
+        g_doa3_phase_ms[2] = (flushed - entry) * ms;
+        g_doa3_phase_ms[3] = (prepared - flushed) * ms;
+        g_doa3_phase_ms[4] = s_phase_prev_present ? s_phase_prev_present * ms : -1.0;
+        g_doa3_phase_ms[5] = s_frame_perf.presented ? s_frame_perf.pace * ms : -1.0;
+        g_doa3_phase_ms[6] = s_frame_perf.presented ? s_frame_perf.workers * ms : -1.0;
+        g_doa3_phase_kicks = s_frame_perf.kicks;
+    }
     doa3_present_frame();
     presented = entry ? doa3_perf_now() : 0;
     if (entry) {
@@ -1263,6 +1280,7 @@ static void d3d4134_frame_done(uint32_t dev)
                 (presented - prepared) * ms, (long long)presented);
         }
         s_frame_perf.presented = presented;
+        s_phase_prev_present = presented - prepared;
         s_frame_perf.pb = s_frame_perf.workers = s_frame_perf.longest_worker = 0;
         s_frame_perf.kicks = 0;
     }

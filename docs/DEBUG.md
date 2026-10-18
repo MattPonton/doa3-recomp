@@ -117,6 +117,9 @@ the `Diagnostics` folder next to `DOA3.exe` when specific events happen
 draw timing lines to the log plus `performance_frames.csv`. The folder is
 emptied at every launch. Leave this off for normal play; turn it on, together
 with **General > Write log files**, when collecting data for a bug report.
+Each `performance_frames.csv` row also splits the frame into game code
+(`game_ms`), graphics command translation (`pb_ms`, `flush_ms`), the previous
+frame's present and pacing wait, and counts its draws.
 
 **Trace the next frame** records one frame's graphics commands
 (`mtrace_manual_*.txt`) and a screenshot (`aa_*.bmp`) in the `Diagnostics`
