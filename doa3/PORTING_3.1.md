@@ -2943,3 +2943,23 @@ than just outside it over the bottom band. A vignette band now takes the
 scissor as a full-screen draw. Its ends are also pinned to the target
 edges (the guest band starts at x 0.53, which left a few pixels open on
 the left).
+
+## 0.0.176 - HRTF filtering off again (muffled voices)
+
+With 0.0.173's HRTF path the voices sounded muffled / "under water" even on
+Beach (Day). The 0.0.175 log's [HRTF] lines show why the filter cannot be
+right as decoded: a centred entry (ITD 0, both ears equal) has a per-ear
+coefficient sum of -2.88 and an RMS of 2.71 over 31 taps -- the taps
+average about +/-0.5 of full scale, nothing like an impulse response whose
+energy sits in a few taps -- and off-centre entries reach 3.3. Run as a
+FIR (and scaled down by the 10+ abs-sum) that is a heavy comb/low-pass, i.e.
+the muffling. The coefficient format (or how the hardware uses it) is not
+what xemu's filter assumes.
+
+- The HRTF filter runs only with DOA3_HRTF=1 in the environment; by default
+  3D voices mix as before 0.0.173 (centred).
+- The [HRTF] lines now also print the first entries' 31 raw taps per ear
+  (signed bytes) so the format can be worked out offline.
+The [V3D] lines show DirectSound gives a 3D voice equal front-left/right
+volumes (bins 6/7) and silences the rear pair (8/9), so the left/right
+placement is entirely in the HRTF entry.

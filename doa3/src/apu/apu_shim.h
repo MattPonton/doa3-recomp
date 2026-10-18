@@ -362,7 +362,7 @@ static struct {
 } g_config = {
     .audio = {
         .volume_limit = 1.0f,
-        .hrtf = true,      /* 0.0.173: 3D voices through their HRTF filters (DOA3_HRTF=0 turns it off) */
+        .hrtf = true,      /* HRTF path available; apu_vp.c runs it only with DOA3_HRTF=1 (0.0.176) */
         .vp = { .num_workers = 1 },
     },
 };

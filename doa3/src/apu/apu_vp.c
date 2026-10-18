@@ -157,6 +157,15 @@ static void hrtf_entry_trace(MCPXAPUState *d, int voice, int handle)
     fprintf(stderr, "[HRTF] v%d entry %d itd %+.2f smp  L sum %.3f rms %.3f  R sum %.3f rms %.3f  (L-R %+.1f dB)\n",
             voice, handle, d->vp.hrtf.entries[handle].itd, sl, sqrtf(el), sr, sqrtf(er),
             10.0f * log10f((el + 1e-12f) / (er + 1e-12f)));
+    if (lines <= 24) {   /* the raw taps, as signed bytes, for the first entries */
+        int ch;
+        for (ch = 0; ch < 2; ch++) {
+            fprintf(stderr, "[HRTF]   %c:", ch ? 'R' : 'L');
+            for (k = 0; k < HRTF_NUM_TAPS; k++)
+                fprintf(stderr, " %d", (int)lrintf(d->vp.hrtf.entries[handle].hrir[ch][k] * 128.0f));
+            fprintf(stderr, "\n");
+        }
+    }
 }
 
 /* Atomic read-modify-write. Two threads update the same voice words: the
@@ -1346,7 +1355,7 @@ static void voice_process(MCPXAPUState *d,
     if (s_hrtf_env < 0) {
         char e[8];
         DWORD n = GetEnvironmentVariableA("DOA3_HRTF", e, sizeof e);
-        s_hrtf_env = !(n && e[0] == '0');
+        s_hrtf_env = n && e[0] == '1';   /* 0.0.176: off unless DOA3_HRTF=1 */
     }
     if (v < MCPX_HW_MAX_3D_VOICES && g_config.audio.hrtf && s_hrtf_env) {
         uint16_t hrtf_handle =
