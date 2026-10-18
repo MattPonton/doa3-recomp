@@ -2901,3 +2901,32 @@ xemu mix sent a mono voice's channel 0 into all four bins.
 The FIR form, ITD sign and parameter smoothing are xemu's; whether the
 hardware applies the coefficients raw is to be checked against the new
 Beach (Day) left/right, near/far recordings.
+
+## 0.0.174 - training vignette full width; Beach flicker diagnostics
+
+Training mode darkens the top and bottom of the screen with two untextured,
+blended, black bands (alpha 0x99 at the screen edge fading to 0). They are
+2D draws, so at 21:9 and 32:9 they landed in the centred 16:9 HUD canvas
+(trace: box 538..3951 of 4480, 1712..5126 of 6828) and their ends showed
+as hard vertical edges. The inline draw path now spots a band like that --
+blended, no texture, no depth test, every vertex black, spanning the full
+guest width and less than 3/4 of its height -- and after the HUD fit
+stretches it back over the whole target width. With a trace open, such
+candidates write "@VIGNETTE ... -> full width / left".
+
+Beach stage-select flicker (long sessions): the 0.0.173 tester log has the
+texture cache full (192 MB) and "bindings without a texture" at 16-20 per
+5 s whenever the Beach stage select is up (frames ~100,500-103,500 and
+~289,000-290,500), all from the LockRect failure in the upload loop
+(nv2a_pgraph_d3d11.c, the DXT textures at 0186AA80 / 019D2E00 / 01A33E00 /
+020D2E00 are the logged ones). The 18 traces of the stage select did not
+show which draw drops. Now:
+- "[TEXFAIL] frame N: LockRect level L of N failed for <offset> (fmt, slot,
+  first upload / re-upload): <size, levels, refcount, locked flag and
+  level, staging memory, initialised levels, GPU copy>" at most once a
+  second (400 lines), with the count of failures in between
+  (d3d8_TextureLockDiag in d3d8_resources.c);
+- when the failure is the first level of a re-upload of a texture that is
+  already on the GPU, the draw keeps the previous copy instead of drawing
+  untextured; the slot stays marked not uploaded, so the next binding
+  retries.

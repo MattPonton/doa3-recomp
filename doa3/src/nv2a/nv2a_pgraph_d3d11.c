@@ -967,6 +967,7 @@ static IDirect3DTexture8 *get_dynamic_texture_impl(IDirect3DDevice8 *dev)
     uint32_t sig;
     D3DFORMAT d3dfmt;
     int upload_slot = -1;
+    int reupload = 0;     /* the slot already held an uploaded copy */
 
     if (!off || off >= 0x08000000u) return (s_tex_fail_line = __LINE__, (IDirect3DTexture8 *)NULL); /* DOA3: guest RAM to 128 MB */
     {   /* DOA3 DIAG: why textures do or do not materialise. */
@@ -1203,6 +1204,7 @@ static IDirect3DTexture8 *get_dynamic_texture_impl(IDirect3DDevice8 *dev)
         /* Publish the fingerprint only after every level and the GPU resource
          * succeed. A failed first upload must be retried on the next binding. */
         upload_slot = slot;
+        reupload = g_pg.texcache[slot].uploaded;
         g_pg.texcache[slot].uploaded = 0;
     }
     {
@@ -1292,7 +1294,26 @@ static IDirect3DTexture8 *get_dynamic_texture_impl(IDirect3DDevice8 *dev)
                 }
                 if (g_pg.dyn_tex->lpVtbl->UnlockRect(g_pg.dyn_tex, l) != 0 || !decoded)
                     return (s_tex_fail_line = __LINE__, (IDirect3DTexture8 *)NULL);
-            } else return (s_tex_fail_line = __LINE__, (IDirect3DTexture8 *)NULL);
+            } else {
+                /* 0.0.174: the Beach stage-select flicker. Long sessions show
+                 * ~4 bindings a second failing here (LockRect) while the
+                 * stage select is up. Say why, and when this was a re-upload
+                 * of a texture that was already on the GPU, keep drawing
+                 * with that copy instead of with no texture at all. */
+                extern void d3d8_TextureLockDiag(IDirect3DTexture8 *, UINT, char *, size_t);
+                static DWORD s_next; static unsigned s_n, s_lines;
+                s_n++;
+                if (s_lines < 400 && GetTickCount() >= s_next) {
+                    char st[160];
+                    d3d8_TextureLockDiag(g_pg.dyn_tex, l, st, sizeof st);
+                    fprintf(stderr, "[TEXFAIL] frame %u: LockRect level %u of %u failed for %08X (fmt %u, slot %d%s): %s; %u failures since last line\n",
+                            g_pg.frame, l, nlevels, off, (unsigned)d3dfmt, upload_slot,
+                            reupload ? ", re-upload" : ", first upload", st, s_n);
+                    s_lines++; s_n = 0; s_next = GetTickCount() + 1000;
+                }
+                if (reupload && l == 0) return g_pg.dyn_tex;
+                return (s_tex_fail_line = __LINE__, (IDirect3DTexture8 *)NULL);
+            }
             srcp += lsize;
             lw = (lw > 1) ? lw / 2 : 1;
             lh = (lh > 1) ? lh / 2 : 1;
@@ -4495,7 +4516,44 @@ static void submit_draw(void)
         /* Keep array/depth-tested geometry and offscreen reflection/mask draws. */
         if (debug_hide_ui_get() && !g_pg.depth_test && !d3d8_OffscreenTargetActive()) return;
     }
+    /* Training-mode vignette (0.0.174): two untextured, blended, black bands
+     * with an alpha gradient across the top and bottom of the guest screen
+     * (alpha 0x99 at the edge, 0 inward). As 2D draws they land in the
+     * centred 16:9 HUD canvas, so at 21:9 and 32:9 their ends showed as hard
+     * vertical edges. A band like that spans the full guest width; widen it
+     * to the full target width. */
+    int vignette = 0;
+    if (video_get_aspect() > VIDEO_ASPECT_16_9 && g_pg.blend_enable && !g_pg.depth_test &&
+        !g_pg.tex[0].enabled && !d3d8_OffscreenTargetActive() &&
+        out_vert_count >= 3 && out_vert_count <= 6) {
+        extern int doa3_guest_display_size(unsigned *w, unsigned *h);
+        unsigned gw = (g_pg.surface_clip_h >> 16) & 0xFFFF, gh = (g_pg.surface_clip_v >> 16) & 0xFFFF;
+        float x0 = 1e30f, x1 = -1e30f, y0 = 1e30f, y1 = -1e30f;
+        int black = 1;
+        doa3_guest_display_size(&gw, &gh);
+        for (uint32_t i = 0; i < out_vert_count; i++) {
+            if (out[i].x < x0) x0 = out[i].x; if (out[i].x > x1) x1 = out[i].x;
+            if (out[i].y < y0) y0 = out[i].y; if (out[i].y > y1) y1 = out[i].y;
+            if (out[i].color & 0x00FFFFFFu) black = 0;
+        }
+        if (gw && gh && black && x0 <= 4.0f && x1 >= (float)gw - 4.0f &&
+            y1 - y0 < (float)gh * 0.75f)
+            vignette = 1;
+        {   extern FILE *g_doa3_mtrace;
+            if (g_doa3_mtrace && black && x1 - x0 > (float)gw * 0.5f)
+                fprintf(g_doa3_mtrace, "@VIGNETTE verts %u box(%.1f,%.1f)-(%.1f,%.1f) guest %ux%u -> %s\n",
+                        out_vert_count, x0, y0, x1, y1, gw, gh, vignette ? "full width" : "left");
+        }
+    }
     int hud = nv_fit_to_backbuffer(out, out_vert_count, 1);
+    if (vignette && hud) {
+        unsigned bw = d3d8_GetBackbufferWidth();
+        float hx = 0.0f, hwid = (float)bw;
+        video_hud_region(bw, &hx, &hwid);
+        if (hwid > 0.0f)
+            for (uint32_t i = 0; i < out_vert_count; i++)
+                out[i].x = (out[i].x - hx) * (float)bw / hwid;
+    }
     /* Begin scene if needed */
     dev->lpVtbl->BeginScene(dev);
 

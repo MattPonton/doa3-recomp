@@ -611,6 +611,19 @@ int d3d8_TextureWriteDDS(IDirect3DTexture8 *iface, const char *path)
     return (int)levels;
 }
 
+/* 0.0.174 diagnostics: why a LockRect of `level` would fail. */
+void d3d8_TextureLockDiag(IDirect3DTexture8 *iface, UINT level, char *buf, size_t n)
+{
+    D3D8Texture *tex;
+    if (!buf || !n) return;
+    if (!iface) { snprintf(buf, n, "no texture"); return; }
+    tex = tex_from_iface(iface);
+    snprintf(buf, n, "%ux%u levels %u ref %ld locked %d (level %u) mem %s init %X gpu %s",
+             tex->width, tex->height, tex->levels, (long)tex->ref_count, (int)tex->locked,
+             tex->locked_level, (level < D3D8_MAX_LEVELS && tex->level_mem[level]) ? "yes" : "NULL",
+             tex->initialized_levels, tex->d3d11_texture ? "yes" : "no");
+}
+
 HRESULT d3d8_TextureFinishUpload(IDirect3DTexture8 *iface)
 {
     if (!iface) return E_INVALIDARG;
