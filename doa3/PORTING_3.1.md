@@ -2963,3 +2963,33 @@ what xemu's filter assumes.
 The [V3D] lines show DirectSound gives a 3D voice equal front-left/right
 volumes (bins 6/7) and silences the rear pair (8/9), so the left/right
 placement is entirely in the HRTF entry.
+
+## 0.0.177 - the black Zack cutscenes: overlay left the target flag wrong
+
+Puppy (0.0.176) got both of Zack's Story cutscenes black, and changing the
+internal resolution during the black screen brought the picture back. His
+traces settle it: in every black frame (21528, 27348, 39017, 48995, 62759)
+every GPU draw lands in a 256x256 offscreen target ("rt 1 vp(0,0 256x256)")
+while the layer reports no offscreen target bound ("off=0"), and the guest
+is rendering into its frame buffer (SET_SURFACE_COLOR_OFFSET 011C0000 /
+01058000). After the resolution change (49328, 63179) the same scene goes
+to the guest frame ("rt 0", full-size viewport) and writes millions of
+pixels.
+
+How the layer and D3D11 fell out of step: the frame was presented while an
+offscreen target was bound (Zack costume 3's environment-map pass). The
+presenter saves the bound targets, draws, and puts them back -- but in
+between, the Escape-menu / performance-overlay / training-banner pass
+(doa3_ui_render) ended with d3d8_RestoreDefaultTarget(), which clears
+g_off_active. The presenter then re-bound the offscreen target, the flag
+said "guest frame", and nv_sync_render_target only restores the guest frame
+when the flag says an offscreen target is active, so the switch was skipped
+from then on. Changing the internal resolution rebuilds and rebinds the
+guest target, which is why that cleared it. It needs the overlay drawn
+(Puppy runs with the performance overlay), which is why it came and went.
+
+- doa3_ui_render saves the output-merger targets and puts the same ones
+  back instead of calling d3d8_RestoreDefaultTarget.
+- After the presenter restores the targets it re-derives g_off_active /
+  g_off_cur from the view actually bound (d3d8_sync_target_flag), so no
+  other path can leave them out of step this way.

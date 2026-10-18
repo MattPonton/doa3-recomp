@@ -1055,6 +1055,18 @@ extern "C" void doa3_ui_render(void)
     D3D11_VIEWPORT prev_vp[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE];
     UINT prev_nvp = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
     ctx->RSGetViewports(&prev_nvp, prev_vp);
+    /* ...and the output-merger targets (0.0.177). This used to end with
+     * d3d8_RestoreDefaultTarget(), which marks the guest frame as bound; when
+     * the frame was presented with an offscreen target bound (Zack costume
+     * 3's environment-map pass), the presenter then put that offscreen
+     * target back while the layer believed the guest frame was bound, so
+     * the next frame's switch to the frame buffer was skipped and every
+     * draw went into the 256x256 target: the black Zack cutscenes, with the
+     * performance overlay or the menu up. Changing the internal resolution
+     * rebinds the guest frame, which is why that cleared it. */
+    ID3D11RenderTargetView *prev_rtv = nullptr;
+    ID3D11DepthStencilView *prev_dsv = nullptr;
+    ctx->OMGetRenderTargets(1, &prev_rtv, &prev_dsv);
 
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
@@ -1081,9 +1093,11 @@ extern "C" void doa3_ui_render(void)
     ctx->RSSetViewports(1, &vp);
 
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-    /* Hand the output merger back with the depth buffer attached. The bind
+    /* Hand the output merger back as it was, depth buffer included. The bind
      * above passes a null depth-stencil view; leaving that bound means every
      * guest draw afterwards runs with no depth test and no depth writes. */
-    d3d8_RestoreDefaultTarget();
+    ctx->OMSetRenderTargets(1, &prev_rtv, prev_dsv);
+    if (prev_rtv) prev_rtv->Release();
+    if (prev_dsv) prev_dsv->Release();
     if (prev_nvp) ctx->RSSetViewports(prev_nvp, prev_vp);
 }

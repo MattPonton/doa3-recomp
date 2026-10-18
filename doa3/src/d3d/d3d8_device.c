@@ -713,6 +713,7 @@ static void d3d8_apply_target_size_change(void)
 }
 
 static void d3d8_keep_prev_frame(void);
+static void d3d8_sync_target_flag(ID3D11RenderTargetView *rtv);
 static HRESULT d3d8_compose_and_present(void)
 {
     D3D8DeviceState *s = &g_device_state;
@@ -801,6 +802,7 @@ static HRESULT d3d8_compose_and_present(void)
         ID3D11DeviceContext_OMSetDepthStencilState(ctx, dss, sref);
         g_srv_bindings.valid = 0; /* Target hazards can unbind PS resources. */
         ID3D11DeviceContext_OMSetRenderTargets(ctx, 1, &rtv, dsv);
+        d3d8_sync_target_flag(rtv);
         if (il)  ID3D11InputLayout_Release(il);
         if (vs)  ID3D11VertexShader_Release(vs);
         if (ps)  ID3D11PixelShader_Release(ps);
@@ -1121,6 +1123,17 @@ void d3d8_RestoreDefaultTarget(void)
 }
 
 int d3d8_OffscreenTargetActive(void) { return g_off_active; }
+
+/* Keep g_off_active / g_off_cur in step with the target actually bound
+ * after code outside the translator rebinds one (0.0.177; see doa3_ui.cpp). */
+static void d3d8_sync_target_flag(ID3D11RenderTargetView *rtv)
+{
+    int i;
+    if (!rtv) return;
+    if (rtv == g_device_state.default_rtv) { g_off_active = 0; return; }
+    for (i = 0; i < OFFRT_N; i++)
+        if (g_offrt[i].rtv == rtv) { g_off_active = 1; g_off_cur = i; return; }
+}
 
 /* DOA3: sample the offscreen target from a later draw (the reflective floor
  * binds the reflection surface as its texture). The texture is created with
