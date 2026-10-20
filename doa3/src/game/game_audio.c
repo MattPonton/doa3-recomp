@@ -1,7 +1,7 @@
 #include "game_audio.h"
 #include "audio_settings.h"
 #include "recomp/recomp_types.h"
-#include "recomp/gen/xbe_layout.h"   /* DOA3_XBE_ID_3_1 */
+#include "recomp/gen/xbe_layout.h"   /* DOA3_XBE_ID_JAPAN */
 #include <windows.h>
 #include <stdio.h>
 
@@ -23,7 +23,7 @@
  * numbers at runtime. The credits play "Home Tonight" from the movie
  * mv_st.sfd instead, handled through the movie-start hook. */
 
-#if defined(DOA3_XBE_ID_3_1)
+#if defined(DOA3_XBE_ID_JAPAN)
 
 #define GA_MUSIC_BYTE  0x59D094u
 #define GA_SFX_BYTE    0x59D095u

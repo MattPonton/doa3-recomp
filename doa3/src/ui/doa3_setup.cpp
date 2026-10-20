@@ -1,6 +1,6 @@
 #include "doa3_setup.h"
 
-#include "xbe_layout.h"   /* DOA3_XBE_VERSION */
+#include "xbe_layout.h"   /* DOA3_XBE_REGION */
 #include "imgui.h"
 #include "backends/imgui_impl_win32.h"
 #include "backends/imgui_impl_dx11.h"
@@ -181,7 +181,7 @@ void Draw(bool *quit)
     if (g_state == ST_PICK) {
         ImGui::TextWrapped("The Dead or Alive 3 game files are not installed yet.");
         ImGui::Spacing();
-        ImGui::TextWrapped("Select your Dead or Alive 3 (" DOA3_XBE_VERSION ") Xbox disc image in .xiso "
+        ImGui::TextWrapped("Select your Dead or Alive 3 (" DOA3_XBE_REGION " release) Xbox disc image in .xiso "
                            "or .iso format and then click Add. "
                            "This only happens once and needs about 4 GB of free space.");
         ImGui::Spacing();

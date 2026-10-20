@@ -3014,3 +3014,40 @@ worker fibers run inside that wait), draws and kick-offs. The values come
 from the counters recomp_manual.c already kept for [PERF-PHASE]
 (g_doa3_phase_ms). The first 11 columns are unchanged. The APU mixes on its
 own thread outside netplay, so it is not in the host thread's split.
+
+## 0.0.179 - releases named by disc (USA, JAPAN, EUROPE, KOREA)
+
+The XBE identifiers used the competitive balance numbers (3.0/3.1/3.2),
+which name patches, not discs: the Korean disc has its own default.xbe but
+the 3.2 balance. The runtime now names releases the way Redump names the
+discs. Certificates of the four default.xbe files (user-supplied):
+
+| Release | Title ID | Region | Cert version | Built | Size | FNV-1a 64 |
+|---|---|---|---|---|---|---|
+| USA    | 54430001 | 1 (North America) | 1       | 2001-10-27 | 3928064 | A2F3BDCB2A5B02D4 |
+| JAPAN  | 54430001 | 2 (Japan)         | 1       | 2002-02-08 | 4218880 | 8219CF3EC3C08681 |
+| EUROPE | 4D53002D | 4 (rest of world) | 1       | 2002-02-15 | 4218880 | 7611143500851317 |
+| KOREA  | 54430001 | 2 (Japan)         | 1180166 | 2002-12-03 | 4198400 | 03AA09F2F806C45C |
+
+USA and JAPAN share Tecmo's title ID and certificate version and differ in
+the region flag; EUROPE was published by Microsoft under its own title ID;
+KOREA is a separate December 2002 build (its .text is 0x1C7F40 bytes
+against JAPAN's 0x1CB330 and EUROPE's 0x1CBC70). A region-free copy of the
+Korean XBE differs from the original only in the certificate's media and
+region fields (region 7, media C00001FF).
+
+- tools/xbe_layout.py keeps its pipeline keys (3.0, 3.1, 3.2, kr, 3pp-1.48;
+  overrides_3.1.txt etc. are unchanged) and maps them to a release for the
+  generated header: DOA3_XBE_RELEASE / DOA3_XBE_REGION ("JAPAN") and
+  DOA3_XBE_ID_JAPAN (USA, EUROPE, KOREA, 3PP_1_48 for the others).
+  DOA3_XBE_VERSION and DOA3_XBE_ID_3_x are gone from the runtime.
+- xiso_extract.c identifies the disc it is given: the exact JAPAN file is
+  accepted; a known other release is named ("This is the USA release of Dead
+  or Alive 3. This port runs only the JAPAN release."); a modified or unknown
+  file whose title ID is either of the game's or whose title is "Dead or
+  Alive 3" is described from its certificate (Korean version number first,
+  then Microsoft's title ID, then the region flag); anything else is still
+  "not Dead or Alive 3". Previously a European disc was reported as not
+  being Dead or Alive 3 at all.
+- Setup screen, log line and the online/replay "not ported" messages say
+  "JAPAN release".

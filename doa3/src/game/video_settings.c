@@ -158,7 +158,7 @@ void video_set_aspect(int aspect)
  * kernel query returns the requested setting directly. */
 void video_sync_guest_widescreen(void)
 {
-#if defined(DOA3_XBE_ID_3_1)
+#if defined(DOA3_XBE_ID_JAPAN)
     volatile uint8_t *m = (volatile uint8_t *)(uintptr_t)g_xbox_mem_offset;
     volatile uint32_t *pp_w, *pp_fl, *vflag, *ws;
     if (!g_xbox_mem_offset) return;
@@ -172,7 +172,7 @@ void video_sync_guest_widescreen(void)
     pp_fl = (volatile uint32_t *)(m + 0xA48C58);
     vflag = (volatile uint32_t *)(m + 0xA48C78);
     ws = (volatile uint32_t *)(m + 0xA48CDC);
-#elif defined(DOA3_XBE_ID_3_0)
+#elif defined(DOA3_XBE_ID_USA)
     volatile uint8_t *m = (volatile uint8_t *)(uintptr_t)g_xbox_mem_offset;
     volatile uint32_t *pp_w  = (volatile uint32_t *)(m + 0x90F4A8);
     volatile uint32_t *pp_fl = (volatile uint32_t *)(m + 0x90F4D0);
@@ -181,7 +181,7 @@ void video_sync_guest_widescreen(void)
 #else
     return;
 #endif
-#if defined(DOA3_XBE_ID_3_1) || defined(DOA3_XBE_ID_3_0)
+#if defined(DOA3_XBE_ID_JAPAN) || defined(DOA3_XBE_ID_USA)
     int on = g_aspect != VIDEO_ASPECT_4_3_FULL;
     if (!g_xbox_mem_offset || *pp_w != 0x2D0u) return;
     if (on) { *ws |= 1u;  *pp_fl |= 0x10u;  *vflag |= 1u; }

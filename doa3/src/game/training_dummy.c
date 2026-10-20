@@ -29,7 +29,7 @@ static unsigned char s_old_filter[16], s_filter[16], s_stick_extra[8];
 
 int training_available(void)
 {
-#if defined(DOA3_XBE_ID_3_1)
+#if defined(DOA3_XBE_ID_JAPAN)
     return !netplay_active() && (MEM8(0x5A2858)==7 || MEM8(0x5A2858)==11);
 #else
     return 0;

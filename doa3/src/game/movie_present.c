@@ -644,7 +644,7 @@ static unsigned s_guest_movie_frames;
 
 int doa3_movie_host_owns_screen(void)
 {
-#if defined(DOA3_XBE_ID_3_0)
+#if defined(DOA3_XBE_ID_USA)
     return !s_host_stopped;
 #else
     /* Other builds show the guest's own decoded frames (see
@@ -669,7 +669,7 @@ int doa3_movie_host_owns_screen(void)
 static DWORD s_guest_present_tick;
 int doa3_movie_drop_guest_draws(void)
 {
-#if defined(DOA3_XBE_ID_3_0)
+#if defined(DOA3_XBE_ID_USA)
     return doa3_movie_host_owns_screen();
 #else
     return 0;
@@ -677,7 +677,7 @@ int doa3_movie_drop_guest_draws(void)
 }
 int doa3_movie_composite_present(void)
 {
-#if defined(DOA3_XBE_ID_3_0)
+#if defined(DOA3_XBE_ID_USA)
     return 0;
 #else
     if (!s_tex) return 0;
@@ -733,7 +733,7 @@ void doa3_present_movie_guest(const void *src, int w, int h, int pitch)
  * the top and bottom. */
 static int movie_wants_16_9(void)
 {
-#if defined(DOA3_XBE_ID_3_1)
+#if defined(DOA3_XBE_ID_JAPAN)
     extern uint32_t doa3_dbg_read8(uint32_t va);
     return video_get_aspect() != VIDEO_ASPECT_4_3_FULL && doa3_dbg_read8(0x0059FB4Cu) == 1;
 #else

@@ -1476,7 +1476,7 @@ int main(int argc, char **argv)
     /* stderr -> doa3_log.txt when logging is on in the Esc menu, NUL when
      * off (the default). See log_settings.h. */
     doa3_log_init();
-    fprintf(stderr, "[DOA3] DOA3.exe version %s (%s)\n", DOA3_VER_STR, DOA3_XBE_VERSION);
+    fprintf(stderr, "[DOA3] DOA3.exe version %s (%s)\n", DOA3_VER_STR, DOA3_XBE_REGION);
     if (diag_cleared)
         fprintf(stderr, "[DOA3] removed %d file(s) left in Diagnostics by the previous run\n", diag_cleared);
 
@@ -1589,7 +1589,7 @@ int main(int argc, char **argv)
              * decode timing enough to change what happens. */
             extern uint32_t g_watch_exact_va;
             const char *wv = getenv("DOA3_WATCHVA");
-#if defined(DOA3_XBE_ID_3_1)
+#if defined(DOA3_XBE_ID_JAPAN)
             /* 3.1 bring-up: CRI's thread-mode flag at 0x25478C (a cold .data
              * page) ends up holding audio-like data; name whoever writes it.
              * DOA3_WATCHVA=0 turns this off. */
@@ -1697,7 +1697,7 @@ int main(int argc, char **argv)
          * one); DOA3_CRTMAX=0 disables them entirely. */
         int limit = -1;
         { const char *e = getenv("DOA3_CRTMAX"); if (e) limit = atoi(e); }
-#if !defined(DOA3_XBE_ID_3_0)
+#if !defined(DOA3_XBE_ID_USA)
         /* XDK 4134 builds: XAPI's main-thread routine (3.1: 0x18CB1A) walks
          * these same tables itself (0x18FDF5 = __xi, 0x18FD9D = __xc), so
          * running them here as well initialised everything twice. The visible

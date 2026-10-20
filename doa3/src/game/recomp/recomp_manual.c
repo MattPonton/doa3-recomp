@@ -40,7 +40,7 @@ extern void xbox_fiber_yield(void);
 extern int  xbox_fiber_active(void);
 extern void xbox_fiber_wake(uint32_t event_va);
 
-#if defined(DOA3_XBE_ID_3_1)
+#if defined(DOA3_XBE_ID_JAPAN)
 /* The input fiber decodes both players, runs commands, then yields. Keep the
  * virtual dummy input confined to that interval, including command commit. */
 void sub_00011980_gen(void);
@@ -449,10 +449,10 @@ void recomp_icall_fail_log(uint32_t va)
 
 static void doa3_port_todo_once(const char *what)
 {
-    fprintf(stderr, "[%s] %s: not ported to this XBE yet\n", DOA3_XBE_VERSION, what);
+    fprintf(stderr, "[%s] %s: not ported to this XBE yet\n", DOA3_XBE_REGION, what);
 }
 
-#if defined(DOA3_XBE_ID_3_1)
+#if defined(DOA3_XBE_ID_JAPAN)
 /* The 4134 D3D device is static at 0x1EB3A0 (g_pDevice 0x1EDE80). Surface
  * pointers in it: +0x2070 render target, +0x2074 depth, +0x2078 buffer
  * count, +0x207C back buffer (the 2x2 supersampled one while multisampling),
@@ -560,7 +560,7 @@ int doa3_workers_may_run(void)
     return !g_doa3_in_pump;
 }
 
-#if defined(DOA3_XBE_ID_3_1)
+#if defined(DOA3_XBE_ID_JAPAN)
 /* ── XPP (controller) input: host-backed pads ───────────────────────────
  * There is no USB stack behind XAPI's XPP functions, so 3.0 replaces them
  * (reference/recomp_manual_30.c, which has the full reasoning). On 3.1 the
@@ -844,7 +844,7 @@ void doa3_netplay_force_pads(uint32_t mask)
     (void)mask;
     if (!s_warned) { s_warned = 1; doa3_port_todo_once("doa3_netplay_force_pads"); }
 }
-#endif /* DOA3_XBE_ID_3_1 (XPP) */
+#endif /* DOA3_XBE_ID_JAPAN (XPP) */
 
 /* Page-table integrity diagnostic (DOA3_PTCHK=1 on 3.0). Its table addresses
  * are 3.0's; a no-op here. */
@@ -888,7 +888,7 @@ int g_fn_trace_on = -1;   /* DOA3_TRACE_FN, see doa3_fn_trace */
  *              BlockOnTime (0x1E2960) spins until it reaches its target.
  * 3.0 does the same job in its KickOff override at 0x1B88C0
  * (reference/recomp_manual_30.c). */
-#if defined(DOA3_XBE_ID_3_1)
+#if defined(DOA3_XBE_ID_JAPAN)
 extern int  pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param);
 static uint32_t s_pb4134_parsed;
 
@@ -1905,7 +1905,7 @@ void sub_0019A380(void)
 }
 #else
 void doa3_wdog_peek(void) { }
-#endif /* DOA3_XBE_ID_3_1 */
+#endif /* DOA3_XBE_ID_JAPAN */
 
 /* ── Manual override table ──────────────────────────────────────────
  * Map original Xbox VA -> hand-written replacement; the trailing {0,0}
@@ -2016,7 +2016,7 @@ void doa3_fn_trace(uint32_t va, uint32_t esp_in)
         g_fn_trace_on = s_fn_trace_cnt > 0;
     }
     if (!g_fn_trace_on) return;
-#if defined(DOA3_XBE_ID_3_1)
+#if defined(DOA3_XBE_ID_JAPAN)
     {   /* Value watch by polling at every probed return. The movie's
          * get-frame handler (0x1A4C80) delivers only while the sfd handle's
          * state [0xC86480+0x40] is 3 or 4; mid-movie it leaves those and no

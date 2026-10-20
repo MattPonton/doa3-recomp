@@ -270,7 +270,7 @@ static void bridge_PsCreateSystemThreadEx(void)
      * The mwPly spin needs a different fix (its resume targets do reach the
      * right fibers; the decoder's wait chain is the issue). */
     xhandle = 0xBEEF0001u;
-#if !defined(DOA3_XBE_ID_3_0)
+#if !defined(DOA3_XBE_ID_USA)
     /* 3.1: one handle per thread. CRI's ADXM lock/unlock (0x1925D0/0x192610)
      * resumes and SUSPENDS the idle thread [0xC80070] from whatever thread
      * takes the lock; with one shared handle the suspend parked the CALLER --
@@ -355,13 +355,13 @@ static void bridge_NtWaitForSingleObject(void)
     uint32_t h = STACK_ARG(0);
     uint32_t timeout_va = STACK_ARG(2);
     if ((h & 0xFFFF0000u) == 0xBEEF0000u) {
-#if defined(DOA3_XBE_ID_3_0) || defined(DOA3_XBE_ID_3_1)
+#if defined(DOA3_XBE_ID_USA) || defined(DOA3_XBE_ID_JAPAN)
         /* The installer thread's start routine (the XAPI start context the
          * fiber was spawned with): 3.0 0x9D440; 3.1 0x1C67C0, which opens each
          * AFS through ADXF and CreateFile()s its z:\ copy. While it is copying,
          * pulse the vblank event the CRI workers wait on, so streaming keeps
          * moving, and yield to it. */
-#if defined(DOA3_XBE_ID_3_0)
+#if defined(DOA3_XBE_ID_USA)
         const uint32_t install_ctx = 0x0009D440u;
 #else
         const uint32_t install_ctx = 0x001C67C0u;
@@ -921,7 +921,7 @@ static void bridge_KeWaitForSingleObject(void)
          * frame and the music stopped reading. The file server keeps
          * finishing all queued I/O inside the frame, so a load completes on
          * the same frame on both machines whatever music was in flight. */
-#ifdef DOA3_XBE_ID_3_0
+#ifdef DOA3_XBE_ID_USA
         if (g_xbox_det_active && xbox_fiber_current_ctx1() == 0x0016A570u)
             xbox_fiber_block(XBOX_DET_VBLANK_KEY);
         else
@@ -1090,13 +1090,13 @@ static void bridge_NtSuspendThread(void)
                 if (s_logged < 4) { s_logged++;
                     fprintf(stderr, "[FIBER] fiber %d self-suspends through handle %08X; parked on its own thread handle\n",
                             xbox_fiber_current(), handle); fflush(stderr); }
-#if defined(DOA3_XBE_ID_3_0)
+#if defined(DOA3_XBE_ID_USA)
                 handle = 0xBEEF0001u;
 #else
                 handle = xbox_fiber_current_xhandle();
 #endif
             }
-#if defined(DOA3_XBE_ID_3_0)
+#if defined(DOA3_XBE_ID_USA)
             xbox_fiber_block(handle);
 #else
             /* Only a thread suspending ITSELF waits here; suspending another
@@ -3103,7 +3103,7 @@ recomp_func_t recomp_lookup_kernel(uint32_t xbox_va)
  * kernel's (cross-checked against Cxbx-Reloaded's export definitions and the
  * push counts at the XBE's own call sites). 3.0 keeps the old tables so its
  * verified behaviour does not move. */
-#ifndef DOA3_XBE_ID_3_0
+#ifndef DOA3_XBE_ID_USA
 
 /* ExAllocatePool / WithTag keep the block size in a 16-byte header so that
  * ExQueryPoolBlockSize can answer. ExFreePool returns the block to the heap:
@@ -3145,15 +3145,15 @@ static void kx_ExQueryNonVolatileSetting(void)
     case 8:     v = video_xc_video_value(); break;      /* XC_VIDEO */
     case 9:     v = 0; break;                           /* XC_AUDIO: stereo */
     case 0x103:                                         /* XC_FACTORY_AV_REGION */
-#if defined(DOA3_XBE_ID_3_2)
+#if defined(DOA3_XBE_ID_EUROPE)
         v = 0x00800300u; break;                         /* PAL-I, 50 Hz */
-#elif defined(DOA3_XBE_ID_3_0)
+#elif defined(DOA3_XBE_ID_USA)
         v = 0x00400100u; break;                         /* NTSC-M, 60 Hz */
 #else
         v = 0x00400200u; break;                         /* NTSC-J, 60 Hz */
 #endif
     case 0x104:                                         /* XC_FACTORY_GAME_REGION */
-#if defined(DOA3_XBE_ID_3_2)
+#if defined(DOA3_XBE_ID_EUROPE)
         v = 4; break;                                   /* rest of world */
 #else
         v = 2; break;                                   /* Japan */
@@ -3493,7 +3493,7 @@ static int kx_resolve(ULONG ordinal, uint32_t *data_va, bridge_func_t *fn, int *
     }
     return 0;
 }
-#endif /* !DOA3_XBE_ID_3_0 */
+#endif /* !DOA3_XBE_ID_USA */
 
 /**
  * Resolve the kernel thunk table in Xbox memory.
@@ -3534,7 +3534,7 @@ void xbox_kernel_bridge_init(void)
             ULONG ordinal = current & 0x7FFFFFFF;
             g_slot_ordinals[i] = ordinal;
 
-#ifndef DOA3_XBE_ID_3_0
+#ifndef DOA3_XBE_ID_USA
             {   /* XDK 4134 builds: the corrected table (see g_kx_ords) */
                 uint32_t kva = 0; bridge_func_t kfn = NULL; int kargs = 0;
                 if (kx_resolve(ordinal, &kva, &kfn, &kargs)) {
@@ -3592,7 +3592,7 @@ void xbox_kernel_bridge_init(void)
 
 static uint32_t doa3_vblank_event_va(void)
 {
-#if defined(DOA3_XBE_ID_3_0)
+#if defined(DOA3_XBE_ID_USA)
     return 0x001C2CF0u;
 #elif defined(DOA3_D3D_PDEVICE_VA)
     uint32_t dev = BRIDGE_MEM32(DOA3_D3D_PDEVICE_VA);
@@ -3604,7 +3604,7 @@ static uint32_t doa3_vblank_event_va(void)
 
 static uint32_t doa3_vblank_count_va(void)
 {
-#if defined(DOA3_XBE_ID_3_0)
+#if defined(DOA3_XBE_ID_USA)
     return 0x001C2B08u + 0x820u;
 #elif defined(DOA3_D3D_PDEVICE_VA) && defined(DOA3_D3D_VBLANK_COUNT_OFS)
     uint32_t dev = BRIDGE_MEM32(DOA3_D3D_PDEVICE_VA);

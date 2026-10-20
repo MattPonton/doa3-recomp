@@ -22,7 +22,7 @@
 /* Every guest address and function in this file is 3.0's (DOA3 NTSC-U).
  * On any other XBE, sessions refuse to start, so nothing here can write
  * 3.0 offsets into another build's memory. See PORTING_3.1.md. */
-#ifdef DOA3_XBE_ID_3_0
+#ifdef DOA3_XBE_ID_USA
 #define NETPLAY_SUPPORTED 1
 void sub_000BB270(void);                       /* rebuilds the per-port button maps */
 #else
@@ -915,7 +915,7 @@ uint32_t netplay_filter_pad_mask(uint32_t host_mask)
 void netplay_set_armed(int armed, int role)
 {
     if (armed && !NETPLAY_SUPPORTED) {
-        _snprintf(s_msg, sizeof(s_msg) - 1, "Online play is not ported to DOA3 %s yet", DOA3_XBE_VERSION);
+        _snprintf(s_msg, sizeof(s_msg) - 1, "Online play is not ported to the %s release yet", DOA3_XBE_REGION);
         s_armed = 0;
         return;
     }
@@ -934,7 +934,7 @@ void netplay_request_replay(const char *path)
 {
     if (!path || s_state == NP_STATE_ACTIVE) return;
     if (!NETPLAY_SUPPORTED) {
-        _snprintf(s_msg, sizeof(s_msg) - 1, "Replays are not ported to DOA3 %s yet", DOA3_XBE_VERSION);
+        _snprintf(s_msg, sizeof(s_msg) - 1, "Replays are not ported to the %s release yet", DOA3_XBE_REGION);
         return;
     }
     strncpy(s_req_path, path, sizeof(s_req_path) - 1);

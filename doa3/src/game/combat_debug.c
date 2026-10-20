@@ -101,7 +101,7 @@ void combat_debug_exchange_update(CombatExchange *e,
 CombatContact combat_debug_contact_begin(void)
 {
     CombatContact c = {0};
-#if defined(DOA3_XBE_ID_3_1)
+#if defined(DOA3_XBE_ID_JAPAN)
     if (!(combat_debug_flags() & COMBAT_FRAMES)) return c;
     for (unsigned i=0; i<2; ++i) {
         unsigned p = 0x59CF58 + i*0x68, category = MEM8(p+0x33);
@@ -114,7 +114,7 @@ CombatContact combat_debug_contact_begin(void)
 
 void combat_debug_contact_end(CombatContact c)
 {
-#if defined(DOA3_XBE_ID_3_1)
+#if defined(DOA3_XBE_ID_JAPAN)
     if (!(combat_debug_flags() & COMBAT_FRAMES) || !c.mask) return;
     AcquireSRWLockExclusive(&s_lock);
     for (unsigned i=0; i<2; ++i) if (c.mask & (1u<<i)) {
@@ -138,7 +138,7 @@ void combat_debug_contact_end(CombatContact c)
  * Count simulation steps, never render frames or elapsed wall-clock time. */
 void combat_debug_logic_tick(void)
 {
-#if defined(DOA3_XBE_ID_3_1)
+#if defined(DOA3_XBE_ID_JAPAN)
     AcquireSRWLockExclusive(&s_lock);
     unsigned phase = MEM8(0x596A37);
     unsigned identity = MEM8(0x59CF59) | (MEM8(0x59CFC1)<<8) |
@@ -460,7 +460,7 @@ static void volume(unsigned side, unsigned attack, unsigned cylinder,
  * absence of collision calls: loading and menus also stop those calls. */
 static int combat_debug_paused(void)
 {
-#if defined(DOA3_XBE_ID_3_1)
+#if defined(DOA3_XBE_ID_JAPAN)
     return MEM8(0x5A27A0) == 1 && MEM8(0x596A37) == 1;
 #else
     return 0;
@@ -475,7 +475,7 @@ static unsigned combat_debug_context(void)
 
 static void combat_debug_capture_state(int frozen)
 {
-#if defined(DOA3_XBE_ID_3_1)
+#if defined(DOA3_XBE_ID_JAPAN)
     if (!combat_debug_flags()) return;
     AcquireSRWLockExclusive(&s_lock);
     unsigned characters = MEM8(0x59CF59) | (MEM8(0x59CFC1) << 8);
@@ -525,7 +525,7 @@ void combat_debug_capture(void) { combat_debug_capture_state(0); }
 
 int combat_debug_snapshot(CombatSnapshot *out)
 {
-#if defined(DOA3_XBE_ID_3_1)
+#if defined(DOA3_XBE_ID_JAPAN)
     if (!out || !combat_debug_flags()) return 0;
     int paused = combat_debug_paused();
     /* Enabling the overlay while already paused must work too. Read the

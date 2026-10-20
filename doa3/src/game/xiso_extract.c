@@ -44,9 +44,9 @@ static const uint64_t k_partitions[] = { 0, 0x18300000ull, 0xFD90000ull, 0x20800
 #include "xbe_layout.h"   /* DOA3_TITLE_ID, DOA3_XBE_FILE_SIZE, DOA3_XBE_FNV64 */
 #define DOA3_XBE_SIZE   DOA3_XBE_FILE_SIZE
 
-/* The sizes below are the USA release's (3.0). Other releases are checked
+/* The sizes below are the USA release's. Other releases are checked
  * for presence only (size 0 = any), except default.xbe, which must be the
- * exact executable the code was generated from. TODO(3.1): add this
+ * exact executable the code was generated from. TODO: add the JAPAN
  * release's disc listing. */
 
 /* Every file on the disc, with its size. The game reads all of them
@@ -69,7 +69,7 @@ static const struct { const char *name; uint32_t size; } k_required[] = {
 
 static uint32_t required_size(size_t i)
 {
-#ifdef DOA3_XBE_ID_3_0
+#ifdef DOA3_XBE_ID_USA
     return k_required[i].size;
 #else
     return strcmp(k_required[i].name, "default.xbe") == 0 ? DOA3_XBE_SIZE : 0u;
@@ -231,13 +231,42 @@ static const XisoEntry *find_root_file(const Xiso *x, const char *name)
     return NULL;
 }
 
+/* Every release of Dead or Alive 3 we know the default.xbe of, named the way
+ * Redump names the discs (0.0.179). Size and FNV-1a 64 of the whole file. */
+static const struct { const char *name; uint32_t size; uint64_t fnv; } k_releases[] = {
+    { "USA",    3928064u, 0xA2F3BDCB2A5B02D4ull },   /* 2001-10-27 */
+    { "JAPAN",  4218880u, 0x8219CF3EC3C08681ull },   /* 2002-02-08 */
+    { "EUROPE", 4218880u, 0x7611143500851317ull },   /* 2002-02-15, published by Microsoft */
+    { "KOREA",  4198400u, 0x03AA09F2F806C45Cull },   /* 2002-12-03 */
+};
+/* The two title IDs the game shipped under: Tecmo's, and Microsoft's for the
+ * European release. */
+#define DOA3_TITLE_ID_TECMO      0x54430001u
+#define DOA3_TITLE_ID_MICROSOFT  0x4D53002Du
+
+/* Name an unknown or modified default.xbe from its certificate: the region
+ * flags (1 North America, 2 Japan, 4 rest of the world) and the version,
+ * which tells the Korean build (1180166) from the Japanese one (1). A
+ * region-free patch sets every region bit, so the version decides first. */
+static const char *release_from_certificate(uint32_t title_id, uint32_t region, uint32_t version)
+{
+    if (version == 1180166u) return "KOREA";
+    if (title_id == DOA3_TITLE_ID_MICROSOFT) return "EUROPE";
+    if (region == 1u) return "USA";
+    if (region == 2u) return "JAPAN";
+    if (region == 4u) return "EUROPE";
+    return NULL;
+}
+
 /* default.xbe must be the exact executable the port was recompiled from. */
 static int check_xbe(Xiso *x)
 {
     const XisoEntry *xbe = find_root_file(x, "default.xbe");
     uint8_t *d;
-    uint32_t base, cert, title_id;
+    uint32_t base, cert, title_id, region = 0, version = 0;
     uint64_t h = 0xCBF29CE484222325ull;
+    char title[128];
+    const char *found = NULL;
 
     if (!xbe)
         return fail(x, "This disc image has no default.xbe, so it is not an Xbox game disc.");
@@ -257,24 +286,40 @@ static int check_xbe(Xiso *x)
     }
     cert -= base;
     memcpy(&title_id, d + cert + 8, 4);
-    if (title_id != DOA3_TITLE_ID) {
-        WCHAR wt[41];
-        char title[128];
+    {   WCHAR wt[41];
         memcpy(wt, d + cert + 0xC, 80);
         wt[40] = 0;
         if (!WideCharToMultiByte(CP_UTF8, 0, wt, -1, title, sizeof title, NULL, NULL) || !title[0])
             strcpy_s(title, sizeof title, "another game");
-        free(d);
-        return fail(x, "This disc image is \"%s\", not Dead or Alive 3.", title);
+    }
+    if ((uint64_t)cert + 0xB0 <= xbe->size) {
+        memcpy(&region, d + cert + 0xA0, 4);
+        memcpy(&version, d + cert + 0xAC, 4);
     }
     for (uint32_t i = 0; i < xbe->size; i++)
         h = (h ^ d[i]) * 0x100000001B3ull;
     free(d);
-    if (xbe->size != DOA3_XBE_SIZE || h != DOA3_XBE_FNV64)
-        return fail(x, "This is a different release of Dead or Alive 3. This build is "
-                       "generated from DOA3 " DOA3_XBE_VERSION " and cannot run "
-                       "any other version.");
-    return 1;
+    if (xbe->size == DOA3_XBE_SIZE && h == DOA3_XBE_FNV64)
+        return 1;
+
+    for (size_t i = 0; i < sizeof k_releases / sizeof k_releases[0]; i++)
+        if (xbe->size == k_releases[i].size && h == k_releases[i].fnv) found = k_releases[i].name;
+    if (found)
+        return fail(x, "This is the %s release of Dead or Alive 3. This port runs only the "
+                       DOA3_XBE_REGION " release.", found);
+    if (title_id != DOA3_TITLE_ID_TECMO && title_id != DOA3_TITLE_ID_MICROSOFT &&
+        strcmp(title, "Dead or Alive 3") != 0)
+        return fail(x, "This disc image is \"%s\", not Dead or Alive 3.", title);
+    found = release_from_certificate(title_id, region, version);
+    if (found && strcmp(found, DOA3_XBE_REGION) == 0)
+        return fail(x, "This disc image's default.xbe says it is the " DOA3_XBE_REGION
+                       " release of Dead or Alive 3, but it has been modified. This port needs "
+                       "the unmodified " DOA3_XBE_REGION " default.xbe.");
+    if (found)
+        return fail(x, "This looks like a modified copy of the %s release of Dead or Alive 3. "
+                       "This port runs only the unmodified " DOA3_XBE_REGION " release.", found);
+    return fail(x, "This is a release of Dead or Alive 3 this port does not know. It runs "
+                   "only the " DOA3_XBE_REGION " release.");
 }
 
 /* ── Writing ──────────────────────────────────────────────────────────── */

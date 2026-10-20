@@ -98,7 +98,7 @@ void debug_hide_player_set(int side, int enabled)
 }
 int debug_hide_player_vertices(uint32_t address)
 {
-#if defined(DOA3_XBE_ID_3_1)
+#if defined(DOA3_XBE_ID_JAPAN)
     if (!g_hide_players || netplay_active() || MEM8(0x596A37) != 1) return 0;
     /* 8AA50 allocates one 0x498000-byte model/animation/vertex arena per
      * resource slot. Player +3 selects that slot (including tag swaps).

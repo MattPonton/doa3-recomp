@@ -5,8 +5,10 @@ translating the game's executable into C and running it on a purpose-built
 runtime (kernel, Direct3D 11 renderer, XAudio2 audio, input and networking).
 No emulator is involved.
 
-This fork targets the **Japanese release** (title ID TC-001, XBE certificate
-version 1), the version the community calls **v3.1**. The goal for v1.0 is a
+This fork targets the **JAPAN release** (Redump's name for the disc; title ID
+TC-001, XBE certificate region Japan), whose balance the competitive community
+calls **v3.1**. The setup screen names the release of any other Dead or Alive 3
+disc it is given (USA, EUROPE, KOREA). The goal for v1.0 is a
 faithful 1:1 port of that version; PC additions are kept optional.
 
 **Status:** every game mode is playable. Work continues on accuracy and on
