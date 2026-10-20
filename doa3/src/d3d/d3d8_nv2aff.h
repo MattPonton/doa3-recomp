@@ -62,6 +62,7 @@ long d3d8_DrawNv2aFF(const Nv2aFFVertex *verts, unsigned nverts,
 /* d3d8_shaders.c: compile once; bind VS + layout + constants for one draw. */
 long d3d8_Nv2aFF_Init(void);
 void d3d8_Nv2aFF_Shutdown(void);
+int  d3d8_Nv2aFF_Available(void);   /* the GPU vertex path could be built */
 int  d3d8_Nv2aFF_Bind(const Nv2aFFConstants *cb);
 
 #endif

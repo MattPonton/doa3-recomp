@@ -2108,9 +2108,15 @@ static HRESULT __stdcall d3d8_CreateDevice(IDirect3D8 *self, UINT Adapter, DWORD
 
     /* Initialize shader and state subsystems */
     hr = d3d8_shaders_init();
-    if (SUCCEEDED(hr)) hr = d3d8_Nv2aFF_Init();
     if (FAILED(hr)) {
         return hr;
+    }
+    /* Not fatal (0.0.180, from upstream 90776ac): if the NV2A vertex shader
+     * cannot be built (a shader compiler that rejects it), the batches take
+     * the CPU vertex path instead of the renderer failing to start. */
+    if (FAILED(d3d8_Nv2aFF_Init())) {
+        fprintf(stderr, "nv2aff VS unavailable, using the CPU vertex path\n");
+        d3d8_Nv2aFF_Shutdown();
     }
 
     hr = d3d8_states_init();

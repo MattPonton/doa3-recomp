@@ -3051,3 +3051,24 @@ region fields (region 7, media C00001FF).
   being Dead or Alive 3 at all.
 - Setup screen, log line and the online/replay "not ported" messages say
   "JAPAN release".
+
+## 0.0.180 - Proton 10 / Sarek shader compiler fix (from upstream v1.0.6)
+
+parkerallan/doa3-recomp issue #9: black screen with sound under Proton 10 /
+Proton Sarek (and Proton CachyOS on the Steam Deck). Wine's vkd3d-based
+d3dcompiler rejects two constructs in the port's own HLSL and the renderer
+never starts; the errors only show in Wine's output (WINEDEBUG=err+d3dcompiler):
+  vs_ffp:    E5005: Function "isfinite" is not defined.
+  vs_nv2aff: E5013: Invalid semantic 'SV_ClipDistance'.
+This fork has both, in the same places. Ported upstream commit 90776ac:
+- vs_ffp: isfinite(w) replaced with w <= FLT_MAX (NaN already fails w > 0).
+- vs_nv2aff: the SV_ClipDistance output is inside #ifndef NO_CLIPDIST; if the
+  first compile fails, it is compiled once more with NO_CLIPDIST (logged).
+  DepthClipEnable already clips the same z < 0 / w < z geometry. On Windows
+  the first compile succeeds and nothing changes.
+- d3d8_Nv2aFF_Init failing is no longer fatal to CreateDevice: the NV2A
+  batches fall back to the CPU vertex path (d3d8_Nv2aFF_Available gates
+  nv_gpu_ff_submit).
+The fork's NvFF shader has grown since upstream's (lighting, fog, texgen,
+spot lights), so only these lines were taken; no other upstream change since
+v1.0.1 is merged (they target the USA release's addresses).

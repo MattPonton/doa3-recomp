@@ -129,8 +129,12 @@ static const char g_vs_source[] =
      * UV derivatives picked a coarser mip than the walls around them.
      * Re-homogenise with W = 1/rhw so interpolation is perspective-correct,
      * exactly what the D3D9 runtime does for pre-transformed vertices.
-     * The 2D path emits rhw = 1 and is unchanged. */
-    "        float W = (input.pos.w > 0.0 && isfinite(input.pos.w)) ? (1.0 / input.pos.w) : 1.0;\n"
+     * The 2D path emits rhw = 1 and is unchanged.
+     * Plain comparisons, not isfinite() (0.0.180, from upstream 90776ac):
+     * Wine's vkd3d-based d3dcompiler (Proton 10 / Sarek) rejects isfinite and
+     * the whole renderer failed to start (black screen with sound). NaN fails
+     * the > 0 test, +inf the <= FLT_MAX one. */
+    "        float W = (input.pos.w > 0.0 && input.pos.w <= 3.402823466e+38) ? (1.0 / input.pos.w) : 1.0;\n"
     "        o.pos.x = ((input.pos.x / ScreenSize.x) * 2.0 - 1.0) * W;\n"
     "        o.pos.y = (1.0 - (input.pos.y / ScreenSize.y) * 2.0) * W;\n"
     "        o.pos.z = input.pos.z * W;\n"
@@ -1015,7 +1019,9 @@ static const char g_nv2aff_vs_source[] =
     "    float2 tex2     : TEXCOORD2;\n"
     "    float2 tex3     : TEXCOORD3;\n"
     "    float  fog      : TEXCOORD4;\n"
+    "#ifndef NO_CLIPDIST\n"
     "    float2 clipd    : SV_ClipDistance0;\n"
+    "#endif\n"
     "};\n"
     "float4 quant(float4 c) {\n"                 /* nv_pack_color: (int)(c*255+0.5) clamped */
     "    return clamp(floor(c * 255.0 + 0.5), 0.0, 255.0) / 255.0;\n"
@@ -1050,7 +1056,9 @@ static const char g_nv2aff_vs_source[] =
     "    float4 c = float4(dot(Clip[0], i.pos), dot(Clip[1], i.pos),\n"
     "                      dot(Clip[2], i.pos), dot(Clip[3], i.pos));\n"
     "    o.pos = c;\n"
+    "#ifndef NO_CLIPDIST\n"
     "    o.clipd = float2(c.w - 0.01, c.z);\n"       /* W > near epsilon, Z >= 0 */
+    "#endif\n"
     "    float4 col = float4(1, 1, 1, 1);\n"
     "    float4 specOut = float4(0, 0, 0, 0);\n"
     "    if (Flags & 4u) {\n"                        /* vertex colour */
@@ -1163,6 +1171,22 @@ long d3d8_Nv2aFF_Init(void)
     hr = D3DCompile(g_nv2aff_vs_source, strlen(g_nv2aff_vs_source), "vs_nv2aff",
                     NULL, NULL, "main", "vs_5_0", 0, 0, &blob, &errors);
     if (FAILED(hr)) {
+        /* Wine's vkd3d d3dcompiler (Proton 10 / Sarek) rejects SV_ClipDistance
+         * (0.0.180, from upstream 90776ac). Both planes are redundant here: c
+         * reaches the rasterizer undivided and DepthClipEnable already drops
+         * z < 0 and w < z, which covers the W > 0.01 epsilon (only the CPU
+         * path divides by W afterwards). On Windows the first compile works. */
+        static const D3D_SHADER_MACRO no_clip[] = { { "NO_CLIPDIST", "1" }, { NULL, NULL } };
+        if (errors) {
+            fprintf(stderr, "nv2aff VS: %s -- retrying without SV_ClipDistance\n",
+                    (const char *)ID3D10Blob_GetBufferPointer(errors));
+            ID3D10Blob_Release(errors); errors = NULL;
+        }
+        hr = D3DCompile(g_nv2aff_vs_source, strlen(g_nv2aff_vs_source), "vs_nv2aff",
+                        no_clip, NULL, "main", "vs_5_0", 0, 0, &blob, &errors);
+        if (SUCCEEDED(hr)) fprintf(stderr, "nv2aff VS built without SV_ClipDistance\n");
+    }
+    if (FAILED(hr)) {
         if (errors) {
             fprintf(stderr, "nv2aff VS compile failed: %s\n", (const char *)ID3D10Blob_GetBufferPointer(errors));
             ID3D10Blob_Release(errors);
@@ -1192,6 +1216,11 @@ void d3d8_Nv2aFF_Shutdown(void)
     if (g_nv2aff_cb)     { ID3D11Buffer_Release(g_nv2aff_cb); g_nv2aff_cb = NULL; }
     if (g_nv2aff_layout) { ID3D11InputLayout_Release(g_nv2aff_layout); g_nv2aff_layout = NULL; }
     if (g_nv2aff_vs)     { ID3D11VertexShader_Release(g_nv2aff_vs); g_nv2aff_vs = NULL; }
+}
+
+int d3d8_Nv2aFF_Available(void)
+{
+    return g_nv2aff_vs && g_nv2aff_layout && g_nv2aff_cb;
 }
 
 /* Bind the NV2A VS, its layout and constants. The caller prepares either the

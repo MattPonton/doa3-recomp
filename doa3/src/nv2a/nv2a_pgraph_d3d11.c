@@ -3465,7 +3465,7 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     if (s_flip < 0) { const char *e = getenv("DOA3_FLIPW"); s_flip = (e && *e == '1'); }
 
     LONGLONG dt0 = doa3_perf_begin(), dt1 = 0, dt2 = 0, dt3 = 0, dt4 = 0, dt5 = 0;
-    if (ctx->run_program || !g_pg.composite_seen || s_flip) return 0;
+    if (ctx->run_program || !g_pg.composite_seen || s_flip || !d3d8_Nv2aFF_Available()) return 0;
     if (prim != D3DPT_TRIANGLELIST && prim != D3DPT_TRIANGLESTRIP && prim != D3DPT_TRIANGLEFAN) return 0;
     if (g_pg.tex[0].offset && nv_samples_framebuffer(g_pg.tex[0].offset)) return 0;
     for (i = 0; i < 16; i++) if (!isfinite(g_pg.composite[i])) return 0;
