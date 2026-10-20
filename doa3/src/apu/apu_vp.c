@@ -1381,6 +1381,29 @@ static void voice_process(MCPXAPUState *d,
                 dry[i][0] = samples[i][0];
                 dry[i][1] = samples[i][1];
             }
+            /* Read the entry live (0.0.183). DirectSound double-buffers each
+             * 3D voice's HRTF entry (voice 1 alternates 2/3, voice 2 4/5...)
+             * and the hardware filters from whatever the entry holds; the
+             * coefficients were only copied when SET_VOICE_TAR_HRTF arrived,
+             * so an entry written after that kept its old contents -- on
+             * Beach the taunt played through the centred (L = R, ITD 0)
+             * filter at every position. */
+            if (hrtf_handle < HRTF_ENTRY_COUNT) {
+                HrtfFilter *hf = &d->vp.filters[v].hrtf;
+                const float (*hir)[HRTF_NUM_TAPS] = d->vp.hrtf.entries[hrtf_handle].hrir;
+                float itd = d->vp.hrtf.entries[hrtf_handle].itd;
+                if (memcmp(hf->ch[0].hrir_coeff_tar, hir[0], sizeof hf->ch[0].hrir_coeff_tar) ||
+                    memcmp(hf->ch[1].hrir_coeff_tar, hir[1], sizeof hf->ch[1].hrir_coeff_tar) ||
+                    hf->itd_tar != fmaxf(-(float)HRTF_MAX_DELAY_SAMPLES, fminf(itd, (float)HRTF_MAX_DELAY_SAMPLES))) {
+                    static unsigned s_live;
+                    if (s_live < 60) {
+                        s_live++;
+                        fprintf(stderr, "[HRTF] frame %u v%u entry %u changed after it was targeted: itd now %+.2f\n",
+                                g_doa3_frames_presented, v, hrtf_handle, itd);
+                    }
+                    hrtf_filter_set_target_params(hf, d->vp.hrtf.entries[hrtf_handle].hrir, itd);
+                }
+            }
             hrtf_filter_process(&d->vp.filters[v].hrtf, samples, samples);
             hrtf_on = true;
         }

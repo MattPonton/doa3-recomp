@@ -3125,3 +3125,26 @@ per-ear or common rescaling).
   positions matches the table.
 - [HRTF] lines carry the frame, and the raw taps are printed once for
   every distinct entry (up to 400) instead of only the first 24.
+
+## 0.0.183 - HRTF entries read live (the taunt was always centred)
+
+Port recordings of the five Beach positions with DOA3_HRTF=1 (made on
+0.0.181, so the tap scale differs from 0.0.182 by a common factor only):
+left-right difference 0.0 to +0.3 dB in every band and no inter-channel
+delay at any position, against the hardware's +-1.4 to +-1.9 dB (up to
++-4 dB above 3 kHz) and +-4 to 6 samples. The voice spectrum did pick up
+the hardware's 5-7 kHz notch (hw-port no longer shows it), so the filter
+ran -- with the centred entry (ITD 0, identical ears) every time.
+
+The [V3D] lines show why: DirectSound double-buffers each 3D voice's HRTF
+entry (voice 1 alternates entries 2 and 3, voice 2 4 and 5, ...), and every
+even entry logged at SET_VOICE_TAR_HRTF time holds the centred filter. The
+VP copied an entry's coefficients into the voice's filter only when that
+method arrived (xemu does the same); the hardware filters from the entry
+memory. If DirectSound fills the entry after pointing the voice at it, the
+copy is the previous contents.
+
+- 3D voices now take their filter from the entry live, every frame (the
+  per-sample parameter smoothing covers the change);
+- "[HRTF] frame N vV entry E changed after it was targeted: itd ..." (first
+  60) shows whether that is what happens.
