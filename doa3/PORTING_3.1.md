@@ -3092,3 +3092,36 @@ So the split no longer depends on a switch:
   slow: the same averaged over the frames that missed 60 fps", at most 720
   lines (an hour);
 - [PERF-PHASE] lines and performance_frames.csv still need diagnostics.
+
+## 0.0.182 - HRTF taps as s.9; hardware placement measured (still opt-in)
+
+Hardware recordings of Ayane's taunt on Beach at five positions (Cmp/
+ayane_taunt1_Beach_<pos>_hw.wav), level over the voice, left-right level
+difference (broadband and per band 100-300 / 300-700 / 700-1500 /
+1500-3000 / 3000-6000 / 6000-12000 Hz) and the inter-channel delay from
+the cross-correlation:
+
+| Position | Level | L-R | per band | delay |
+|---|---|---|---|---|
+| Far left     | -30.7 dBFS | +1.9 | +1.6 +2.0 +1.9 +2.0 +3.9 +4.0 | left leads 6 smp |
+| Centre left  | -30.3 | +1.8 | +1.4 +1.9 +1.8 +1.7 +3.4 +2.9 | left leads 4 |
+| Centre       | -30.3 | +0.8 | +0.9 +1.2 +0.6 +0.4 +1.3 +0.7 | left leads 1 |
+| Centre right | -30.2 | -1.4 | -0.6 -0.5 -2.2 -1.7 -2.9 -2.7 | right leads 5 |
+| Far right    | -30.6 | -1.4 | -0.7 -0.5 -2.0 -2.0 -3.4 -3.8 | right leads 6 |
+
+So the console places her with a small head-shadow ILD (larger above
+3 kHz) and an interaural delay of up to ~0.13 ms, and the level does not
+change with distance across the stage (0.5 dB). The voice spectrum on
+hardware against the port's dry voice (0.0.170 recordings, normalised at
+0.8-1.6 kHz) has a notch of 7-12 dB at 5-7 kHz in every stage; the logged
+centred HRTF entry (ITD 0, both ears equal), read as two's complement
+taps, has that notch (its response: flat-ish to 1.5 kHz, -16 dB at
+5-7 kHz, back up by 10 kHz). With the taps as int8/128 that entry's gain is
++12 dB; as s.9 (value/512, the same fixed point as the ITD word) it is
+about unity, so the taps are now value/512 and used as written (no
+per-ear or common rescaling).
+
+- HRTF stays opt-in (DOA3_HRTF=1) until a port recording at the same five
+  positions matches the table.
+- [HRTF] lines carry the frame, and the raw taps are printed once for
+  every distinct entry (up to 400) instead of only the first 24.

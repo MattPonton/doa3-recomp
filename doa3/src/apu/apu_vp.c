@@ -143,26 +143,35 @@ static void v3d_trace(MCPXAPUState *d, uint16_t v, const int bin[8],
     fprintf(stderr, " hr=%u\n", d->vp.hrtf_headroom);
 }
 
+extern unsigned g_doa3_frames_presented;
 static void hrtf_entry_trace(MCPXAPUState *d, int voice, int handle)
 {
     static unsigned lines;
     float sl = 0, sr = 0, el = 0, er = 0;
     int k;
-    if (lines >= 300 || handle >= HRTF_ENTRY_COUNT) return;
+    if (lines >= 2000 || handle >= HRTF_ENTRY_COUNT) return;
     lines++;
     for (k = 0; k < HRTF_NUM_TAPS; k++) {
         float a = d->vp.hrtf.entries[handle].hrir[0][k], b = d->vp.hrtf.entries[handle].hrir[1][k];
         sl += a; sr += b; el += a * a; er += b * b;
     }
-    fprintf(stderr, "[HRTF] v%d entry %d itd %+.2f smp  L sum %.3f rms %.3f  R sum %.3f rms %.3f  (L-R %+.1f dB)\n",
-            voice, handle, d->vp.hrtf.entries[handle].itd, sl, sqrtf(el), sr, sqrtf(er),
+    fprintf(stderr, "[HRTF] frame %u v%d entry %d itd %+.2f smp  L sum %.3f rms %.3f  R sum %.3f rms %.3f  (L-R %+.1f dB)\n",
+            g_doa3_frames_presented, voice, handle, d->vp.hrtf.entries[handle].itd, sl, sqrtf(el), sr, sqrtf(er),
             10.0f * log10f((el + 1e-12f) / (er + 1e-12f)));
-    if (lines <= 24) {   /* the raw taps, as signed bytes, for the first entries */
-        int ch;
+    {   /* the raw taps, as signed bytes, once per distinct entry (0.0.182) */
+        static uint32_t seen[400]; static unsigned nseen;
+        uint32_t hsh = 2166136261u; unsigned q; int ch, dup = 0;
+        for (ch = 0; ch < 2; ch++)
+            for (k = 0; k < HRTF_NUM_TAPS; k++)
+                hsh = (hsh ^ (uint32_t)(int)lrintf(d->vp.hrtf.entries[handle].hrir[ch][k] * HRTF_TAP_SCALE)) * 16777619u;
+        hsh ^= (uint32_t)(int)lrintf(d->vp.hrtf.entries[handle].itd * 512.0f);
+        for (q = 0; q < nseen; q++) if (seen[q] == hsh) dup = 1;
+        if (dup || nseen >= 400) return;
+        seen[nseen++] = hsh;
         for (ch = 0; ch < 2; ch++) {
             fprintf(stderr, "[HRTF]   %c:", ch ? 'R' : 'L');
             for (k = 0; k < HRTF_NUM_TAPS; k++)
-                fprintf(stderr, " %d", (int)lrintf(d->vp.hrtf.entries[handle].hrir[ch][k] * 128.0f));
+                fprintf(stderr, " %d", (int)lrintf(d->vp.hrtf.entries[handle].hrir[ch][k] * HRTF_TAP_SCALE));
             fprintf(stderr, "\n");
         }
     }
@@ -246,7 +255,12 @@ static void set_hrir_coeff_tar(MCPXAPUState *d, int channel, int coeff_idx,
                                int8_t value)
 {
     int entry = d->vp.hrtf.current_entry;
-    d->vp.hrtf.entries[entry].hrir[channel][coeff_idx] = int8_to_float(value);
+    /* 0.0.182: taps as signed s.9 (value / 512), the same fixed point as the
+     * ITD in SET_HRIR_X. Against hardware recordings (Beach, Ayane's taunt)
+     * the centred entry then has about unity gain through the voice band and
+     * the ~6 kHz notch the console's output shows; xemu's int8 / 128 put it
+     * at +12 dB and needed the per-ear rescaling that flattened the ILD. */
+    d->vp.hrtf.entries[entry].hrir[channel][coeff_idx] = (float)value / HRTF_TAP_SCALE;
 }
 
 /* Unlink a voice handle from whichever voice list holds it, patching either

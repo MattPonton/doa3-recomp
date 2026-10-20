@@ -200,6 +200,7 @@ static inline float run_svf(sv_filter *sv, float in) {
 #define HRTF_MAX_DELAY_SAMPLES  42
 #define HRTF_BUFLEN             (HRTF_NUM_TAPS + HRTF_MAX_DELAY_SAMPLES)
 #define HRTF_PARAM_SMOOTH_ALPHA 0.01f
+#define HRTF_TAP_SCALE          512.0f   /* SET_HRIR taps: signed s.9 (0.0.182) */
 
 typedef struct {
     int buf_pos;
@@ -227,19 +228,12 @@ hrtf_filter_set_target_params(HrtfFilter *f, float hrir_coeff[2][HRTF_NUM_TAPS],
                               float itd) {
     f->itd_tar = fmaxf(-(float)HRTF_MAX_DELAY_SAMPLES,
                         fminf(itd, (float)HRTF_MAX_DELAY_SAMPLES));
-    /* xemu scales each ear's FIR to unity abs-sum, which erases the level
-     * difference between the ears that DirectSound encodes in the
-     * coefficients. Keep it (0.0.173): one common factor for both ears, and
-     * only when the louder ear could exceed unity. */
-    float s[2] = { 0.0f, 0.0f }, m;
-    for (int ch = 0; ch < 2; ch++) {
+    /* The taps are used as written (0.0.182: s.9 fixed point, see
+     * set_hrir_coeff_tar). xemu scaled each ear to unity abs-sum, which
+     * erased the level difference between the ears; 0.0.173 used one common
+     * factor, which still dropped the voice ~10 dB and left it dull. */
+    for (int ch = 0; ch < 2; ch++)
         memcpy(f->ch[ch].hrir_coeff_tar, hrir_coeff[ch], sizeof(f->ch[ch].hrir_coeff_tar));
-        for (int k = 0; k < HRTF_NUM_TAPS; k++) s[ch] += fabsf(hrir_coeff[ch][k]);
-    }
-    m = s[0] > s[1] ? s[0] : s[1];
-    if (m > 1.0f)
-        for (int ch = 0; ch < 2; ch++)
-            for (int k = 0; k < HRTF_NUM_TAPS; k++) f->ch[ch].hrir_coeff_tar[k] /= m;
 }
 
 static inline float hrtf_filter_smooth_param(float cur, float tar) {
