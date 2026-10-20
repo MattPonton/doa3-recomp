@@ -3072,3 +3072,23 @@ This fork has both, in the same places. Ported upstream commit 90776ac:
 The fork's NvFF shader has grown since upstream's (lighting, fog, texgen,
 spot lights), so only these lines were taken; no other upstream change since
 v1.0.1 is merged (they target the USA release's addresses).
+
+## 0.0.181 - always-on 5-second CPU phase summary in the log
+
+Puppy's Ice Cave run on 0.0.178 (traces 02994 and 04371 slow, 05401 fine,
+all 32:9) came back without performance_frames.csv or any [PERF-PHASE]
+line: diagnostics were not on in that run, so the 0.0.178 split was never
+recorded. The traces alone: 943 / 1021 draws in the slow views against 817
+in the good one, about 45% of them in every view the floor reflection
+drawn again into its 256x256 target (393 / 447 / 341); 94-103k indices
+against 78k. The slow views have 15-25% more draws, not a different kind
+of work.
+
+So the split no longer depends on a switch:
+- the push-buffer translation, CRI worker and frame-end timers always run
+  (a few QPC reads per frame);
+- every 5 s the log gets "[PERF-5S] frames N (M over 17.5 ms, worst W ms) |
+  all: interval, game, pb, flush+aux, present, pace (workers), draws |
+  slow: the same averaged over the frames that missed 60 fps", at most 720
+  lines (an hour);
+- [PERF-PHASE] lines and performance_frames.csv still need diagnostics.

@@ -984,7 +984,9 @@ unsigned g_doa3_phase_kicks;
 static void pb4134_translate(uint32_t from, uint32_t to, int translate)
 {
     extern uint32_t g_pb4134_ring_lo, g_pb4134_ring_hi;
-    LONGLONG begin = doa3_perf_begin();
+    /* Always timed (0.0.181): a QPC read per kick-off is negligible and the
+     * 5-second [PERF-5S] summary needs it without the diagnostics switch. */
+    LONGLONG begin = doa3_perf_now();
     pb4134_translate_span(from, to, translate, g_pb4134_ring_lo, g_pb4134_ring_hi, 0);
     if (begin) {
         s_frame_perf.pb += doa3_perf_now() - begin;
@@ -1045,7 +1047,7 @@ static void d3d4134_pace(void)
         xbox_fiber_vblank_tick();
         if (rem * 1000 > s_qpf && (xbox_fiber_is_primary() || xbox_fiber_is_coroutine()) &&
             doa3_workers_may_run() && xbox_fiber_workers_ready()) {
-            LONGLONG worker_begin = doa3_perf_begin();
+            LONGLONG worker_begin = doa3_perf_now();
             xbox_fiber_yield();             /* a worker lap while we wait */
             if (worker_begin) {
                 LONGLONG elapsed = doa3_perf_now() - worker_begin;
@@ -1231,6 +1233,52 @@ static void doa3_mtrace_frame(unsigned next)
      * DOA3_MTRACE ranges remain. */
 }
 
+/* Every 5 s, always (0.0.181): where the host thread's frame time went,
+ * averaged over all frames and over the frames that missed 60 fps (interval
+ * > 17.5 ms). game = guest code outside push-buffer translation, pb =
+ * translation (state and draws), flush/aux = end of frame, present =
+ * compose + overlay + DXGI, pace = the 60 Hz wait (CRI workers run inside
+ * it). Draws per frame from the translator's counter. One line per 5 s;
+ * at most 720 lines (an hour). */
+#include "../../nv2a/nv2a_pgraph_d3d11.h"
+static void perf_5s(double interval, const double ph[7], double present, double ms)
+{
+    static double sum[2][8]; static unsigned n[2], frames; static double worst;
+    static DWORD s_next; static unsigned s_lines; static uint32_t s_draws_prev;
+    PgraphD3D11Stats st;
+    uint32_t draws;
+    double v[8];
+    int k, slow;
+    (void)ms;
+    if (interval < 0.0 || ph[0] < 0.0) return;
+    pgraph_d3d11_get_stats(&st);
+    draws = st.draw_calls - s_draws_prev; s_draws_prev = st.draw_calls;
+    v[0] = interval; v[1] = ph[0]; v[2] = ph[1]; v[3] = ph[2] + ph[3];
+    v[4] = present; v[5] = ph[5] < 0 ? 0 : ph[5]; v[6] = ph[6] < 0 ? 0 : ph[6]; v[7] = (double)draws;
+    slow = interval > 17.5;
+    for (k = 0; k < 8; k++) { sum[0][k] += v[k]; if (slow) sum[1][k] += v[k]; }
+    n[0]++; if (slow) n[1]++;
+    if (interval > worst) worst = interval;
+    frames++;
+    if (!s_next) s_next = GetTickCount() + 5000;
+    if ((int)(GetTickCount() - s_next) < 0) return;
+    if (s_lines < 720 && n[0]) {
+        int r;
+        s_lines++;
+        fprintf(stderr, "[PERF-5S] frames %u (%u over 17.5 ms, worst %.1f ms)", n[0], n[1], worst);
+        for (r = 0; r < 2; r++) {
+            double c = n[r] ? (double)n[r] : 1.0;
+            if (r && !n[1]) break;
+            fprintf(stderr, " | %s: interval %.2f game %.2f pb %.2f flush+aux %.2f present %.2f pace %.2f (workers %.2f) draws %.0f",
+                    r ? "slow" : "all", sum[r][0] / c, sum[r][1] / c, sum[r][2] / c, sum[r][3] / c,
+                    sum[r][4] / c, sum[r][5] / c, sum[r][6] / c, sum[r][7] / c);
+        }
+        fprintf(stderr, "\n");
+    }
+    memset(sum, 0, sizeof sum); n[0] = n[1] = 0; worst = 0.0; frames = 0;
+    s_next = GetTickCount() + 5000;
+}
+
 static void d3d4134_frame_done(uint32_t dev)
 {
     extern void pgraph_d3d11_flush(void);
@@ -1238,7 +1286,8 @@ static void d3d4134_frame_done(uint32_t dev)
     static int s_frames;
     uint32_t sv_eax = eax, sv_ecx = ecx, sv_edx = edx, sv_ebx = ebx;
     uint32_t sv_esi = esi, sv_edi = edi, sv_esp = esp, sv_seh = g_seh_ebp;
-    LONGLONG entry = doa3_perf_begin(), flushed, prepared, presented;
+    int perf_on = doa3_perf_begin() != 0;      /* [PERF-PHASE] lines only with diagnostics */
+    LONGLONG entry = doa3_perf_now(), flushed, prepared, presented;
     pgraph_d3d11_flush();
     flushed = entry ? doa3_perf_now() : 0;
     d3d4134_capture_frame(++g_doa3_frames_presented);
@@ -1267,7 +1316,9 @@ static void d3d4134_frame_done(uint32_t dev)
         LARGE_INTEGER frequency;
         QueryPerformanceFrequency(&frequency);
         double ms = 1000.0 / frequency.QuadPart;
-        if (s_frame_perf.presented &&
+        perf_5s(s_frame_perf.presented ? (presented - s_frame_perf.presented) * ms : -1.0,
+                g_doa3_phase_ms, (presented - prepared) * ms, ms);
+        if (perf_on && s_frame_perf.presented &&
             (presented - s_frame_perf.presented) * ms >= 25.0) {
             fprintf(stderr, "[PERF-PHASE] frame %u interval %.3f pace-prev %.3f workers-prev %.3f longest-worker %.3f before-flush %.3f pb-subset %.3f kicks %u flush %.3f auxiliary %.3f present %.3f end-qpc %lld\n",
                 g_doa3_frames_presented,
