@@ -1406,6 +1406,25 @@ void sub_001E27C0(void)
                     for (k = 0; k < 6; k++) g_doa3_dt[k] = 0;
                     g_doa3_dt_n = 0;
                 }
+                {   /* where the rest of the draw time goes */
+                    extern LONGLONG g_doa3_kt[6], g_doa3_vpt[3];
+                    extern unsigned g_doa3_vpt_verts;
+                    unsigned frames = g_doa3_frames_presented - s_frames_at;
+                    LARGE_INTEGER f; double ms; int k;
+                    QueryPerformanceFrequency(&f);
+                    if (frames) {
+                        ms = 1e3 / (double)f.QuadPart / (double)frames;
+                        fprintf(stderr, "[DRAWCPU] last 5 s, ms per frame: GPU-path array draws %.2f (%.0f), CPU-built array draws %.2f (%.0f; "
+                                "program prepass %.2f for %.0f vertices, vertex build %.2f), inline draws %.2f (%.0f)\n",
+                                g_doa3_kt[0] * ms, (double)g_doa3_kt[3] / frames,
+                                g_doa3_kt[1] * ms, (double)g_doa3_kt[4] / frames,
+                                g_doa3_vpt[0] * ms, (double)g_doa3_vpt_verts / frames, g_doa3_vpt[1] * ms,
+                                g_doa3_kt[2] * ms, (double)g_doa3_kt[5] / frames);
+                    }
+                    for (k = 0; k < 6; k++) g_doa3_kt[k] = 0;
+                    for (k = 0; k < 3; k++) g_doa3_vpt[k] = 0;
+                    g_doa3_vpt_verts = 0;
+                }
                 s_frames_at = g_doa3_frames_presented;
             }
             {   extern void pgraph_texdiag_report(void);

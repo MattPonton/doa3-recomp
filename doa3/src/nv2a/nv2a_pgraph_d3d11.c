@@ -1697,6 +1697,70 @@ static uint32_t nv_light_vertex(const float pos[4], const float nrm[3],
     }
 }
 
+/* Transform-program inputs for one vertex. Unwritten input registers read as
+ * (0,0,0,1) on hardware; registers the program never reads are left at that
+ * and not fetched (their values cannot reach any output). */
+static void nv_vp_fetch_inputs(uint32_t index, float in[NV2A_VP_NUM_INPUT][4], uint32_t mask)
+{
+    int s;
+    for (s = 0; s < NV2A_VP_NUM_INPUT; s++) {
+        in[s][0] = in[s][1] = in[s][2] = 0.0f;
+        in[s][3] = 1.0f;
+        if (mask & (1u << s))
+            nv_fetch_attr(s, index, in[s], NULL);
+    }
+}
+
+/* Transform-program results for a whole array batch, computed up front by
+ * nv2a_vp_execute_batch (one instruction across many vertices) instead of
+ * one vertex at a time. Keyed like the vertex-reuse table: index - lo. */
+#define NV_VREUSE_N 65536
+static struct {
+    int       active;
+    uint32_t  lo, gen;
+    uint32_t  stamp[NV_VREUSE_N], slot[NV_VREUSE_N];
+    float   (*in)[NV2A_VP_NUM_INPUT][4];
+    float   (*out)[NV2A_VP_NUM_OUTPUT][4];
+    uint32_t  cap;
+} s_vppre;
+LONGLONG g_doa3_vpt[3];   /* CPU array draws: program prepass, vertex build */
+unsigned g_doa3_vpt_n, g_doa3_vpt_verts;
+static int s_cpu_array_draw;   /* this draw was built on the CPU */
+
+static void nv_vp_prepass(const uint32_t *idx, uint32_t n)
+{
+    uint32_t i, lo = 0xFFFFFFFFu, hi = 0, u = 0, mask;
+    s_vppre.active = 0;
+    for (i = 0; i < n; i++) {
+        if (idx[i] < lo) lo = idx[i];
+        if (idx[i] > hi) hi = idx[i];
+    }
+    if (n == 0 || hi - lo >= NV_VREUSE_N) return;
+    if (s_vppre.cap < n) {
+        void *a = realloc(s_vppre.in, (size_t)n * sizeof *s_vppre.in);
+        if (!a) return;
+        s_vppre.in = a;
+        a = realloc(s_vppre.out, (size_t)n * sizeof *s_vppre.out);
+        if (!a) return;
+        s_vppre.out = a;
+        s_vppre.cap = n;
+    }
+    if (++s_vppre.gen == 0) { memset(s_vppre.stamp, 0, sizeof s_vppre.stamp); s_vppre.gen = 1; }
+    mask = nv2a_vp_input_mask(&g_pg.vp);
+    for (i = 0; i < n; i++) {
+        uint32_t d = idx[i] - lo;
+        if (s_vppre.stamp[d] == s_vppre.gen) continue;
+        s_vppre.stamp[d] = s_vppre.gen;
+        s_vppre.slot[d] = u;
+        nv_vp_fetch_inputs(idx[i], s_vppre.in[u], mask);
+        u++;
+    }
+    s_vppre.lo = lo;
+    if (nv2a_vp_execute_batch(&g_pg.vp, u, (const float (*)[NV2A_VP_NUM_INPUT][4])s_vppre.in, s_vppre.out))
+        s_vppre.active = 1;
+    g_doa3_vpt_verts += u;
+}
+
 static void nv_build_array_vertex(uint32_t index, OutputVertex *v,
                                   const NvBatchCtx *ctx)
 {
@@ -1722,16 +1786,23 @@ static void nv_build_array_vertex(uint32_t index, OutputVertex *v,
      * transform, so when the game has a program loaded and has given the
      * fixed pipeline nothing to work with, run the program. */
     if (ctx->run_program) {
-        float in[NV2A_VP_NUM_INPUT][4];
-        float out[NV2A_VP_NUM_OUTPUT][4];
-        int s;
-        for (s = 0; s < NV2A_VP_NUM_INPUT; s++) {
-            /* Unwritten input registers read as (0,0,0,1) on hardware. */
-            in[s][0] = in[s][1] = in[s][2] = 0.0f;
-            in[s][3] = 1.0f;
-            nv_fetch_attr(s, index, in[s], NULL);
+        float in_buf[NV2A_VP_NUM_INPUT][4];
+        float out_buf[NV2A_VP_NUM_OUTPUT][4];
+        float (*in)[4] = in_buf;
+        float (*out)[4] = out_buf;
+        int ran;
+        if (s_vppre.active && index - s_vppre.lo < NV_VREUSE_N &&
+            s_vppre.stamp[index - s_vppre.lo] == s_vppre.gen) {
+            /* Already run for the whole batch by nv_vp_prepass. */
+            uint32_t slot = s_vppre.slot[index - s_vppre.lo];
+            in = s_vppre.in[slot];
+            out = s_vppre.out[slot];
+            ran = 1;
+        } else {
+            nv_vp_fetch_inputs(index, in_buf, nv2a_vp_input_mask(&g_pg.vp));
+            ran = nv2a_vp_execute(&g_pg.vp, (const float (*)[4])in_buf, out_buf);
         }
-        if (nv2a_vp_execute(&g_pg.vp, in, out)) {
+        if (ran) {
             {   /* Raw program output, accumulated over the batch: the only
                  * way to tell screen space from clip space is the range of
                  * o[0] across a whole draw. */
@@ -3199,7 +3270,6 @@ static int submit_inline_points(IDirect3DDevice8 *dev, const uint32_t *src, uint
  * first time. The table is indexed by (index - lowest index of the batch):
  * the widest batch measured spans 21,646 indices, and a wider one simply
  * builds every vertex as before. */
-#define NV_VREUSE_N 65536
 static uint32_t s_vstamp[NV_VREUSE_N], s_vslot[NV_VREUSE_N], s_vgen;
 
 static int nv_vreuse_begin(const uint32_t *idx, uint32_t n, uint32_t *lo_out)
@@ -3955,6 +4025,11 @@ static void submit_array_draw(void)
         out = nv_scratch_verts(0, out_n);
         if (!out) { g_pg.idx_count = 0; g_pg.idx_dropped = 0; g_pg.gtss_valid = 0; g_pg.tss3_valid = 0; return; }
         { extern int g_vpn; g_vpn = 0; }   /* reset the per-batch program-output range */
+        LONGLONG bt0 = doa3_perf_now(), bt1;
+        s_cpu_array_draw = 1;
+        if (ctx.run_program) nv_vp_prepass(g_pg.idx, n);
+        bt1 = doa3_perf_now();
+        g_doa3_vpt[0] += bt1 - bt0;
         uint32_t lo = 0;
         int reuse = nv_vreuse_begin(g_pg.idx, n, &lo);
         if (is_quads) {
@@ -3984,6 +4059,8 @@ static void submit_array_draw(void)
             for (i = 0; i < n; i++)
                 nv_build_array_vertex(g_pg.idx[i], &out[i], &ctx);
         }
+        s_vppre.active = 0;
+        g_doa3_vpt[1] += doa3_perf_now() - bt1;
 
         {   /* Post-movie the title screen submits ~500 of these per frame and the
              * window stays black. pos0 alone cannot separate a degenerate batch
@@ -4143,7 +4220,24 @@ static int nv_is_aa_resolve(void)
     }
     return 1;
 }
+/* Where the CPU's draw time goes, per kind (reported as [DRAWCPU]):
+ * [0] array draws on the GPU path, [1] array draws built on the CPU,
+ * [2] inline draws; times in [0..2], counts in [3..5]. */
+LONGLONG g_doa3_kt[6];
+static void submit_draw_inner(void);
 static void submit_draw(void)
+{
+    LONGLONG t0 = doa3_perf_now();
+    int kind = g_pg.idx_count >= 3 ? 0 : 2;
+    s_cpu_array_draw = 0;
+    submit_draw_inner();
+    if (kind == 0 && s_cpu_array_draw) kind = 1;
+    s_vppre.active = 0;
+    g_doa3_kt[kind] += doa3_perf_now() - t0;
+    g_doa3_kt[3 + kind]++;
+}
+
+static void submit_draw_inner(void)
 {
     nv_sync_render_target();
     if (nv_is_aa_resolve()) {

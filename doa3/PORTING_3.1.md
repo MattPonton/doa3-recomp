@@ -3187,3 +3187,34 @@ Performance (Puppy, Ice Cave): the per-draw phase timing of the GPU path
 5-second [DRAWTIME] line) now runs without the diagnostics switch, like
 0.0.181's [PERF-5S], so one ordinary log shows where both the frame and
 the draws spend their time.
+
+## 0.0.186 - transform programs run a batch at a time
+
+Puppy's 0.0.185 log, Ice Cave slow angle: the pushbuffer phase is ~11 ms
+of a ~19 ms frame, but the ~830 GPU-path draws account for only ~3.5 ms
+of it. The rest of the draws are 39 array draws per frame (~8,700
+vertices) of the reflective ice floor, whose transform program -- 25
+instructions, projecting the mirrored-scene render target onto the floor
+-- ran on the CPU interpreter one vertex at a time, re-extracting ~35 bit
+fields per instruction per vertex.
+
+- The program is decoded once (rebuilt when an instruction is written or
+  the entry point moves).
+- An array draw that takes the program path now runs the program for all
+  of the batch's distinct vertices up front (nv2a_vp_execute_batch): one
+  instruction across 64 vertices at a time, so the operation, operand
+  source, swizzle and write-mask branches are taken once per instruction
+  per chunk and the per-vertex loops are straight-line.
+- Only the input registers the program reads are fetched (v0, v2, v9 for
+  the floor instead of all 16).
+
+Replaying the program uploads and draws of Puppy's Ice Cave trace
+(mtrace_manual_04371) against the old interpreter: every output identical
+over 8,696 vertices of random inputs (with zeros, denormals, infinities and
+NaNs mixed in, the only difference is the sign bit of a NaN made from two
+NaNs), and 2.4-2.6x faster.
+
+New 5-second [DRAWCPU] line: ms per frame in GPU-path array draws,
+CPU-built array draws (with the program prepass and the vertex build
+separately) and inline draws, so the next log shows how much of the
+pushbuffer time is draws at all and how much is method handling.
