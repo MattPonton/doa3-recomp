@@ -3148,3 +3148,21 @@ copy is the previous contents.
   per-sample parameter smoothing covers the change);
 - "[HRTF] frame N vV entry E changed after it was targeted: itd ..." (first
   60) shows whether that is what happens.
+
+## 0.0.184 - HRTF ears by mixbin, not by slot
+
+0.0.183's port recordings (Beach, five positions, DOA3_HRTF=1) were still
+exactly centred: left-right within 0.1 dB in every band, no delay, while
+the log shows the taunt's voices on positioned entries (ITD -5 to +29
+samples, ears up to 10 dB apart). No "changed after it was targeted" line
+appeared, so the double-buffered entries were not the problem (the live
+read stays; it is what the hardware does).
+
+The mix was: a 3D voice's slots 0-3 are the HRTF submixes, and DOA3 sets
+them (SET_HRTF_SUBMIXES, [V3D] lines) to mixbins 6, 8, 7, 9 -- front left,
+rear left, front right, rear right. 0.0.173 picked the ear by slot parity,
+so slots 0 and 2, the two front channels, both got the LEFT ear: the
+output was mono, and for a voice on the right it was the far, darkened ear
+-- the "under water" sound of 0.0.173. The ear now follows the mixbin:
+even (6, 8) left, odd (7, 9) right, the same pairing apu_dsp.c's mixdown
+uses.

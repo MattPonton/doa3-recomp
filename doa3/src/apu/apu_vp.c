@@ -1358,7 +1358,11 @@ static void voice_process(MCPXAPUState *d,
      *
      * 0.0.173: the filter's two outputs are the two ears. Bins 0-3 of a 3D
      * voice are the four HRTF submixes (3D front left/right, rear left/right,
-     * DSMIXBIN 6-9), so even bins take the left ear and odd bins the right.
+     * DSMIXBIN 6-9). The ear follows the MIXBIN, not the slot: DOA3 orders
+     * the submixes 6, 8, 7, 9, so slots 0 and 2 are the front pair; even
+     * mixbins (6, 8) take the left ear and odd ones (7, 9) the right, as the
+     * mixdown sums them (0.0.184; 0.0.173-0.0.183 went by the slot, which
+     * fed the left ear to both front channels).
      * xemu mixed sample[b % channels] -- for a mono voice channel 0 into all
      * four -- and the port had the filter off, so every 3D voice came out
      * dead centre. Bins 4-7 (the I3DL2 send and other effect sends) take the
@@ -1416,7 +1420,7 @@ static void voice_process(MCPXAPUState *d,
             float g = ea_value * attenuate(vol[b]) /
                       (float)(1 << (b < 4 ? d->vp.hrtf_headroom : d->vp.submix_headroom[bin[b]]));
             for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++)
-                mixbins[bin[b]][i] += g * (b < 4 ? samples[i][b & 1] : dry[i][b % channels]);
+                mixbins[bin[b]][i] += g * (b < 4 ? samples[i][bin[b] & 1] : dry[i][b % channels]);
             continue;
         }
         float g = ea_value;
