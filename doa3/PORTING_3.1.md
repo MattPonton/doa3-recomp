@@ -3166,3 +3166,24 @@ output was mono, and for a voice on the right it was the far, darkened ear
 -- the "under water" sound of 0.0.173. The ear now follows the mixbin:
 even (6, 8) left, odd (7, 9) right, the same pairing apu_dsp.c's mixdown
 uses.
+
+## 0.0.185 - HRTF decoding parked; per-draw timing always on
+
+0.0.184 port recordings: the inter-channel delay now matches hardware
+(port -4/-4/-2/+4/+4 samples against hardware -6/-4/-1/+5/+6), so the ITD
+word is read right. Matching each port recording to the HRTF entry the game
+sent (about 1 dB rms) and checking those entries against the hardware
+recordings, the ear levels are not: the low bands come out 2-5 dB the wrong
+way and the upper bands swing -8..+4 dB where hardware rises smoothly from
+~2 to ~4 dB toward the near ear, and the tone is 5-9 dB darker above
+1.6 kHz. Two's complement, sign-magnitude, offset-128, ones' complement,
+reversed taps and swapped ears all miss (best: sign-magnitude, 3.5 dB rms
+ILD error). The 31 values per ear are not a plain FIR in the format xemu
+assumes; the next step is DirectSound's routine that builds them (parked).
+HRTF stays opt-in (DOA3_HRTF=1).
+
+Performance (Puppy, Ice Cave): the per-draw phase timing of the GPU path
+(fetch / state / constants / combiners / d3d-draw / cleanup, the
+5-second [DRAWTIME] line) now runs without the diagnostics switch, like
+0.0.181's [PERF-5S], so one ordinary log shows where both the frame and
+the draws spend their time.

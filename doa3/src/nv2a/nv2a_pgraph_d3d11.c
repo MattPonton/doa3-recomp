@@ -3446,8 +3446,8 @@ static __inline uint32_t nv_attr_color(const NvAttrReader *r, uint32_t index, ui
 }
 
 /* 1 = drawn (or legitimately dropped) on the GPU, 0 = use the CPU path. */
-/* Per-draw timing of the GPU fixed-function path (DOA3_PERF_CAPTURE or
- * diagnostics on): QPC ticks per phase, summed over successful draws and
+/* Per-draw timing of the GPU fixed-function path (always on since
+ * 0.0.185): QPC ticks per phase, summed over successful draws and
  * reported every 5 s as [DRAWTIME] by recomp_manual.c. */
 LONGLONG g_doa3_dt[6];       /* fetch, state, constants, combiners, d3d draw, cleanup */
 unsigned g_doa3_dt_n;
@@ -3464,7 +3464,9 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     static int s_flip = -1;
     if (s_flip < 0) { const char *e = getenv("DOA3_FLIPW"); s_flip = (e && *e == '1'); }
 
-    LONGLONG dt0 = doa3_perf_begin(), dt1 = 0, dt2 = 0, dt3 = 0, dt4 = 0, dt5 = 0;
+    /* Always timed (0.0.185): six QPC reads per GPU draw, so every log has
+     * the 5-second [DRAWTIME] split next to [PERF-5S]. */
+    LONGLONG dt0 = doa3_perf_now(), dt1 = 0, dt2 = 0, dt3 = 0, dt4 = 0, dt5 = 0;
     if (ctx->run_program || !g_pg.composite_seen || s_flip || !d3d8_Nv2aFF_Available()) return 0;
     if (prim != D3DPT_TRIANGLELIST && prim != D3DPT_TRIANGLESTRIP && prim != D3DPT_TRIANGLEFAN) return 0;
     if (g_pg.tex[0].offset && nv_samples_framebuffer(g_pg.tex[0].offset)) return 0;
