@@ -4864,7 +4864,8 @@ typedef struct {
     uint32_t mask; int8_t cslot;
     /* Fast path (pgraph_d3d11_method_run): methods whose whole effect is one
      * float store (plus the transform-constant mirror) or an inline-data
-     * append. fast: 0 none, 1 float store, 2 inline array. */
+     * append. fast: 0 none, 1 float store, 2 inline array, 3 nothing but the
+     * shadow register (learned when the method first reaches the default). */
     uint8_t  fast, fret, fseen;
     float   *fdst, *cdst;
 } NvMethodEntry;
@@ -5554,6 +5555,13 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
     }
 
     default:
+        /* A method with no flag-driven handling that lands here always will
+         * (no case precedes the default, and nothing above depends on the
+         * value): let pgraph_d3d11_method_run take it directly next time. */
+        if (!(f & ~(uint32_t)MF_SILENT) && !s_mtab[method >> 2].fast) {
+            s_mtab[method >> 2].fast = 3;
+            s_mtab[method >> 2].fret = (f & MF_SILENT) ? 1 : 0;
+        }
         if (f & MF_SILENT)
             return 1;  /* Silently handled (ignored but acknowledged) */
         g_pg.stats.methods_ignored++;
@@ -5584,6 +5592,13 @@ void pgraph_d3d11_method_run(int subchannel, uint32_t method, const uint32_t *pa
                 g_mhist[m >> 2]++;
                 *me->fdst = fl;
                 if (me->fseen) g_pg.composite_seen = 1;
+                if (!me->fret) g_pg.stats.methods_ignored++;
+                continue;
+            }
+            if (me->fast == 3) {           /* only the switch default handles it */
+                g_nvreg[m >> 2] = param;
+                g_pg.stats.methods_handled++;
+                g_mhist[m >> 2]++;
                 if (!me->fret) g_pg.stats.methods_ignored++;
                 continue;
             }

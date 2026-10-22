@@ -3267,3 +3267,22 @@ Changes:
   -- the same stores, shadow register, counters and return value as the
   general dispatch -- and sends every other method through
   pgraph_d3d11_method as before. Method tracing still goes the general way.
+
+## 0.0.189 - method fast path learns; profiler gets addresses
+
+Puppy, 0.0.188: Ice Cave holds 59-60 fps. The ~3,150-draw stage went from
+22.7 to 19.95 ms a frame (~50 fps): game 11.4 -> 9.6 ms, pushbuffer
+11.1 -> 10.2 ms. In its profile the matrix multiply fell from 13.4% to
+about 6%; still on top are the general method dispatch (7.3%, plus 3.5%
+in the new run loop), the x87 matrix inverse sub_001E1F50 (6.2%),
+nv_gpu_ff_submit (~7%) and the driver (~17%).
+
+- A method with no flag-driven handling that reaches the switch default is
+  marked the first time; pgraph_d3d11_method_run then applies it directly
+  (shadow register and counters, same return value). The default is the
+  last label and no case falls into it, so a method that reaches it once
+  always does.
+- [PROF] hot lines: the 40 hottest exact addresses (8-byte buckets) in the
+  exe, so a hot function can be taken apart instruction by instruction
+  against the same build's DOA3.exe (the Release PDB has public symbols
+  only, no line tables).

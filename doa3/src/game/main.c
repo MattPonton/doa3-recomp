@@ -1360,6 +1360,21 @@ void doa3_prof_set_thread(void)
 #define PROF_DEPTH 16
 static uint32_t s_prof_key[PROF_FN];
 static unsigned s_prof_self[PROF_FN], s_prof_tot[PROF_FN];
+/* Exact sample addresses (8-byte buckets) for line-level attribution with
+ * the build's PDB: which statement inside a hot function is hot. */
+static uint32_t s_prof_hkey[PROF_FN];
+static unsigned s_prof_hot[PROF_FN];
+
+static void prof_hot_add(uint32_t rva)
+{
+    unsigned h = ((rva >> 3) * 2654435761u) & (PROF_FN - 1), i, probe;
+    rva &= ~7u;
+    for (probe = 0; probe < 256; probe++) {
+        i = (h + probe) & (PROF_FN - 1);
+        if (s_prof_hkey[i] == rva) { s_prof_hot[i]++; return; }
+        if (s_prof_hkey[i] == 0) { s_prof_hkey[i] = rva; s_prof_hot[i] = 1; return; }
+    }
+}
 
 static unsigned *prof_slot(uint32_t rva, unsigned *tbl)
 {
@@ -1395,6 +1410,18 @@ static void prof_report(unsigned total, unsigned unknown)
             shown[pass]++;
         }
     }
+    {   int rank;
+        for (rank = 0; rank < 40; rank++) {
+            unsigned best = 0, bi = 0, i;
+            for (i = 0; i < PROF_FN; i++)
+                if (s_prof_hot[i] > best) { best = s_prof_hot[i]; bi = i; }
+            if (!best || best * 1000u < total) break;
+            fprintf(stderr, "[PROF] hot   %5.1f%% rva %08X\n", 100.0 * best / total, s_prof_hkey[bi]);
+            s_prof_hot[bi] = 0;
+        }
+    }
+    memset(s_prof_hkey, 0, sizeof s_prof_hkey);
+    memset(s_prof_hot, 0, sizeof s_prof_hot);
     memset(s_prof_key, 0, sizeof s_prof_key);
     memset(s_prof_self, 0, sizeof s_prof_self);
     memset(s_prof_tot, 0, sizeof s_prof_tot);
@@ -1451,6 +1478,7 @@ static DWORD WINAPI diag_sampler(LPVOID p)
                 else if (pcs[d] >= base && pcs[d] - base < 0x10000000u) rva = (uint32_t)(pcs[d] - base) | 1u;
                 else { if (d == 0) unknown++; continue; }   /* system DLL */
                 if (d == 0 && (slot = prof_slot(rva, s_prof_self))) (*slot)++;
+                if (d == 0) prof_hot_add((uint32_t)(pcs[0] - base));
                 for (k = 0; k < d; k++) {                   /* recursion: count once */
                     DWORD64 img2 = 0;
                     PRUNTIME_FUNCTION f2 = RtlLookupFunctionEntry(pcs[k], &img2, NULL);
