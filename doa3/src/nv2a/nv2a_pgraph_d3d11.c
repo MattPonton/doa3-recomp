@@ -3515,183 +3515,6 @@ static __inline uint32_t nv_attr_color(const NvAttrReader *r, uint32_t index, ui
     return dflt;
 }
 
-/* ---- GPU vertex cache (0.0.193) -------------------------------------------
- *
- * Most of a frame's GPU-path draws give the same converted vertices every
- * frame (stage geometry, unchanging parts of characters): converting them
- * and uploading them again cost ~1.7 ms + ~1 ms a frame on the
- * ~3,100-draw stage. A draw whose vertices come from one index range is
- * converted once for the whole range [lo, hi] into the GPU vertex arena
- * (d3d8_Nv2aFF_ArenaPut) and drawn from there with indices idx - lo.
- *
- * "Unchanged" is decided exactly, not by a hash: the entry keeps a copy of
- * the guest bytes the conversion read (each attribute's [lo, hi] span,
- * overlapping spans merged) and compares them before reuse. Any other
- * input of the conversion is part of the key: each reader's address and
- * format and which attributes are read. A range holding a non-finite
- * position, an index past the readable end, a sparse range or a very large
- * one goes the per-draw way, which handles them exactly as before.
- * Entries whose data keeps changing (skinned characters) stop being
- * compared for a while. */
-/* DOA3_VCACHE=0 turns it off (for comparison). */
-static int s_vc_enabled(void)
-{
-    static int on = -1;
-    if (on < 0) { const char *e = getenv("DOA3_VCACHE"); on = !(e && *e == '0'); }
-    return on;
-}
-#define VC_SLOTS      4096
-#define VC_MAX_SNAP   (256u * 1024u)
-#define VC_MAX_TOTAL  (160u * 1024u * 1024u)
-typedef struct {
-    uint32_t key[16];
-    uint8_t *snap;
-    uint32_t snap_len, nreg, reg_off[5], reg_len[5];
-    uint32_t first, lap, span;
-    uint16_t changes, bypass;
-    uint8_t  used;
-} NvVCache;
-static NvVCache s_vc[VC_SLOTS];
-static size_t   s_vc_total;
-unsigned g_vc_stat[5];    /* hits, refills, new, bypassed, not eligible */
-
-static uint32_t nv_attr_elem_bytes(const NvAttrReader *r)
-{
-    switch (r->type) {
-    case 2: return r->count * 4;
-    case 1: case 5: return r->count * 2;
-    default: return r->count;           /* 0, 4: ubyte */
-    }
-}
-
-/* Exactly the per-vertex conversion of nv_gpu_ff_submit. Returns 0 for a
- * non-finite position. */
-static __inline int nv_ff_vertex(Nv2aFFVertex *v, uint32_t idx, const NvAttrReader *r_pos,
-                                 const NvAttrReader *r_nrm, const NvAttrReader *r_uv1,
-                                 const NvAttrReader *r_col, const NvAttrReader *r_uv,
-                                 int want_nrm, int has_uv1, int has_color, int has_uv)
-{
-    v->pos[0] = v->pos[1] = v->pos[2] = 0.0f; v->pos[3] = 1.0f;
-    nv_attr_read(r_pos, idx, v->pos);
-    if (!isfinite(v->pos[0]) || !isfinite(v->pos[1]) || !isfinite(v->pos[2]) || !isfinite(v->pos[3]))
-        return 0;
-    if (want_nrm) {
-        float tmp[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
-        nv_attr_read(r_nrm, idx, tmp);
-        v->nrm[0] = tmp[0]; v->nrm[1] = tmp[1]; v->nrm[2] = tmp[2];
-    } else { v->nrm[0] = v->nrm[1] = v->nrm[2] = 0.0f; }
-    if (has_uv1) {
-        float tmp[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
-        nv_attr_read(r_uv1, idx, tmp);
-        v->uv1[0] = tmp[0]; v->uv1[1] = tmp[1];
-    } else { v->uv1[0] = v->uv1[1] = 0.0f; }
-    if (has_color) v->color = nv_attr_color(r_col, idx, 0xFFFFFFFFu);
-    else v->color = 0xFFFFFFFFu;
-    if (has_uv) {
-        float tmp[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
-        nv_attr_read(r_uv, idx, tmp);
-        v->uv[0] = tmp[0]; v->uv[1] = tmp[1];
-    } else { v->uv[0] = v->uv[1] = 0.0f; }
-    return 1;
-}
-
-/* The draw's vertices in the arena: 1 = *first holds [lo, hi] converted,
- * 0 = not cached (convert per draw as before). */
-static int nv_vcache_get(uint32_t lo, uint32_t hi, uint32_t n,
-                         const NvAttrReader *r_pos, const NvAttrReader *r_nrm,
-                         const NvAttrReader *r_uv1, const NvAttrReader *r_col,
-                         const NvAttrReader *r_uv, int want_nrm, int has_uv1,
-                         int has_color, int has_uv, unsigned *first)
-{
-    const NvAttrReader *rd[5];
-    uint32_t key[16], h = 2166136261u, span = hi - lo + 1, nreg = 0, i, k, total = 0;
-    uint32_t rbeg[5], rend[5];
-    NvVCache *e;
-    int nrd = 0, match;
-
-    if (span > 32768u || (span > 2u * n + 64u)) { g_vc_stat[4]++; return 0; }
-    rd[nrd++] = r_pos;
-    if (want_nrm)  rd[nrd++] = r_nrm;
-    if (has_uv1)   rd[nrd++] = r_uv1;
-    if (has_color) rd[nrd++] = r_col;
-    if (has_uv)    rd[nrd++] = r_uv;
-    memset(key, 0, sizeof key);
-    key[0] = lo; key[1] = hi;
-    key[2] = (uint32_t)want_nrm | ((uint32_t)has_uv1 << 1) | ((uint32_t)has_color << 2) | ((uint32_t)has_uv << 3);
-    for (k = 0; k < (uint32_t)nrd; k++) {
-        const NvAttrReader *r = rd[k];
-        uintptr_t b;
-        if (hi > r->max_index) { g_vc_stat[4]++; return 0; }
-        key[3 + k * 2] = (uint32_t)((uintptr_t)r->p);
-        key[4 + k * 2] = r->type | (r->count << 4) | (r->stride << 8);
-        b = (uintptr_t)r->p + (size_t)lo * r->stride;
-        rbeg[k] = (uint32_t)(b - (uintptr_t)r_pos->p + 0x80000000u);   /* relative, offset to stay positive */
-        rend[k] = rbeg[k] + (span - 1) * r->stride + nv_attr_elem_bytes(r);
-    }
-    key[13] = (uint32_t)((uint64_t)(uintptr_t)r_pos->p >> 32);
-    for (k = 0; k < 16; k++) { h ^= key[k]; h *= 16777619u; }
-    e = &s_vc[(h ^ (h >> 15)) & (VC_SLOTS - 1)];
-
-    /* Merge the attribute spans (interleaved arrays share one). */
-    {   uint32_t ob[5], oe[5], j;
-        for (k = 0; k < (uint32_t)nrd; k++) { ob[k] = rbeg[k]; oe[k] = rend[k]; }
-        for (k = 0; k < (uint32_t)nrd; k++) {              /* sort by start */
-            for (j = k + 1; j < (uint32_t)nrd; j++)
-                if (ob[j] < ob[k]) { uint32_t t = ob[j]; ob[j] = ob[k]; ob[k] = t; t = oe[j]; oe[j] = oe[k]; oe[k] = t; }
-        }
-        for (k = 0; k < (uint32_t)nrd; k++) {
-            if (nreg && ob[k] <= rend[nreg - 1]) { if (oe[k] > rend[nreg - 1]) rend[nreg - 1] = oe[k]; continue; }
-            rbeg[nreg] = ob[k]; rend[nreg] = oe[k]; nreg++;
-        }
-        for (k = 0; k < nreg; k++) total += rend[k] - rbeg[k];
-    }
-    if (total > VC_MAX_SNAP) { g_vc_stat[4]++; return 0; }
-#define VC_SRC(off) ((const uint8_t *)r_pos->p + ((int64_t)(off) - 0x80000000LL))
-
-    match = e->used && !memcmp(e->key, key, sizeof key) && e->span == span;
-    if (match && e->bypass) { e->bypass--; g_vc_stat[3]++; return 0; }
-    if (match && d3d8_Nv2aFF_ArenaValid(e->first, span, e->lap) && e->snap_len == total) {
-        uint32_t off = 0;
-        int same = 1;
-        for (k = 0; k < nreg && same; k++) {
-            same = !memcmp(e->snap + off, VC_SRC(rbeg[k]), rend[k] - rbeg[k]);
-            off += rend[k] - rbeg[k];
-        }
-        if (same) { e->changes = 0; *first = e->first; g_vc_stat[0]++; return 1; }
-        if (++e->changes >= 3) { e->changes = 0; e->bypass = 120; g_vc_stat[3]++; return 0; }
-    }
-
-    /* Convert the whole range (into s_gv, sized by the caller for n). */
-    if (s_gv_cap < span) { void *b = realloc(s_gv, span * sizeof *s_gv); if (!b) return 0; s_gv = b; s_gv_cap = span; }
-    for (i = 0; i < span; i++)
-        if (!nv_ff_vertex(&s_gv[i], lo + i, r_pos, r_nrm, r_uv1, r_col, r_uv,
-                          want_nrm, has_uv1, has_color, has_uv)) { g_vc_stat[4]++; return 0; }
-    {   unsigned f, lap;
-        if (!d3d8_Nv2aFF_ArenaPut(s_gv, span, &f, &lap)) return 0;
-        if (!match || e->snap_len != total) {
-            if (e->snap) { s_vc_total -= e->snap_len; free(e->snap); e->snap = NULL; }
-            e->used = 0;
-            if (s_vc_total + total > VC_MAX_TOTAL) { *first = f; g_vc_stat[2]++; return 1; }  /* drawn, not kept */
-            e->snap = (uint8_t *)malloc(total);
-            if (!e->snap) { *first = f; return 1; }
-            s_vc_total += total;
-            memcpy(e->key, key, sizeof key);
-            e->snap_len = total; e->span = span; e->changes = 0; e->bypass = 0; e->used = 1;
-            g_vc_stat[2]++;
-        } else g_vc_stat[1]++;
-        {   uint32_t off = 0;
-            for (k = 0; k < nreg; k++) {
-                memcpy(e->snap + off, VC_SRC(rbeg[k]), rend[k] - rbeg[k]);
-                off += rend[k] - rbeg[k];
-            }
-        }
-        e->first = f; e->lap = lap;
-        *first = f;
-    }
-#undef VC_SRC
-    return 1;
-}
-
 /* 1 = drawn (or legitimately dropped) on the GPU, 0 = use the CPU path. */
 /* Per-draw timing of the GPU fixed-function path (always on since
  * 0.0.185): QPC ticks per phase, summed over successful draws and
@@ -3709,9 +3532,6 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     NvAttrReader r_pos, r_nrm, r_uv1, r_col, r_uv;
     NvDrawSummary sum;
     NvPostOps post;
-    unsigned arena_first = 0;
-    int use_arena = 0, overlay_stretch = 0;
-    float overlay_k = 1.0f;
     static int s_flip = -1;
     if (s_flip < 0) { const char *e = getenv("DOA3_FLIPW"); s_flip = (e && *e == '1'); }
 
@@ -3761,44 +3581,6 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     if (has_uv1   && !nv_attr_reader(10, &r_uv1)) return 0;
     if (has_color && !nv_attr_reader(3, &r_col)) return 0;
     if (has_uv    && !nv_attr_reader(9, &r_uv)) return 0;
-
-    /* GPU vertex cache: the whole index range converted once and kept on
-     * the GPU (see nv_vcache_get). Not with a method trace open (its
-     * per-draw boxes read the converted vertices) or where the ultrawide
-     * overlay check below reads them. */
-    {   extern FILE *g_doa3_mtrace;
-        unsigned first;
-        uint32_t hi = lo, q;
-        for (q = 0; q < n; q++) if (g_pg.idx[q] > hi) hi = g_pg.idx[q];
-        if (!g_doa3_mtrace && s_vc_enabled() &&
-            !(video_get_aspect() > VIDEO_ASPECT_16_9 && g_pg.blend_enable && !d3d8_OffscreenTargetActive()) &&
-            nv_vcache_get(lo, hi, n, &r_pos, &r_nrm, &r_uv1, &r_col, &r_uv,
-                          want_nrm, has_uv1, has_color, has_uv, &first)) {
-            /* The colour summary over the vertices the draw uses, as below. */
-            if (has_color)
-                for (q = 0; q < n; q++)
-                    if (nv_attr_color(&r_col, g_pg.idx[q], 0xFFFFFFFFu)) { all_zero = 0; break; }
-            if (is_quads) {
-                for (q = 0; q + 3 < n; q += 4) {
-                    s_gi[ni++] = (uint16_t)(g_pg.idx[q + 0] - lo); s_gi[ni++] = (uint16_t)(g_pg.idx[q + 1] - lo);
-                    s_gi[ni++] = (uint16_t)(g_pg.idx[q + 2] - lo); s_gi[ni++] = (uint16_t)(g_pg.idx[q + 0] - lo);
-                    s_gi[ni++] = (uint16_t)(g_pg.idx[q + 2] - lo); s_gi[ni++] = (uint16_t)(g_pg.idx[q + 3] - lo);
-                }
-            } else if (prim == D3DPT_TRIANGLEFAN) {
-                for (q = 2; q < n; q++) {
-                    s_gi[ni++] = (uint16_t)(g_pg.idx[0] - lo); s_gi[ni++] = (uint16_t)(g_pg.idx[q - 1] - lo);
-                    s_gi[ni++] = (uint16_t)(g_pg.idx[q] - lo);
-                }
-            } else {
-                for (q = 0; q < n; q++) s_gi[ni++] = (uint16_t)(g_pg.idx[q] - lo);
-            }
-            if (ni < 3) return 1;
-            arena_first = first;
-            use_arena = 1;
-            nv = hi - lo + 1;
-            goto vertices_ready;
-        }
-    }
 
     /* Pack each unique vertex once; map every source index to its slot. */
     for (i = 0; i < n; i++) {
@@ -3853,6 +3635,8 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
      * (0.0.169) The sheet's w varies slightly as the camera moves, so the
      * vertices only have to agree within 1%; a draw that already spans
      * the full width is left alone. */
+    int overlay_stretch = 0;
+    float overlay_k = 1.0f;
     if (video_get_aspect() > VIDEO_ASPECT_16_9 && g_pg.blend_enable && nv >= 3 && nv <= 256 &&
         !d3d8_OffscreenTargetActive()) {
         extern FILE *g_doa3_mtrace;
@@ -3927,7 +3711,6 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     }
     if (ni < 3) return 1;
 
-vertices_ready:
     /* The vertex colour summary, from the inputs. */
     if (has_color)              sum.all_zero = all_zero;
     else if (lit)               sum.all_zero = 0;             /* alpha != 0, checked above */
@@ -4092,14 +3875,9 @@ vertices_ready:
     {
         int clipped = nv_apply_window_clip(0);
         dev->lpVtbl->BeginScene(dev);
-        if (use_arena)
-            d3d8_DrawNv2aFFArena(arena_first, s_gi, ni,
-                                 (prim == D3DPT_TRIANGLESTRIP) ? 5 /* D3D11 TRIANGLESTRIP */ : 4 /* TRIANGLELIST */,
-                                 &cb);
-        else
-            d3d8_DrawNv2aFF(s_gv, nv, s_gi, ni,
-                            (prim == D3DPT_TRIANGLESTRIP) ? 5 /* D3D11 TRIANGLESTRIP */ : 4 /* TRIANGLELIST */,
-                            &cb);
+        d3d8_DrawNv2aFF(s_gv, nv, s_gi, ni,
+                        (prim == D3DPT_TRIANGLESTRIP) ? 5 /* D3D11 TRIANGLESTRIP */ : 4 /* TRIANGLELIST */,
+                        &cb);
         if (clipped) { extern void d3d8_ResetScissorRect(void); d3d8_ResetScissorRect(); }
     }
     if (dt0) dt5 = doa3_perf_now();

@@ -33,13 +33,6 @@ static UINT          g_nv2aff_cb_slot;
 static Nv2aFFConstants g_nv2aff_cb_prev;
 static int           g_nv2aff_raw = -1;     /* -1 undecided, 0 off, 1 on */
 static int           g_nv2aff_ring_fresh;   /* created, never mapped: first map discards */
-/* 0.0.193: GPU vertex arena, see d3d8_Nv2aFF_ArenaPut. */
-#define NV2AFF_ARENA_VERTS (1u << 20)          /* 48 MB of Nv2aFFVertex */
-static ID3D11Buffer *g_nv2aff_arena;
-static UINT          g_nv2aff_arena_pos;      /* in vertices */
-static unsigned      g_nv2aff_arena_lap = 1;
-static int           g_nv2aff_arena_failed;
-static ID3D11Buffer *g_nv2aff_ia_vb;          /* what IA slot 0 holds for the NV2A path */
 /* What the last NV2A draw left in the input assembler, see d3d8_DrawNv2aFF. */
 static ID3D11Buffer *g_nv2aff_ia_ring;
 static unsigned      g_nv2aff_ia_epoch;
@@ -537,11 +530,6 @@ static ULONG __stdcall dev_Release(IDirect3DDevice8 *self)
         if (g_nv2aff_ring_srv) { ID3D11ShaderResourceView_Release(g_nv2aff_ring_srv); g_nv2aff_ring_srv = NULL; }
         if (g_nv2aff_slot_ids) { ID3D11Buffer_Release(g_nv2aff_slot_ids); g_nv2aff_slot_ids = NULL; }
         g_nv2aff_raw = -1;
-        if (g_nv2aff_arena) { ID3D11Buffer_Release(g_nv2aff_arena); g_nv2aff_arena = NULL; }
-        /* Two laps on: nothing allocated before is valid in a new arena. */
-        g_nv2aff_arena_lap += 2; if (g_nv2aff_arena_lap < 2) g_nv2aff_arena_lap = 2;
-        g_nv2aff_arena_pos = 0;
-        g_nv2aff_ia_vb = NULL;
         if (g_nv2aff_ring) { ID3D11Buffer_Release(g_nv2aff_ring); g_nv2aff_ring = NULL; g_nv2aff_ring_off = 0; }
         g_nv2aff_ia_ring = NULL;
         d3d8_Nv2aFF_Shutdown();
@@ -2358,7 +2346,7 @@ static int nv2aff_ring_upload(const void *verts, UINT vsize, UINT stride,
     if (FAILED(ID3D11DeviceContext_Map(g_device_state.d3d11_context,
             (ID3D11Resource *)g_nv2aff_ring, 0, map_type, 0, &mapped)))
         return 0;
-    if (vsize) memcpy((BYTE *)mapped.pData + voff, verts, vsize);
+    memcpy((BYTE *)mapped.pData + voff, verts, vsize);
     memcpy((BYTE *)mapped.pData + ioff, idx, isize);
     if (write_cb) memcpy((BYTE *)mapped.pData + coff, cb, csize);
     ID3D11DeviceContext_Unmap(g_device_state.d3d11_context, (ID3D11Resource *)g_nv2aff_ring, 0);
@@ -2375,81 +2363,21 @@ static int nv2aff_ring_upload(const void *verts, UINT vsize, UINT stride,
     return 1;
 }
 
-/* 0.0.193: GPU vertex arena. Converted vertices that the game draws again
- * unchanged stay here between frames (the pgraph side decides what is
- * unchanged); a draw then uploads only its indices and constants. A bump
- * allocator over a DEFAULT buffer: allocations never straddle the end, and
- * reaching the end starts the next lap at 0. An allocation made in lap L at
- * [first, first + n) is intact while the current lap is L, or L + 1 and the
- * write position has not reached `first` yet. */
-
-int d3d8_Nv2aFF_ArenaPut(const Nv2aFFVertex *v, unsigned n, unsigned *first, unsigned *lap)
-{
-    D3D11_BOX box;
-    if (!v || !n || n > NV2AFF_ARENA_VERTS / 4 || g_nv2aff_arena_failed) return 0;
-    if (!g_nv2aff_arena) {
-        D3D11_BUFFER_DESC bd;
-        memset(&bd, 0, sizeof bd);
-        bd.ByteWidth = NV2AFF_ARENA_VERTS * (UINT)sizeof(Nv2aFFVertex);
-        bd.Usage = D3D11_USAGE_DEFAULT;
-        bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-        if (FAILED(ID3D11Device_CreateBuffer(g_device_state.d3d11_device, &bd, NULL, &g_nv2aff_arena))) {
-            g_nv2aff_arena = NULL;
-            g_nv2aff_arena_failed = 1;
-            fprintf(stderr, "[NV2AFF] vertex arena unavailable: vertices uploaded every draw\n");
-            return 0;
-        }
-        g_nv2aff_arena_pos = 0;
-        fprintf(stderr, "[NV2AFF] vertex arena: %u vertices (%u MB)\n", NV2AFF_ARENA_VERTS,
-                (unsigned)(NV2AFF_ARENA_VERTS * sizeof(Nv2aFFVertex) >> 20));
-    }
-    if (g_nv2aff_arena_pos + n > NV2AFF_ARENA_VERTS) {
-        g_nv2aff_arena_pos = 0;
-        g_nv2aff_arena_lap++;
-        if (!g_nv2aff_arena_lap) g_nv2aff_arena_lap = 1;
-    }
-    box.left = g_nv2aff_arena_pos * (UINT)sizeof(Nv2aFFVertex);
-    box.right = box.left + n * (UINT)sizeof(Nv2aFFVertex);
-    box.top = 0; box.bottom = 1; box.front = 0; box.back = 1;
-    ID3D11DeviceContext_UpdateSubresource(g_device_state.d3d11_context, (ID3D11Resource *)g_nv2aff_arena,
-                                          0, &box, v, 0, 0);
-    *first = g_nv2aff_arena_pos;
-    *lap = g_nv2aff_arena_lap;
-    g_nv2aff_arena_pos += n;
-    return 1;
-}
-
-int d3d8_Nv2aFF_ArenaValid(unsigned first, unsigned n, unsigned lap)
-{
-    if (!g_nv2aff_arena || !lap) return 0;
-    if (lap == g_nv2aff_arena_lap) return first + n <= g_nv2aff_arena_pos;
-    if (lap + 1 == g_nv2aff_arena_lap)
-        return first >= g_nv2aff_arena_pos;
-    return 0;
-}
-
-
-/* Shared by both entry points: vertices either from `verts` (uploaded to the
- * ring with the indices) or, with verts NULL, already in the arena at
- * arena_first. */
-static long nv2aff_draw(const Nv2aFFVertex *verts, unsigned nverts, unsigned arena_first,
-                        const uint16_t *idx, unsigned nidx, int topology,
-                        const Nv2aFFConstants *cb)
+long d3d8_DrawNv2aFF(const Nv2aFFVertex *verts, unsigned nverts,
+                     const uint16_t *idx, unsigned nidx, int topology,
+                     const Nv2aFFConstants *cb)
 {
     UINT stride = sizeof(Nv2aFFVertex), zero = 0, base_vertex, first_index, cb_slot = 0;
-    ID3D11Buffer *ring, *vb;
+    ID3D11Buffer *ring;
     int raw;
-    if (!idx || !nidx || (verts && !nverts)) return E_INVALIDARG;
-    if (!verts && !g_nv2aff_arena) return E_INVALIDARG;
+    if (!verts || !idx || !nverts || !nidx) return E_INVALIDARG;
     g_d3d_draw_count++; if (g_off_active) g_d3d_draw_off++;
 
     if (g_nv2aff_raw < 0 && !g_nv2aff_ring && !nv2aff_ring_create()) return E_OUTOFMEMORY;
     raw = g_nv2aff_raw == 1;
-    if (!nv2aff_ring_upload(verts, verts ? nverts * stride : 0, stride, idx, nidx * 2, raw ? cb : NULL,
+    if (!nv2aff_ring_upload(verts, nverts * stride, stride, idx, nidx * 2, raw ? cb : NULL,
                             &ring, &base_vertex, &first_index, &cb_slot))
         return E_OUTOFMEMORY;
-    if (verts) vb = ring;
-    else { vb = g_nv2aff_arena; base_vertex = arena_first; }
 
     /* The combiner supplies PS b0; Nv2aFF_Bind supplies the VS, layout and
      * VS b0. Preparing the generic shaders first uploads three discarded
@@ -2463,8 +2391,7 @@ static long nv2aff_draw(const Nv2aFFVertex *verts, unsigned nverts, unsigned are
     /* Rebind the ring only when something else bound its own buffers since
      * (see d3d8_BindInvalidate) or the ring was recreated. */
     if (ring != g_nv2aff_ia_ring || g_nv2aff_ia_epoch != g_d3d8_bind_epoch) {
-        ID3D11DeviceContext_IASetVertexBuffers(g_device_state.d3d11_context, 0, 1, &vb, &stride, &zero);
-        g_nv2aff_ia_vb = vb;
+        ID3D11DeviceContext_IASetVertexBuffers(g_device_state.d3d11_context, 0, 1, &ring, &stride, &zero);
         if (raw) {
             UINT id_stride = sizeof(UINT);
             ID3D11DeviceContext_IASetVertexBuffers(g_device_state.d3d11_context, 1, 1, &g_nv2aff_slot_ids, &id_stride, &zero);
@@ -2474,15 +2401,9 @@ static long nv2aff_draw(const Nv2aFFVertex *verts, unsigned nverts, unsigned are
         g_nv2aff_ia_ring = ring;
         g_nv2aff_ia_epoch = g_d3d8_bind_epoch;
         g_nv2aff_ia_topology = topology;
-    } else {
-        if (vb != g_nv2aff_ia_vb) {
-            ID3D11DeviceContext_IASetVertexBuffers(g_device_state.d3d11_context, 0, 1, &vb, &stride, &zero);
-            g_nv2aff_ia_vb = vb;
-        }
-        if (topology != g_nv2aff_ia_topology) {
-            ID3D11DeviceContext_IASetPrimitiveTopology(g_device_state.d3d11_context, (D3D11_PRIMITIVE_TOPOLOGY)topology);
-            g_nv2aff_ia_topology = topology;
-        }
+    } else if (topology != g_nv2aff_ia_topology) {
+        ID3D11DeviceContext_IASetPrimitiveTopology(g_device_state.d3d11_context, (D3D11_PRIMITIVE_TOPOLOGY)topology);
+        g_nv2aff_ia_topology = topology;
     }
     {   ID3D11Query *probe = d3d8_probe_begin();   /* method traces only */
         if (raw)   /* StartInstanceLocation selects the constants' slot (CBIDX) */
@@ -2495,9 +2416,9 @@ static long nv2aff_draw(const Nv2aFFVertex *verts, unsigned nverts, unsigned are
 
     /* Restore the game's own bindings, as DrawPrimitiveUP does. */
     if (g_cur_vb) {
-        D3D8VertexBuffer *gvb = (D3D8VertexBuffer *)g_cur_vb;
+        D3D8VertexBuffer *vb = (D3D8VertexBuffer *)g_cur_vb;
         UINT restore_offset = 0;
-        ID3D11DeviceContext_IASetVertexBuffers(g_device_state.d3d11_context, 0, 1, &gvb->d3d11_buffer, &g_cur_vb_stride, &restore_offset);
+        ID3D11DeviceContext_IASetVertexBuffers(g_device_state.d3d11_context, 0, 1, &vb->d3d11_buffer, &g_cur_vb_stride, &restore_offset);
         g_nv2aff_ia_ring = NULL;
     }
     if (g_cur_ib) {
@@ -2507,18 +2428,4 @@ static long nv2aff_draw(const Nv2aFFVertex *verts, unsigned nverts, unsigned are
         g_nv2aff_ia_ring = NULL;
     }
     return S_OK;
-}
-
-long d3d8_DrawNv2aFF(const Nv2aFFVertex *verts, unsigned nverts,
-                     const uint16_t *idx, unsigned nidx, int topology,
-                     const Nv2aFFConstants *cb)
-{
-    if (!verts || !nverts) return E_INVALIDARG;
-    return nv2aff_draw(verts, nverts, 0, idx, nidx, topology, cb);
-}
-
-long d3d8_DrawNv2aFFArena(unsigned first, const uint16_t *idx, unsigned nidx, int topology,
-                          const Nv2aFFConstants *cb)
-{
-    return nv2aff_draw(NULL, 0, first, idx, nidx, topology, cb);
 }

@@ -59,14 +59,6 @@ long d3d8_DrawNv2aFF(const Nv2aFFVertex *verts, unsigned nverts,
                      const uint16_t *idx, unsigned nidx, int topology,
                      const Nv2aFFConstants *cb);
 
-/* 0.0.193: GPU vertex arena. Put stores vertices that stay on the GPU and
- * returns where (first) and when (lap); Valid says whether they are still
- * there; DrawNv2aFFArena draws them with per-draw indices and constants. */
-int  d3d8_Nv2aFF_ArenaPut(const Nv2aFFVertex *v, unsigned n, unsigned *first, unsigned *lap);
-int  d3d8_Nv2aFF_ArenaValid(unsigned first, unsigned n, unsigned lap);
-long d3d8_DrawNv2aFFArena(unsigned first, const uint16_t *idx, unsigned nidx, int topology,
-                          const Nv2aFFConstants *cb);
-
 /* d3d8_shaders.c: compile once; bind VS + layout + constants for one draw. */
 long d3d8_Nv2aFF_Init(void);
 void d3d8_Nv2aFF_Shutdown(void);
