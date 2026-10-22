@@ -1281,6 +1281,9 @@ static void perf_5s(double interval, const double ph[7], double present, double 
 
 static void d3d4134_frame_done(uint32_t dev)
 {
+    {   extern void doa3_prof_set_thread(void);
+        static int s_prof_reg;
+        if (!s_prof_reg) { s_prof_reg = 1; doa3_prof_set_thread(); } }
     extern void pgraph_d3d11_flush(void);
     extern void doa3_present_frame(void);
     static int s_frames;

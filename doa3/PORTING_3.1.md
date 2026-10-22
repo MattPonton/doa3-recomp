@@ -3218,3 +3218,25 @@ New 5-second [DRAWCPU] line: ms per frame in GPU-path array draws,
 CPU-built array draws (with the program prepass and the vertex build
 separately) and inline draws, so the next log shows how much of the
 pushbuffer time is draws at all and how much is method handling.
+
+## 0.0.187 - a profiler that can find the rest
+
+Puppy's 0.0.186 log. Ice Cave, slow angle: pushbuffer 11.0 -> 8.4-8.9 ms,
+frame interval ~19 -> 16.7-17.3 ms (about 58-60 fps). The floor's
+program prepass is ~1.1 ms for ~4,350 distinct vertices.
+
+The other stage he flagged runs ~40-44 fps for a different reason:
+~3,050 GPU-path draws a frame (three times Ice Cave's), interval 22.7 ms =
+game 11.4 + pushbuffer 11.1 (draws 7.0, method handling ~3.8). Nothing
+in 0.0.186 changes that path, and the draw timers cost well under 1 ms at
+that count. Neither the game's 11 ms nor the method handling is broken
+down by the timers we have.
+
+DOA3_PROFILE=1 (DOA3_PROFILE.bat) now runs a real sampling profiler on the
+thread that finishes frames, for the whole session: ~1,000 samples a
+second, each with up to 16 frames of call stack from the x64 unwind data,
+reported every 10 s as [PROF] self (the function the thread was in) and
+total (functions on the stack) lines, with RVAs that resolve against
+DOA3.map from the same build. It replaces the old fixed 45 s + 90 s,
+256-byte-bucket sampler. Opt-in, because it stops the thread a thousand
+times a second.

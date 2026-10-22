@@ -1335,43 +1335,136 @@ static BOOL load_xbe(const char *path, void **out_data, size_t *out_size)
 }
 
 static HANDLE g_diag_main_thread;
-/* Sampling profiler (task #1): after 45s (movie running), sample the main
- * thread RIP every 2ms for 90s, aggregate into 256-byte buckets, and dump
- * the top buckets — symbolize against bin/doa3.map to find the decode
- * hotspots. Enabled with DOA3_PROFILE=1. */
+static HANDLE volatile g_prof_frame_thread;
+
+/* The thread that finishes frames (pushbuffer translation and the game's own
+ * code run there); the profiler samples it once it is known. */
+void doa3_prof_set_thread(void)
+{
+    HANDLE h;
+    if (g_prof_frame_thread || !getenv("DOA3_PROFILE")) return;
+    if (DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(),
+                        &h, 0, FALSE, DUPLICATE_SAME_ACCESS))
+        g_prof_frame_thread = h;
+}
+
+/* Sampling profiler, enabled with DOA3_PROFILE=1 (DOA3_PROFILE.bat).
+ *
+ * About 1,000 times a second it stops the frame thread, reads where it is,
+ * and walks up to 16 frames of its call stack with the x64 unwind data.
+ * Every 10 s it prints the functions the thread was in ("self") and the
+ * functions on the stack ("total", each counted once per sample), as RVAs
+ * that resolve against DOA3.map from the same build. Only the unwinder runs
+ * while the thread is stopped -- no allocation, no locks the game may hold. */
+#define PROF_FN   16384
+#define PROF_DEPTH 16
+static uint32_t s_prof_key[PROF_FN];
+static unsigned s_prof_self[PROF_FN], s_prof_tot[PROF_FN];
+
+static unsigned *prof_slot(uint32_t rva, unsigned *tbl)
+{
+    unsigned h = (rva * 2654435761u) & (PROF_FN - 1), i, probe;
+    for (probe = 0; probe < 256; probe++) {
+        i = (h + probe) & (PROF_FN - 1);
+        if (s_prof_key[i] == rva) return &tbl[i];
+        if (s_prof_key[i] == 0) { s_prof_key[i] = rva; return &tbl[i]; }
+    }
+    return NULL;
+}
+
+static void prof_report(unsigned total, unsigned unknown)
+{
+    static int s_reports;
+    unsigned shown[2] = { 0, 0 };
+    int pass;
+    if (!total || s_reports >= 60) return;
+    s_reports++;
+    fprintf(stderr, "[PROF] last 10 s: %u samples of the frame thread (%u outside the exe), image base %p\n",
+            total, unknown, (void *)GetModuleHandleA(NULL));
+    for (pass = 0; pass < 2; pass++) {
+        unsigned *tbl = pass ? s_prof_tot : s_prof_self;
+        int rank;
+        for (rank = 0; rank < (pass ? 40 : 30); rank++) {
+            unsigned best = 0, bi = 0, i;
+            for (i = 0; i < PROF_FN; i++)
+                if (tbl[i] > best && !(tbl[i] & 0x80000000u)) { best = tbl[i]; bi = i; }
+            if (!best || best * 1000u < total) break;
+            fprintf(stderr, "[PROF] %s %5.1f%% rva %08X\n", pass ? "total" : "self ",
+                    100.0 * best / total, s_prof_key[bi]);
+            tbl[bi] |= 0x80000000u;   /* printed */
+            shown[pass]++;
+        }
+    }
+    memset(s_prof_key, 0, sizeof s_prof_key);
+    memset(s_prof_self, 0, sizeof s_prof_self);
+    memset(s_prof_tot, 0, sizeof s_prof_tot);
+    fflush(stderr);
+}
+
 static DWORD WINAPI diag_sampler(LPVOID p)
 {
+    const uintptr_t base = (uintptr_t)GetModuleHandleA(NULL);
+    unsigned total = 0, unknown = 0;
+    ULONGLONG next;
     (void)p;
     if (!getenv("DOA3_PROFILE")) return 0;
-    Sleep(45000);
-    enum { NBUK = 8192 };
-    static uintptr_t keys[NBUK]; static unsigned cnt[NBUK];
-    unsigned total = 0;
-    ULONGLONG end = GetTickCount64() + 90000;
-    while (GetTickCount64() < end) {
-        CONTEXT c; c.ContextFlags = CONTEXT_CONTROL;
-        SuspendThread(g_diag_main_thread);
-        GetThreadContext(g_diag_main_thread, &c);
-        ResumeThread(g_diag_main_thread);
-        uintptr_t k = c.Rip >> 8;   /* 256-byte buckets */
-        unsigned h = (unsigned)(k * 2654435761u) & (NBUK - 1);
-        for (int probe = 0; probe < 64; probe++) {
-            unsigned i = (h + probe) & (NBUK - 1);
-            if (cnt[i] == 0) { keys[i] = k; cnt[i] = 1; break; }
-            if (keys[i] == k) { cnt[i]++; break; }
+    while (!g_prof_frame_thread) Sleep(100);
+    /* The audio thread already runs the system timer at 1 ms (apu_core.c). */
+    next = GetTickCount64() + 10000;
+    for (;;) {
+        DWORD64 pcs[PROF_DEPTH];
+        int depth = 0, d, k;
+        CONTEXT c;
+        HANDLE t = g_prof_frame_thread;
+        memset(&c, 0, sizeof c);
+        c.ContextFlags = CONTEXT_FULL;
+        if (SuspendThread(t) == (DWORD)-1) { Sleep(100); continue; }
+        if (GetThreadContext(t, &c)) __try {
+            while (depth < PROF_DEPTH) {
+                DWORD64 img = 0, frame = 0;
+                PVOID handler = NULL;
+                PRUNTIME_FUNCTION fn;
+                pcs[depth++] = c.Rip;
+                fn = RtlLookupFunctionEntry(c.Rip, &img, NULL);
+                if (!fn) {                         /* leaf without unwind data */
+                    if (!c.Rsp) break;
+                    c.Rip = *(DWORD64 *)c.Rsp;
+                    c.Rsp += 8;
+                } else {
+                    RtlVirtualUnwind(UNW_FLAG_NHANDLER, img, c.Rip, fn, &c, &handler, &frame, NULL);
+                }
+                if (!c.Rip) break;
+            }
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            /* a stack the unwinder could not read: keep what was walked */
         }
-        total++;
-        Sleep(2);
-    }
-    fprintf(stderr, "[PROF] %u samples; top buckets:%c", total, 10);
-    for (int rank = 0; rank < 40; rank++) {
-        unsigned best = 0, bi = 0;
-        for (unsigned i = 0; i < NBUK; i++)
-            if (cnt[i] > best) { best = cnt[i]; bi = i; }
-        if (!best) break;
-        fprintf(stderr, "[PROF] %6.2f%% 0x%llX00%c",
-                100.0 * best / total, (unsigned long long)keys[bi], 10);
-        cnt[bi] = 0;
+        ResumeThread(t);
+
+        if (depth) {
+            total++;
+            for (d = 0; d < depth; d++) {
+                DWORD64 img = 0;
+                PRUNTIME_FUNCTION fn = (pcs[d] >= base) ? RtlLookupFunctionEntry(pcs[d], &img, NULL) : NULL;
+                uint32_t rva;
+                unsigned *slot;
+                if (fn && img == base) rva = fn->BeginAddress;
+                else if (pcs[d] >= base && pcs[d] - base < 0x10000000u) rva = (uint32_t)(pcs[d] - base) | 1u;
+                else { if (d == 0) unknown++; continue; }   /* system DLL */
+                if (d == 0 && (slot = prof_slot(rva, s_prof_self))) (*slot)++;
+                for (k = 0; k < d; k++) {                   /* recursion: count once */
+                    DWORD64 img2 = 0;
+                    PRUNTIME_FUNCTION f2 = RtlLookupFunctionEntry(pcs[k], &img2, NULL);
+                    if (f2 && img2 == base && f2->BeginAddress == rva) break;
+                }
+                if (k == d && (slot = prof_slot(rva, s_prof_tot))) (*slot)++;
+            }
+        }
+        if (GetTickCount64() >= next) {
+            prof_report(total, unknown);
+            total = unknown = 0;
+            next = GetTickCount64() + 10000;
+        }
+        Sleep(1);
     }
     return 0;
 }
