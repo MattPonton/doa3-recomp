@@ -3334,3 +3334,32 @@ agreed in every case; with optimisation, the handful that differed also
 differ between the original's own optimised and unoptimised builds
 (undefined behaviour on random inputs), apart from the imul case above,
 which is fixed. All 16 rewritten chunks pass a syntax check.
+
+## 0.0.191 - one map per GPU draw
+
+Puppy, 0.0.190 (registers in locals): the ~3,100-draw stage went from
+19.8 to 18.75 ms a frame (~53 fps); the game half 9.5 -> 8.7 ms, the
+pushbuffer half unchanged at ~9.9 ms. Ice Cave holds 60. Matt played the
+whole story mode as Hayate on it without a problem.
+
+The draw path was already de-duplicated (shader, layout, blend, depth,
+raster and both constant buffers are only re-sent when they change; ring
+buffer at a fixed binding), and in the Ice Cave trace 719 of 909 GPU draws
+differ in state from the one before, so merging draws would not pay. What
+every draw still paid was two buffer maps: the vertex/index ring and the
+VS constant buffer (880 bytes, nearly always new -- each object has its
+own matrices).
+
+- The draw's Nv2aFFConstants now go into the same ring, in the same Map,
+  on a 64-byte boundary (or not at all when they equal the previous
+  draw's and the ring has not been discarded since). The VS variant
+  compiled with NV_RAWCB reads them through a raw view of the ring at
+  VS t0, at the slot given by an instance-rate CBIDX attribute: IA slot 1
+  holds an immutable identity buffer, and DrawIndexedInstanced's
+  StartInstanceLocation is the slot. Same shader code, same values.
+- Falls back to the constant buffer per draw if the variant does not
+  compile or the ring cannot carry a raw view; the log says which
+  ("nv2aff VS: constants from the vertex ring" / "[NV2AFF] draw
+  constants ...").
+- [PROF] module lines: the samples outside the exe by module (the driver,
+  d3d11, ntdll, ...), so the next profile shows where that ~17% goes.

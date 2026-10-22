@@ -980,6 +980,7 @@ void d3d8_shaders_prepare_draw(DWORD fvf)
  * combiner-factor fold uses the same integer rounding.
  * ================================================================ */
 static const char g_nv2aff_vs_source[] =
+    "#ifndef NV_RAWCB\n"
     "cbuffer NvFF : register(b0) {\n"
     "    float4 Clip[4];\n"
     "    float4 MV[3];\n"
@@ -1003,12 +1004,64 @@ static const char g_nv2aff_vs_source[] =
     "    float4 LSpotDir[4];\n"
     "    float4 LSpotFall[4];\n"
     "};\n"
+    "#else\n"
+    /* 0.0.191: the constants live in the vertex ring (see d3d8_DrawNv2aFF);
+     * same layout as Nv2aFFConstants, loaded once per vertex. */
+    "ByteAddressBuffer NvRing : register(t0);\n"
+    "static float4 Clip[4];\n"
+    "static float4 MV[3];\n"
+    "static float4 LDir[4];\n"
+    "static float4 LAmb[4];\n"
+    "static float4 LDif[4];\n"
+    "static float4 LAtt[4];\n"
+    "static float4 AmbEmis;\n"
+    "static float4 Fold;\n"
+    "static uint   Flags;\n"
+    "static float4 FogPlane;\n"
+    "static float4 FogParam;\n"
+    "static float4 TexMat1[4];\n"
+    "static float4 Tex1Mode;\n"
+    "static float4 LSpec[4];\n"
+    "static float4 LHalf[4];\n"
+    "static float4 Spec;\n"
+    "static float4 TexMat0[4];\n"
+    "static float4 Tex0Mode;\n"
+    "static float4 LSpotDir[4];\n"
+    "static float4 LSpotFall[4];\n"
+    "float4 nv_ld(inout uint o) { float4 v = asfloat(NvRing.Load4(o)); o += 16; return v; }\n"
+    "void nv_load(uint slot) {\n"
+    "    uint o = slot * 64u; int k;\n"
+    "    [unroll] for (k = 0; k < 4; k++) Clip[k] = nv_ld(o);\n"
+    "    [unroll] for (k = 0; k < 3; k++) MV[k] = nv_ld(o);\n"
+    "    [unroll] for (k = 0; k < 4; k++) LDir[k] = nv_ld(o);\n"
+    "    [unroll] for (k = 0; k < 4; k++) LAmb[k] = nv_ld(o);\n"
+    "    [unroll] for (k = 0; k < 4; k++) LDif[k] = nv_ld(o);\n"
+    "    [unroll] for (k = 0; k < 4; k++) LAtt[k] = nv_ld(o);\n"
+    "    AmbEmis = nv_ld(o);\n"
+    "    Fold = nv_ld(o);\n"
+    "    Flags = NvRing.Load(o); o += 16;\n"
+    "    FogPlane = nv_ld(o);\n"
+    "    FogParam = nv_ld(o);\n"
+    "    [unroll] for (k = 0; k < 4; k++) TexMat1[k] = nv_ld(o);\n"
+    "    Tex1Mode = nv_ld(o);\n"
+    "    [unroll] for (k = 0; k < 4; k++) LSpec[k] = nv_ld(o);\n"
+    "    [unroll] for (k = 0; k < 4; k++) LHalf[k] = nv_ld(o);\n"
+    "    Spec = nv_ld(o);\n"
+    "    [unroll] for (k = 0; k < 4; k++) TexMat0[k] = nv_ld(o);\n"
+    "    Tex0Mode = nv_ld(o);\n"
+    "    [unroll] for (k = 0; k < 4; k++) LSpotDir[k] = nv_ld(o);\n"
+    "    [unroll] for (k = 0; k < 4; k++) LSpotFall[k] = nv_ld(o);\n"
+    "}\n"
+    "#endif\n"
     "struct VS_IN {\n"
     "    float4 pos   : POSITION;\n"
     "    float3 nrm   : NORMAL;\n"
     "    float4 color : COLOR0;\n"
     "    float2 uv    : TEXCOORD0;\n"
     "    float2 uv1   : TEXCOORD1;\n"
+    "#ifdef NV_RAWCB\n"
+    "    uint   cbi   : CBIDX;\n"
+    "#endif\n"
     "};\n"
     "struct VS_OUT {\n"
     "    float4 pos      : SV_POSITION;\n"
@@ -1053,6 +1106,9 @@ static const char g_nv2aff_vs_source[] =
     "}\n"
     "VS_OUT main(VS_IN i) {\n"
     "    VS_OUT o;\n"
+    "#ifdef NV_RAWCB\n"
+    "    nv_load(i.cbi);\n"
+    "#endif\n"
     "    float4 c = float4(dot(Clip[0], i.pos), dot(Clip[1], i.pos),\n"
     "                      dot(Clip[2], i.pos), dot(Clip[3], i.pos));\n"
     "    o.pos = c;\n"
@@ -1152,6 +1208,12 @@ static ID3D11VertexShader *g_nv2aff_vs;
 static ID3D11InputLayout  *g_nv2aff_layout;
 static ID3D11Buffer       *g_nv2aff_cb;
 static unsigned            g_nv2aff_bound_epoch;   /* epoch of the last full bind */
+static int                 g_nv2aff_bound_mode;    /* 1 cbuffer VS, 2 ring-constants VS */
+/* 0.0.191: the same shader reading its constants from the vertex ring
+ * (NV_RAWCB): one Map per draw instead of two. */
+static ID3D11VertexShader *g_nv2aff_vs_raw;
+static ID3D11InputLayout  *g_nv2aff_layout_raw;
+static ID3D11ShaderResourceView *g_nv2aff_raw_srv_bound;
 static Nv2aFFConstants     g_nv2aff_cb_last;       /* what g_nv2aff_cb holds */
 static int                 g_nv2aff_cb_valid;
 
@@ -1168,9 +1230,11 @@ long d3d8_Nv2aFF_Init(void)
         { "TEXCOORD", 1, DXGI_FORMAT_R32G32_FLOAT,       0, 40, D3D11_INPUT_PER_VERTEX_DATA, 0 },
     };
 
+    int no_clipdist = 0;
     hr = D3DCompile(g_nv2aff_vs_source, strlen(g_nv2aff_vs_source), "vs_nv2aff",
                     NULL, NULL, "main", "vs_5_0", 0, 0, &blob, &errors);
     if (FAILED(hr)) {
+        no_clipdist = 1;
         /* Wine's vkd3d d3dcompiler (Proton 10 / Sarek) rejects SV_ClipDistance
          * (0.0.180, from upstream 90776ac). Both planes are redundant here: c
          * reaches the rasterizer undivided and DepthClipEnable already drops
@@ -1201,6 +1265,41 @@ long d3d8_Nv2aFF_Init(void)
     ID3D10Blob_Release(blob);
     if (FAILED(hr)) return hr;
 
+    /* The ring-constants variant. Optional: without it every draw uses the
+     * constant buffer as before. */
+    if (sizeof(Nv2aFFConstants) == 55 * 16) {
+        static const D3D11_INPUT_ELEMENT_DESC elems_raw[] = {
+            { "POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0,  0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+            { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+            { "COLOR",    0, DXGI_FORMAT_B8G8R8A8_UNORM,     0, 28, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+            { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,       0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+            { "TEXCOORD", 1, DXGI_FORMAT_R32G32_FLOAT,       0, 40, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+            { "CBIDX",    0, DXGI_FORMAT_R32_UINT,           1,  0, D3D11_INPUT_PER_INSTANCE_DATA, 1 },
+        };
+        static const D3D_SHADER_MACRO raw_m[] = { { "NV_RAWCB", "1" }, { NULL, NULL } };
+        static const D3D_SHADER_MACRO raw_nc[] = { { "NV_RAWCB", "1" }, { "NO_CLIPDIST", "1" }, { NULL, NULL } };
+        ID3DBlob *rb = NULL, *re = NULL;
+        HRESULT rh = D3DCompile(g_nv2aff_vs_source, strlen(g_nv2aff_vs_source), "vs_nv2aff_raw",
+                                no_clipdist ? raw_nc : raw_m, NULL, "main", "vs_5_0", 0, 0, &rb, &re);
+        if (SUCCEEDED(rh)) {
+            rh = ID3D11Device_CreateVertexShader(d3d8_GetD3D11Device(),
+                ID3D10Blob_GetBufferPointer(rb), ID3D10Blob_GetBufferSize(rb), NULL, &g_nv2aff_vs_raw);
+            if (SUCCEEDED(rh))
+                rh = ID3D11Device_CreateInputLayout(d3d8_GetD3D11Device(), elems_raw, 6,
+                    ID3D10Blob_GetBufferPointer(rb), ID3D10Blob_GetBufferSize(rb), &g_nv2aff_layout_raw);
+            ID3D10Blob_Release(rb);
+        }
+        if (FAILED(rh)) {
+            fprintf(stderr, "nv2aff VS (ring constants) unavailable (hr %08lX%s%s): constant buffer per draw\n",
+                    (unsigned long)rh, re ? ": " : "", re ? (const char *)ID3D10Blob_GetBufferPointer(re) : "");
+            if (g_nv2aff_vs_raw) { ID3D11VertexShader_Release(g_nv2aff_vs_raw); g_nv2aff_vs_raw = NULL; }
+            if (g_nv2aff_layout_raw) { ID3D11InputLayout_Release(g_nv2aff_layout_raw); g_nv2aff_layout_raw = NULL; }
+        } else {
+            fprintf(stderr, "nv2aff VS: constants from the vertex ring (one map per draw)\n");
+        }
+        if (re) ID3D10Blob_Release(re);
+    }
+
     memset(&cbd, 0, sizeof cbd);
     cbd.ByteWidth = (sizeof(Nv2aFFConstants) + 15) & ~15u;
     cbd.Usage = D3D11_USAGE_DYNAMIC;
@@ -1216,6 +1315,34 @@ void d3d8_Nv2aFF_Shutdown(void)
     if (g_nv2aff_cb)     { ID3D11Buffer_Release(g_nv2aff_cb); g_nv2aff_cb = NULL; }
     if (g_nv2aff_layout) { ID3D11InputLayout_Release(g_nv2aff_layout); g_nv2aff_layout = NULL; }
     if (g_nv2aff_vs)     { ID3D11VertexShader_Release(g_nv2aff_vs); g_nv2aff_vs = NULL; }
+    if (g_nv2aff_layout_raw) { ID3D11InputLayout_Release(g_nv2aff_layout_raw); g_nv2aff_layout_raw = NULL; }
+    if (g_nv2aff_vs_raw)     { ID3D11VertexShader_Release(g_nv2aff_vs_raw); g_nv2aff_vs_raw = NULL; }
+    g_nv2aff_raw_srv_bound = NULL;
+    g_nv2aff_bound_mode = 0;
+}
+
+int d3d8_Nv2aFF_RawAvailable(void)
+{
+    return g_nv2aff_vs_raw && g_nv2aff_layout_raw;
+}
+
+/* Bind the ring-constants VS: shader, layout and the ring at VS t0. The
+ * constants themselves are in the ring, addressed per draw through the
+ * instance-rate CBIDX attribute (see d3d8_DrawNv2aFF). */
+int d3d8_Nv2aFF_BindRaw(ID3D11ShaderResourceView *ring_srv)
+{
+    ID3D11DeviceContext *ctx = d3d8_GetD3D11Context();
+    if (!ctx || !g_nv2aff_vs_raw || !g_nv2aff_layout_raw || !ring_srv) return 0;
+    if (g_nv2aff_bound_epoch != g_d3d8_bind_epoch || g_nv2aff_bound_mode != 2 ||
+        g_nv2aff_raw_srv_bound != ring_srv) {
+        ID3D11DeviceContext_VSSetShader(ctx, g_nv2aff_vs_raw, NULL, 0);
+        ID3D11DeviceContext_IASetInputLayout(ctx, g_nv2aff_layout_raw);
+        ID3D11DeviceContext_VSSetShaderResources(ctx, 0, 1, &ring_srv);
+        g_nv2aff_raw_srv_bound = ring_srv;
+        g_nv2aff_bound_epoch = g_d3d8_bind_epoch;
+        g_nv2aff_bound_mode = 2;
+    }
+    return 1;
 }
 
 int d3d8_Nv2aFF_Available(void)
@@ -1244,11 +1371,12 @@ int d3d8_Nv2aFF_Bind(const Nv2aFFConstants *cb)
     }
     /* The constants change per draw; the shader, layout and slot do not,
      * unless something else bound its own since (see d3d8_BindInvalidate). */
-    if (g_nv2aff_bound_epoch != g_d3d8_bind_epoch) {
+    if (g_nv2aff_bound_epoch != g_d3d8_bind_epoch || g_nv2aff_bound_mode != 1) {
         ID3D11DeviceContext_VSSetShader(ctx, g_nv2aff_vs, NULL, 0);
         ID3D11DeviceContext_IASetInputLayout(ctx, g_nv2aff_layout);
         ID3D11DeviceContext_VSSetConstantBuffers(ctx, 0, 1, &g_nv2aff_cb);
         g_nv2aff_bound_epoch = g_d3d8_bind_epoch;
+        g_nv2aff_bound_mode = 1;
     }
     return 1;
 }

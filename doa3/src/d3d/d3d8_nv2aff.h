@@ -64,5 +64,11 @@ long d3d8_Nv2aFF_Init(void);
 void d3d8_Nv2aFF_Shutdown(void);
 int  d3d8_Nv2aFF_Available(void);   /* the GPU vertex path could be built */
 int  d3d8_Nv2aFF_Bind(const Nv2aFFConstants *cb);
+/* 0.0.191: the same VS reading its constants from the vertex ring (one Map
+ * per draw); bind it with the ring's raw view at VS t0. The pointer type is
+ * opaque here (ID3D11ShaderResourceView *). */
+int  d3d8_Nv2aFF_RawAvailable(void);
+struct ID3D11ShaderResourceView;
+int  d3d8_Nv2aFF_BindRaw(struct ID3D11ShaderResourceView *ring_srv);
 
 #endif

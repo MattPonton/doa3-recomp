@@ -1387,6 +1387,22 @@ static unsigned *prof_slot(uint32_t rva, unsigned *tbl)
     return NULL;
 }
 
+/* Samples outside the exe, by module (driver, d3d11, ntdll, ...). */
+static HMODULE s_prof_mod[32];
+static unsigned s_prof_modn[32];
+static void prof_mod_add(DWORD64 pc)
+{
+    HMODULE m = NULL;
+    int i;
+    if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                            (LPCSTR)(uintptr_t)pc, &m))
+        m = NULL;
+    for (i = 0; i < 32; i++) {
+        if (s_prof_mod[i] == m && s_prof_modn[i]) { s_prof_modn[i]++; return; }
+        if (!s_prof_modn[i]) { s_prof_mod[i] = m; s_prof_modn[i] = 1; return; }
+    }
+}
+
 static void prof_report(unsigned total, unsigned unknown)
 {
     static int s_reports;
@@ -1419,6 +1435,18 @@ static void prof_report(unsigned total, unsigned unknown)
             fprintf(stderr, "[PROF] hot   %5.1f%% rva %08X\n", 100.0 * best / total, s_prof_hkey[bi]);
             s_prof_hot[bi] = 0;
         }
+    }
+    {   int i;
+        for (i = 0; i < 32 && s_prof_modn[i]; i++) {
+            char name[MAX_PATH] = "?";
+            const char *b;
+            if (s_prof_mod[i]) GetModuleFileNameA(s_prof_mod[i], name, sizeof name);
+            b = strrchr(name, '\\'); b = b ? b + 1 : name;
+            if (s_prof_modn[i] * 200u >= total)
+                fprintf(stderr, "[PROF] module %5.1f%% %s\n", 100.0 * s_prof_modn[i] / total, b);
+        }
+        memset(s_prof_mod, 0, sizeof s_prof_mod);
+        memset(s_prof_modn, 0, sizeof s_prof_modn);
     }
     memset(s_prof_hkey, 0, sizeof s_prof_hkey);
     memset(s_prof_hot, 0, sizeof s_prof_hot);
@@ -1476,7 +1504,10 @@ static DWORD WINAPI diag_sampler(LPVOID p)
                 unsigned *slot;
                 if (fn && img == base) rva = fn->BeginAddress;
                 else if (pcs[d] >= base && pcs[d] - base < 0x10000000u) rva = (uint32_t)(pcs[d] - base) | 1u;
-                else { if (d == 0) unknown++; continue; }   /* system DLL */
+                else {                                      /* system DLL */
+                    if (d == 0) { unknown++; prof_mod_add(pcs[0]); }
+                    continue;
+                }
                 if (d == 0 && (slot = prof_slot(rva, s_prof_self))) (*slot)++;
                 if (d == 0) prof_hot_add((uint32_t)(pcs[0] - base));
                 for (k = 0; k < d; k++) {                   /* recursion: count once */

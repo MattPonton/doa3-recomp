@@ -22,6 +22,17 @@
 static D3D8SrvBindings g_srv_bindings;
 static ID3D11Buffer *g_nv2aff_ring;   /* NV2A FF vertices + indices, see d3d8_DrawNv2aFF */
 static UINT          g_nv2aff_ring_off;
+/* 0.0.191: the ring also carries each draw's Nv2aFFConstants, read by the
+ * VS through a raw view; an identity buffer at IA slot 1 turns the draw's
+ * StartInstanceLocation into the constants' 64-byte slot (CBIDX). */
+static ID3D11ShaderResourceView *g_nv2aff_ring_srv;
+static ID3D11Buffer *g_nv2aff_slot_ids;
+static unsigned      g_nv2aff_ring_gen;     /* bumped whenever the ring is discarded */
+static unsigned      g_nv2aff_cb_gen;       /* ring generation of the last constants */
+static UINT          g_nv2aff_cb_slot;
+static Nv2aFFConstants g_nv2aff_cb_prev;
+static int           g_nv2aff_raw = -1;     /* -1 undecided, 0 off, 1 on */
+static int           g_nv2aff_ring_fresh;   /* created, never mapped: first map discards */
 /* What the last NV2A draw left in the input assembler, see d3d8_DrawNv2aFF. */
 static ID3D11Buffer *g_nv2aff_ia_ring;
 static unsigned      g_nv2aff_ia_epoch;
@@ -516,6 +527,9 @@ static ULONG __stdcall dev_Release(IDirect3DDevice8 *self)
     if (ref <= 0) {
         /* Cleanup subsystems first */
         up_ring_shutdown();
+        if (g_nv2aff_ring_srv) { ID3D11ShaderResourceView_Release(g_nv2aff_ring_srv); g_nv2aff_ring_srv = NULL; }
+        if (g_nv2aff_slot_ids) { ID3D11Buffer_Release(g_nv2aff_slot_ids); g_nv2aff_slot_ids = NULL; }
+        g_nv2aff_raw = -1;
         if (g_nv2aff_ring) { ID3D11Buffer_Release(g_nv2aff_ring); g_nv2aff_ring = NULL; g_nv2aff_ring_off = 0; }
         g_nv2aff_ia_ring = NULL;
         d3d8_Nv2aFF_Shutdown();
@@ -2222,45 +2236,130 @@ static void d3d8_probe_end(ID3D11Query *q)
  * rebinding the buffers at a new offset. Vertices start on a multiple of
  * the vertex size for that. NO_OVERWRITE appends; a full ring starts over
  * with DISCARD. Returns 0 on failure. */
+#define NV2AFF_CB_SLOT 64u              /* bytes per CBIDX step */
+#define NV2AFF_SLOTS (NV2AFF_RING_SIZE / NV2AFF_CB_SLOT)
+
+/* Create the ring (and, when the ring-constants VS exists, its raw view and
+ * the slot-id buffer). Decides g_nv2aff_raw once. */
+static int nv2aff_ring_create(void)
+{
+    D3D11_BUFFER_DESC bd;
+    if (g_nv2aff_raw < 0) g_nv2aff_raw = d3d8_Nv2aFF_RawAvailable() ? 1 : 0;
+    memset(&bd, 0, sizeof bd);
+    bd.ByteWidth = NV2AFF_RING_SIZE;
+    bd.Usage = D3D11_USAGE_DYNAMIC;
+    bd.BindFlags = D3D11_BIND_VERTEX_BUFFER | D3D11_BIND_INDEX_BUFFER |
+                   (g_nv2aff_raw ? D3D11_BIND_SHADER_RESOURCE : 0);
+    bd.MiscFlags = g_nv2aff_raw ? D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS : 0;
+    bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    if (g_nv2aff_raw && FAILED(ID3D11Device_CreateBuffer(g_device_state.d3d11_device, &bd, NULL, &g_nv2aff_ring))) {
+        g_nv2aff_ring = NULL;
+        g_nv2aff_raw = 0;                        /* plain ring, constant buffer per draw */
+        bd.BindFlags = D3D11_BIND_VERTEX_BUFFER | D3D11_BIND_INDEX_BUFFER;
+        bd.MiscFlags = 0;
+    }
+    if (!g_nv2aff_ring &&
+        FAILED(ID3D11Device_CreateBuffer(g_device_state.d3d11_device, &bd, NULL, &g_nv2aff_ring))) {
+        g_nv2aff_ring = NULL;
+        return 0;
+    }
+    if (g_nv2aff_raw) {
+        D3D11_SHADER_RESOURCE_VIEW_DESC sd;
+        memset(&sd, 0, sizeof sd);
+        sd.Format = DXGI_FORMAT_R32_TYPELESS;
+        sd.ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX;
+        sd.BufferEx.FirstElement = 0;
+        sd.BufferEx.NumElements = NV2AFF_RING_SIZE / 4;
+        sd.BufferEx.Flags = D3D11_BUFFEREX_SRV_FLAG_RAW;
+        if (FAILED(ID3D11Device_CreateShaderResourceView(g_device_state.d3d11_device,
+                (ID3D11Resource *)g_nv2aff_ring, &sd, &g_nv2aff_ring_srv)))
+            g_nv2aff_ring_srv = NULL;
+        if (g_nv2aff_ring_srv && !g_nv2aff_slot_ids) {
+            UINT *ids = (UINT *)malloc(NV2AFF_SLOTS * sizeof(UINT));
+            D3D11_SUBRESOURCE_DATA init;
+            UINT k;
+            if (ids) {
+                for (k = 0; k < NV2AFF_SLOTS; k++) ids[k] = k;
+                memset(&bd, 0, sizeof bd);
+                bd.ByteWidth = NV2AFF_SLOTS * sizeof(UINT);
+                bd.Usage = D3D11_USAGE_IMMUTABLE;
+                bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+                init.pSysMem = ids; init.SysMemPitch = 0; init.SysMemSlicePitch = 0;
+                if (FAILED(ID3D11Device_CreateBuffer(g_device_state.d3d11_device, &bd, &init, &g_nv2aff_slot_ids)))
+                    g_nv2aff_slot_ids = NULL;
+                free(ids);
+            }
+        }
+        if (!g_nv2aff_ring_srv || !g_nv2aff_slot_ids) {
+            if (g_nv2aff_ring_srv) { ID3D11ShaderResourceView_Release(g_nv2aff_ring_srv); g_nv2aff_ring_srv = NULL; }
+            g_nv2aff_raw = 0;                    /* the ring still works as VB/IB */
+        }
+        fprintf(stderr, "[NV2AFF] draw constants %s\n",
+                g_nv2aff_raw ? "in the vertex ring (one map per draw)" : "in a constant buffer per draw");
+    }
+    g_nv2aff_ring_off = 0;
+    g_nv2aff_ring_gen++;
+    g_nv2aff_ring_fresh = 1;
+    return 1;
+}
+
+/* One ring holds both a draw's vertices and its indices (a D3D11 buffer may
+ * be a vertex and an index buffer at once), so a draw costs one Map instead
+ * of two, and the ring stays bound at offset 0: each draw addresses its data
+ * through DrawIndexed's first-index and base-vertex arguments instead of
+ * rebinding the buffers at a new offset. Vertices start on a multiple of
+ * the vertex size for that. NO_OVERWRITE appends; a full ring starts over
+ * with DISCARD. With `cb` (0.0.191) the draw's constants go in the same Map,
+ * on a 64-byte boundary, unless the ring still holds identical ones since
+ * the last discard; *cb_slot is their slot. Returns 0 on failure. */
 static int nv2aff_ring_upload(const void *verts, UINT vsize, UINT stride,
-                              const void *idx, UINT isize,
-                              ID3D11Buffer **ring, UINT *base_vertex, UINT *first_index)
+                              const void *idx, UINT isize, const Nv2aFFConstants *cb,
+                              ID3D11Buffer **ring, UINT *base_vertex, UINT *first_index,
+                              UINT *cb_slot)
 {
     D3D11_MAPPED_SUBRESOURCE mapped;
     D3D11_MAP map_type = D3D11_MAP_WRITE_NO_OVERWRITE;
-    UINT voff, ioff;
-    if (!g_nv2aff_ring) {
-        D3D11_BUFFER_DESC bd;
-        memset(&bd, 0, sizeof bd);
-        bd.ByteWidth = NV2AFF_RING_SIZE;
-        bd.Usage = D3D11_USAGE_DYNAMIC;
-        bd.BindFlags = D3D11_BIND_VERTEX_BUFFER | D3D11_BIND_INDEX_BUFFER;
-        bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-        if (FAILED(ID3D11Device_CreateBuffer(g_device_state.d3d11_device, &bd, NULL, &g_nv2aff_ring))) {
-            g_nv2aff_ring = NULL;
-            return 0;
-        }
-        g_nv2aff_ring_off = 0;
-        map_type = D3D11_MAP_WRITE_DISCARD;
+    UINT voff, ioff, coff = 0, csize = 0, end;
+    int write_cb = 0;
+    if (!g_nv2aff_ring && !nv2aff_ring_create()) return 0;
+    if (g_nv2aff_ring_fresh) { map_type = D3D11_MAP_WRITE_DISCARD; g_nv2aff_ring_fresh = 0; }
+    if (cb) {
+        write_cb = !(g_nv2aff_cb_gen == g_nv2aff_ring_gen && !memcmp(cb, &g_nv2aff_cb_prev, sizeof *cb));
+        csize = write_cb ? (UINT)sizeof *cb : 0;
     }
-    if (vsize + isize + stride + 16 > NV2AFF_RING_SIZE) return 0;
-    voff = (g_nv2aff_ring_off + stride - 1) / stride * stride;
-    ioff = (voff + vsize + 3) & ~3u;
-    if (ioff + isize > NV2AFF_RING_SIZE) {
-        voff = 0;
-        ioff = (vsize + 3) & ~3u;
+    if (vsize + isize + csize + stride + NV2AFF_CB_SLOT + 16 > NV2AFF_RING_SIZE) return 0;
+    for (;;) {
+        voff = (g_nv2aff_ring_off + stride - 1) / stride * stride;
+        ioff = (voff + vsize + 3) & ~3u;
+        end = ioff + isize;
+        if (write_cb) {
+            coff = (end + NV2AFF_CB_SLOT - 1) & ~(NV2AFF_CB_SLOT - 1);
+            end = coff + csize;
+        }
+        if (end <= NV2AFF_RING_SIZE) break;
+        /* Full: start over. Constants written before the discard are gone. */
+        g_nv2aff_ring_off = 0;
+        g_nv2aff_ring_gen++;
         map_type = D3D11_MAP_WRITE_DISCARD;
+        if (cb && !write_cb) { write_cb = 1; csize = (UINT)sizeof *cb; }
     }
     if (FAILED(ID3D11DeviceContext_Map(g_device_state.d3d11_context,
             (ID3D11Resource *)g_nv2aff_ring, 0, map_type, 0, &mapped)))
         return 0;
     memcpy((BYTE *)mapped.pData + voff, verts, vsize);
     memcpy((BYTE *)mapped.pData + ioff, idx, isize);
+    if (write_cb) memcpy((BYTE *)mapped.pData + coff, cb, csize);
     ID3D11DeviceContext_Unmap(g_device_state.d3d11_context, (ID3D11Resource *)g_nv2aff_ring, 0);
-    g_nv2aff_ring_off = ioff + isize;
+    g_nv2aff_ring_off = end;
+    if (write_cb) {
+        g_nv2aff_cb_slot = coff / NV2AFF_CB_SLOT;
+        g_nv2aff_cb_gen = g_nv2aff_ring_gen;
+        memcpy(&g_nv2aff_cb_prev, cb, sizeof *cb);
+    }
     *ring = g_nv2aff_ring;
     *base_vertex = voff / stride;
     *first_index = ioff / 2;
+    if (cb_slot) *cb_slot = g_nv2aff_cb_slot;
     return 1;
 }
 
@@ -2268,13 +2367,16 @@ long d3d8_DrawNv2aFF(const Nv2aFFVertex *verts, unsigned nverts,
                      const uint16_t *idx, unsigned nidx, int topology,
                      const Nv2aFFConstants *cb)
 {
-    UINT stride = sizeof(Nv2aFFVertex), zero = 0, base_vertex, first_index;
+    UINT stride = sizeof(Nv2aFFVertex), zero = 0, base_vertex, first_index, cb_slot = 0;
     ID3D11Buffer *ring;
+    int raw;
     if (!verts || !idx || !nverts || !nidx) return E_INVALIDARG;
     g_d3d_draw_count++; if (g_off_active) g_d3d_draw_off++;
 
-    if (!nv2aff_ring_upload(verts, nverts * stride, stride, idx, nidx * 2,
-                            &ring, &base_vertex, &first_index))
+    if (g_nv2aff_raw < 0 && !g_nv2aff_ring && !nv2aff_ring_create()) return E_OUTOFMEMORY;
+    raw = g_nv2aff_raw == 1;
+    if (!nv2aff_ring_upload(verts, nverts * stride, stride, idx, nidx * 2, raw ? cb : NULL,
+                            &ring, &base_vertex, &first_index, &cb_slot))
         return E_OUTOFMEMORY;
 
     /* The combiner supplies PS b0; Nv2aFF_Bind supplies the VS, layout and
@@ -2284,12 +2386,16 @@ long d3d8_DrawNv2aFF(const Nv2aFFVertex *verts, unsigned nverts,
     if (!d3d8_combiners_prepare_draw())
         d3d8_shaders_prepare_draw(D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
     d3d8_states_apply();
-    if (!d3d8_Nv2aFF_Bind(cb)) return E_FAIL;
+    if (raw ? !d3d8_Nv2aFF_BindRaw(g_nv2aff_ring_srv) : !d3d8_Nv2aFF_Bind(cb)) return E_FAIL;
 
     /* Rebind the ring only when something else bound its own buffers since
      * (see d3d8_BindInvalidate) or the ring was recreated. */
     if (ring != g_nv2aff_ia_ring || g_nv2aff_ia_epoch != g_d3d8_bind_epoch) {
         ID3D11DeviceContext_IASetVertexBuffers(g_device_state.d3d11_context, 0, 1, &ring, &stride, &zero);
+        if (raw) {
+            UINT id_stride = sizeof(UINT);
+            ID3D11DeviceContext_IASetVertexBuffers(g_device_state.d3d11_context, 1, 1, &g_nv2aff_slot_ids, &id_stride, &zero);
+        }
         ID3D11DeviceContext_IASetIndexBuffer(g_device_state.d3d11_context, ring, DXGI_FORMAT_R16_UINT, 0);
         ID3D11DeviceContext_IASetPrimitiveTopology(g_device_state.d3d11_context, (D3D11_PRIMITIVE_TOPOLOGY)topology);
         g_nv2aff_ia_ring = ring;
@@ -2300,7 +2406,11 @@ long d3d8_DrawNv2aFF(const Nv2aFFVertex *verts, unsigned nverts,
         g_nv2aff_ia_topology = topology;
     }
     {   ID3D11Query *probe = d3d8_probe_begin();   /* method traces only */
-        ID3D11DeviceContext_DrawIndexed(g_device_state.d3d11_context, nidx, first_index, (INT)base_vertex);
+        if (raw)   /* StartInstanceLocation selects the constants' slot (CBIDX) */
+            ID3D11DeviceContext_DrawIndexedInstanced(g_device_state.d3d11_context, nidx, 1, first_index,
+                                                     (INT)base_vertex, cb_slot);
+        else
+            ID3D11DeviceContext_DrawIndexed(g_device_state.d3d11_context, nidx, first_index, (INT)base_vertex);
         d3d8_probe_end(probe);
     }
 
