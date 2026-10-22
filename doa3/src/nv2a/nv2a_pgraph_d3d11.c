@@ -4860,7 +4860,14 @@ enum {
               MF_SPEC_EN | MF_NORM_EN | MF_SCENE_AMB | MF_EMISSION | MF_MAT_ALPHA |
               MF_SPEC_PARAM | MF_COMPOSITE
 };
-typedef struct { uint32_t mask; int8_t cslot; } NvMethodEntry;
+typedef struct {
+    uint32_t mask; int8_t cslot;
+    /* Fast path (pgraph_d3d11_method_run): methods whose whole effect is one
+     * float store (plus the transform-constant mirror) or an inline-data
+     * append. fast: 0 none, 1 float store, 2 inline array. */
+    uint8_t  fast, fret, fseen;
+    float   *fdst, *cdst;
+} NvMethodEntry;
 static NvMethodEntry s_mtab[0x800];
 static int s_mtab_ready;
 
@@ -4940,6 +4947,39 @@ static void nv_mtab_init(void)
         if (nv_method_silent(method)) f |= MF_SILENT;
         e->mask = f;
         e->cslot = (int8_t)slot;
+
+        /* The same effects as the general path below, for the methods the
+         * game streams by the tens of thousands a frame. */
+        e->fast = 0; e->fdst = e->cdst = NULL; e->fret = 1; e->fseen = 0;
+        {   uint32_t g = f & ~(uint32_t)MF_SILENT;
+            if (g == MF_LIGHT_REG) {
+                int li = (method - 0x1000) / 0x80, o = (method - 0x1000) % 0x80;
+                float *d = NULL;
+                if      (o < 0x0C) d = &g_pg.light[li].amb[o / 4];
+                else if (o < 0x18) d = &g_pg.light[li].dif[(o - 0x0C) / 4];
+                else if (o < 0x24) d = &g_pg.light[li].spec[(o - 0x18) / 4];
+                else if (o < 0x28) d = &g_pg.light[li].range;
+                else if (o < 0x34) d = &g_pg.light[li].half[(o - 0x28) / 4];
+                else if (o < 0x40) d = &g_pg.light[li].dir[(o - 0x34) / 4];
+                else if (o < 0x4C) d = &g_pg.light[li].spot_fall[(o - 0x40) / 4];
+                else if (o < 0x5C) d = &g_pg.light[li].spot_dir[(o - 0x4C) / 4];
+                else if (o < 0x68) d = &g_pg.light[li].pos[(o - 0x5C) / 4];
+                else if (o < 0x74) d = &g_pg.light[li].att[(o - 0x68) / 4];
+                if (d) {
+                    e->fast = 1; e->fdst = d;
+                    e->fret = (f & MF_SILENT) ? 1 : 0;   /* then the switch default */
+                }
+            } else if (g == MF_MV || g == (MF_MV | MF_CONST)) {
+                extern float g_mv[16];
+                e->fast = 1; e->fdst = &g_mv[(method - 0x0480) / 4];
+            } else if (g == MF_COMPOSITE || g == (MF_COMPOSITE | MF_CONST)) {
+                e->fast = 1; e->fdst = &g_pg.composite[(method - 0x0680) / 4]; e->fseen = 1;
+            } else if (g == 0 && method == NV097_INLINE_ARRAY) {
+                e->fast = 2;
+            }
+            if (e->fast == 1 && (f & MF_CONST))
+                e->cdst = &g_pg.vp.consts[slot][(method / 4) & 3];
+        }
     }
     s_mtab_ready = 1;
 }
@@ -5522,6 +5562,44 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
 }
 
 uint32_t g_mhist[0x800];
+
+/* A run of methods from one pushbuffer packet (incr: increasing method
+ * addresses, else the same method count times). Identical to calling
+ * pgraph_d3d11_method for each dword; the light, matrix and inline-data
+ * methods that make up most of a frame skip the general dispatch. */
+void pgraph_d3d11_method_run(int subchannel, uint32_t method, const uint32_t *params,
+                             uint32_t count, int incr)
+{
+    uint32_t i;
+    if (!s_mtab_ready) nv_mtab_init();
+    for (i = 0; i < count; i++) {
+        uint32_t m = incr ? method + i * 4 : method, param = params[i];
+        if (!g_doa3_mtrace && g_pg.initialized && m < 0x2000) {
+            const NvMethodEntry *me = &s_mtab[m >> 2];
+            if (me->fast == 1) {
+                float fl = u2f(param);
+                g_nvreg[m >> 2] = param;
+                if (me->cdst) *me->cdst = fl;
+                g_pg.stats.methods_handled++;
+                g_mhist[m >> 2]++;
+                *me->fdst = fl;
+                if (me->fseen) g_pg.composite_seen = 1;
+                if (!me->fret) g_pg.stats.methods_ignored++;
+                continue;
+            }
+            if (me->fast == 2) {
+                g_nvreg[m >> 2] = param;
+                g_pg.stats.methods_handled++;
+                g_mhist[m >> 2]++;
+                if (g_pg.in_draw && g_pg.inline_count < MAX_INLINE_VERTS * INLINE_VERT_DWORDS)
+                    g_pg.inline_data[g_pg.inline_count++] = param;
+                continue;
+            }
+        }
+        pgraph_d3d11_method(subchannel, m, param);
+    }
+}
+
 void pgraph_diag_dump_ignored(void)
 {
     extern uint32_t g_dstat[16][3];

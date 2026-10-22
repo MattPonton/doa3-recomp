@@ -890,6 +890,8 @@ int g_fn_trace_on = -1;   /* DOA3_TRACE_FN, see doa3_fn_trace */
  * (reference/recomp_manual_30.c). */
 #if defined(DOA3_XBE_ID_JAPAN)
 extern int  pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param);
+extern void pgraph_d3d11_method_run(int subchannel, uint32_t method, const uint32_t *params,
+                                    uint32_t count, int incr);
 static uint32_t s_pb4134_parsed;
 
 static int s_pb4134_flip;     /* a FLIP_STALL went by: the frame is complete */
@@ -957,12 +959,13 @@ static void pb4134_translate_span(uint32_t from, uint32_t to, int translate, uin
                 uint32_t sub = (word >> 13) & 7, i;
                 if (count == 0) continue;
                 if (!in_call && pos + count * 4 > to) break;
-                for (i = 0; i < count; i++) {
-                    uint32_t param = MEM32(pos); pos += 4;
-                    uint32_t m = kind == 0 ? method + i * 4 : method;
-                    if (m == 0x130) s_pb4134_flip = 1;   /* NV097_FLIP_STALL, end of D3DDevice_Swap */
-                    if (translate) pgraph_d3d11_method((int)sub, m, param);
-                }
+                /* NV097_FLIP_STALL, end of D3DDevice_Swap */
+                if (kind == 0 ? (method <= 0x130 && 0x130 <= method + (count - 1) * 4) : method == 0x130)
+                    s_pb4134_flip = 1;
+                if (translate)
+                    pgraph_d3d11_method_run((int)sub, method, (const uint32_t *)XBOX_PTR(pos), count, kind == 0);
+                pos += count * 4;
+                (void)i;
             } else {
                 s_pb_ctl[3]++;                       /* unknown control word */
             }

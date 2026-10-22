@@ -213,15 +213,22 @@ static __forceinline uint32_t native_to_xbox_va(uint32_t val)
  * ops share one representation without type-punning through pointers. */
 typedef union { uint32_t u[4]; float f[4]; } xmm128_t;
 
+/* A 16-byte operand is contiguous in the flat mapping, so its address is
+ * resolved once rather than per dword. Loads are a plain 16-byte copy (one
+ * unaligned vector load) instead of four volatile dword reads: they only
+ * ever read ordinary guest RAM (the XDK maths routines are the users), and
+ * the volatile reads kept the compiler from combining them -- the 4x4
+ * matrix multiply (sub_001E1C70) measured 2.6x faster this way. Stores stay
+ * volatile, so their order against the other guest-memory writes around
+ * them is unchanged. */
 static __forceinline xmm128_t xmm_load(uint32_t a) {
     xmm128_t r;
-    r.u[0] = MEM32(a); r.u[1] = MEM32(a + 4);
-    r.u[2] = MEM32(a + 8); r.u[3] = MEM32(a + 12);
+    memcpy(&r, (const void *)XBOX_PTR(a), 16);
     return r;
 }
 static __forceinline void xmm_store(uint32_t a, xmm128_t v) {
-    MEM32(a) = v.u[0]; MEM32(a + 4) = v.u[1];
-    MEM32(a + 8) = v.u[2]; MEM32(a + 12) = v.u[3];
+    volatile uint32_t *p = (volatile uint32_t *)XBOX_PTR(a);
+    p[0] = v.u[0]; p[1] = v.u[1]; p[2] = v.u[2]; p[3] = v.u[3];
 }
 static __forceinline xmm128_t xmm_zero(void) {
     xmm128_t r; r.u[0] = r.u[1] = r.u[2] = r.u[3] = 0; return r;

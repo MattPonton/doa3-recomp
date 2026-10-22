@@ -3240,3 +3240,30 @@ total (functions on the stack) lines, with RVAs that resolve against
 DOA3.map from the same build. It replaces the old fixed 45 s + 90 s,
 256-byte-bucket sampler. Opt-in, because it stops the thread a thousand
 times a second.
+
+## 0.0.188 - the profiler's first targets
+
+Puppy's 0.0.187 [PROF] log on the ~3,100-draw stage (~44 fps), resolved
+against DOA3.map, share of the frame thread's samples:
+
+- 13.5% pgraph_d3d11_method itself: per-method dispatch, called for every
+  dword of the pushbuffer -- in the Ice Cave trace 30% of all methods are
+  light registers (64 a draw) and 33% inline vertex data.
+- 9.1% + 4.3% sub_001E1C70 and sub_00190064: the XDK's SSE 4x4 matrix
+  multiply (two copies), run tens of thousands of times a frame.
+- 6.0% sub_001E1F50: the XDK's x87 matrix inverse (not changed here).
+- 4.6% + 2.2% nv_gpu_ff_submit, and ~14% inside system DLLs (D3D11 and
+  the driver).
+
+Changes:
+- xmm_load (every movaps/movups/mulps-from-memory in the recompiled code)
+  resolves its address once and reads the 16 bytes as one copy instead of
+  four volatile dword reads; stores stay volatile. Same values, so the
+  results are unchanged; the matrix multiply is 2.6x faster in a
+  standalone test.
+- The pushbuffer walker hands each packet to pgraph_d3d11_method_run,
+  which applies light registers, the model-view and composite matrices
+  (with their transform-constant mirror) and inline vertex data directly
+  -- the same stores, shadow register, counters and return value as the
+  general dispatch -- and sends every other method through
+  pgraph_d3d11_method as before. Method tracing still goes the general way.
