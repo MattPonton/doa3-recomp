@@ -3425,3 +3425,12 @@ With DOA3_ASYNC_GPU=1 (DOA3_ASYNC.bat):
   the screen and in netplay; switching drains the queue first. [ASYNC]
   lines: when it takes over, and every 5 s the render thread's busy time
   per frame.
+
+## 0.0.196 - the asynchronous GPU thread actually switches on
+
+Puppy's 0.0.195 run with DOA3_ASYNC_GPU=1: "[ASYNC] ... on", but every
+5-second line said "inactive" and the frames were the synchronous ones
+(18.5 ms). The switch waited for g_doa3_post_movie, which only the USA
+build's movie presenter sets. It now takes over after the first 600
+frames (boot stays synchronous) whenever no movie owns the screen and
+netplay is off.

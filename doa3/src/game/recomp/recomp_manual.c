@@ -1099,7 +1099,11 @@ static int pb_async_wanted(void)
             fprintf(stderr, "[ASYNC] GPU commands on a render thread: %s\n", s_async_on ? "on" : "failed, off");
         }
     }
-    return s_async_on && g_doa3_post_movie && !doa3_movie_host_owns_screen() && !netplay_active();
+    /* Not g_doa3_post_movie: only the USA build ever sets it (0.0.195 never
+     * switched on). Ten seconds of frames keeps boot synchronous; a movie
+     * owning the screen or netplay switches back. */
+    (void)g_doa3_post_movie;
+    return s_async_on && g_doa3_frames_presented > 600 && !doa3_movie_host_owns_screen() && !netplay_active();
 }
 
 /* Game thread: wait for the render thread, keeping the window alive. */
@@ -1631,7 +1635,7 @@ kick_diag:
                 if (frames)
                     fprintf(stderr, "[ASYNC] last 5 s: render thread busy %.2f ms per frame, %s\n",
                             (double)g_doa3_rthread_busy * 1e3 / (double)f.QuadPart / frames,
-                            s_async_active ? "active" : "inactive (movie / netplay / boot)");
+                            s_async_active ? "active" : "inactive (boot, a movie or netplay)");
                 g_doa3_rthread_busy = 0;
                 s_rt_frames_at = g_doa3_frames_presented;
             }
