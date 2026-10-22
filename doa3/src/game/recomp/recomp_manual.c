@@ -1395,7 +1395,7 @@ void sub_001E27C0(void)
                     g_doa3_frames_presented, g_doa3_drop[2], g_doa3_drop[0], g_doa3_drop[3], g_doa3_drop[1]);
             {   /* per-draw cost of the GPU fixed-function path (timing on only) */
                 extern LONGLONG g_doa3_dt[6];
-                extern unsigned g_doa3_dt_n;
+                extern unsigned g_doa3_dt_n, g_doa3_dt_all;
                 static unsigned s_frames_at;
                 if (g_doa3_dt_n) {
                     LARGE_INTEGER f; double us, tot = 0; int k;
@@ -1405,12 +1405,12 @@ void sub_001E27C0(void)
                     for (k = 0; k < 6; k++) tot += (double)g_doa3_dt[k];
                     fprintf(stderr, "[DRAWTIME] last 5 s: %u GPU draws (%.0f per frame), us per draw: fetch %.2f state %.2f "
                             "constants %.2f combiners %.2f d3d-draw %.2f cleanup %.2f total %.2f (%.2f ms per frame)\n",
-                            g_doa3_dt_n, frames ? (double)g_doa3_dt_n / frames : 0.0,
+                            g_doa3_dt_all, frames ? (double)g_doa3_dt_all / frames : 0.0,
                             g_doa3_dt[0] * us, g_doa3_dt[1] * us, g_doa3_dt[2] * us, g_doa3_dt[3] * us,
                             g_doa3_dt[4] * us, g_doa3_dt[5] * us, tot * us,
-                            frames ? tot * us * g_doa3_dt_n / frames / 1000.0 : 0.0);
+                            frames ? tot * us * g_doa3_dt_all / frames / 1000.0 : 0.0);
                     for (k = 0; k < 6; k++) g_doa3_dt[k] = 0;
-                    g_doa3_dt_n = 0;
+                    g_doa3_dt_n = 0; g_doa3_dt_all = 0;
                 }
                 {   /* where the rest of the draw time goes */
                     extern LONGLONG g_doa3_kt[6], g_doa3_vpt[3];

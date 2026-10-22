@@ -3520,7 +3520,8 @@ static __inline uint32_t nv_attr_color(const NvAttrReader *r, uint32_t index, ui
  * 0.0.185): QPC ticks per phase, summed over successful draws and
  * reported every 5 s as [DRAWTIME] by recomp_manual.c. */
 LONGLONG g_doa3_dt[6];       /* fetch, state, constants, combiners, d3d draw, cleanup */
-unsigned g_doa3_dt_n;
+unsigned g_doa3_dt_n;        /* timed draws (one in 16, 0.0.192) */
+unsigned g_doa3_dt_all;      /* every GPU-path draw */
 static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int prim, int is_quads)
 {
     uint32_t n = g_pg.idx_count, i, lo = 0, nv = 0, ni = 0, need_idx;
@@ -3536,7 +3537,11 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
 
     /* Always timed (0.0.185): six QPC reads per GPU draw, so every log has
      * the 5-second [DRAWTIME] split next to [PERF-5S]. */
-    LONGLONG dt0 = doa3_perf_now(), dt1 = 0, dt2 = 0, dt3 = 0, dt4 = 0, dt5 = 0;
+    /* 0.0.192: one draw in 16 is timed -- at ~3,000 draws a frame the seven
+     * QPC reads per draw cost more than half a millisecond (the profile put
+     * ~6.6% of the frame in ntdll). The averages are unchanged. */
+    static unsigned s_dt_tick;
+    LONGLONG dt0 = ((++s_dt_tick & 15u) == 0) ? doa3_perf_now() : 0, dt1 = 0, dt2 = 0, dt3 = 0, dt4 = 0, dt5 = 0;
     if (ctx->run_program || !g_pg.composite_seen || s_flip || !d3d8_Nv2aFF_Available()) return 0;
     if (prim != D3DPT_TRIANGLELIST && prim != D3DPT_TRIANGLESTRIP && prim != D3DPT_TRIANGLEFAN) return 0;
     if (g_pg.tex[0].offset && nv_samples_framebuffer(g_pg.tex[0].offset)) return 0;
@@ -3884,6 +3889,7 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
             if (bound_mask & (1u << st)) dev->lpVtbl->SetTexture(dev, st, NULL);
     }
     g_gpuff_stat[0]++;
+    g_doa3_dt_all++;
     g_gpuff_stat[2] += nv;
     g_pg.stats.draw_calls++;
     g_pg.stats.vertices_submitted += ni;
@@ -4227,13 +4233,16 @@ LONGLONG g_doa3_kt[6];
 static void submit_draw_inner(void);
 static void submit_draw(void)
 {
-    LONGLONG t0 = doa3_perf_now();
+    /* One draw in 16 is timed (0.0.192), and counts for 16. */
+    static unsigned s_kt_tick;
+    int timed = (++s_kt_tick & 15u) == 0;
+    LONGLONG t0 = timed ? doa3_perf_now() : 0;
     int kind = g_pg.idx_count >= 3 ? 0 : 2;
     s_cpu_array_draw = 0;
     submit_draw_inner();
     if (kind == 0 && s_cpu_array_draw) kind = 1;
     s_vppre.active = 0;
-    g_doa3_kt[kind] += doa3_perf_now() - t0;
+    if (timed) g_doa3_kt[kind] += (doa3_perf_now() - t0) * 16;
     g_doa3_kt[3 + kind]++;
 }
 

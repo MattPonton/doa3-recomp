@@ -1390,6 +1390,18 @@ static unsigned *prof_slot(uint32_t rva, unsigned *tbl)
 /* Samples outside the exe, by module (driver, d3d11, ntdll, ...). */
 static HMODULE s_prof_mod[32];
 static unsigned s_prof_modn[32];
+/* For samples outside the exe: the exe function that called out. */
+static uint32_t s_prof_ockey[256];
+static unsigned s_prof_ocn[256];
+static void prof_oc_add(uint32_t rva)
+{
+    int i;
+    for (i = 0; i < 256; i++) {
+        if (s_prof_ocn[i] && s_prof_ockey[i] == rva) { s_prof_ocn[i]++; return; }
+        if (!s_prof_ocn[i]) { s_prof_ockey[i] = rva; s_prof_ocn[i] = 1; return; }
+    }
+}
+
 static void prof_mod_add(DWORD64 pc)
 {
     HMODULE m = NULL;
@@ -1448,6 +1460,16 @@ static void prof_report(unsigned total, unsigned unknown)
         memset(s_prof_mod, 0, sizeof s_prof_mod);
         memset(s_prof_modn, 0, sizeof s_prof_modn);
     }
+    {   int rank;
+        for (rank = 0; rank < 15; rank++) {
+            unsigned best = 0, bi = 0, i;
+            for (i = 0; i < 256; i++) if (s_prof_ocn[i] > best) { best = s_prof_ocn[i]; bi = i; }
+            if (!best || best * 500u < total) break;
+            fprintf(stderr, "[PROF] calls-out %5.1f%% rva %08X\n", 100.0 * best / total, s_prof_ockey[bi]);
+            s_prof_ocn[bi] = 0;
+        }
+        memset(s_prof_ocn, 0, sizeof s_prof_ocn);
+    }
     memset(s_prof_hkey, 0, sizeof s_prof_hkey);
     memset(s_prof_hot, 0, sizeof s_prof_hot);
     memset(s_prof_key, 0, sizeof s_prof_key);
@@ -1497,6 +1519,14 @@ static DWORD WINAPI diag_sampler(LPVOID p)
 
         if (depth) {
             total++;
+            /* Outside the exe: charge the first exe function on the stack. */
+            if (!(pcs[0] >= base && pcs[0] - base < 0x10000000u)) {
+                for (d = 1; d < depth; d++) {
+                    DWORD64 img = 0;
+                    PRUNTIME_FUNCTION fn = (pcs[d] >= base) ? RtlLookupFunctionEntry(pcs[d], &img, NULL) : NULL;
+                    if (fn && img == base) { prof_oc_add(fn->BeginAddress); break; }
+                }
+            }
             for (d = 0; d < depth; d++) {
                 DWORD64 img = 0;
                 PRUNTIME_FUNCTION fn = (pcs[d] >= base) ? RtlLookupFunctionEntry(pcs[d], &img, NULL) : NULL;

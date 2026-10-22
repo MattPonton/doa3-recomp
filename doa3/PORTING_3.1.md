@@ -3363,3 +3363,21 @@ own matrices).
   constants ...").
 - [PROF] module lines: the samples outside the exe by module (the driver,
   d3d11, ntdll, ...), so the next profile shows where that ~17% goes.
+
+## 0.0.192 - fewer clock reads; who calls out of the exe
+
+Puppy, 0.0.191: the ring-constants VS compiled and runs ("constants from
+the vertex ring"); the ~3,100-draw stage went from 18.75 to 18.32 ms
+(~54.6 fps). The new module lines split the ~18% of samples outside the
+exe: ntdll 6.6%, VCRUNTIME140 (memcpy/memset/memcmp) 6.1%, d3d11 2.0%,
+the NVIDIA driver only 1.6%, ucrtbase 1.4%. So the driver is not where
+the time goes.
+
+- ntdll is where QueryPerformanceCounter lands (RtlQueryPerformanceCounter):
+  the per-draw [DRAWTIME] phases read it seven times per GPU draw and the
+  [DRAWCPU] split twice per draw -- about 27,000 reads a frame here. Both
+  now time one draw in 16 (DRAWCPU scales its times by 16); the averages
+  they report are the same, and the draw counts stay exact.
+- [PROF] calls-out lines: for samples outside the exe, the exe function
+  that made the call, so the memcpy/memset share and the rest of ntdll
+  can be traced to their callers.
