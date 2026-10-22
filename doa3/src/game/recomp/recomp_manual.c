@@ -997,8 +997,8 @@ static void pb4134_translate(uint32_t from, uint32_t to, int translate)
 }
 uint32_t g_pb4134_ring_lo, g_pb4134_ring_hi;
 
-/* ── Asynchronous GPU (0.0.195, DOA3_ASYNC_GPU=1) ─────────────────────
- * Opt-in. KickOff queues the span instead of translating it; a render
+/* ── Asynchronous GPU (0.0.195; default since 0.0.197, DOA3_ASYNC_GPU=0 off)
+ * KickOff queues the span instead of translating it; a render
  * thread translates the queue in order, and only then marks the span
  * consumed -- DMA_GET and the fence semaphore, the two things the game
  * reads to know the GPU is done with memory -- the way the console's GPU
@@ -1087,8 +1087,10 @@ static int pb_async_wanted(void)
     extern int doa3_movie_host_owns_screen(void);
     extern int netplay_active(void);
     if (s_async_on < 0) {
+        /* On by default since 0.0.197; DOA3_ASYNC_GPU=0 translates at
+         * kick-off on the game thread as before. */
         const char *e = getenv("DOA3_ASYNC_GPU");
-        s_async_on = (e && *e == '1');
+        s_async_on = !(e && *e == '0');
         if (s_async_on) {
             extern void d3d8_LockInit(void);
             d3d8_LockInit();

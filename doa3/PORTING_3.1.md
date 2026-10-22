@@ -3434,3 +3434,16 @@ Puppy's 0.0.195 run with DOA3_ASYNC_GPU=1: "[ASYNC] ... on", but every
 build's movie presenter sets. It now takes over after the first 600
 frames (boot stays synchronous) whenever no movie owns the screen and
 netplay is off.
+
+## 0.0.197 - asynchronous GPU thread on by default
+
+Puppy, 0.0.196 with DOA3_ASYNC_GPU=1: the render thread took over at
+frame 621 and the ~3,050-draw stage held 16.67 ms (60 fps) with 3.5-5.5
+ms of pacing slack every 5 s (game thread up to ~12.8 ms including its
+waits, render thread busy 10.5-13.4 ms), on a CPU capped at 60-80% --
+synchronous, the same stage needed ~88% to hold 60. No hangs, a clean
+exit; Matt saw no new problems either.
+
+Now the default; DOA3_ASYNC_GPU=0 goes back to translating at kick-off on
+the game thread. Netplay keeps the synchronous path (it switches back
+while a session is active), untested as netplay does not work yet.
