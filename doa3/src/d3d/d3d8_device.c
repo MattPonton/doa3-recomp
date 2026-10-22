@@ -728,21 +728,25 @@ static void d3d8_apply_target_size_change(void)
 
 static void d3d8_keep_prev_frame(void);
 static void d3d8_sync_target_flag(ID3D11RenderTargetView *rtv);
-static HRESULT d3d8_compose_and_present(void)
+/* Show `src` (the guest frame, or with the asynchronous GPU thread one of
+ * its finished-frame copies) in the window, with the overlay. `async`: the
+ * render thread already kept the previous-frame copy for this frame. */
+static HRESULT d3d8_compose_and_present_from(ID3D11Texture2D *src_tex, ID3D11ShaderResourceView *src_srv,
+                                             int async)
 {
     D3D8DeviceState *s = &g_device_state;
     ID3D11DeviceContext *ctx = s->d3d11_context;
     HRESULT hr;
     if (!s->swap_chain || !ctx) return E_FAIL;
     { extern void d3d8_screenshot_capture(ID3D11Texture2D *source);
-      d3d8_screenshot_capture(s->default_tex); }
-    d3d8_keep_prev_frame();
+      d3d8_screenshot_capture(src_tex); }
+    if (!async) d3d8_keep_prev_frame();
 
     swap_resize_if_needed();
-    if (s->swap_rtv && s->default_srv && blit_init()) {
+    if (s->swap_rtv && src_srv && blit_init()) {
         ID3D11ShaderResourceView *scene_srv = combat_world_render(s->d3d11_device,
-            ctx, s->default_tex, s->default_dsv);
-        if (!scene_srv) scene_srv = s->default_srv;
+            ctx, src_tex, s->default_dsv);
+        if (!scene_srv) scene_srv = src_srv;
         /* save */
         ID3D11InputLayout *il = NULL; D3D11_PRIMITIVE_TOPOLOGY topo;
         ID3D11VertexShader *vs = NULL; ID3D11PixelShader *ps = NULL;
@@ -837,6 +841,12 @@ static HRESULT d3d8_compose_and_present(void)
     d3d8_apply_target_size_change();
     return hr;
 }
+
+static HRESULT d3d8_compose_and_present(void)
+{
+    return d3d8_compose_and_present_from(g_device_state.default_tex, g_device_state.default_srv, 0);
+}
+
 
 /* Online play: while the game thread waits for the other player's input it
  * redraws the last guest frame with the overlay on top, so the window and
@@ -2428,4 +2438,38 @@ long d3d8_DrawNv2aFF(const Nv2aFFVertex *verts, unsigned nverts,
         g_nv2aff_ia_ring = NULL;
     }
     return S_OK;
+}
+
+/* ---- Asynchronous GPU thread support (0.0.195, DOA3_ASYNC_GPU=1) --------
+ * One lock serialises the immediate context between the render thread
+ * (translation, end-of-frame copies) and the game thread (present, overlay,
+ * movie). The render thread copies each finished guest frame into one of
+ * two buffers; the game thread presents the latest one. */
+static CRITICAL_SECTION g_d3d_cs;
+static volatile LONG    g_d3d_cs_ready;
+void d3d8_LockInit(void)
+{
+    if (!g_d3d_cs_ready) { InitializeCriticalSection(&g_d3d_cs); g_d3d_cs_ready = 1; }
+}
+void d3d8_Lock(void)   { if (g_d3d_cs_ready) EnterCriticalSection(&g_d3d_cs); }
+void d3d8_Unlock(void) { if (g_d3d_cs_ready) LeaveCriticalSection(&g_d3d_cs); }
+
+static FbCopy g_async_frame[2];
+int d3d8_AsyncFrameCopy(int buf)
+{
+    FbCopy *c = &g_async_frame[buf & 1];
+    if (!g_device_state.d3d11_context || !g_device_state.default_tex) return 0;
+    d3d8_keep_prev_frame();                    /* what the next guest frame samples */
+    if (!fbcopy_ensure(c)) return 0;
+    ID3D11DeviceContext_CopyResource(g_device_state.d3d11_context,
+                                     (ID3D11Resource *)c->tex, (ID3D11Resource *)g_device_state.default_tex);
+    return 1;
+}
+
+HRESULT d3d8_AsyncPresent(int buf)
+{
+    FbCopy *c = &g_async_frame[buf & 1];
+    if (!c->tex || !c->srv) return E_FAIL;
+    g_flip_guest++;
+    return d3d8_compose_and_present_from(c->tex, c->srv, 1);
 }

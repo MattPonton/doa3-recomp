@@ -3394,3 +3394,34 @@ game's vertex data, and deciding whether it changed means reading it
 all again. The upload saving (d3d-draw 0.90 -> 0.83 us) did not pay for
 the extra code, so it is gone again; 0.0.191's one-map-per-draw and
 0.0.192's sampled timers stay.
+
+## 0.0.195 - asynchronous GPU thread (opt-in: DOA3_ASYNC_GPU=1)
+
+The frame on the ~3,100-draw stage is ~8.6 ms of recompiled game code
+followed by ~9.6 ms translating its pushbuffer, one after the other on one
+thread. The console's GPU ran in parallel with the CPU, and the game only
+reuses memory the GPU has finished with (DMA_GET for the ring, the fence
+semaphore for everything else), so the translation can run on a thread of
+its own.
+
+With DOA3_ASYNC_GPU=1 (DOA3_ASYNC.bat):
+- KickOff queues each span (with the wrap split as before) instead of
+  translating it, and no longer marks it consumed itself. A render thread
+  translates the queue in order and only then writes DMA_PUT/GET and the
+  fence semaphore (every fence inserted up to that kick), as the GPU did.
+- The game thread finds the frame end (FLIP_STALL) with a header-only walk
+  of the span (data runs are skipped by their count).
+- At a frame end the render thread flushes pgraph, keeps the
+  previous-frame copy the guest samples, captures/traces as before, and
+  copies the finished frame into one of two buffers. The game thread, at
+  its next frame end, waits until the render thread has finished the
+  previous frame (so it is never more than one frame ahead), presents that
+  copy with the overlay, then paces and runs the frame callback as before.
+  One frame more latency than before, like the console's GPU queue.
+- One lock (d3d8_Lock) serialises the immediate context between the two
+  threads; every window, overlay and present call stays on the game
+  thread, which pumps messages while it waits.
+- Off before the first movie hand-over, while the host movie presenter owns
+  the screen and in netplay; switching drains the queue first. [ASYNC]
+  lines: when it takes over, and every 5 s the render thread's busy time
+  per frame.

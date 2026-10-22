@@ -439,6 +439,25 @@ void doa3_present_frame(void)
      * is safe since that clock stopped being pump-rate-derived. */
 }
 
+/* doa3_present_frame for the asynchronous GPU thread (DOA3_ASYNC_GPU=1):
+ * the frame shown is the render thread's finished copy `buf`, composed
+ * under the D3D lock the render thread also takes. */
+void doa3_present_async(int buf)
+{
+    extern void d3d8_Lock(void), d3d8_Unlock(void);
+    extern long d3d8_AsyncPresent(int buf);
+    InterlockedIncrement(&g_doa3_heartbeat);
+    { extern void doa3_apu_deliver_irq(void); doa3_apu_deliver_irq(); }
+    doa3_pump_messages();
+    if (s_perf_enabled == 1) QueryPerformanceCounter(&s_perf_present);
+    if (buf >= 0) {
+        d3d8_Lock();
+        d3d8_AsyncPresent(buf);
+        d3d8_Unlock();
+    }
+    doa3_perf_frame();
+}
+
 extern volatile uint32_t g_icall_trace[16];
 extern volatile uint32_t g_icall_trace_idx;
 extern volatile uint64_t g_icall_count;

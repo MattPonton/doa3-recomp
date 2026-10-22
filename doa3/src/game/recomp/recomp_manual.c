@@ -909,7 +909,7 @@ static int s_pb4134_flip;     /* a FLIP_STALL went by: the frame is complete */
  * the ring up from its start next time. */
 static unsigned s_pb_ctl[4], s_pb_ctl_logged;
 static void pb4134_translate_span(uint32_t from, uint32_t to, int translate, uint32_t ring_lo,
-                                  uint32_t ring_hi, int depth)
+                                  uint32_t ring_hi, int *flip)
 {
     uint32_t pos = from, budget = 8u << 20, ret_to = 0;
     int in_call = 0;
@@ -961,7 +961,7 @@ static void pb4134_translate_span(uint32_t from, uint32_t to, int translate, uin
                 if (!in_call && pos + count * 4 > to) break;
                 /* NV097_FLIP_STALL, end of D3DDevice_Swap */
                 if (kind == 0 ? (method <= 0x130 && 0x130 <= method + (count - 1) * 4) : method == 0x130)
-                    s_pb4134_flip = 1;
+                    *flip = 1;
                 if (translate)
                     pgraph_d3d11_method_run((int)sub, method, (const uint32_t *)XBOX_PTR(pos), count, kind == 0);
                 pos += count * 4;
@@ -971,7 +971,6 @@ static void pb4134_translate_span(uint32_t from, uint32_t to, int translate, uin
             }
         }
     }
-    (void)depth;
 }
 
 /* Host-thread-only counters. PB time is a subset of the frame interval;
@@ -990,13 +989,143 @@ static void pb4134_translate(uint32_t from, uint32_t to, int translate)
     /* Always timed (0.0.181): a QPC read per kick-off is negligible and the
      * 5-second [PERF-5S] summary needs it without the diagnostics switch. */
     LONGLONG begin = doa3_perf_now();
-    pb4134_translate_span(from, to, translate, g_pb4134_ring_lo, g_pb4134_ring_hi, 0);
+    pb4134_translate_span(from, to, translate, g_pb4134_ring_lo, g_pb4134_ring_hi, &s_pb4134_flip);
     if (begin) {
         s_frame_perf.pb += doa3_perf_now() - begin;
         ++s_frame_perf.kicks;
     }
 }
 uint32_t g_pb4134_ring_lo, g_pb4134_ring_hi;
+
+/* ── Asynchronous GPU (0.0.195, DOA3_ASYNC_GPU=1) ─────────────────────
+ * Opt-in. KickOff queues the span instead of translating it; a render
+ * thread translates the queue in order, and only then marks the span
+ * consumed -- DMA_GET and the fence semaphore, the two things the game
+ * reads to know the GPU is done with memory -- the way the console's GPU
+ * runs behind the CPU. At the end of a frame the render thread copies the
+ * finished guest frame into one of two buffers; the game thread presents
+ * the newest one at its next frame end, then paces and runs the frame
+ * callback as before. The game is at most one frame ahead of the render
+ * thread. The game thread finds the frame end (FLIP_STALL) itself with a
+ * header-only walk of the span, which skips every data run.
+ *
+ * Off while the host movie presenter owns the screen, before the first
+ * movie hand-over, and in netplay; switching drains the queue first. */
+static void d3d4134_capture_frame(unsigned frame);
+static void doa3_mtrace_frame(unsigned next);
+#define PBQ_N 512
+typedef struct {
+    uint32_t from, to, ring_lo, ring_hi;
+    uint32_t chan, sem, semval, cursor;   /* consumed-marks, written after the span */
+    int      translate, marks, flip;
+    unsigned frame;                      /* with flip: this frame's number */
+} PbItem;
+static PbItem          s_pbq[PBQ_N];
+static volatile LONG   s_pbq_head, s_pbq_tail;          /* head: next to run; tail: next free */
+static HANDLE          s_pbq_work, s_pbq_done;          /* auto-reset events */
+static HANDLE          s_rthread;
+static volatile LONG   s_frames_done;                   /* frames the render thread finished */
+static volatile LONG   s_frames_presented;              /* frames the game thread showed */
+static unsigned        s_frames_submitted;              /* game thread only */
+static int             s_async_on = -1;                 /* the switch */
+static int             s_async_active;                  /* game thread: currently asynchronous */
+static LONG            s_buf_frame[2] = { -1, -1 };     /* frame held by each copy */
+LONGLONG               g_doa3_rthread_busy;             /* QPC ticks spent translating, for [PERF-5S] */
+
+static int pbq_empty(void) { return s_pbq_head == s_pbq_tail; }
+
+static DWORD WINAPI pb_render_thread(LPVOID unused)
+{
+    extern void d3d8_Lock(void), d3d8_Unlock(void);
+    extern int d3d8_AsyncFrameCopy(int buf);
+    extern void pgraph_d3d11_flush(void);
+    (void)unused;
+    for (;;) {
+        PbItem it;
+        int flip = 0;
+        if (pbq_empty()) { WaitForSingleObject(s_pbq_work, INFINITE); continue; }
+        it = s_pbq[s_pbq_head % PBQ_N];
+        if (it.translate) {
+            LONGLONG begin = doa3_perf_now();
+            d3d8_Lock();
+            pb4134_translate_span(it.from, it.to, 1, it.ring_lo, it.ring_hi, &flip);
+            if (it.flip) {
+                /* The frame end: the pgraph flush and the copy the game
+                 * thread will present. Wait until it has shown the frame
+                 * that used this copy last (two frames back). */
+                d3d8_Unlock();
+                while (s_frames_presented < (LONG)it.frame - 2)
+                    WaitForSingleObject(s_pbq_work, 2);
+                d3d8_Lock();
+                pgraph_d3d11_flush();
+                d3d4134_capture_frame(++g_doa3_frames_presented);
+                doa3_mtrace_frame(g_doa3_frames_presented + 1);
+                if (d3d8_AsyncFrameCopy((int)(it.frame & 1))) s_buf_frame[it.frame & 1] = (LONG)it.frame;
+            }
+            d3d8_Unlock();
+            g_doa3_rthread_busy += doa3_perf_now() - begin;
+        }
+        if (it.marks) {
+            MemoryBarrier();
+            if (it.chan) {
+                MEM32(it.chan + 0x40) = it.cursor & 0x3FFFFFFu;   /* DMA_PUT */
+                MEM32(it.chan + 0x44) = it.cursor & 0x3FFFFFFu;   /* DMA_GET: consumed */
+            }
+            if (it.sem) MEM32(it.sem) = it.semval;
+        }
+        if (it.flip) InterlockedExchange(&s_frames_done, (LONG)it.frame);
+        MemoryBarrier();
+        InterlockedIncrement(&s_pbq_head);
+        SetEvent(s_pbq_done);
+    }
+    return 0;
+}
+
+static int pb_async_wanted(void)
+{
+    extern volatile int g_doa3_post_movie;
+    extern int doa3_movie_host_owns_screen(void);
+    extern int netplay_active(void);
+    if (s_async_on < 0) {
+        const char *e = getenv("DOA3_ASYNC_GPU");
+        s_async_on = (e && *e == '1');
+        if (s_async_on) {
+            extern void d3d8_LockInit(void);
+            d3d8_LockInit();
+            s_pbq_work = CreateEventA(NULL, FALSE, FALSE, NULL);
+            s_pbq_done = CreateEventA(NULL, FALSE, FALSE, NULL);
+            s_rthread = CreateThread(NULL, 1 << 20, pb_render_thread, NULL, 0, NULL);
+            if (!s_pbq_work || !s_pbq_done || !s_rthread) s_async_on = 0;
+            fprintf(stderr, "[ASYNC] GPU commands on a render thread: %s\n", s_async_on ? "on" : "failed, off");
+        }
+    }
+    return s_async_on && g_doa3_post_movie && !doa3_movie_host_owns_screen() && !netplay_active();
+}
+
+/* Game thread: wait for the render thread, keeping the window alive. */
+static void pb_wait(int (*done)(LONG), LONG arg)
+{
+    extern void doa3_pump_messages(void);
+    while (!done(arg)) {
+        MsgWaitForMultipleObjects(1, &s_pbq_done, FALSE, 2, QS_ALLINPUT);
+        doa3_pump_messages();
+    }
+}
+static int pb_is_drained(LONG unused) { (void)unused; return pbq_empty(); }
+static int pb_frame_is_done(LONG f) { return s_frames_done >= f; }
+
+static void pbq_push(const PbItem *it)
+{
+    while (s_pbq_tail - s_pbq_head >= PBQ_N - 1) {         /* full: let it catch up */
+        extern void doa3_pump_messages(void);
+        MsgWaitForMultipleObjects(1, &s_pbq_done, FALSE, 2, QS_ALLINPUT);
+        doa3_pump_messages();
+    }
+    s_pbq[s_pbq_tail % PBQ_N] = *it;
+    MemoryBarrier();
+    InterlockedIncrement(&s_pbq_tail);
+    SetEvent(s_pbq_work);
+}
 
 /* End of a frame (D3DDevice_Swap's FLIP_STALL reached the "GPU"): show it,
  * pump the window, and run the vertical-blank interrupt the display would
@@ -1282,7 +1411,7 @@ static void perf_5s(double interval, const double ph[7], double present, double 
     s_next = GetTickCount() + 5000;
 }
 
-static void d3d4134_frame_done(uint32_t dev)
+static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
 {
     {   extern void doa3_prof_set_thread(void);
         static int s_prof_reg;
@@ -1294,10 +1423,17 @@ static void d3d4134_frame_done(uint32_t dev)
     uint32_t sv_esi = esi, sv_edi = edi, sv_esp = esp, sv_seh = g_seh_ebp;
     int perf_on = doa3_perf_begin() != 0;      /* [PERF-PHASE] lines only with diagnostics */
     LONGLONG entry = doa3_perf_now(), flushed, prepared, presented;
-    pgraph_d3d11_flush();
-    flushed = entry ? doa3_perf_now() : 0;
-    d3d4134_capture_frame(++g_doa3_frames_presented);
-    doa3_mtrace_frame(g_doa3_frames_presented + 1);
+    if (!async_frame) {
+        pgraph_d3d11_flush();
+        flushed = entry ? doa3_perf_now() : 0;
+        d3d4134_capture_frame(++g_doa3_frames_presented);
+        doa3_mtrace_frame(g_doa3_frames_presented + 1);
+    } else {
+        /* The render thread flushes and copies each frame; wait for the one
+         * before this, so the game is at most one frame ahead. */
+        pb_wait(pb_frame_is_done, (LONG)async_frame - 1);
+        flushed = entry ? doa3_perf_now() : 0;
+    }
     { void doa3_adx_frame(unsigned frame); doa3_adx_frame(g_doa3_frames_presented); }
     game_audio_frame();               /* game volumes, streamer mode */
 
@@ -1316,7 +1452,13 @@ static void d3d4134_frame_done(uint32_t dev)
         g_doa3_phase_ms[6] = s_frame_perf.presented ? s_frame_perf.workers * ms : -1.0;
         g_doa3_phase_kicks = s_frame_perf.kicks;
     }
-    doa3_present_frame();
+    if (!async_frame) doa3_present_frame();
+    else {
+        extern void doa3_present_async(int buf);
+        LONG f = (LONG)async_frame - 1;
+        doa3_present_async(s_buf_frame[f & 1] == f ? (int)(f & 1) : -1);
+        InterlockedExchange(&s_frames_presented, f);
+    }
     presented = entry ? doa3_perf_now() : 0;
     if (entry) {
         LARGE_INTEGER frequency;
@@ -1362,6 +1504,7 @@ void sub_001E27C0(void)
 {
     static int s_on = -1, s_log;
     uint32_t dev = ecx, flags = MEM32(dev + 8), cursor, start, end, sem;
+    unsigned async_flip_frame = 0;
     if (s_on < 0) { const char *e = getenv("DOA3_PB"); s_on = !(e && *e == '0'); }
     if (flags & 0x2000) {            /* no live GPU channel: the original only does bookkeeping */
         sub_001E27C0_gen();
@@ -1370,6 +1513,49 @@ void sub_001E27C0(void)
     cursor = (flags & 4) ? MEM32(dev + 0x35C) : MEM32(dev);
     start = MEM32(dev + 0x24); end = MEM32(dev + 0x28);
     g_pb4134_ring_lo = start; g_pb4134_ring_hi = end + 4;
+    {   /* Asynchronous GPU: switching either way drains the queue first. */
+        int want = pb_async_wanted();
+        if (want != s_async_active) {
+            if (s_async_on > 0) pb_wait(pb_is_drained, 0);
+            s_async_active = want;
+            if (want) {
+                s_frames_done = s_frames_presented = (LONG)s_frames_submitted;
+                s_buf_frame[0] = s_buf_frame[1] = -1;
+                fprintf(stderr, "[ASYNC] render thread takes over at frame %u\n", g_doa3_frames_presented);
+            } else
+                fprintf(stderr, "[ASYNC] back to translating at kick-off (frame %u)\n", g_doa3_frames_presented);
+        }
+    }
+    if (s_async_active) {
+        /* Queue the spans, find the frame end with a header-only walk, and
+         * leave DMA_GET and the fence semaphore to the render thread. */
+        PbItem it;
+        int flip = 0;
+        memset(&it, 0, sizeof it);
+        it.ring_lo = start; it.ring_hi = end + 4; it.translate = s_on;
+        if (cursor >= start && cursor <= end) {
+            if (s_pb4134_parsed > cursor && s_pb4134_parsed <= end) {
+                pb4134_translate_span(s_pb4134_parsed, end + 4, 0, start, end + 4, &flip);
+                it.from = s_pb4134_parsed; it.to = end + 4;
+                pbq_push(&it);
+                s_pb4134_parsed = start;
+            }
+            if (s_pb4134_parsed < start || s_pb4134_parsed > cursor)
+                s_pb4134_parsed = start;
+            it.from = s_pb4134_parsed; it.to = cursor;
+            if (cursor > s_pb4134_parsed) pb4134_translate_span(s_pb4134_parsed, cursor, 0, start, end + 4, &flip);
+            else it.translate = 0;                   /* nothing new: the marks only */
+            s_pb4134_parsed = cursor;
+        } else it.translate = 0;
+        it.marks = 1;
+        it.chan = MEM32(dev + 0x2264);
+        it.sem = MEM32(dev + 0x34);
+        it.semval = MEM32(dev + 0x30) - 2;           /* every fence inserted so far */
+        it.cursor = cursor;
+        if (flip) { it.flip = 1; it.frame = ++s_frames_submitted; async_flip_frame = it.frame; }
+        pbq_push(&it);
+        goto kick_diag;
+    }
     if (cursor >= start && cursor <= end) {
         if (s_pb4134_parsed > cursor && s_pb4134_parsed <= end) {
             /* the ring wrapped: finish the old lap up to its jump back to
@@ -1382,6 +1568,7 @@ void sub_001E27C0(void)
         if (cursor > s_pb4134_parsed) pb4134_translate(s_pb4134_parsed, cursor, s_on);
         s_pb4134_parsed = cursor;
     }
+kick_diag:
     if (s_log < 8) {
         s_log++;
         fprintf(stderr, "[PB] kickoff #%d dev=%08X cursor=%08X ring=%08X-%08X fence=%08X\n",
@@ -1436,6 +1623,18 @@ void sub_001E27C0(void)
             {   extern void pgraph_texdiag_report(void);
                 pgraph_texdiag_report();   /* [TEXCACHE] */
             }
+            if (s_async_on > 0) {
+                static unsigned s_rt_frames_at;
+                unsigned frames = g_doa3_frames_presented - s_rt_frames_at;
+                LARGE_INTEGER f;
+                QueryPerformanceFrequency(&f);
+                if (frames)
+                    fprintf(stderr, "[ASYNC] last 5 s: render thread busy %.2f ms per frame, %s\n",
+                            (double)g_doa3_rthread_busy * 1e3 / (double)f.QuadPart / frames,
+                            s_async_active ? "active" : "inactive (movie / netplay / boot)");
+                g_doa3_rthread_busy = 0;
+                s_rt_frames_at = g_doa3_frames_presented;
+            }
             g_doa3_drop[0] = g_doa3_drop[1] = g_doa3_drop[2] = g_doa3_drop[3] = 0;
         }
     }
@@ -1453,6 +1652,12 @@ void sub_001E27C0(void)
             }
         }
     }
+    if (s_async_active) {                            /* the render thread marks it consumed */
+        MEM32(dev + 0x2C) = cursor;
+        esp += 4;                                    /* fastcall, ret 0 */
+        if (async_flip_frame) d3d4134_frame_done(dev, async_flip_frame);
+        return;
+    }
     {   uint32_t chan = MEM32(dev + 0x2264);
         if (chan) {
             MEM32(chan + 0x40) = cursor & 0x3FFFFFFu;   /* DMA_PUT */
@@ -1465,7 +1670,8 @@ void sub_001E27C0(void)
     esp += 4;                                        /* fastcall, ret 0 */
     if (s_pb4134_flip) {
         s_pb4134_flip = 0;
-        d3d4134_frame_done(dev);
+        s_frames_submitted++;                        /* keeps the async frame count in step */
+        d3d4134_frame_done(dev, 0);
     }
 }
 /* ── XAPI fibers (3.1) ──────────────────────────────────────────────
