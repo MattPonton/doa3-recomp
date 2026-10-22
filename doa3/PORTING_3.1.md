@@ -3447,3 +3447,27 @@ exit; Matt saw no new problems either.
 Now the default; DOA3_ASYNC_GPU=0 goes back to translating at kick-off on
 the game thread. Netplay keeps the synchronous path (it switches back
 while a session is active), untested as netplay does not work yet.
+
+## 0.1.0 - milestone: full speed
+
+No code change from 0.0.197; the version marks the milestone. From here
+the update number counts from 0 again under minor version 1.
+
+On 0.0.197 (asynchronous GPU thread on by default) Puppy finished Time
+Attack and Matt finished Story Mode with no new problems; the render
+thread handed back to the synchronous path for the movies and took over
+again after them as designed. Where tonight's work started, Puppy's
+laptop (Ryzen 7 5800H, RTX 3060) ran the Ice Cave at ~50 fps and the
+~3,100-draw X Octagon at ~44 fps; it now holds 60 on both with the CPU
+capped at 60%. The steps:
+
+- 0.0.186  transform programs decoded once and run a batch at a time
+- 0.0.188  SSE loads in recompiled code as one copy; fast path for the
+           light, matrix and inline-data methods
+- 0.0.190  guest registers in locals (build-time pass)
+- 0.0.191  draw constants in the vertex ring, one map per draw
+- 0.0.192  per-draw timers sample one draw in 16
+- 0.0.195-0.0.197  the pushbuffer translated on a render thread, in
+           parallel with the game, the way the console's GPU ran
+
+Known graphical issues predate this work and are unchanged.
