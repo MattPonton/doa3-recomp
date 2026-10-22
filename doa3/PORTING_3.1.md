@@ -3381,3 +3381,30 @@ the time goes.
 - [PROF] calls-out lines: for samples outside the exe, the exe function
   that made the call, so the memcpy/memset share and the rest of ntdll
   can be traced to their callers.
+
+## 0.0.193 - GPU vertex cache
+
+Puppy, 0.0.192: ntdll fell from 6.6% to 1.4% of the frame thread (the
+clock reads), the steady state was 18.7 ms at ~3,190 draws (more draws
+than the last run, so per draw it improved). A ~2.5-minute stretch at
+~21 ms slowed the game half, the pushbuffer half and even present by the
+same ~12% at the same draw count: the CPU clocking down (heat or power
+plan), not the build. The calls-out lines put 5.2% of the frame in
+nv2aff_ring_upload's memcpy -- the converted vertices of every draw going
+to the GPU again -- on top of ~1.7 ms converting them.
+
+- A GPU-path draw whose indices span a compact range [lo, hi] converts the
+  whole range once into a GPU vertex arena (a 48 MB DEFAULT buffer filled
+  with UpdateSubresource; a bump allocator whose laps tell which
+  allocations are still intact) and draws from there with indices
+  idx - lo; only indices and constants go through the ring.
+- Reuse is decided exactly: each entry keeps a copy of the guest bytes the
+  conversion read (each attribute's span, overlapping spans merged) and
+  compares them byte for byte; readers' addresses and formats and which
+  attributes are read are the key. Non-finite positions, indices past the
+  readable end, sparse (more than 2n + 64) or very large (over 32,768
+  vertices or 256 KB of source) ranges, open method traces and draws the
+  ultrawide-overlay check reads stay on the per-draw path. An entry that
+  changes on three uses in a row is not compared for its next 120.
+- DOA3_VCACHE=0 turns it off. [VCACHE] every 5 s: reused, re-uploaded,
+  new, skipped and not-cacheable draws per frame.

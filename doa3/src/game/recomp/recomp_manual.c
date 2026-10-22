@@ -1411,6 +1411,14 @@ void sub_001E27C0(void)
                             frames ? tot * us * g_doa3_dt_all / frames / 1000.0 : 0.0);
                     for (k = 0; k < 6; k++) g_doa3_dt[k] = 0;
                     g_doa3_dt_n = 0; g_doa3_dt_all = 0;
+                    {   extern unsigned g_vc_stat[5];
+                        fprintf(stderr, "[VCACHE] last 5 s, per frame: %.0f reused, %.0f re-uploaded (data changed), "
+                                "%.0f new, %.0f skipped (data keeps changing), %.0f not cacheable\n",
+                                frames ? (double)g_vc_stat[0] / frames : 0.0, frames ? (double)g_vc_stat[1] / frames : 0.0,
+                                frames ? (double)g_vc_stat[2] / frames : 0.0, frames ? (double)g_vc_stat[3] / frames : 0.0,
+                                frames ? (double)g_vc_stat[4] / frames : 0.0);
+                        memset(g_vc_stat, 0, sizeof g_vc_stat);
+                    }
                 }
                 {   /* where the rest of the draw time goes */
                     extern LONGLONG g_doa3_kt[6], g_doa3_vpt[3];
