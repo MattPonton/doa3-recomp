@@ -12,6 +12,44 @@ file(GLOB RECOMP_GEN_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/recomp/gen/recomp_*.c"
 )
 
+# Guest registers in C locals (tools/recomp/localize_regs.py). In the
+# generated code every x86 register and the x87 stack are globals and every
+# guest memory access is volatile, so the compiler keeps the register file in
+# memory, reloading it after almost every access. The pass rewrites a copy of
+# each generated chunk so a function's body works on locals, synchronised
+# with the globals at every call and return. The copies are made at build
+# time (Python 3) in the build tree; without Python the originals are built.
+option(DOA3_LOCAL_REGS "Keep guest registers in locals in the recompiled code (needs Python 3 at build time)" ON)
+set(DOA3_LOCAL_REGS_ACTIVE OFF)
+if(DOA3_LOCAL_REGS)
+    find_package(Python3 COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND)
+        set(_loc_dir "${CMAKE_CURRENT_BINARY_DIR}/gen_local")
+        file(MAKE_DIRECTORY "${_loc_dir}")
+        set(_loc_script "${CMAKE_SOURCE_DIR}/tools/recomp/localize_regs.py")
+        set(_loc_sources "")
+        foreach(_src ${RECOMP_GEN_SOURCES})
+            get_filename_component(_name "${_src}" NAME)
+            if(_name MATCHES "^recomp_[0-9]+\\.c$")
+                set(_out "${_loc_dir}/${_name}")
+                add_custom_command(OUTPUT "${_out}"
+                    COMMAND "${Python3_EXECUTABLE}" "${_loc_script}" --out "${_out}" "${_src}"
+                    DEPENDS "${_src}" "${_loc_script}"
+                    COMMENT "Registers to locals: ${_name}"
+                    VERBATIM)
+                list(APPEND _loc_sources "${_out}")
+            else()
+                list(APPEND _loc_sources "${_src}")
+            endif()
+        endforeach()
+        set(RECOMP_GEN_SOURCES ${_loc_sources})
+        set(DOA3_LOCAL_REGS_ACTIVE ON)
+        message(STATUS "DOA3: recompiled code built with registers in locals")
+    else()
+        message(WARNING "DOA3: Python 3 not found; recompiled code built without the register pass (slower)")
+    endif()
+endif()
+
 # ── NV2A GPU emulation (from xemu) — FULL stack, mirrors burnout3 ──
 set(NV2A_DIR "${CMAKE_SOURCE_DIR}/src/nv2a")
 set(NV2A_SOURCES
@@ -85,6 +123,9 @@ target_include_directories(doa3 PRIVATE
 option(DOA3_PROBES "Build the guest-stack probes and call profiler into every recompiled function" OFF)
 if(DOA3_PROBES)
     target_compile_definitions(doa3 PRIVATE DOA3_PROBES=1)
+endif()
+if(DOA3_LOCAL_REGS_ACTIVE)
+    target_compile_definitions(doa3 PRIVATE DOA3_LOCAL_REGS=1)
 endif()
 
 if(MSVC)

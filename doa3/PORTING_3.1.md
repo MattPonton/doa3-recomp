@@ -3286,3 +3286,51 @@ nv_gpu_ff_submit (~7%) and the driver (~17%).
   exe, so a hot function can be taken apart instruction by instruction
   against the same build's DOA3.exe (the Release PDB has public symbols
   only, no line tables).
+
+## 0.0.190 - guest registers in locals (build-time pass)
+
+Puppy, 0.0.189: no single hot spot is left in our own code; the frame on
+the ~3,100-draw stage (~19.8 ms) is about half recompiled game code
+(~9.5 ms) and half our pushbuffer/draw handling (~10 ms).
+
+The game half pays a tax on nearly every instruction: in the generated
+code eax..edi, esp and the x87 stack are globals, and every guest memory
+access is a volatile access through a computed pointer, which the compiler
+must assume can alias any global -- so the register file is reloaded from
+memory after almost every access and stored after every change.
+
+tools/recomp/localize_regs.py (run by CMake at build time, Python 3,
+option DOA3_LOCAL_REGS, on by default) writes a copy of each generated
+chunk into the build tree in which a function's body works on locals:
+
+- loaded from the globals on entry; around every direct call,
+  RECOMP_ICALL_SAFE and RECOMP_ITAIL, the registers the body writes are
+  stored and every register it uses is reloaded; stored again at every
+  return. Callees see exactly the globals they saw before, so the calling
+  convention (implicit parameters in registers included) is unchanged.
+- the x87 stack is copied rotated, so the body's stack indices are
+  constants and the slots can live in host registers; the physical slots
+  and g_fp_top are restored exactly.
+- only functions whose bodies use nothing but the known-pure helpers plus
+  calls are rewritten, and only where there are at least 12 statements per
+  call (fewer and the synchronisation costs more than it saves): 6,034 of
+  11,025 functions, about 64% of the generated statements.
+- in the whole copy, imul's (int32_t)a * (int32_t)b is written as the
+  unsigned product and idiv's edx:eax is assembled unsigned: the same bits,
+  without the signed overflow C leaves undefined (x86 wraps). With the
+  operands in locals clang was seen exploiting that in sub_0018C288.
+
+Without Python the original chunks are built (CMake warns). The log's
+second line says which: "guest registers in locals" or "in globals".
+
+Checked here: a standalone test of the XDK matrix routines (identical
+results; inverse 1.8x, multiply 1.1-1.3x faster); every rewritten function
+without calls (3,027) run against its original from 4 random starting
+states each, and every rewritten function with calls (6,664 -- all
+eligible, regardless of the threshold) from 3 each with every callee
+replaced by one stand-in that reads and changes all registers, the x87
+stack and memory. Built without optimisation, original and rewritten
+agreed in every case; with optimisation, the handful that differed also
+differ between the original's own optimised and unoptimised builds
+(undefined behaviour on random inputs), apart from the imul case above,
+which is fixed. All 16 rewritten chunks pass a syntax check.

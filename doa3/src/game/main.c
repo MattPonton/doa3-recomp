@@ -1598,6 +1598,11 @@ int main(int argc, char **argv)
      * off (the default). See log_settings.h. */
     doa3_log_init();
     fprintf(stderr, "[DOA3] DOA3.exe version %s (%s)\n", DOA3_VER_STR, DOA3_XBE_REGION);
+#ifdef DOA3_LOCAL_REGS
+    fprintf(stderr, "[DOA3] recompiled code: guest registers in locals (tools/recomp/localize_regs.py)\n");
+#else
+    fprintf(stderr, "[DOA3] recompiled code: guest registers in globals (register pass not applied)\n");
+#endif
     if (diag_cleared)
         fprintf(stderr, "[DOA3] removed %d file(s) left in Diagnostics by the previous run\n", diag_cleared);
 
