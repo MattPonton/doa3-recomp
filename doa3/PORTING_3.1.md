@@ -3679,3 +3679,37 @@ launches (Diagnostics is cleared at each launch). Two snapshots frozen
 and two animating separate the camera-path state from everything else:
 the frozen view matrix is known from the traces, so the camera struct
 can be found by value and the loop test read from its code.
+
+## 0.1.12 - Training: controller-driven dummy; Stagger Escape hold
+
+Dummy control. "Controller controls the dummy" plus a port choice
+(Player 1-4 as in Controls). During the input window (0x11980 ..
+0x12B60), the window the recorder already uses, the dummy is marked
+human (0x59CF58 + side*0x68 = 1) and given that port (0x30E3F4 + side).
+The game then decodes its commands from that port's own pad aggregate
+and bindings, and both bytes are restored when the window closes. On
+the first frame of control the CPU's pending command history is
+cleared, as recording does.
+
+The dummy stays on the CPU whenever any of these holds:
+- the port's pad is not in the game's open-device mask (0x73C8C8),
+  i.e. it is unplugged
+- the port is the human's own
+- a recording or playback is running
+- the overlay is open
+- the fight is not in a recordable state (same test as recording)
+
+Stagger Escape. The value is the float array 0x4DA2D4[side]; 0x4DA2DD
+is the side being processed and 0x4DA1C4 that fighter. The stun
+handlers (0x14D70 for the human, 0x16840 for the CPU's random mash,
+0x1BAE0) do the following each frame:
+- mash: add 0.03 (0.0432 when 0xC59867 is set), clamp at 2.00
+- no input: subtract 0.01 (0.0144), floor at 1.00
+- copy the value into the fighter's animation speed (+0x10)
+- reset it to 1.00 out of the stun
+
+The Training tab shows both live values and has a Hold toggle and a
+1.00-2.00 slider per fighter. A held value is written at the start of
+each input window, before the fighters update, so the game still
+applies that frame's mash or decay and does the speed copy itself; the
+port never writes the animation speed.

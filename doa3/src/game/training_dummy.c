@@ -26,6 +26,13 @@ static unsigned char s_old_port, s_old_human, s_old_analog;
 static unsigned char s_aggregate[0x2C], s_extra[8], s_bindings[20];
 static unsigned char s_human_aggregate[0x2C], s_human_extra[8];
 static unsigned char s_old_filter[16], s_filter[16], s_stick_extra[8];
+/* Second-controller control of the dummy (0.1.12). */
+static int s_ctrl_enabled, s_ctrl_port = 1, s_ctrl_modified, s_ctrl_active;
+static unsigned s_ctrl_dummy;
+static unsigned char s_ctrl_old_port, s_ctrl_old_human;
+/* Held Stagger Escape values (0.1.12). */
+static int s_stagger_hold[2];
+static float s_stagger_value[2] = { 1.0f, 1.0f };
 
 int training_available(void)
 {
@@ -47,8 +54,17 @@ int training_can_record(void)
         MEM8(0x59CF58+dummy*0x68)==0 && MEM8(0x30E3F4+human)<4;
 }
 
+static void control_end(void)
+{
+    if (!s_ctrl_modified) return;
+    MEM8(0x30E3F4+s_ctrl_dummy)=s_ctrl_old_port;
+    MEM8(0x59CF58+s_ctrl_dummy*0x68)=s_ctrl_old_human;
+    s_ctrl_modified=0;
+}
+
 void training_input_end(void)
 {
+    control_end();
     if (!s_modified) return;
     memcpy(s_stick_extra,(void *)XBOX_PTR(0x4DA600+s_virtual_port*8),sizeof(s_stick_extra));
     memcpy(s_filter,(void *)XBOX_PTR(0x4DA5C0+s_virtual_port*16),sizeof(s_filter));
@@ -119,9 +135,108 @@ void training_status(TrainingStatus *out)
     for (int i=0;i<TRAINING_SLOTS;++i) out->length[i]=s_slots[i].length;
 }
 
+int training_human_port(void)
+{
+    if (!training_available()) return -1;
+    unsigned human=MEM8(0xC58E47);
+    if (human>=2) return -1;
+    unsigned port=MEM8(0x30E3F4+human);
+    return port<4 ? (int)port : -1;
+}
+
+int training_human_side(void)
+{
+    if (!training_available()) return -1;
+    unsigned human=MEM8(0xC58E47);
+    return human<2 ? (int)human : -1;
+}
+
+int training_port_connected(int port)
+{
+    /* The game's open-device mask: set while a pad is plugged into the port. */
+    return port>=0 && port<4 && (MEM32(0x73C8C8) & (1u<<port))!=0;
+}
+
+void training_control_set(int enabled, int port)
+{
+    s_ctrl_enabled=enabled!=0;
+    if (port>=0 && port<4) s_ctrl_port=port;
+}
+
+void training_control_get(int *enabled, int *port)
+{
+    if (enabled) *enabled=s_ctrl_enabled;
+    if (port) *port=s_ctrl_port;
+}
+
+int training_control_active(void) { return s_ctrl_active; }
+
+float training_stagger_get(int side)
+{
+    return (side==0 || side==1) ? MEMF(0x4DA2D4+side*4) : 1.0f;
+}
+
+void training_stagger_hold(int side, int enabled, float value)
+{
+    if (side!=0 && side!=1) return;
+    if (value<1.0f) value=1.0f;
+    if (value>2.0f) value=2.0f;
+    s_stagger_hold[side]=enabled!=0;
+    s_stagger_value[side]=value;
+}
+
+void training_stagger_hold_get(int side, int *enabled, float *value)
+{
+    if (side!=0 && side!=1) return;
+    if (enabled) *enabled=s_stagger_hold[side];
+    if (value) *value=s_stagger_value[side];
+}
+
+/* Once per logic frame, before the fighters update: the stun handlers
+ * (0x14D70, 0x16840, 0x1BAE0) add 0.03 per mash or take 0.01 per idle frame
+ * from 0x4DA2D4[side], clamp to 1..2 and copy it to the fighter's animation
+ * speed. Seeding the slot with the held value keeps that logic intact. */
+static void stagger_apply(void)
+{
+    int side;
+    if (!training_available()) return;
+    for (side=0; side<2; ++side)
+        if (s_stagger_hold[side]) MEMF(0x4DA2D4+side*4)=s_stagger_value[side];
+}
+
+/* The dummy is marked human and pointed at the chosen port for the input
+ * window only (the game decodes its commands from that port's pad
+ * aggregate, with that port's button bindings), then restored, the same
+ * way recording hands the dummy to the player. */
+static void control_begin(void)
+{
+    int port=s_ctrl_port;
+    int want=s_ctrl_enabled && s_mode==TRAINING_IDLE && training_can_record() &&
+             !doa3_ui_visible() && port!=training_human_port() &&
+             training_port_connected(port);
+    if (!want) { s_ctrl_active=0; return; }
+    s_ctrl_dummy=MEM8(0xC58E47)^1;
+    if (!s_ctrl_active) {
+        /* Taking over from the CPU: drop its pending command history, as
+         * recording does. */
+        memset((void *)XBOX_PTR(0x4DA1D0+s_ctrl_dummy*0x82),0,0x82);
+        MEM16(0x591F54+s_ctrl_dummy*2)=0;
+        MEM16(0x5A27C4+s_ctrl_dummy*2)=0;
+        MEM16(0x596A8C+s_ctrl_dummy*2)=0;
+    }
+    s_ctrl_old_port=MEM8(0x30E3F4+s_ctrl_dummy);
+    s_ctrl_old_human=MEM8(0x59CF58+s_ctrl_dummy*0x68);
+    MEM8(0x30E3F4+s_ctrl_dummy)=(unsigned char)port;
+    MEM8(0x59CF58+s_ctrl_dummy*0x68)=1;
+    s_ctrl_modified=1;
+    s_ctrl_active=1;
+}
+
 void training_input_begin(void)
 {
     training_input_end();
+    stagger_apply();
+    control_begin();
     if (s_mode==TRAINING_IDLE) return;
     if (!training_can_record() || doa3_ui_visible() ||
         MEM8(0xC58E47)!=s_human || MEM8(0x30E3F4+s_human)!=s_port ||

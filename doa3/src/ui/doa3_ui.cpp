@@ -855,6 +855,13 @@ void DrawDebugSection()
     }
 }
 
+static int HumanSide()
+{
+    int port = training_human_port();
+    if (port < 0) return -1;
+    return training_human_side();
+}
+
 void DrawTrainingSection()
 {
     static int slot=0;
@@ -892,6 +899,66 @@ void DrawTrainingSection()
     ImGui::TextWrapped("Recordings last for the current Sparring session. Recording again replaces the selected slot.");
     if (!ready)
         ImGui::TextWrapped("Enter a solo Sparring fight, close the game's pause menu, and turn off Exercise and free camera to record or play.");
+
+    /* Second controller drives the dummy (0.1.12). */
+    ImGui::Spacing();
+    ImGui::SeparatorText("Dummy control");
+    {
+        int enabled = 0, port = 1;
+        training_control_get(&enabled, &port);
+        int human = training_human_port();
+        bool on = enabled != 0;
+        if (ImGui::Checkbox("Controller controls the dummy", &on))
+            training_control_set(on ? 1 : 0, port);
+        char preview[48];
+        _snprintf_s(preview, sizeof preview, _TRUNCATE, "Player %d port%s", port + 1,
+                    port == human ? " (yours)" : training_port_connected(port) ? "" : " (not connected)");
+        ImGui::SetNextItemWidth(220.0f);
+        if (ImGui::BeginCombo("Dummy controller", preview)) {
+            for (int p = 0; p < 4; ++p) {
+                char item[48];
+                _snprintf_s(item, sizeof item, _TRUNCATE, "Player %d port%s", p + 1,
+                            p == human ? " (yours)" : training_port_connected(p) ? "" : " (not connected)");
+                ImGui::BeginDisabled(p == human);
+                if (ImGui::Selectable(item, p == port)) training_control_set(enabled, p);
+                ImGui::EndDisabled();
+            }
+            ImGui::EndCombo();
+        }
+        if (!enabled) ImGui::TextDisabled("Dummy: CPU");
+        else if (training_control_active()) ImGui::TextDisabled("Dummy: Player %d controller", port + 1);
+        else if (port == human) ImGui::TextDisabled("Dummy: CPU (that is your own port)");
+        else if (!training_port_connected(port)) ImGui::TextDisabled("Dummy: CPU (no controller on that port)");
+        else ImGui::TextDisabled("Dummy: CPU until the fight is running and this menu is closed");
+        ImGui::TextWrapped("Ports follow Controls > Player N. The dummy goes back to the CPU whenever that "
+                           "controller is unplugged, and while a recording plays or records.");
+    }
+
+    /* Stagger Escape (0.1.12). */
+    ImGui::Spacing();
+    ImGui::SeparatorText("Stagger Escape");
+    {
+        int human = HumanSide();
+        for (int side = 0; side < 2; ++side) {
+            int hold = 0; float value = 1.0f;
+            training_stagger_hold_get(side, &hold, &value);
+            ImGui::PushID(side);
+            ImGui::Text("Fighter %d%s: %.2f", side + 1,
+                        side == human ? " (you)" : human >= 0 ? " (dummy)" : "",
+                        training_stagger_get(side));
+            bool h = hold != 0;
+            if (ImGui::Checkbox("Hold", &h)) training_stagger_hold(side, h ? 1 : 0, value);
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(200.0f);
+            if (ImGui::SliderFloat("##value", &value, 1.0f, 2.0f, "%.2f"))
+                training_stagger_hold(side, hold, value);
+            ImGui::PopID();
+        }
+        ImGui::TextWrapped("The critical-stun mash value: each input in a critical stun or guard break adds "
+                           "0.03 (up to 2.00) and every idle frame takes 0.01 (down to 1.00); it sets how fast "
+                           "the stun animation plays. Hold sets the value at the start of every frame, and the "
+                           "game applies that frame's input on top.");
+    }
 }
 
 void DrawTrainingBanner()
