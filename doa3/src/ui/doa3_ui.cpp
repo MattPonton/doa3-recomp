@@ -943,21 +943,23 @@ void DrawTrainingSection()
             int hold = 0; float value = 1.0f;
             training_stagger_hold_get(side, &hold, &value);
             ImGui::PushID(side);
-            ImGui::Text("Fighter %d%s: %.2f", side + 1,
+            /* Shown as a percentage: 1.00 (none) = 0 %, 2.00 (max) = 100 %. */
+            ImGui::Text("Fighter %d%s: %.0f%%", side + 1,
                         side == human ? " (you)" : human >= 0 ? " (dummy)" : "",
-                        training_stagger_get(side));
+                        (training_stagger_get(side) - 1.0f) * 100.0f);
             bool h = hold != 0;
             if (ImGui::Checkbox("Hold", &h)) training_stagger_hold(side, h ? 1 : 0, value);
             ImGui::SameLine();
             ImGui::SetNextItemWidth(200.0f);
-            if (ImGui::SliderFloat("##value", &value, 1.0f, 2.0f, "%.2f"))
-                training_stagger_hold(side, hold, value);
+            float pct = (value - 1.0f) * 100.0f;
+            if (ImGui::SliderFloat("##value", &pct, 0.0f, 100.0f, "%.0f%%"))
+                training_stagger_hold(side, hold, 1.0f + pct / 100.0f);
             ImGui::PopID();
         }
         ImGui::TextWrapped("The critical-stun mash value: each input in a critical stun or guard break adds "
-                           "0.03 (up to 2.00) and every idle frame takes 0.01 (down to 1.00); it sets how fast "
-                           "the stun animation plays. Hold sets the value at the start of every frame, and the "
-                           "game applies that frame's input on top.");
+                           "3% (up to 100%) and every idle frame takes 1% (down to 0%); it sets how fast "
+                           "the stun animation plays (0% = normal speed, 100% = double). Hold sets the value "
+                           "at the start of every frame, and the game applies that frame's input on top.");
     }
 }
 

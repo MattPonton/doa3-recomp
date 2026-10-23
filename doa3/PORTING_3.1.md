@@ -3713,3 +3713,9 @@ The Training tab shows both live values and has a Hold toggle and a
 each input window, before the fighters update, so the game still
 applies that frame's mash or decay and does the speed copy itself; the
 port never writes the animation speed.
+
+## 0.1.13 - Stagger Escape shown as a percentage
+
+The Training tab shows Stagger Escape as 0-100 % (game value 1.00-2.00:
+(v - 1) * 100), for the live readout and the hold slider. Mash +3 %,
+decay -1 % per idle frame. The game's value is unchanged.
