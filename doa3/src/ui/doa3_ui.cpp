@@ -198,11 +198,18 @@ static void DrawPlayerControls()
     for (int i = 0; i < 3 + XBOX_HOST_CONTROLLERS; ++i) if (devices[i] == pad_mapping_device(g_input_player)) selected = i;
     ImGui::SetNextItemWidth(270.0f);
     if (ImGui::BeginCombo("Input device", device_labels[selected])) {
-        for (int i = 0; i < 3 + XBOX_HOST_CONTROLLERS; ++i) if (ImGui::Selectable(device_labels[i], i == selected)) {
+        for (int i = 0; i < 3 + XBOX_HOST_CONTROLLERS; ++i) {
+            /* Only connected controllers are offered. The current choice stays
+             * listed (as "disconnected") so an assignment to an unplugged
+             * pad can still be seen and changed. */
+            if (i >= 3 && !(physical & (1u << (i - 3))) && i != selected) continue;
+            if (!ImGui::Selectable(device_labels[i], i == selected)) continue;
             pad_mapping_set_device(g_input_player, devices[i]);
             g_listening = -1; g_pending_vk = 0;
             SetStatus("Device changed; Save to keep settings");
         }
+        if (!(physical & ((1u << XBOX_HOST_CONTROLLERS) - 1u)))
+            ImGui::TextDisabled("No controllers connected");
         ImGui::EndCombo();
     }
     int type = pad_mapping_type(g_input_player);

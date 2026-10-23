@@ -3577,3 +3577,13 @@ frame; it is now an override that stamps the frame, and its esp-probe
 wrapper is removed from recomp_probes.c. The pause-menu exception and
 the netplay exclusion are unchanged. The [DIP] line now also shows how
 many frames ago the reader ran, and up to 24 changes are logged.
+
+## 0.1.7 - Input device list shows only connected controllers
+
+Controls > Input device listed all four Xbox and all four PS4 slots
+whether or not a pad was plugged in. It now lists Automatic, None,
+Keyboard and only the connected controllers (connection is polled
+every 250 ms for connected slots and every second for empty ones). The
+device currently assigned to the player stays listed even when it is
+unplugged, marked "(disconnected)", so the assignment can still be
+seen and changed. "No controllers connected" shows when there are none.
