@@ -3746,3 +3746,31 @@ which explains the first condition too.
 
 Player-driven fighters keep the input-window seed, since their handler
 (0x14D70) does not reset.
+
+## 0.1.15 - Dip switch: Random includes alternate costume colours
+
+Player record (0x59CF58 + side*0x68): +1 character, +2 costume ID (Matt).
+
+How a costume ID is chosen:
+- 0xCD870(al = character, dl = costume slot, [esp+4] = alternate) maps
+  slot and alternate to the costume ID. Slots below
+  min(unlocked 0x59FB16[0x2FF868[char]], 0x29C70C[char]) index
+  0x29C728[char][sum of earlier slots' variant counts + alternate].
+  The variant counts are 0x29C790[char][slot]; slots past the unlocked
+  count are 0x40+ extras.
+- Character select takes the alternate from the held buttons (0xCD110:
+  X/Y, with LT for the upper ones), limited only by the variant count;
+  there is no unlock test per alternate.
+- The random picker 0xCC980 handles the player's Random (character
+  0xFF) and the CPU's random opponents (modes 2, 3, 4, 5, 9, 10 via
+  0x5A28F0). It picks a character and a slot from the random pools
+  0x404990/0x404998, then calls 0xCD870 with alternate 0, every time.
+- Scripted opponents come from 0xCC760, which passes their own
+  alternate.
+
+With DIP_RANDOM_ALT_COSTUMES on, 0xCC980 and 0xCD870 are overrides
+(their esp-probe wrappers removed). While the picker runs, an alternate
+of 0 for a base slot with more than one variant is replaced by
+(next byte of the 0x404998 pool + slot*7 + char*3) mod variants. That
+is deterministic: no host randomness, so replays and netplay agree.
+Logged as [RANDALT] (first 16).

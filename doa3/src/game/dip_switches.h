@@ -13,6 +13,7 @@ extern "C" {
 
 typedef enum {
     DIP_LSTICK_MENUS = 0,   /* left stick also navigates the menus */
+    DIP_RANDOM_ALT_COSTUMES,/* random picks include alternate costume colours */
     DIP_COUNT
 } dip_switch;
 

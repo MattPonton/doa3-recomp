@@ -717,6 +717,59 @@ void sub_0001EF20(void)   /* fight stick reader (player in [esp+4]) */
     sub_0001EF20_gen();
     if (g_fib_slice_due) xbox_fiber_timeslice();
 }
+/* Dip switch "Random includes alternate costume colours" (0.1.15).
+ * 0xCC980 resolves a random character -- the player's Random (char 0xFF) and
+ * the CPU's random opponents (Story, Survival, Time Attack...) -- then turns
+ * the random costume slot into a costume with 0xCD870(al = char, dl = slot,
+ * [esp+4] = alternate). It always passes alternate 0. Character select gets
+ * the alternate from the held buttons (0xCD110), limited only by the slot's
+ * variant count, byte [ [0x29C790 + char*4] + slot ]. While the picker runs,
+ * replace that 0 with a random alternate below the count, taken from the
+ * game's own random pool (0x404998, the one the picker uses for the slot) so
+ * the choice stays deterministic. Scripted opponents (0xCC760) never pass
+ * through here. */
+static int s_random_pick_depth;
+void sub_000CC980_gen(void);
+void sub_000CC980(void)
+{
+    s_random_pick_depth++;
+    sub_000CC980_gen();
+    s_random_pick_depth--;
+    if (g_fib_slice_due) xbox_fiber_timeslice();
+}
+void sub_000CD870_gen(void);
+void sub_000CD870(void)
+{
+    if (s_random_pick_depth > 0 && dip_get(DIP_RANDOM_ALT_COSTUMES) && MEM8(esp + 4) == 0) {
+        uint32_t ch = eax & 0xFF, slot = edx & 0xFF;
+        if (ch <= 0x18) {
+            uint32_t grp = MEM8(0x2FF868 + ch);
+            uint32_t have = MEM8(0x59FB16 + grp), max = MEM8(0x29C70C + ch);
+            uint32_t count = have < max ? have : max;
+            uint32_t tab = MEM32(0x29C790 + ch * 4);
+            if (slot < count && tab) {
+                uint32_t variants = MEM8(tab + slot);
+                if (variants > 1) {
+                    uint32_t pool = MEM32(0x404998), r = pool ? MEM8(pool + MEM8(0x40499D)) : 0;
+                    static int s_log;
+                    /* Mix in the slot so a reused pool byte does not tie the
+                     * alternate to the slot. */
+                    uint32_t alt = (r + slot * 7u + ch * 3u) % variants;
+                    MEM8(esp + 4) = (uint8_t)alt;
+                    if (s_log < 16) {
+                        s_log++;
+                        fprintf(stderr, "[RANDALT] character %02X costume slot %u: alternate %u of %u\n",
+                                ch, slot, alt, variants);
+                        fflush(stderr);
+                    }
+                }
+            }
+        }
+    }
+    sub_000CD870_gen();
+    if (g_fib_slice_due) xbox_fiber_timeslice();
+}
+
 static uint16_t xpp_lstick_menu_bits(uint32_t port, int16_t lx, int16_t ly)
 {
     static uint8_t s_on[4];         /* bit0 x axis, bit1 y axis engaged */

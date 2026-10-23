@@ -12,6 +12,11 @@ static const struct { const char *key, *label, *help; } k_dip[DIP_COUNT] = {
       "fight the pad and both sticks move the character. On: the left stick "
       "also moves the menu cursor (the directional pad still works). Fights "
       "are unchanged." },
+    { "RandomAltCostumes", "Random includes alternate costume colours",
+      "The original game's Random select, and the opponents Story, Survival and Time Attack "
+      "pick at random, always use a costume's first colour. On: they pick one of that "
+      "costume's alternate colours (the ones chosen with A, X, Y, Black or LT on Character "
+      "Select) at random too. Scripted story opponents are unchanged." },
 };
 
 static volatile LONG g_loaded;
