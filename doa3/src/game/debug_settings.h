@@ -19,6 +19,8 @@ int debug_settings_load(void);
 int debug_settings_save(void);
 /* Only menu/selection reads use this; the save and reward code read real data. */
 uint8_t doa3_debug_unlock_read8(uint32_t address, uint8_t saved_value);
+/* Writes guest RAM to Snapshots\\ram_<frame>.bin; returns the frame, 0 on failure. */
+unsigned doa3_save_ram_snapshot(void);
 #ifdef __cplusplus
 }
 #endif

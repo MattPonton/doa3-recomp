@@ -183,3 +183,31 @@ uint8_t doa3_debug_unlock_read8(uint32_t address, uint8_t saved_value)
         return saved_value ? saved_value : 1;
     return saved_value;
 }
+
+/* Debug > Diagnostics > "Save a game memory snapshot" (0.1.11): the guest's
+ * 64 MB of RAM, written raw as Snapshots\ram_<frame>.bin next to the game
+ * (kept between launches, unlike Diagnostics). Comparing snapshots taken in
+ * a bad state and a good one finds the variable behind a logic bug, e.g. the
+ * stage-select preview camera that stops looping after long sessions.
+ * Called from the menu, which runs between frames on the game thread, so
+ * the guest is not running while the copy is taken. Returns the frame
+ * number written, or 0 on failure. */
+unsigned doa3_save_ram_snapshot(void)
+{
+    extern unsigned g_doa3_frames_presented;
+    char path[MAX_PATH];
+    unsigned frame = g_doa3_frames_presented;
+    const uint8_t *base = (const uint8_t *)(uintptr_t)g_xbox_mem_offset;
+    FILE *f;
+    size_t done;
+    CreateDirectoryA("Snapshots", NULL);
+    wsprintfA(path, "Snapshots\\ram_%06u.bin", frame);
+    f = fopen(path, "wb");
+    if (!f) return 0;
+    done = fwrite(base, 1, 0x04000000u, f);
+    fclose(f);
+    fprintf(stderr, "[SNAPSHOT] frame %u: guest RAM 0x00000000-0x03FFFFFF -> %s (%s)\n",
+            frame, path, done == 0x04000000u ? "ok" : "short write");
+    fflush(stderr);
+    return done == 0x04000000u ? (frame ? frame : 1u) : 0u;
+}

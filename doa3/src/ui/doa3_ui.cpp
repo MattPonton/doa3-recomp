@@ -791,6 +791,16 @@ void DrawDebugSection()
         ImGui::TextWrapped("Saves every texture drawn in the next frame as a .dds file in a Textures "
                            "folder next to the game, named by its memory address and size. Files are "
                            "kept between launches.");
+        if (ImGui::Button("Save a game memory snapshot")) {
+            unsigned fr = doa3_save_ram_snapshot();
+            char msg[96];
+            if (fr) _snprintf_s(msg, sizeof msg, _TRUNCATE, "Saved Snapshots\\ram_%06u.bin", fr);
+            else strcpy_s(msg, "Could not write the snapshot");
+            SetStatus(msg);
+        }
+        ImGui::TextWrapped("Writes the game's 64 MB of memory to a Snapshots folder next to the game "
+                           "(kept between launches). Take two a second apart while a logic bug is "
+                           "showing and two once it is gone, for comparison.");
     }
     if (ImGui::CollapsingHeader("Camera controls")) {
         bool camera = free_camera_enabled() != 0;

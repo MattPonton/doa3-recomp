@@ -3651,3 +3651,31 @@ the texture anew, logged as [TEXCACHE] ... replaced (first 40).
 
 Matt saw it only with the performance overlay on. That is likely about
 what lands where in a long session rather than the overlay itself.
+
+## 0.1.11 - stage-select camera loop: memory snapshots
+
+Matt (0.1.9, around frame 129000, about 36 min in, after three Story
+runs and two or three Nine Lives viewings): the stage-select preview
+camera stopped at the end of its path instead of looping. Re-entering
+the preview animated it again. He took five traces frozen
+(129035-129457) and five animating (129676-129951).
+
+The vertex constants confirm it. Every frozen trace has the same view
+matrix (c96 onward), 420 frames apart, while the animating traces
+change it each time. So the camera position itself stopped advancing;
+it is not a stale picture. The preview's state is rebuilt on entry,
+which is why a refresh animates. What fails is the step that should
+loop the path back to its start.
+
+The game's clocks don't explain it:
+- KeTickCount runs from 0 at boot.
+- The XAPI QPC (rdtsc, 733 MHz) is boot-relative.
+- The frame-time meter (0xA65B0/0xA6680) works on small deltas.
+
+The code alone does not show which variable fails, so Debug >
+Diagnostics has a new "Save a game memory snapshot" button. It writes
+guest RAM (64 MB) to Snapshots\ram_<frame>.bin, a folder kept between
+launches (Diagnostics is cleared at each launch). Two snapshots frozen
+and two animating separate the camera-path state from everything else:
+the frozen view matrix is known from the traces, so the camera struct
+can be found by value and the loop test read from its code.
