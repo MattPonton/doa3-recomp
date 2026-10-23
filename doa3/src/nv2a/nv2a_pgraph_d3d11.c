@@ -5015,11 +5015,40 @@ void pgraph_mtrace_flush_run(void)
     }
     s_mt_last = 0xFFFFFFFFu;
 }
+/* 0.1.9 diagnostic: Matt's Nine Lives traces (0.1.8) carry SET_DEPTH_FUNC
+ * = 0x0CBCDBEB, not a GL compare (0x200..0x207); boot traces of the same run
+ * show 0x203. Keep the last 48 methods; when an out-of-range depth func
+ * arrives, log them with the frame and the thread (first 6 times). A word
+ * of vertex or other data read as a method points at the push-buffer walk
+ * losing its place, a sane-looking run at the guest sending it. */
+static uint32_t s_mhist[48][2];
+static unsigned s_mhist_pos;
+static void nv_bad_depth_func(uint32_t param)
+{
+    static int n;
+    extern unsigned g_doa3_frames_presented;
+    unsigned i;
+    if (n >= 6) return;
+    n++;
+    fprintf(stderr, "[BADZFUNC] SET_DEPTH_FUNC %08X at frame %u on thread %lu (%s); last methods, oldest first:\n",
+            param, g_doa3_frames_presented, GetCurrentThreadId(),
+            g_doa3_mtrace ? "tracing" : "not tracing");
+    for (i = 0; i < 48; i++) {
+        unsigned k = (s_mhist_pos + i) % 48;
+        if (s_mhist[k][0] || s_mhist[k][1])
+            fprintf(stderr, "  %04X %08X\n", s_mhist[k][0], s_mhist[k][1]);
+    }
+    fflush(stderr);
+}
+
 int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
 {
     const NvMethodEntry *me;
     uint32_t f;
     (void)subchannel;
+    s_mhist[s_mhist_pos][0] = method; s_mhist[s_mhist_pos][1] = param;
+    s_mhist_pos = (s_mhist_pos + 1) % 48;
+    if (method == 0x0354 && (param < 0x200 || param > 0x207)) nv_bad_depth_func(param);
     if (g_doa3_mtrace) {
         int data = (method == 0x1818 || (method >= 0x1800 && method < 0x1810));
         if (data) {

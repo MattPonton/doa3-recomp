@@ -3611,3 +3611,25 @@ Bluetooth rumble is still unsupported for both (different report, CRC).
 The Controls tab and the [INPUT] log name the pad "PS5 controller N"
 or "PS4 controller N" by model. ds4_mapping_test checks the DualSense
 report.
+
+## 0.1.9 - per-model controller numbering; depth-func diagnostic
+
+Input device list: no "(connected)" suffix (only connected pads are
+listed). Numbers count per model in slot order: Xbox controller 1,
+PS4 controller 1, PS5 controller 1, PS5 controller 2. An unplugged pad
+that is still the player's choice shows as "<model> (disconnected)".
+The "Using ..." line uses the same name.
+
+Matt reports the 3D rendering broken on 0.1.8 during the Nine Lives
+demonstration (FMVs fine): characters partly see-through, earlier shots
+showing through later ones. His four traces of it (frames 14729-15028)
+have SET_DEPTH_FUNC = 0x0CBCDBEB on every draw. That is not a GL compare
+(0x200..0x207); the same run's boot traces show 0x203. The D3D path maps
+an out-of-range value to LESSEQUAL, so the value alone draws nothing
+wrong, but it means something sent a bad word. Nothing in 0.1.4..0.1.8
+touches the push-buffer path. pgraph now keeps the last 48 methods and,
+when an out-of-range depth func arrives, logs them as [BADZFUNC] with
+the frame and thread (first 6 times). A data word read as a method
+points at the push-buffer walk; a sane run, at the guest. To tell an
+asynchronous-GPU problem from anything else, run with
+DOA3_ASYNC_GPU=0 (DOA3_SYNC.bat).

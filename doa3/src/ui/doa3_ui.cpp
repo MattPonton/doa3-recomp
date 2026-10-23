@@ -181,6 +181,25 @@ int ResetSaveRow()
     return hit;
 }
 
+/* "Xbox controller N" / "PS4 controller N" / "PS5 controller N", numbered
+ * per model among the connected pads (slot order); an unplugged slot has no
+ * number. */
+static void ControllerLabel(int slot, DWORD physical, char *out, size_t n)
+{
+    const char *model = slot < 4 ? "Xbox controller" : ds4_model_name(slot - 4);
+    if (!(physical & (1u << slot))) {
+        _snprintf_s(out, n, _TRUNCATE, "%s (disconnected)", model);
+        return;
+    }
+    int num = 1;
+    for (int j = 0; j < slot; ++j) {
+        if (!(physical & (1u << j))) continue;
+        const char *m = j < 4 ? "Xbox controller" : ds4_model_name(j - 4);
+        if (strcmp(m, model) == 0) ++num;
+    }
+    _snprintf_s(out, n, _TRUNCATE, "%s %d", model, num);
+}
+
 static void DrawPlayerControls()
 {
     static const char *types[] = { "Duke", "Controller S", "Fight Stick" };
@@ -191,9 +210,7 @@ static void DrawPlayerControls()
     strcpy_s(device_labels[1], "None");
     strcpy_s(device_labels[2], "Keyboard");
     for (int i = 0; i < XBOX_HOST_CONTROLLERS; ++i)
-        _snprintf_s(device_labels[i + 3], sizeof device_labels[i + 3], _TRUNCATE,
-            "%s %d (%s)", i < 4 ? "Xbox controller" : ds4_model_name(i - 4), i % 4 + 1,
-            physical & (1u << i) ? "connected" : "disconnected");
+        ControllerLabel(i, physical, device_labels[i + 3], sizeof device_labels[i + 3]);
     const int devices[] = { PAD_DEVICE_AUTO, PAD_DEVICE_NONE, PAD_DEVICE_KEYBOARD, 0, 1, 2, 3, 4, 5, 6, 7 };
     int selected = 0;
     for (int i = 0; i < 3 + XBOX_HOST_CONTROLLERS; ++i) if (devices[i] == pad_mapping_device(g_input_player)) selected = i;
@@ -221,7 +238,11 @@ static void DrawPlayerControls()
         SetStatus("Controller type changed; Save to keep settings");
     }
     int slot = xbox_InputAssignedSlot(g_input_player);
-    if (slot >= 0) ImGui::TextDisabled("Using %s %d", slot < 4 ? "Xbox controller" : ds4_model_name(slot - 4), slot % 4 + 1);
+    if (slot >= 0) {
+        char using_label[64];
+        ControllerLabel(slot, physical, using_label, sizeof using_label);
+        ImGui::TextDisabled("Using %s", using_label);
+    }
     else if (pad_mapping_device(g_input_player) == PAD_DEVICE_KEYBOARD)
         ImGui::TextDisabled("Using keyboard; bind keys below");
     else ImGui::TextDisabled("No physical controller assigned");
