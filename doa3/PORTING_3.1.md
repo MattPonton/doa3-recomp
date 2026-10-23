@@ -3560,3 +3560,20 @@ First switch: "Left stick navigates menus" (LeftStickMenus).
   are unchanged.
 - The first 12 changes are logged as [DIP] with phase, pause and mode,
   to confirm the gating.
+
+## 0.1.6 - left-stick menus: fight detection from the fight's stick reader
+
+Matt: 0.1.5's switch worked on the in-fight pause menus but not on
+any menu outside a battle (mode select, options, character, costume
+and stage select).
+
+The [DIP] log showed every menu press as "phase 1 ... fight, not
+folded". The phase byte 0x596A37 is 1 on the menus as well, so it
+can't tell a fight from a menu.
+
+"In a fight" now means the fight's own stick reader ran within the
+last 3 frames. That reader is 0x1EF20, called per player each logic
+frame; it is now an override that stamps the frame, and its esp-probe
+wrapper is removed from recomp_probes.c. The pause-menu exception and
+the netplay exclusion are unchanged. The [DIP] line now also shows how
+many frames ago the reader ran, and up to 24 changes are logged.

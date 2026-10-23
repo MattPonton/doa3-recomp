@@ -689,11 +689,25 @@ void sub_002118A4(void)   /* XInputGetCapabilities(handle, caps), ret 8 */
  * wButtons; the fight reads the sticks separately (+0x1C, with its own
  * thresholds and hysteresis, 0x1EF20). So outside a fight the left stick is
  * folded into wButtons as directional-pad bits and goes through the game's
- * own held/pressed/repeat logic. A fight (phase 0x596A37 = 1 or 2) is left
- * untouched unless the pause menu is up (0x5A27A0 = 1, which also covers the
- * Sparring settings screen). 8-way sectors, an axis switches on at 0x5000
- * (the fight's stick threshold) and off below 0x3000. */
+ * own held/pressed/repeat logic. A fight is left untouched unless the pause
+ * menu is up (0x5A27A0 = 1, which also covers the Sparring settings screen).
+ * 8-way sectors, an axis switches on at 0x5000 (the fight's stick threshold)
+ * and off below 0x3000.
+ *
+ * 0.1.6: "in a fight" is the fight's own stick reader (0x1EF20, once per
+ * player per logic frame) having run in the last few frames. 0.1.5 used the
+ * phase byte 0x596A37, but it reads 1 on the menus too (Matt's log: phase 1
+ * on mode select), so the menus never got the stick. */
 #include "../dip_switches.h"
+static volatile unsigned g_fight_stick_frame, g_fight_stick_seen;
+void sub_0001EF20_gen(void);
+void sub_0001EF20(void)   /* fight stick reader (player in [esp+4]) */
+{
+    g_fight_stick_frame = g_doa3_frames_presented;
+    g_fight_stick_seen = 1;
+    sub_0001EF20_gen();
+    if (g_fib_slice_due) xbox_fiber_timeslice();
+}
 static uint16_t xpp_lstick_menu_bits(uint32_t port, int16_t lx, int16_t ly)
 {
     static uint8_t s_on[4];         /* bit0 x axis, bit1 y axis engaged */
@@ -714,14 +728,16 @@ static uint16_t xpp_lstick_menu_bits(uint32_t port, int16_t lx, int16_t ly)
     if ((on & 2) && (ay * 1000 >= ax * 414)) bits |= ly > 0 ? 0x0001 : 0x0002;   /* UP / DOWN */
     phase = MEM8(0x596A37u);
     paused = MEM8(0x5A27A0u);
-    gated = netplay_active() || ((phase == 1 || phase == 2) && paused != 1);
-    if (s_log < 12) {
+    gated = netplay_active() ||
+            (g_fight_stick_seen && g_doa3_frames_presented - g_fight_stick_frame <= 3u && paused != 1);
+    if (s_log < 24) {
         static uint16_t s_last = 0xFFFF;
         if (bits != s_last) {
             s_log++;
-            fprintf(stderr, "[DIP] left stick -> pad bits %X port %u phase %u paused %u mode %u: %s (frame %u)\n",
-                    bits, port, phase, paused, MEM8(0x5A2858u), gated ? "fight, not folded" : "folded",
-                    g_doa3_frames_presented);
+            fprintf(stderr, "[DIP] left stick -> pad bits %X port %u phase %u paused %u mode %u fight-reader %d frames ago: %s (frame %u)\n",
+                    bits, port, phase, paused, MEM8(0x5A2858u),
+                    g_fight_stick_seen ? (int)(g_doa3_frames_presented - g_fight_stick_frame) : -1,
+                    gated ? "fight, not folded" : "folded", g_doa3_frames_presented);
             fflush(stderr);
         }
         s_last = bits;
