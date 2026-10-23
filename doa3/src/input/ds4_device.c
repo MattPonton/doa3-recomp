@@ -13,6 +13,7 @@ static struct {
     IDirectInputDevice8A *device;
     XINPUT_STATE state;
     Ds4Rumble *rumble;
+    int ps5;   /* DualSense or DualSense Edge */
 } s_pads[4];
 
 static SHORT stick(LONG value, int invert)
@@ -76,8 +77,14 @@ static BOOL CALLBACK found_pad(const DIDEVICEINSTANCEA *info, void *context)
     IDirectInputDevice8A *device = NULL;
     HRESULT hr;
     (void)context;
-    /* Restrict this mapping to Sony DS4 hardware; never double-enumerate Xbox pads. */
-    if (vendor != 0x054c || (product != 0x05c4 && product != 0x09cc && product != 0x0ba0)) return DIENUM_CONTINUE;
+    int ps5 = product == 0x0ce6 || product == 0x0df2;   /* DualSense, DualSense Edge */
+    /* Restrict this mapping to Sony DS4 and DualSense hardware; never
+     * double-enumerate Xbox pads. Through DirectInput both report the same
+     * layout: buttons Square Cross Circle Triangle L1 R1 L2 R2
+     * Share/Create Options L3 R3, hat = d-pad, X/Y left stick, Z/Rz right
+     * stick, Rx/Ry triggers. */
+    if (vendor != 0x054c || (product != 0x05c4 && product != 0x09cc && product != 0x0ba0 && !ps5))
+        return DIENUM_CONTINUE;
     for (int i = 0; i < 4; ++i)
         if (s_pads[i].known && IsEqualGUID(&s_pads[i].id, &info->guidInstance)) { slot = i; break; }
     if (slot < 0) for (int i = 0; i < 4; ++i)
@@ -98,6 +105,7 @@ static BOOL CALLBACK found_pad(const DIDEVICEINSTANCEA *info, void *context)
     s_pads[slot].id = info->guidInstance;
     s_pads[slot].known = 1;
     s_pads[slot].device = device;
+    s_pads[slot].ps5 = ps5;
     memset(&s_pads[slot].state, 0, sizeof(s_pads[slot].state));
     IDirectInputDevice8_Acquire(device);
     DIPROPGUIDANDPATH path = {0};
@@ -106,8 +114,9 @@ static BOOL CALLBACK found_pad(const DIDEVICEINSTANCEA *info, void *context)
     path.diph.dwHow = DIPH_DEVICE;
     if (SUCCEEDED(IDirectInputDevice8_GetProperty(device, DIPROP_GUIDANDPATH, &path.diph)))
         s_pads[slot].rumble = ds4_rumble_open(path.wszPath);
-    fprintf(stderr, "[INPUT] PS4 controller %d connected: %s (USB rumble %s)\n",
-        slot + 1, info->tszProductName, s_pads[slot].rumble ? "available" : "unavailable");
+    fprintf(stderr, "[INPUT] %s %d connected: %s (USB rumble %s)\n",
+        ps5 ? "PS5 controller" : "PS4 controller", slot + 1, info->tszProductName,
+        s_pads[slot].rumble ? "available" : "unavailable");
     return DIENUM_CONTINUE;
 }
 
@@ -172,4 +181,10 @@ DWORD ds4_set_rumble(int slot, const XINPUT_VIBRATION *motors)
     if (slot < 0 || slot >= 4 || !s_pads[slot].device) return ERROR_DEVICE_NOT_CONNECTED;
     if (!motors) return ERROR_INVALID_PARAMETER;
     return ds4_rumble_set(s_pads[slot].rumble, motors->wLeftMotorSpeed, motors->wRightMotorSpeed);
+}
+
+const char *ds4_model_name(int slot)
+{
+    if (slot < 0 || slot >= 4 || !s_pads[slot].device) return "PlayStation controller";
+    return s_pads[slot].ps5 ? "PS5 controller" : "PS4 controller";
 }

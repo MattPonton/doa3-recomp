@@ -6,6 +6,7 @@
 struct Ds4Rumble {
     HANDLE device, changed, stop, thread, complete;
     volatile LONG motors, result;
+    DWORD size;   /* output report length: 32 = DS4, 48 = DualSense */
 };
 
 void ds4_rumble_report(BYTE report[32], WORD left, WORD right)
@@ -17,16 +18,27 @@ void ds4_rumble_report(BYTE report[32], WORD left, WORD right)
     report[5] = (BYTE)(left >> 8);
 }
 
+void ds5_rumble_report(BYTE report[48], WORD left, WORD right)
+{
+    memset(report, 0, 48);
+    report[0] = 0x02;  /* DualSense USB output report. */
+    report[1] = 0x03;  /* valid flags 0: compatible vibration + haptics select */
+    report[3] = (BYTE)(right >> 8);   /* right (high-frequency) motor */
+    report[4] = (BYTE)(left >> 8);    /* left (low-frequency) motor */
+    report[39] = 0x04; /* valid flags 2: improved rumble emulation (firmware 2.24+) */
+}
+
 static DWORD send_report(Ds4Rumble *rumble, DWORD motors)
 {
-    BYTE report[32];
+    BYTE report[48];
     DWORD written = 0, error;
     OVERLAPPED operation = {0};
     operation.hEvent = rumble->complete;
     ResetEvent(operation.hEvent);
-    ds4_rumble_report(report, (WORD)motors, (WORD)(motors >> 16));
-    if (WriteFile(rumble->device, report, sizeof(report), &written, &operation))
-        return written == sizeof(report) ? ERROR_SUCCESS : ERROR_WRITE_FAULT;
+    if (rumble->size == 48) ds5_rumble_report(report, (WORD)motors, (WORD)(motors >> 16));
+    else ds4_rumble_report(report, (WORD)motors, (WORD)(motors >> 16));
+    if (WriteFile(rumble->device, report, rumble->size, &written, &operation))
+        return written == rumble->size ? ERROR_SUCCESS : ERROR_WRITE_FAULT;
     error = GetLastError();
     if (error != ERROR_IO_PENDING) return error;
     if (WaitForSingleObject(operation.hEvent, 100) != WAIT_OBJECT_0) {
@@ -36,7 +48,7 @@ static DWORD send_report(Ds4Rumble *rumble, DWORD motors)
         return ERROR_TIMEOUT;
     }
     if (!GetOverlappedResult(rumble->device, &operation, &written, FALSE)) return GetLastError();
-    return written == sizeof(report) ? ERROR_SUCCESS : ERROR_WRITE_FAULT;
+    return written == rumble->size ? ERROR_SUCCESS : ERROR_WRITE_FAULT;
 }
 
 static DWORD WINAPI rumble_worker(void *context)
@@ -64,11 +76,14 @@ Ds4Rumble *ds4_rumble_open(const WCHAR *path)
     rumble->device = CreateFileW(path, GENERIC_READ | GENERIC_WRITE,
         FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
     if (rumble->device == INVALID_HANDLE_VALUE) { free(rumble); return NULL; }
-    /* USB only: Bluetooth uses a different report and CRC. */
+    /* USB only: Bluetooth uses different reports and a CRC. A DS4 has a
+     * 32-byte output report, a DualSense (and DualSense Edge) a 48-byte one. */
     if (!HidD_GetPreparsedData(rumble->device, &data)) goto failed;
     NTSTATUS status = HidP_GetCaps(data, &caps);
     HidD_FreePreparsedData(data);
-    if (status != HIDP_STATUS_SUCCESS || caps.OutputReportByteLength != 32) goto failed;
+    if (status != HIDP_STATUS_SUCCESS ||
+        (caps.OutputReportByteLength != 32 && caps.OutputReportByteLength != 48)) goto failed;
+    rumble->size = caps.OutputReportByteLength;
     rumble->changed = CreateEventW(NULL, FALSE, FALSE, NULL);
     rumble->stop = CreateEventW(NULL, TRUE, FALSE, NULL);
     rumble->complete = CreateEventW(NULL, TRUE, FALSE, NULL);

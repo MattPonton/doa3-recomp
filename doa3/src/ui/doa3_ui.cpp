@@ -16,6 +16,7 @@
 
 extern "C" {
 #include "pad_mapping.h"
+extern "C" const char *ds4_model_name(int slot);   /* input/ds4_device.c */
 #include "../game/video_settings.h"
 #include "../game/audio_settings.h"
 #include "../game/game_audio.h"
@@ -191,7 +192,7 @@ static void DrawPlayerControls()
     strcpy_s(device_labels[2], "Keyboard");
     for (int i = 0; i < XBOX_HOST_CONTROLLERS; ++i)
         _snprintf_s(device_labels[i + 3], sizeof device_labels[i + 3], _TRUNCATE,
-            "%s %d (%s)", i < 4 ? "Xbox controller" : "PS4 controller", i % 4 + 1,
+            "%s %d (%s)", i < 4 ? "Xbox controller" : ds4_model_name(i - 4), i % 4 + 1,
             physical & (1u << i) ? "connected" : "disconnected");
     const int devices[] = { PAD_DEVICE_AUTO, PAD_DEVICE_NONE, PAD_DEVICE_KEYBOARD, 0, 1, 2, 3, 4, 5, 6, 7 };
     int selected = 0;
@@ -220,7 +221,7 @@ static void DrawPlayerControls()
         SetStatus("Controller type changed; Save to keep settings");
     }
     int slot = xbox_InputAssignedSlot(g_input_player);
-    if (slot >= 0) ImGui::TextDisabled("Using %s %d", slot < 4 ? "Xbox controller" : "PS4 controller", slot % 4 + 1);
+    if (slot >= 0) ImGui::TextDisabled("Using %s %d", slot < 4 ? "Xbox controller" : ds4_model_name(slot - 4), slot % 4 + 1);
     else if (pad_mapping_device(g_input_player) == PAD_DEVICE_KEYBOARD)
         ImGui::TextDisabled("Using keyboard; bind keys below");
     else ImGui::TextDisabled("No physical controller assigned");

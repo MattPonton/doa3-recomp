@@ -18,3 +18,4 @@ DWORD ds4_set_rumble(int slot, const XINPUT_VIBRATION *motors)
     ds4_test_motors[slot] = *motors;
     return ERROR_SUCCESS;
 }
+const char *ds4_model_name(int slot) { (void)slot; return "PS4 controller"; }

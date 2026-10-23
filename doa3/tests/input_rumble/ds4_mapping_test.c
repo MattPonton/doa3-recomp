@@ -41,6 +41,12 @@ int main(void)
     for (int i = 2; i < 32; ++i) if (i != 4 && i != 5) CHECK(report[i] == 0);
     ds4_rumble_report(report, 0, 0);
     CHECK(report[4] == 0 && report[5] == 0 && report[1] == 1);
-    puts("DS4 buttons, diagonal d-pad, sticks, Y inversion and independent analog triggers passed.");
+    BYTE r5[48];
+    ds5_rumble_report(r5, 65535, 32768);
+    CHECK(r5[0] == 2 && r5[1] == 3 && r5[3] == 128 && r5[4] == 255 && r5[39] == 4);
+    for (int i = 2; i < 48; ++i) if (i != 3 && i != 4 && i != 39) CHECK(r5[i] == 0);
+    ds5_rumble_report(r5, 0, 0);
+    CHECK(r5[3] == 0 && r5[4] == 0 && r5[1] == 3);
+    puts("DS4/DualSense buttons, diagonal d-pad, sticks, Y inversion, analog triggers and rumble reports passed.");
     return 0;
 }

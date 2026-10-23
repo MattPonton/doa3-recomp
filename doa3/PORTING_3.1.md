@@ -3587,3 +3587,27 @@ every 250 ms for connected slots and every second for empty ones). The
 device currently assigned to the player stays listed even when it is
 unplugged, marked "(disconnected)", so the assignment can still be
 seen and changed. "No controllers connected" shows when there are none.
+
+## 0.1.8 - DualSense (PS5) controller support
+
+The native PlayStation path (src/input/ds4_device.c, DirectInput) now
+also accepts the DualSense (054C:0CE6) and the DualSense Edge
+(054C:0DF2), in the same four slots as the DualShock 4. Through
+DirectInput the DualSense reports the DS4's layout:
+- buttons: Square Cross Circle Triangle L1 R1 L2 R2 Create Options L3 R3
+- d-pad: the hat
+- sticks: X/Y left, Z/Rz right
+- triggers: Rx/Ry
+So the existing translation and its tests cover it unchanged.
+
+Rumble (USB): the rumble opener picks the report by the HID output
+report length.
+- DS4: 32 bytes, report 0x05, motors at bytes 4 and 5.
+- DualSense: 48 bytes, report 0x02, valid flags 0x03 (compatible
+  vibration + haptics select), right/left motors at bytes 3 and 4, and
+  0x04 at byte 39 (improved rumble emulation on firmware 2.24+).
+Bluetooth rumble is still unsupported for both (different report, CRC).
+
+The Controls tab and the [INPUT] log name the pad "PS5 controller N"
+or "PS4 controller N" by model. ds4_mapping_test checks the DualSense
+report.

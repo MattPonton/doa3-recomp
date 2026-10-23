@@ -5,12 +5,15 @@
 #include <dinput.h>
 #include <xinput.h>
 
-/* Four native DualShock 4 slots, independent of Windows' four XInput slots. */
+/* Four native PlayStation slots (DualShock 4, DualSense, DualSense Edge),
+ * independent of Windows' four XInput slots. */
 /* Scan at startup or after a device notification; return 1 after a scan. */
 int ds4_probe(void);
 void ds4_devices_changed(void);
 DWORD ds4_read(int slot, XINPUT_STATE *state);
 DWORD ds4_set_rumble(int slot, const XINPUT_VIBRATION *motors);
 int ds4_has_rumble(int slot);
+/* "PS4 controller" or "PS5 controller" for the pad in a slot. */
+const char *ds4_model_name(int slot);
 void ds4_translate(const DIJOYSTATE2 *raw, XINPUT_GAMEPAD *pad);
 #endif
