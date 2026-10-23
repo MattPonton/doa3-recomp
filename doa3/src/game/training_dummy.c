@@ -211,9 +211,10 @@ static void stagger_apply(void)
 static void control_begin(void)
 {
     int port=s_ctrl_port;
+    /* The overlay being open does not matter (0.1.14): only recording
+     * stops with it, since the recorder reads the player's own pad. */
     int want=s_ctrl_enabled && s_mode==TRAINING_IDLE && training_can_record() &&
-             !doa3_ui_visible() && port!=training_human_port() &&
-             training_port_connected(port);
+             port!=training_human_port() && training_port_connected(port);
     if (!want) { s_ctrl_active=0; return; }
     s_ctrl_dummy=MEM8(0xC58E47)^1;
     if (!s_ctrl_active) {
@@ -291,4 +292,35 @@ void training_input_begin(void)
     MEM8(0x59CF58+s_dummy*0x68)=1;
     s_previous=buttons;
     s_modified=1;
+}
+
+/* 0.1.14: the CPU's stun handler (0x16840) first resets the value to 1.00
+ * when the fighter's +0x59 is 1 (a CPU fighter), then adds its random mash
+ * or decays, and copies the result to the fighter's animation speed (+0x10)
+ * on every path. Seeding the slot is therefore lost for a CPU dummy. Around
+ * that handler: note the base it starts from, and afterwards put the held
+ * value in its place with that frame's change on top, in both the slot and
+ * the animation speed. */
+static float s_cpu_base;
+static int s_cpu_side = -1;
+void training_stagger_cpu_before(void)
+{
+    unsigned side=MEM8(0x4DA2DD), fighter=MEM32(0x4DA1C4);
+    s_cpu_side=-1;
+    if (side>1 || !fighter || !s_stagger_hold[side] || !training_available()) return;
+    s_cpu_side=(int)side;
+    s_cpu_base=MEM8(fighter+0x59)==1 ? 1.0f : MEMF(0x4DA2D4+side*4);
+}
+void training_stagger_cpu_after(void)
+{
+    unsigned fighter;
+    float v;
+    if (s_cpu_side<0) return;
+    fighter=MEM32(0x4DA1C4);
+    v=s_stagger_value[s_cpu_side]+(MEMF(0x4DA2D4+s_cpu_side*4)-s_cpu_base);
+    if (v<1.0f) v=1.0f;
+    if (v>2.0f) v=2.0f;
+    MEMF(0x4DA2D4+s_cpu_side*4)=v;
+    if (fighter) MEMF(fighter+0x10)=v;
+    s_cpu_side=-1;
 }

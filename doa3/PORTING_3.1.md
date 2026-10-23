@@ -3719,3 +3719,30 @@ port never writes the animation speed.
 The Training tab shows Stagger Escape as 0-100 % (game value 1.00-2.00:
 (v - 1) * 100), for the live readout and the hold slider. Mash +3 %,
 decay -1 % per idle frame. The game's value is unchanged.
+
+## 0.1.14 - dummy control and Stagger Escape hold with the menu open / CPU dummy
+
+Matt (0.1.12/0.1.13):
+- A controller drove the dummy only while the overlay was closed.
+- A held Stagger Escape took effect only when the menu was closed AND
+  a player drove the dummy; a CPU dummy ignored it.
+
+Overlay gate. Dummy control copied the recorder's overlay check, but
+only the recorder needs it (it reads the player's own pad). Control
+now ignores whether the overlay is open.
+
+CPU dummy. The CPU stun handler 0x16840 first resets 0x4DA2D4[side] to
+1.00 when the fighter's +0x59 is 1 (a CPU fighter), then applies its
+random mash or decay and copies the result to the fighter's animation
+speed (+0x10) on every path. The value seeded at the input window was
+therefore lost. Opening the overlay handed the dummy back to the CPU,
+which explains the first condition too.
+
+0x16840 is now an override (its esp-probe wrapper removed):
+- Before the call it notes the base the handler starts from (1.00 on a
+  reset, otherwise the slot).
+- After the call, for a held side, it writes the held value plus that
+  frame's change (clamped to 1.00-2.00) to both the slot and +0x10.
+
+Player-driven fighters keep the input-window seed, since their handler
+(0x14D70) does not reset.

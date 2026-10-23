@@ -47,6 +47,15 @@ void sub_00011980_gen(void);
 void sub_00012B60_gen(void);
 void sub_001894B0_gen(void);
 void sub_00011980(void) { sub_00011980_gen(); training_input_begin(); }
+/* CPU stun handler: Stagger Escape hold for a CPU fighter (0.1.14). */
+void sub_00016840_gen(void);
+void sub_00016840(void)
+{
+    training_stagger_cpu_before();
+    sub_00016840_gen();
+    training_stagger_cpu_after();
+    if (g_fib_slice_due) xbox_fiber_timeslice();
+}
 void sub_00012B60(void) { sub_00012B60_gen(); training_input_end(); }
 void sub_001894B0(void) { training_reset(); sub_001894B0_gen(); }
 

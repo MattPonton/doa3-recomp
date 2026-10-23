@@ -42,3 +42,4 @@
 0x00020C80  SaveGame: never store streamer mode's temporary music level of 0
 0x000A47E0  Movie start (eax = movie number): streamer mode mutes the credits movie (mv_st.sfd) before it reads the music level
 0x0001EF20  fight stick reader: marks "in a fight" for the left-stick menu dip switch
+0x00016840  CPU stun handler (Stagger Escape): Training tab hold for a CPU fighter
