@@ -3007,12 +3007,93 @@ volatile int g_doa3_fbsample_seen;   /* a draw sampled a frame buffer this frame
 /* DOA3 DIAG: one line per submitted draw in the method trace (mtrace_*.txt):
  * where it lands on the host target, its depth range, colours and the state
  * it is drawn with, plus its first vertices. */
+/* Overlay history (0.1.1): the 2D draws (no depth test) of the last 32
+ * frames, kept in memory -- a handful per frame, so it costs nothing to
+ * keep -- and written to overlay_NNNNN.txt when a frame-buffer effect
+ * starts (the REPLAY -> WINNER cross-fade), so the frames leading up to it
+ * can be compared draw by draw: the REPLAY lettering loses its fill for 1-7
+ * frames there (1-2 on hardware). */
+#define OVL_FRAMES 32
+#define OVL_PER    96
+typedef struct {
+    float x0, y0, x1, y1;
+    uint32_t n, color, tex0, fmt0, ctl0, pal0, tex1, en, blend, surf, comb, rawsig;
+    char path[8];
+} OvlRec;
+static OvlRec   s_ovl[OVL_FRAMES][OVL_PER];
+static unsigned s_ovl_n[OVL_FRAMES], s_ovl_frame[OVL_FRAMES];
+static volatile LONG s_ovl_dump;          /* tag of a requested dump, 0 = none */
+void pgraph_overlay_dump_request(unsigned tag) { InterlockedExchange(&s_ovl_dump, (LONG)tag); }
+
+static void nv_ovl_record(const char *path, const OutputVertex *o, uint32_t n)
+{
+    unsigned slot = g_pg.frame % OVL_FRAMES, k;
+    OvlRec *r;
+    uint32_t i;
+    if (g_pg.depth_test) return;                                    /* 2D draws only */
+    if (s_ovl_frame[slot] != g_pg.frame) { s_ovl_frame[slot] = g_pg.frame; s_ovl_n[slot] = 0; }
+    if (s_ovl_n[slot] >= OVL_PER) return;
+    r = &s_ovl[slot][s_ovl_n[slot]++];
+    r->x0 = r->y0 = 1e9f; r->x1 = r->y1 = -1e9f;
+    for (i = 0; o && i < n; i++) {
+        if (o[i].x < r->x0) r->x0 = o[i].x;
+        if (o[i].x > r->x1) r->x1 = o[i].x;
+        if (o[i].y < r->y0) r->y0 = o[i].y;
+        if (o[i].y > r->y1) r->y1 = o[i].y;
+    }
+    r->n = n; r->color = (o && n) ? o[0].color : 0;
+    r->tex0 = g_pg.tex[0].offset; r->fmt0 = g_pg.tex[0].format; r->ctl0 = g_pg.tex[0].control0;
+    r->pal0 = g_pg.tex[0].palette; r->tex1 = g_pg.tex[1].offset;
+    r->en = (g_pg.tex[0].enabled ? 1u : 0u) | (g_pg.tex[1].enabled ? 2u : 0u) |
+            (g_pg.tex[2].enabled ? 4u : 0u) | (g_pg.tex[3].enabled ? 8u : 0u);
+    r->blend = (g_pg.blend_enable ? 0x80000000u : 0u) | (g_pg.blend_sfactor << 16) | g_pg.blend_dfactor;
+    r->surf = g_pg_surf_coff | (d3d8_OffscreenTargetActive() ? 0x80000000u : 0u);
+    r->comb = g_pg.shader_prog;
+    {   /* a fingerprint of stage 0's first 4 KB: did the texture's bytes change? */
+        extern ptrdiff_t g_xbox_mem_offset;
+        uint32_t a = g_pg.tex[0].offset & 0x07FFFFFFu;
+        r->rawsig = (a && a + 4096u <= 0x08000000u)
+            ? nv_tex_signature((const uint8_t *)((uintptr_t)a + g_xbox_mem_offset), 4096) : 0;
+    }
+    for (k = 0; k < sizeof r->path - 1 && path[k]; k++) r->path[k] = path[k];
+    r->path[k] = 0;
+}
+
+static void nv_ovl_dump_if_requested(void)
+{
+    extern FILE *doa3_diag_fopen(const char *, const char *);
+    LONG tag = InterlockedExchange(&s_ovl_dump, 0);
+    char name[64];
+    FILE *f;
+    unsigned back, k;
+    if (!tag) return;
+    sprintf(name, "overlay_%05u.txt", (unsigned)tag);
+    f = doa3_diag_fopen(name, "w");
+    if (!f) return;
+    fprintf(f, "2D draws of the %u frames up to pgraph frame %u (oldest first)\n"
+               "frame path n box(x0,y0)-(x1,y1) col tex0 fmt ctl0 pal en tex1 blend surf comb sig\n",
+            OVL_FRAMES, g_pg.frame);
+    for (back = OVL_FRAMES; back-- > 0; ) {
+        unsigned fr = g_pg.frame - back, slot = fr % OVL_FRAMES;
+        if (s_ovl_frame[slot] != fr) { fprintf(f, "%u (no 2D draws)\n", fr); continue; }
+        for (k = 0; k < s_ovl_n[slot]; k++) {
+            const OvlRec *r = &s_ovl[slot][k];
+            fprintf(f, "%u %s n%u (%.0f,%.0f)-(%.0f,%.0f) %08X %08X %08X %08X %08X %X %08X %08X %08X %08X %08X\n",
+                    fr, r->path, r->n, r->x0, r->y0, r->x1, r->y1, r->color, r->tex0, r->fmt0, r->ctl0,
+                    r->pal0, r->en, r->tex1, r->blend, r->surf, r->comb, r->rawsig);
+        }
+    }
+    fclose(f);
+    fprintf(stderr, "[OVERLAY] wrote %s (2D draws of the last %u frames)\n", name, OVL_FRAMES);
+}
+
 static void nv_mtrace_draw(const char *path, const OutputVertex *o, uint32_t n)
 {
     extern FILE *g_doa3_mtrace;
     float x0 = 1e9f, x1 = -1e9f, y0 = 1e9f, y1 = -1e9f, z0 = 1e9f, z1 = -1e9f;
     unsigned amin = 255, amax = 0;
     uint32_t i;
+    nv_ovl_record(path, o, n);
     if (!g_doa3_mtrace) return;
     for (i = 0; i < n; i++) {
         unsigned a = o[i].color >> 24;
@@ -3888,6 +3969,7 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
         for (st = 1; st < 4; st++)
             if (bound_mask & (1u << st)) dev->lpVtbl->SetTexture(dev, st, NULL);
     }
+    nv_ovl_record("gpu", NULL, ni);
     g_gpuff_stat[0]++;
     g_doa3_dt_all++;
     g_gpuff_stat[2] += nv;
@@ -5639,6 +5721,7 @@ void pgraph_diag_dump_ignored(void)
 
 void pgraph_d3d11_flush(void)
 {
+    nv_ovl_dump_if_requested();
     if (g_pg.in_draw) {
         submit_draw();
         g_pg.in_draw = 0;

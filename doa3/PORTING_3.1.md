@@ -3471,3 +3471,21 @@ capped at 60%. The steps:
            parallel with the game, the way the console's GPU ran
 
 Known graphical issues predate this work and are unchanged.
+
+## 0.1.1 - overlay history around the REPLAY -> WINNER cross-fade
+
+Matt: at the REPLAY -> WINNER transition the REPLAY lettering loses its
+fill (only the outline is left) for 1-2 frames on hardware but 1-7
+frames on the port. The automatic [FBFX] captures already land on that
+transition -- its cross-fade is a full-screen quad (alpha F6) sampling
+surface 03C24000, which the game fills in a render pass two frames
+earlier ([RTT] "pass into surface 03C24000 ... 0 GPU draws") -- but each
+is one trace of the first cross-fade frame, after the frames in
+question.
+
+Every 2D draw (no depth test) of the last 32 frames is now kept in
+memory: box, colour, both stage textures with format/control/palette,
+enabled stages, blend, render target, combiner program and a fingerprint
+of stage 0's first 4 KB. When [FBFX] fires, overlay_NNNNN.txt in
+Diagnostics gets them, oldest first, so the frames where the fill goes
+missing can be compared draw by draw with the ones before.

@@ -1339,6 +1339,8 @@ static void doa3_mtrace_frame(unsigned next)
                 sprintf(path, "mtrace_fb_%05u.txt", next);
                 g_doa3_mtrace = doa3_mtrace_open(path);
                 fprintf(stderr, "[FBFX] frame-buffer sampling effect: tracing frame %u -> %s + aa_%05u.bmp\n", next, path, next);
+                {   extern void pgraph_overlay_dump_request(unsigned tag);
+                    pgraph_overlay_dump_request(next); }   /* overlay_NNNNN.txt: the frames before it */
                 return;
             }
         }
