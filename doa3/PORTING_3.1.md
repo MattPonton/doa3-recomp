@@ -3523,3 +3523,15 @@ The [FBFX] captures are removed: they were added for Omega's after-image,
 fixed long ago, and fired at every match end. 0.1.1/0.1.2's overlay
 history (which hashed every 2D texture and palette each frame) is
 removed with them; it did its job.
+
+## 0.1.4 - menu header bar no longer widened at 21:9 / 32:9
+
+Since 0.0.174 a black bar ran across the full top of the screen on mode,
+character and stage select at 21:9 and 32:9. These screens draw a
+solid black band (uniform alpha, guest lines ~1-44) behind their header.
+It matched the training-vignette test (untextured, blended, black,
+full guest width, under 3/4 of the height), so it was stretched to the
+full target width. The vignette is a gradient: alpha 0x99 at the edge
+and 0 inward. The test now also requires the vertex alpha to vary, so
+the menu band stays in the centred 16:9 HUD canvas as before. The
+@VIGNETTE trace line now prints the alpha range.

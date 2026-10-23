@@ -4635,19 +4635,27 @@ static void submit_draw_inner(void)
         unsigned gw = (g_pg.surface_clip_h >> 16) & 0xFFFF, gh = (g_pg.surface_clip_v >> 16) & 0xFFFF;
         float x0 = 1e30f, x1 = -1e30f, y0 = 1e30f, y1 = -1e30f;
         int black = 1;
+        uint32_t amin = 0xFF, amax = 0;
         doa3_guest_display_size(&gw, &gh);
         for (uint32_t i = 0; i < out_vert_count; i++) {
+            uint32_t a = out[i].color >> 24;
             if (out[i].x < x0) x0 = out[i].x; if (out[i].x > x1) x1 = out[i].x;
             if (out[i].y < y0) y0 = out[i].y; if (out[i].y > y1) y1 = out[i].y;
             if (out[i].color & 0x00FFFFFFu) black = 0;
+            if (a < amin) amin = a; if (a > amax) amax = a;
         }
-        if (gw && gh && black && x0 <= 4.0f && x1 >= (float)gw - 4.0f &&
+        /* 0.1.4: only the gradient band is the vignette. The menu screens
+         * (mode, character and stage select) draw a solid black band of
+         * uniform alpha behind their header; it belongs to the centred 16:9
+         * HUD canvas and widening it laid a black bar over the 3D scene's
+         * full width at 21:9 and 32:9. */
+        if (gw && gh && black && amin != amax && x0 <= 4.0f && x1 >= (float)gw - 4.0f &&
             y1 - y0 < (float)gh * 0.75f)
             vignette = 1;
         {   extern FILE *g_doa3_mtrace;
             if (g_doa3_mtrace && black && x1 - x0 > (float)gw * 0.5f)
-                fprintf(g_doa3_mtrace, "@VIGNETTE verts %u box(%.1f,%.1f)-(%.1f,%.1f) guest %ux%u -> %s\n",
-                        out_vert_count, x0, y0, x1, y1, gw, gh, vignette ? "full width" : "left");
+                fprintf(g_doa3_mtrace, "@VIGNETTE verts %u box(%.1f,%.1f)-(%.1f,%.1f) alpha %02X..%02X guest %ux%u -> %s\n",
+                        out_vert_count, x0, y0, x1, y1, amin, amax, gw, gh, vignette ? "full width" : "left");
         }
     }
     int hud = nv_fit_to_backbuffer(out, out_vert_count, 1);
