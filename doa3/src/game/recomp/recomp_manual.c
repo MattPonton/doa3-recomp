@@ -1325,26 +1325,13 @@ static void doa3_mtrace_frame(unsigned next)
             return;
         }
     if (!doa3_auto_capture_enabled()) return;
-    /* Frame-buffer sampling effects (Omega's after-image / blur): trace and
-     * screenshot the next frame the first time one is seen, then every 10 s
-     * while they continue (at most 6). */
-    {   extern volatile int g_doa3_fbsample_seen;
-        static int s_cnt; static unsigned s_last;
-        if (g_doa3_fbsample_seen) {
-            g_doa3_fbsample_seen = 0;
-            if (s_cnt < 6 && (!s_last || next - s_last >= 600)) {
-                char path[64];
-                s_cnt++; s_last = next;
-                g_doa3_aa_shot = next;
-                sprintf(path, "mtrace_fb_%05u.txt", next);
-                g_doa3_mtrace = doa3_mtrace_open(path);
-                fprintf(stderr, "[FBFX] frame-buffer sampling effect: tracing frame %u -> %s + aa_%05u.bmp\n", next, path, next);
-                {   extern void pgraph_overlay_dump_request(unsigned tag);
-                    pgraph_overlay_dump_request(next); }   /* overlay_NNNNN.txt: the frames before it */
-                return;
-            }
-        }
-    }
+    /* The frame-buffer-effect captures (mtrace_fb_* plus aa_*.bmp on the
+     * first draw that samples a frame buffer, then every 10 s) are gone
+     * (0.1.3): Omega's after-image they were added for was fixed long ago,
+     * and the REPLAY -> WINNER cross-fade samples a frame buffer at every
+     * match end, so they fired there -- the ~80 ms capture held the
+     * cross-fade's first frame (the REPLAY outline without its fill) on
+     * screen for 4-5 refreshes instead of one. */
     /* The movie-end captures (mtrace_mvend_* plus mvend_*.bmp at +1, +6,
      * +15, +30 and +60 frames after each of the first four movies, ~22 MB
      * per screenshot at 32:9) are gone (0.0.136). */

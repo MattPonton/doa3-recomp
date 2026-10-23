@@ -3506,3 +3506,20 @@ or the texture beyond its first 4 KB.
 The history now fingerprints stage 0's whole level 0 and its whole
 palette (once per texture per frame), and counts the palette's fully
 transparent and fully opaque entries.
+
+## 0.1.3 - REPLAY -> WINNER: the fill drop was the capture
+
+Matt's hardware recordings (two Story runs, 12 skipped replays): the
+REPLAY letters lose their fill for exactly one frame every time -- the
+cross-fade's first frame, the one where the copied previous frame is
+drawn back one pixel off (the top/left margin). The port draws the same
+single frame. It stayed up for 1-7 refreshes because the automatic
+frame-buffer-effect capture ([FBFX]: a full trace plus a 19 MB screenshot)
+fired on the next frame: performance_frames.csv shows 73-91 ms there and
+~17 ms around it. With automatic captures off Matt sees one frame, as on
+hardware.
+
+The [FBFX] captures are removed: they were added for Omega's after-image,
+fixed long ago, and fired at every match end. 0.1.1/0.1.2's overlay
+history (which hashed every 2D texture and palette each frame) is
+removed with them; it did its job.
