@@ -3793,3 +3793,32 @@ alternate -> costume mapping (first 200: character, slot, alternate,
 result, whether the random picker made it, mode bytes 0x5A2858/0x596A33)
 and, from the input hook, each change of the fighters' character and
 costume (first 100).
+
+## 0.1.17 - random costumes and colours for Survival / Time Attack opponents
+
+The 0.1.16 log of Matt's four tag-Survival fights shows the random
+picker running only for his Random team. Each CPU opponent's costume
+comes from 0x76B30(character [esp+4]) -> costume, which by game mode
+(0x5A2858) does:
+- mode 2, Story: the Story table 0x5B1454[fight], which carries the
+  Fight 3/6 outfit easter eggs
+- modes 3 and 5 (Time Attack, Survival; his log is mode 5): costume 1,
+  or costume 2 against the same character in costume 1 (mirror rule,
+  via 0xCD900)
+- otherwise: costume 1
+
+The tables confirm slot = costume and alternate = colour, e.g. Leifang
+(0x0C) has 4 costumes and the first has 4 colours.
+
+0x76B30 is now an override (its esp-probe wrapper removed). With
+DIP_RANDOM_ALT_COSTUMES on and the mode 3 or 5, it replaces the result
+with a random unlocked costume and a random colour of it, mapped the
+way 0xCD870 does:
+- A pick equal to a human player's character and costume is re-rolled
+  (up to 4 tries; otherwise the game's choice stands).
+- The answer per character is kept for 120 frames, because the game
+  asks several times while setting up one fight.
+- Random bytes: the game's pool 0x404998 stirred by a call counter.
+- Logged as "[RANDALT] CPU opponent ..." (first 32).
+Story (mode 2) and every other mode are untouched. The [COSTUME]
+diagnostics from 0.1.16 stay in for now.

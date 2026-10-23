@@ -14,9 +14,10 @@ static const struct { const char *key, *label, *help; } k_dip[DIP_COUNT] = {
       "are unchanged." },
     { "RandomAltCostumes", "Random includes alternate costume colours",
       "The original game's Random select, and the opponents Story, Survival and Time Attack "
-      "pick at random, always use a costume's first colour. On: they pick one of that "
+      "pick, always use a costume's first colour. On: Random also picks one of the "
       "costume's alternate colours (the ones chosen with A, X, Y, Black or LT on Character "
-      "Select) at random too. Scripted story opponents are unchanged." },
+      "Select), and Survival and Time Attack opponents get a random unlocked costume and "
+      "colour. Story mode opponents (and its outfit easter eggs) are unchanged." },
 };
 
 static volatile LONG g_loaded;

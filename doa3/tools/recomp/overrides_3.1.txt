@@ -45,3 +45,4 @@
 0x00016840  CPU stun handler (Stagger Escape): Training tab hold for a CPU fighter
 0x000CC980  random character/costume picker: marks the pick for the alternate-colour dip switch
 0x000CD870  costume slot + alternate -> costume: random alternate during a random pick (dip switch)
+0x00076B30  CPU opponent costume: random costume and colour in Survival/Time Attack (dip switch)

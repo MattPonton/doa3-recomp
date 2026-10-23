@@ -783,6 +783,68 @@ void sub_000CD870(void)
     }
     if (g_fib_slice_due) xbox_fiber_timeslice();
 }
+/* 0.1.17: CPU opponents in Survival and Time Attack. Their costume comes
+ * from 0x76B30(character in [esp+4]) -> eax, not from the random picker:
+ *   game mode 0x5A2858 == 2 (Story): the Story table 0x5B1454[fight] (the
+ *     Fight 3/6 easter eggs that follow the player's outfit) -- untouched;
+ *   == 3 or 5 (Time Attack, Survival): costume 1, or costume 2 when the
+ *     player has the same character in costume 1 (mirror rule, via 0xCD900);
+ *   otherwise costume 1.
+ * With the dip switch on, for modes 3 and 5 pick a random unlocked costume
+ * (slot < min(0x59FB16[0x2FF868[c]], 0x29C70C[c])) and a random colour of it
+ * (alternate < 0x29C790[c][slot]), mapped as 0xCD870 does:
+ * 0x29C728[c][sum of earlier slots' counts + alternate]. A pick that equals a
+ * human player's character and costume is dropped for the game's own. The
+ * game asks more than once while setting up one fight, so the answer for a
+ * character is kept for 120 frames. Random bytes come from the game's pool
+ * 0x404998 stirred by a call counter, never the host. */
+void sub_00076B30_gen(void);
+void sub_00076B30(void)
+{
+    uint32_t ch = MEM8(esp + 4), mode = MEM8(0x5A2858u);
+    /* One entry per character: a tag fight asks for two opponents. */
+    static uint32_t s_cache_frame[0x19], s_cache_costume[0x19], s_cache_valid[0x19], s_stir;
+    sub_00076B30_gen();
+    if (dip_get(DIP_RANDOM_ALT_COSTUMES) && (mode == 3 || mode == 5) && ch <= 0x18) {
+        uint32_t grp = MEM8(0x2FF868 + ch), have = MEM8(0x59FB16 + grp), max = MEM8(0x29C70C + ch);
+        uint32_t count = have < max ? have : max, total = MEM8(0x29C660 + ch);
+        uint32_t vt = MEM32(0x29C790 + ch * 4), ct = MEM32(0x29C728 + ch * 4);
+        if (s_cache_valid[ch] && g_doa3_frames_presented - s_cache_frame[ch] < 120u) {
+            eax = (eax & ~0xFFu) | s_cache_costume[ch];
+        } else if (count && vt && ct) {
+            int tries;
+            for (tries = 0; tries < 4; tries++) {
+                uint32_t pool = MEM32(0x404998), base = 0, i, slot, alt, idx, costume, p;
+                uint32_t r = (pool ? MEM8(pool + ((MEM8(0x40499D) + s_stir) & 0xFF)) : 0) +
+                             s_stir * 97u + ch * 13u;
+                s_stir++;
+                slot = r % count;
+                alt = (r / count) % (MEM8(vt + slot) ? MEM8(vt + slot) : 1);
+                for (i = 0; i < slot; i++) base += MEM8(vt + i);
+                idx = base + alt;
+                if (idx >= total) continue;
+                costume = MEM8(ct + idx);
+                for (p = 0; p < 2; p++)
+                    if (MEM8(0x59CF58 + p * 0x68) == 1 && MEM8(0x59CF59 + p * 0x68) == ch &&
+                        MEM8(0x59CF5A + p * 0x68) == costume) break;
+                if (p < 2) continue;   /* mirror match in the same outfit */
+                {   static int s_log;
+                    if (s_log < 32) {
+                        s_log++;
+                        fprintf(stderr, "[RANDALT] CPU opponent character %02X (mode %u): costume slot %u alternate %u -> %02X (game chose %02X)\n",
+                                ch, mode, slot, alt, costume, eax & 0xFF);
+                        fflush(stderr);
+                    }
+                }
+                eax = (eax & ~0xFFu) | costume;
+                break;
+            }
+            s_cache_valid[ch] = 1; s_cache_frame[ch] = g_doa3_frames_presented; s_cache_costume[ch] = eax & 0xFF;
+        }
+    }
+    if (g_fib_slice_due) xbox_fiber_timeslice();
+}
+
 void doa3_costume_watch(void)
 {
     static uint32_t s_last = 0xFFFFFFFFu;
