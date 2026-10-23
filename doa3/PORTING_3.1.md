@@ -3774,3 +3774,22 @@ of 0 for a base slot with more than one variant is replaced by
 (next byte of the 0x404998 pool + slot*7 + char*3) mod variants. That
 is deterministic: no host randomness, so replays and netplay agree.
 Logged as [RANDALT] (first 16).
+
+## 0.1.16 - costume diagnostics (random alternates for CPU opponents)
+
+Matt (0.1.15): the player's Random now gets alternate colours, but
+Survival's CPU opponents never wear one, though they do get costumes
+other than the first. His log has [RANDALT] at each new Survival
+opponent, three of them alternate 1, so a later step replaces the CPU's
+costume. A candidate is 0x76B30(char), a CPU-opponent costume function:
+- default: slot 0, alternate 0
+- mode 2: the Story table 0x5B1454
+- modes 3/5: compares with the player's costume through 0xCD900, the
+  Story easter eggs (Hayate/Hayabusa costume 3; Ayane C3 -> Kasumi's
+  hair-down alternates); it must not be touched
+
+The fix waits for evidence. [COSTUME] lines now log every slot +
+alternate -> costume mapping (first 200: character, slot, alternate,
+result, whether the random picker made it, mode bytes 0x5A2858/0x596A33)
+and, from the input hook, each change of the fighters' character and
+costume (first 100).

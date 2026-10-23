@@ -46,7 +46,8 @@ extern void xbox_fiber_wake(uint32_t event_va);
 void sub_00011980_gen(void);
 void sub_00012B60_gen(void);
 void sub_001894B0_gen(void);
-void sub_00011980(void) { sub_00011980_gen(); training_input_begin(); }
+void doa3_costume_watch(void);
+void sub_00011980(void) { sub_00011980_gen(); doa3_costume_watch(); training_input_begin(); }
 /* CPU stun handler: Stagger Escape hold for a CPU fighter (0.1.14). */
 void sub_00016840_gen(void);
 void sub_00016840(void)
@@ -766,8 +767,35 @@ void sub_000CD870(void)
             }
         }
     }
-    sub_000CD870_gen();
+    {   /* 0.1.16 diagnostic: every slot+alternate -> costume mapping, with
+         * whether the random picker made it, and what the fighters end up
+         * wearing (logged when it changes, from the input hook). */
+        static int s_n;
+        uint32_t ch = eax & 0xFF, slot = edx & 0xFF, alt = MEM8(esp + 4);
+        sub_000CD870_gen();
+        if (s_n < 200) {
+            s_n++;
+            fprintf(stderr, "[COSTUME] frame %u: map character %02X slot %u alternate %u -> costume %02X (%s, mode %u/%u)\n",
+                    g_doa3_frames_presented, ch, slot, alt, eax & 0xFF,
+                    s_random_pick_depth > 0 ? "random pick" : "other", MEM8(0x5A2858u), MEM8(0x596A33u));
+            fflush(stderr);
+        }
+    }
     if (g_fib_slice_due) xbox_fiber_timeslice();
+}
+void doa3_costume_watch(void)
+{
+    static uint32_t s_last = 0xFFFFFFFFu;
+    static int s_n;
+    uint32_t now = MEM8(0x59CF59u) | (MEM8(0x59CF5Au) << 8) | (MEM8(0x59CFC1u) << 16) | ((uint32_t)MEM8(0x59CFC2u) << 24);
+    if (now != s_last && s_n < 100) {
+        s_n++;
+        fprintf(stderr, "[COSTUME] frame %u: fighting P1 character %02X costume %02X, P2 character %02X costume %02X (mode %u/%u)\n",
+                g_doa3_frames_presented, now & 0xFF, (now >> 8) & 0xFF, (now >> 16) & 0xFF, now >> 24,
+                MEM8(0x5A2858u), MEM8(0x596A33u));
+        fflush(stderr);
+    }
+    s_last = now;
 }
 
 static uint16_t xpp_lstick_menu_bits(uint32_t port, int16_t lx, int16_t ly)
