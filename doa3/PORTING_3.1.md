@@ -3489,3 +3489,20 @@ enabled stages, blend, render target, combiner program and a fingerprint
 of stage 0's first 4 KB. When [FBFX] fires, overlay_NNNNN.txt in
 Diagnostics gets them, oldest first, so the frames where the fill goes
 missing can be compared draw by draw with the ones before.
+
+## 0.1.2 - overlay history: whole texture and palette fingerprints
+
+Matt's 0.1.1 run (5 REPLAY -> WINNER transitions, skipped with START):
+the 30 frames before each cross-fade draw exactly the same six REPLAY
+letter quads every frame -- texture 03B5A400 (512x256, 8-bit palettised,
+palette 03B7A400), same state, same first-4 KB fingerprint, the colour
+surface alternating 01058000/011C0000. The frame before the fade copies
+the previous frame (011C0000) into 03C24000 and draws it back with the
+letters on top; the fade frame draws it at alpha 7F under WINNER. So the
+lost fill is not a missing or different draw: it has to be in the bytes
+-- the letters' palette (the earlier blink is likely palette animation)
+or the texture beyond its first 4 KB.
+
+The history now fingerprints stage 0's whole level 0 and its whole
+palette (once per texture per frame), and counts the palette's fully
+transparent and fully opaque entries.

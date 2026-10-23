@@ -3017,7 +3017,7 @@ volatile int g_doa3_fbsample_seen;   /* a draw sampled a frame buffer this frame
 #define OVL_PER    96
 typedef struct {
     float x0, y0, x1, y1;
-    uint32_t n, color, tex0, fmt0, ctl0, pal0, tex1, en, blend, surf, comb, rawsig;
+    uint32_t n, color, tex0, fmt0, ctl0, pal0, tex1, en, blend, surf, comb, rawsig, palsig, pal_a0, pal_af;
     char path[8];
 } OvlRec;
 static OvlRec   s_ovl[OVL_FRAMES][OVL_PER];
@@ -3049,11 +3049,41 @@ static void nv_ovl_record(const char *path, const OutputVertex *o, uint32_t n)
     r->blend = (g_pg.blend_enable ? 0x80000000u : 0u) | (g_pg.blend_sfactor << 16) | g_pg.blend_dfactor;
     r->surf = g_pg_surf_coff | (d3d8_OffscreenTargetActive() ? 0x80000000u : 0u);
     r->comb = g_pg.shader_prog;
-    {   /* a fingerprint of stage 0's first 4 KB: did the texture's bytes change? */
+    {   /* Fingerprints of stage 0's whole level 0 and of its palette (every
+         * byte, once per texture per frame), and how many palette entries
+         * are fully transparent / fully opaque: palette animation shows as
+         * a changing palsig with an unchanged texture. */
         extern ptrdiff_t g_xbox_mem_offset;
-        uint32_t a = g_pg.tex[0].offset & 0x07FFFFFFu;
-        r->rawsig = (a && a + 4096u <= 0x08000000u)
-            ? nv_tex_signature((const uint8_t *)((uintptr_t)a + g_xbox_mem_offset), 4096) : 0;
+        static uint32_t s_last_key, s_last_frame, s_last[4];
+        uint32_t a = g_pg.tex[0].offset & 0x07FFFFFFu, fmt = g_pg.tex[0].format;
+        uint32_t key = a ^ (fmt * 2654435761u) ^ g_pg.tex[0].palette;
+        if (key != s_last_key || s_last_frame != g_pg.frame) {
+            uint32_t cf = (fmt >> 8) & 0xFFu, w = 1u << ((fmt >> 20) & 0xFu), h = 1u << ((fmt >> 24) & 0xFu);
+            uint32_t bpp = (cf == 0x0B) ? 1u : (cf == 0x06 || cf == 0x07 || cf == 0x12 || cf == 0x1E) ? 4u : 2u;
+            uint32_t bytes = w * h * bpp, hsh = 2166136261u, k2;
+            if (bytes > (1u << 22)) bytes = 1u << 22;
+            if (a && (unsigned long long)a + bytes <= 0x08000000ull) {
+                const uint8_t *p = (const uint8_t *)((uintptr_t)a + g_xbox_mem_offset);
+                for (k2 = 0; k2 + 4 <= bytes; k2 += 4) { uint32_t v; memcpy(&v, p + k2, 4); hsh = (hsh ^ v) * 16777619u; }
+            } else hsh = 0;
+            s_last[0] = hsh; s_last[1] = s_last[2] = s_last[3] = 0;
+            if (cf == 0x0B) {
+                uint32_t pa = g_pg.tex[0].palette & 0x07FFFFC0u, pn = 256u >> ((g_pg.tex[0].palette >> 2) & 3u);
+                if (pa && (unsigned long long)pa + 4ull * pn <= 0x08000000ull) {
+                    const uint8_t *pp = (const uint8_t *)((uintptr_t)pa + g_xbox_mem_offset);
+                    uint32_t ph = 2166136261u;
+                    for (k2 = 0; k2 < pn; k2++) {
+                        uint32_t v; memcpy(&v, pp + 4 * k2, 4);
+                        ph = (ph ^ v) * 16777619u;
+                        if ((v >> 24) == 0) s_last[2]++;
+                        else if ((v >> 24) == 0xFF) s_last[3]++;
+                    }
+                    s_last[1] = ph;
+                }
+            }
+            s_last_key = key; s_last_frame = g_pg.frame;
+        }
+        r->rawsig = s_last[0]; r->palsig = s_last[1]; r->pal_a0 = s_last[2]; r->pal_af = s_last[3];
     }
     for (k = 0; k < sizeof r->path - 1 && path[k]; k++) r->path[k] = path[k];
     r->path[k] = 0;
@@ -3071,16 +3101,16 @@ static void nv_ovl_dump_if_requested(void)
     f = doa3_diag_fopen(name, "w");
     if (!f) return;
     fprintf(f, "2D draws of the %u frames up to pgraph frame %u (oldest first)\n"
-               "frame path n box(x0,y0)-(x1,y1) col tex0 fmt ctl0 pal en tex1 blend surf comb sig\n",
+               "frame path n box(x0,y0)-(x1,y1) col tex0 fmt ctl0 pal en tex1 blend surf comb texsig palsig pal(a=0,a=FF)\n",
             OVL_FRAMES, g_pg.frame);
     for (back = OVL_FRAMES; back-- > 0; ) {
         unsigned fr = g_pg.frame - back, slot = fr % OVL_FRAMES;
         if (s_ovl_frame[slot] != fr) { fprintf(f, "%u (no 2D draws)\n", fr); continue; }
         for (k = 0; k < s_ovl_n[slot]; k++) {
             const OvlRec *r = &s_ovl[slot][k];
-            fprintf(f, "%u %s n%u (%.0f,%.0f)-(%.0f,%.0f) %08X %08X %08X %08X %08X %X %08X %08X %08X %08X %08X\n",
+            fprintf(f, "%u %s n%u (%.0f,%.0f)-(%.0f,%.0f) %08X %08X %08X %08X %08X %X %08X %08X %08X %08X %08X %08X (%u,%u)\n",
                     fr, r->path, r->n, r->x0, r->y0, r->x1, r->y1, r->color, r->tex0, r->fmt0, r->ctl0,
-                    r->pal0, r->en, r->tex1, r->blend, r->surf, r->comb, r->rawsig);
+                    r->pal0, r->en, r->tex1, r->blend, r->surf, r->comb, r->rawsig, r->palsig, r->pal_a0, r->pal_af);
         }
     }
     fclose(f);
