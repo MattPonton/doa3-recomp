@@ -3633,3 +3633,21 @@ the frame and thread (first 6 times). A data word read as a method
 points at the push-buffer walk; a sane run, at the guest. To tell an
 asynchronous-GPU problem from anything else, run with
 DOA3_ASYNC_GPU=0 (DOA3_SYNC.bat).
+
+## 0.1.10 - Beach ocean flicker: texture cache ignored the mip count
+
+Matt: after long sessions the Beach's ocean flickers on stage select;
+it is gone after a fresh boot. Logs of it show [TEXFAIL] "LockRect level
+1 of 5 failed for 020D2E00 ... 128x128 levels 1".
+
+The texture cache key is address, size, format and palette, without the
+level count. Heap addresses are recycled between loads, so eventually
+a texture declared with 5 levels lands where a same-size, same-format
+1-level texture was cached. The hit served the 1-level copy, and every
+binding's upload failed on level 1 and drew with no texture.
+
+A hit whose level count differs now evicts the stale copy and creates
+the texture anew, logged as [TEXCACHE] ... replaced (first 40).
+
+Matt saw it only with the performance overlay on. That is likely about
+what lands where in a long session rather than the overlay itself.

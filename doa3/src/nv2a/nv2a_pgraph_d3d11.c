@@ -1067,6 +1067,23 @@ static IDirect3DTexture8 *get_dynamic_texture_impl(IDirect3DDevice8 *dev)
     {
         uint32_t keypal = palettised ? palreg : 0u;
         int slot = texcache_find(off, w, h, (uint32_t)d3dfmt, keypal);
+        /* 0.1.10: the Beach ocean flicker. The key has no level count, and
+         * after enough loads a texture with a full mip chain lands at the
+         * address of an earlier one-level texture of the same size and
+         * format (Matt's long-session log: 020D2E00 128x128 fmt 12, cached
+         * with 1 level, now declared with 5). Each binding then failed
+         * LockRect on level 1 and drew with no texture. A different level
+         * count is a different texture: drop the stale copy. */
+        if (slot >= 0 && g_pg.texcache[slot].levels != nlevels) {
+            static unsigned s_lv_lines;
+            if (s_lv_lines < 40) {
+                s_lv_lines++;
+                fprintf(stderr, "[TEXCACHE] frame %u: %08X %ux%u fmt %u cached with %u level(s), now %u: replaced\n",
+                        g_pg.frame, off, w, h, (unsigned)d3dfmt, g_pg.texcache[slot].levels, nlevels);
+            }
+            texcache_evict(slot);
+            slot = -1;
+        }
         if (slot < 0) {
             /* Host bytes this texture will hold: every level in the host
              * format (DXT stays block-compressed, swizzled sources keep their
