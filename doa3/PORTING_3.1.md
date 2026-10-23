@@ -3535,3 +3535,28 @@ full target width. The vignette is a gradient: alpha 0x99 at the edge
 and 0 inward. The test now also requires the vertex alpha to vary, so
 the menu band stays in the centred 16:9 HUD canvas as before. The
 @VIGNETTE trace line now prints the alpha range.
+
+## 0.1.5 - Dip Switches (General tab); left stick navigates menus
+
+The General tab has a new Dip Switches section for quality-of-life
+toggles (fixes for the original game's limitations and bugs). Every
+switch is off by default, which gives the original behaviour. They are
+saved in [DipSwitches] in doa3_settings.ini (src/game/dip_switches.c;
+adding a switch takes one table row and one enum entry).
+
+First switch: "Left stick navigates menus" (LeftStickMenus).
+- Menus test only the directional-pad bits of the per-frame pad
+  aggregate (0x73C8D0 + pad*0x2C: held +0, pressed +8, auto-repeat
+  +0x10). The builder 0xA4E70 derives those bits from wButtons.
+- The fight reads the sticks separately (+0x1C, with its own 0x5000
+  threshold and hysteresis, 0x1EF20).
+- With the switch on, XInputGetState (0x211A96) folds the left stick
+  into wButtons as directional-pad bits. The game's own pressed and
+  auto-repeat logic then handles the stick exactly like the pad.
+- The stick is read in 8-way sectors. An axis switches on at 0x5000
+  and off below 0x3000.
+- The stick is not folded during a fight (phase 0x596A37 = 1 or 2)
+  unless the pause menu is up (0x5A27A0 = 1), or in netplay. Fights
+  are unchanged.
+- The first 12 changes are logged as [DIP] with phase, pause and mode,
+  to confirm the gating.

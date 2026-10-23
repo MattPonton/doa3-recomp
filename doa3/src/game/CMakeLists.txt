@@ -77,6 +77,7 @@ set(GAME_SOURCES
     combat_debug.c
     training_dummy.c
     log_settings.c           # log files on/off (Esc menu, doa3_settings.ini)
+    dip_switches.c           # quality-of-life toggles, default off (General tab)
     xiso_extract.c           # first-run install of the game files from a disc image
     recomp/recomp_manual.c
     burnout_compat_stubs.c   # inert stubs for burnout-only symbols the nv2a srcs need

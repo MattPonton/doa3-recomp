@@ -683,6 +683,52 @@ void sub_002118A4(void)   /* XInputGetCapabilities(handle, caps), ret 8 */
  * updated only when the game rumbled: in a fight START stayed "held" from
  * the last rumble call, so the pause menu reopened every frame. Serve the
  * pad from GetState and complete rumble requests at once. */
+/* Dip switch "Left stick navigates menus" (0.1.5). The menus test only the
+ * directional-pad bits of the per-frame aggregate (0x73C8D0 + pad*0x2C: held
+ * +0, pressed +8, auto-repeat +0x10), which the builder 0xA4E70 takes from
+ * wButtons; the fight reads the sticks separately (+0x1C, with its own
+ * thresholds and hysteresis, 0x1EF20). So outside a fight the left stick is
+ * folded into wButtons as directional-pad bits and goes through the game's
+ * own held/pressed/repeat logic. A fight (phase 0x596A37 = 1 or 2) is left
+ * untouched unless the pause menu is up (0x5A27A0 = 1, which also covers the
+ * Sparring settings screen). 8-way sectors, an axis switches on at 0x5000
+ * (the fight's stick threshold) and off below 0x3000. */
+#include "../dip_switches.h"
+static uint16_t xpp_lstick_menu_bits(uint32_t port, int16_t lx, int16_t ly)
+{
+    static uint8_t s_on[4];         /* bit0 x axis, bit1 y axis engaged */
+    static int s_log;
+    extern int netplay_active(void);
+    uint8_t phase, paused, on;
+    int ax = lx < 0 ? -(int)lx : lx, ay = ly < 0 ? -(int)ly : ly;
+    uint16_t bits = 0;
+    int gated;
+    if (port >= 4 || !dip_get(DIP_LSTICK_MENUS)) return 0;
+    on = s_on[port];
+    on = (uint8_t)((ax >= 0x5000 || ((on & 1) && ax >= 0x3000)) ? (on | 1) : (on & ~1));
+    on = (uint8_t)((ay >= 0x5000 || ((on & 2) && ay >= 0x3000)) ? (on | 2) : (on & ~2));
+    s_on[port] = on;
+    if (!on) return 0;
+    /* 8-way: the minor axis counts only within 22.5 degrees of a diagonal. */
+    if ((on & 1) && (ax * 1000 >= ay * 414)) bits |= lx < 0 ? 0x0004 : 0x0008;   /* LEFT / RIGHT */
+    if ((on & 2) && (ay * 1000 >= ax * 414)) bits |= ly > 0 ? 0x0001 : 0x0002;   /* UP / DOWN */
+    phase = MEM8(0x596A37u);
+    paused = MEM8(0x5A27A0u);
+    gated = netplay_active() || ((phase == 1 || phase == 2) && paused != 1);
+    if (s_log < 12) {
+        static uint16_t s_last = 0xFFFF;
+        if (bits != s_last) {
+            s_log++;
+            fprintf(stderr, "[DIP] left stick -> pad bits %X port %u phase %u paused %u mode %u: %s (frame %u)\n",
+                    bits, port, phase, paused, MEM8(0x5A2858u), gated ? "fight, not folded" : "folded",
+                    g_doa3_frames_presented);
+            fflush(stderr);
+        }
+        s_last = bits;
+    }
+    return gated ? 0 : bits;
+}
+
 static uint32_t xpp_port_of(uint32_t h)
 {
     uint32_t p = h - 0x0AD00001u;
@@ -706,6 +752,7 @@ void sub_00211A96(void)   /* XInputGetState(handle, pState) -> 0, ret 8 */
             memcpy(an, raw + 6, 8);
             lx = *(int16_t *)(raw + 14); ly = *(int16_t *)(raw + 16);
             rx = *(int16_t *)(raw + 18); ry = *(int16_t *)(raw + 20);
+            buttons |= xpp_lstick_menu_bits(port, lx, ly);
         }
     }
     {   static int s_log = 0, s_was = 0;

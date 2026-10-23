@@ -25,6 +25,7 @@ extern "C" {
 #include "../d3d/d3d8_debug_views.h"
 #include "../d3d/d3d8_screenshot.h"
 #include "../game/log_settings.h"
+#include "../game/dip_switches.h"
 #include "../online/netplay_session.h"
 #include "../online/netplay.h"
 #include "../online/net_upnp.h"
@@ -448,12 +449,16 @@ void DrawGeneralSection()
     switch (ResetSaveRow()) {
     case 1:
         doa3_log_set_enabled(0);
+        dip_reset();
         SetStatus("General settings reset to defaults");
         break;
-    case 2:
-        SetStatus(doa3_log_save() ? "Saved doa3_settings.ini"
-                                  : "Could not write doa3_settings.ini");
+    case 2: {
+        int ok = doa3_log_save();
+        ok = dip_save() && ok;
+        SetStatus(ok ? "Saved doa3_settings.ini"
+                     : "Could not write doa3_settings.ini");
         break;
+    }
     }
 
     ImGui::Separator();
@@ -461,6 +466,23 @@ void DrawGeneralSection()
     bool on = doa3_log_enabled() != 0;
     if (ImGui::Checkbox("Write log files", &on))
         doa3_log_set_enabled(on ? 1 : 0);
+
+    /* Dip switches: quality-of-life toggles for the game, all off by default
+     * (off = the original game's behaviour). */
+    ImGui::Spacing();
+    ImGui::SeparatorText("Dip Switches");
+    for (int i = 0; i < DIP_COUNT; i++) {
+        bool d = dip_get((dip_switch)i) != 0;
+        if (ImGui::Checkbox(dip_label((dip_switch)i), &d))
+            dip_set((dip_switch)i, d ? 1 : 0);
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+            ImGui::BeginTooltip();
+            ImGui::PushTextWrapPos(ImGui::GetFontSize() * 28.0f);
+            ImGui::TextUnformatted(dip_help((dip_switch)i));
+            ImGui::PopTextWrapPos();
+            ImGui::EndTooltip();
+        }
+    }
 }
 
 /* ── Online section ───────────────────────────────────────────────────────*/
