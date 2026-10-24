@@ -27,11 +27,16 @@ static int skip_guest_render;
 static uint64_t guest_skipped;
 static unsigned flips;
 int doa3_native_frame_active(void){return active;}
+/* doa3.1-rollback, DOA3_ROLLBACK_SKIP_MAP=1 (diagnostic only): also skip the
+ * model and alpha-model command builders on hidden frames, to map which
+ * memory a whole render skip leaves different. Not a valid replay mode. */
+int g_doa3_skip_map;
 int doa3_native_frame_skip_guest_render(unsigned routine){
     if(!active || !skip_guest_render)return 0;
     /* Material/command construction is stateful even with host draws off.
-     * Never admit 17D900 or 17DF00 here: later frames depend on their state. */
-    if(routine!=0x52046)return 0;
+     * Never admit 17D900 or 17DF00 here: later frames depend on their state
+     * (except in the skip-map diagnostic). */
+    if(routine!=0x52046 && !(g_doa3_skip_map && (routine==0x17D900 || routine==0x17DF00)))return 0;
     ++guest_skipped;return 1;
 }
 void doa3_native_frame_flip(void){if(active)++flips;}

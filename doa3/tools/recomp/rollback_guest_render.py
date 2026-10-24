@@ -26,8 +26,11 @@ def verify(bodies, generated_overrides, overrides, manual_source, probes):
             raise ValueError(f'{va:08X}: guest render body changed; review effects before skipping')
         if va not in generated_overrides or va not in overrides:
             raise ValueError(f'{va:08X}: missing generated guest render override')
+        # doa3.1-rollback: all three carry the gate; 17D900/17DF00 are only
+        # admitted by doa3_native_frame_skip_guest_render in the skip-map
+        # diagnostic (DOA3_ROLLBACK_SKIP_MAP=1).
         gate = (rf'if\(doa3_native_frame_skip_guest_render\(0x{va:X}\)\)'
-                rf'\{{g_esp\+={RETURN_BYTES[va]};return;\}}\s*') if va==0x52046 else ''
+                rf'\{{g_esp\+={RETURN_BYTES[va]};return;\}}\s*')
         if not re.search(rf'void sub_{va:08X}\(void\)\s*\{{\s*'+gate+
                          rf'sub_{va:08X}_gen\(\);\s*\}}', wrappers):
             raise ValueError(f'{va:08X}: guest ABI/gate wrapper changed')

@@ -245,6 +245,10 @@ int doa3_checkpoint_image_discard(Doa3CheckpointSession *s,Doa3CheckpointImage *
     if(*p) { *p=image->next;free_image(s,image);result=1; }
     leave(s);return result;
 }
+/* doa3.1-rollback: optional mismatch map (set by the fight checkpoint when
+ * DOA3_ROLLBACK_DIFF_MAP / SKIP_MAP is on). Read-only; called per differing
+ * part with the saved and current bytes. */
+void (*g_doa3_checkpoint_diff_hook)(unsigned part,const unsigned char *saved,const unsigned char *current,size_t bytes);
 int doa3_checkpoint_image_matches(Doa3CheckpointSession *s,const Doa3CheckpointImage *image,Doa3CheckpointComparison *out)
 {
     int result=-1;void *current_renderer=NULL;Doa3CheckpointComparison comparison={0};
@@ -264,6 +268,7 @@ int doa3_checkpoint_image_matches(Doa3CheckpointSession *s,const Doa3CheckpointI
         if(memcmp(a,b,n)){
             comparison.different_parts|=1u<<i;
             for(size_t j=0;j<n;++j)if(a[j]!=b[j]){comparison.first_byte[i]=j;break;}
+            if(g_doa3_checkpoint_diff_hook)g_doa3_checkpoint_diff_hook(i,a,b,n);
         }
     }
     Doa3CheckpointResource *r=&s->config.renderer;

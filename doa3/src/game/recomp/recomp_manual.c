@@ -2007,6 +2007,7 @@ static void pb4134_translate(uint32_t from, uint32_t to, int translate)
     }
 }
 uint32_t g_pb4134_ring_lo, g_pb4134_ring_hi;
+volatile uint32_t g_doa3_pb_dev;
 extern int doa3_rollback_tasks_enabled(void);
 static int rollback_tasks_on(void) { return doa3_rollback_tasks_enabled(); }
 
@@ -2599,6 +2600,7 @@ void sub_001E27C0(void)
     uint32_t dev = ecx, flags = MEM32(dev + 8), cursor, start, end, sem;
     unsigned async_flip_frame = 0;
     if (s_on < 0) { const char *e = getenv("DOA3_PB"); s_on = !(e && *e == '0'); }
+    {   extern volatile uint32_t g_doa3_pb_dev; g_doa3_pb_dev = dev; }   /* rollback diff map labels */
     if (flags & 0x2000) {            /* no live GPU channel: the original only does bookkeeping */
         sub_001E27C0_gen();
         return;

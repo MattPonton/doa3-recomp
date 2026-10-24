@@ -86,6 +86,12 @@ void doa3_fight_window_probe_boundary(void){
         render_ab=replay && armed("DOA3_ROLLBACK_RENDER_AB_TEST");
         prep_ab=replay && armed("DOA3_ROLLBACK_PREP_AB_TEST");
         guest_ab=replay && armed("DOA3_ROLLBACK_GUEST_RENDER_AB_TEST");
+        {   /* doa3.1-rollback diagnostics: mismatch map; whole-render skip map */
+            extern int g_doa3_skip_map;
+            extern void doa3_fight_checkpoint_diff_map_enable(void);
+            if(replay && armed("DOA3_ROLLBACK_SKIP_MAP")){g_doa3_skip_map=1;guest_ab=1;}
+            if(g_doa3_skip_map || armed("DOA3_ROLLBACK_DIFF_MAP"))doa3_fight_checkpoint_diff_map_enable();
+        }
         if(texture_ab+packet_ab+geometry_ab+render_ab+prep_ab+guest_ab>1){
             enabled=0;
             fprintf(stderr,"[ROLLBACK-WINDOW] refused: choose one A/B optimization\n");

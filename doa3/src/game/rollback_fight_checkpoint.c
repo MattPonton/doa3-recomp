@@ -250,6 +250,54 @@ fatal:
     (void)gated;fatal_state=s;return -1;
 }
 
+/* ---- doa3.1-rollback: render-skip memory map (diagnostic) ----------------
+ * Every differing guest RAM range (coalesced across gaps under 64 bytes),
+ * labelled with the push-buffer ring and the D3D device block. The aim is to
+ * learn which memory a skipped render leaves different, so it can be shown to
+ * be render-only. Nothing is excluded from the comparison here. */
+extern volatile uint32_t g_doa3_pb_dev;   /* recomp_manual.c, last KickOff device */
+static const char *diff_label(uint32_t a)
+{
+    uint32_t dev=g_doa3_pb_dev;
+    if(dev && dev<0x08000000u){
+        uint32_t lo=MEM32(dev+0x24),hi=MEM32(dev+0x28)+4;
+        if(a>=lo && a<hi)return "push-buffer ring";
+        if(a>=dev && a<dev+0x2400)return "D3D device";
+    }
+    return "";
+}
+static void diff_map(unsigned part,const unsigned char *a,const unsigned char *b,size_t n)
+{
+    static int lines;
+    size_t i=0,ranges=0,bytes=0;
+    const size_t hdr=sizeof(FightCpu);
+    fprintf(stderr,"[ROLLBACK-DIFFMAP] part=%s bytes=%zu\n",part_names[part],n);
+    while(i<n){
+        if(a[i]==b[i]){++i;continue;}
+        size_t start=i,end=i+1,gap=0;
+        for(size_t j=i+1;j<n && gap<64;++j){ if(a[j]!=b[j]){end=j+1;gap=0;} else ++gap; }
+        size_t diff=0;for(size_t j=start;j<end;++j)diff+=a[j]!=b[j];
+        ++ranges;bytes+=diff;
+        if(lines<600){
+            ++lines;
+            if(part==DOA3_CP_RAM && start>=hdr){
+                uint32_t ga=(uint32_t)(start-hdr);
+                fprintf(stderr,"[ROLLBACK-DIFFMAP]   guest %08X-%08X (%zu bytes differ) %s\n",
+                        ga,(uint32_t)(end-hdr)-1,diff,diff_label(ga));
+            }else fprintf(stderr,"[ROLLBACK-DIFFMAP]   offset %zX-%zX (%zu bytes differ)%s\n",
+                        start,end-1,diff,part==DOA3_CP_RAM ? " CPU/loop header":"");
+        }
+        i=end;
+    }
+    fprintf(stderr,"[ROLLBACK-DIFFMAP] part=%s ranges=%zu differing_bytes=%zu\n",part_names[part],ranges,bytes);
+    fflush(stderr);
+}
+void doa3_fight_checkpoint_diff_map_enable(void)
+{
+    extern void (*g_doa3_checkpoint_diff_hook)(unsigned,const unsigned char *,const unsigned char *,size_t);
+    g_doa3_checkpoint_diff_hook=diff_map;
+}
+
 static double diagnostic_ms(void){
     LARGE_INTEGER count,frequency;QueryPerformanceCounter(&count);QueryPerformanceFrequency(&frequency);
     return (double)count.QuadPart*1000.0/(double)frequency.QuadPart;

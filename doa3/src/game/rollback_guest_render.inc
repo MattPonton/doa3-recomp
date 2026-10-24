@@ -8,10 +8,12 @@ void sub_0017DF00_gen(void);
 void sub_00052046_gen(void);
 void sub_0017D900(void)
 {
+    if(doa3_native_frame_skip_guest_render(0x17D900)){g_esp+=4;return;}
     sub_0017D900_gen();
 }
 void sub_0017DF00(void)
 {
+    if(doa3_native_frame_skip_guest_render(0x17DF00)){g_esp+=8;return;}
     sub_0017DF00_gen();
 }
 void sub_00052046(void)

@@ -4420,3 +4420,22 @@ outside both the guest registers and Jay's command image, so a rewound
 replay mixed the reverb tail from the future. apu_dsp_rollback_export /
 _import now carry that state after the command image
 (mcpx_apu_processing_size grows by it).
+
+## 0.2.6-rollback.4 - diagnostics: mismatch map and whole-render skip map
+
+Matt's run of .3: all six combat trials matched (4 frames: 35-40 ms,
+8 frames: 53-73 ms of replay; Jay's last: 45-51 and 83-101). Next goal:
+replay hidden frames without rendering, which needs to know which guest
+memory only the renderer uses.
+- DOA3_ROLLBACK_DIFF_MAP=1: on any checkpoint mismatch, log every differing
+  range per domain ([ROLLBACK-DIFFMAP], gaps under 64 bytes merged, first
+  600 ranges), RAM ranges as guest addresses labelled "push-buffer ring"
+  (KickOff device +0x24..+0x28) or "D3D device" (device +0..+0x2400).
+- DOA3_ROLLBACK_SKIP_MAP=1 (with the combat probe flags): the guest-render
+  A/B arm also skips the model and alpha-model command builders 17D900 /
+  17DF00 on hidden frames (Jay's whole-render skip, which failed exact
+  comparison), with the map on. A mapping run, not a valid replay mode;
+  the sequence stops at the first mismatch, after the usual exact recovery.
+  The three wrappers all carry the gate; rollback_guest_render.py checks
+  that form, and doa3_native_frame_skip_guest_render admits 17D900/17DF00
+  only with SKIP_MAP.
