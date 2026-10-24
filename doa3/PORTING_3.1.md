@@ -4194,3 +4194,14 @@ fighter's +0x10. Hand edits in gen/recomp_0000.c call
 training_stagger_script_before at 0x16449 and _after before both copies
 to +0x10: the held value replaces the slot with that frame's change on
 top. Logged as [STAGGER] (first 8).
+
+## 0.2.3 - Stagger Escape hold: the player stun handler too
+
+Matt (0.2.2): still no effect on the CPU-run dummy, and the log had no
+[STAGGER] line, so the scripted path is not the one it takes. The player
+stun handler 0x1BAE0 has the same reset as 0x16840: while the fighter's
++0x59 is 1 it sets the slot to 1.00 before mashing or decaying, which
+throws the seeded hold away every frame for a fighter flagged that way.
+0x1BAE0 is now an override (probe removed, overrides list) wrapped with
+the same before/after as 0x16840. Both log as [STAGGER] stun handler
+(first 12, with +0x59), so the next log shows which path the dummy takes.

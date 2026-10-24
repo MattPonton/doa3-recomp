@@ -323,6 +323,14 @@ void training_stagger_cpu_after(void)
     if (v>2.0f) v=2.0f;
     MEMF(0x4DA2D4+s_cpu_side*4)=v;
     if (fighter) MEMF(fighter+0x10)=v;
+    {   static int s_log;
+        if (s_log<12) {
+            s_log++;
+            fprintf(stderr,"[STAGGER] stun handler, side %d (+0x59 %u): base %.2f -> slot %.2f (held %.2f)\n",
+                    s_cpu_side,fighter?MEM8(fighter+0x59):0xFFu,s_cpu_base,v,s_stagger_value[s_cpu_side]);
+            fflush(stderr);
+        }
+    }
     s_cpu_side=-1;
 }
 

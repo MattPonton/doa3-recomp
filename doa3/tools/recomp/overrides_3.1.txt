@@ -43,6 +43,7 @@
 0x000A47E0  Movie start (eax = movie number): streamer mode mutes the credits movie (mv_st.sfd) before it reads the music level
 0x0001EF20  fight stick reader: marks "in a fight" for the left-stick menu dip switch
 0x00016840  CPU stun handler (Stagger Escape): Training tab hold for a CPU fighter
+0x0001BAE0  player stun handler (Stagger Escape): Training tab hold when the fighter is flagged CPU
 0x000CC980  random character/costume picker: marks the pick for the alternate-colour dip switch
 0x000CD870  costume slot + alternate -> costume: random alternate during a random pick (dip switch)
 0x00076B30  CPU opponent costume: random costume and colour in Survival/Time Attack (dip switch)

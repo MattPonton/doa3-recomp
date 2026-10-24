@@ -73,6 +73,17 @@ void sub_00016840(void)
     training_stagger_cpu_after();
     if (g_fib_slice_due) xbox_fiber_timeslice();
 }
+/* Player stun handler (0x1BAE0, 0.2.3): it also resets the value to 1.00
+ * every frame while the fighter's +0x59 is 1, which the Sparring dummy is
+ * when the CPU runs it, so the hold needs the same wrap as 0x16840. */
+void sub_0001BAE0_gen(void);
+void sub_0001BAE0(void)
+{
+    training_stagger_cpu_before();
+    sub_0001BAE0_gen();
+    training_stagger_cpu_after();
+    if (g_fib_slice_due) xbox_fiber_timeslice();
+}
 void sub_00012B60(void) { sub_00012B60_gen(); training_input_end(); }
 void sub_001894B0(void) { training_reset(); sub_001894B0_gen(); }
 
