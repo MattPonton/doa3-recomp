@@ -130,7 +130,7 @@ bug is on screen and press it; the game keeps running behind the menu.
 frame as a `.dds` file in a `Textures` folder next to `DOA3.exe` (kept between
 launches), named `doa3_<memory address>_<width>x<height>_f<format>.dds`. The
 data is what the port uploads: unswizzled, palettised textures expanded to
-32-bit colour, DXT textures kept compressed. Images rendered by the game at
+32-bit color, DXT textures kept compressed. Images rendered by the game at
 run time (reflections, environment maps captured from the stage) are not
 included, only textures loaded from the game's files.
 

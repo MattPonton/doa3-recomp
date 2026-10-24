@@ -16,17 +16,17 @@ static const struct { const char *key, *label, *help; } k_dip[DIP_COUNT] = {
       "The original game's Stage Select opens with the cursor on Beach (Day), three presses "
       "of Left away from Random. On: it opens on Random. When the game itself remembers the "
       "last stage (going back to Stage Select after a match) that stage is kept." },
-    { "RandomAltCostumes", "Random includes alternate costume colours",
+    { "RandomAltCostumes", "Random includes alternate costume colors from disc",
       "The original game's Random select, and the opponents Story, Survival and Time Attack "
-      "pick, always use a costume's first colour. On: Random also picks one of the "
-      "costume's alternate colours (the ones chosen with A, X, Y or L on Character "
+      "pick, always use a costume's first color. On: Random also picks one of the "
+      "costume's alternate colors (the ones chosen with A, X, Y or L on Character "
       "Select), and Survival and Time Attack opponents get a random unlocked costume and "
-      "colour. Story mode opponents (and its outfit easter eggs) are unchanged." },
+      "color. Story mode opponents (and its outfit easter eggs) are unchanged." },
     { "RandomStorageCostumes", "Random includes costumes from storage",
       "Costumes loaded from the TDATA folder next to the save (the Booster Pack outfits, "
       "or custom XPR/CAT pairs) can be chosen on Character Select, but the original game's "
       "Random never picks them. On: Random, and the Survival and Time Attack opponents, "
-      "can pick them too. Works on its own or together with the colour switch." },
+      "can pick them too. Works on its own or together with the color switch." },
     { "SharedCostumes", "Allow players to select alternate options of the same costume",
       "With both sides on the same character, the original game will not let a player highlight "
       "a costume the other side has. On: it can be highlighted when it has another option "

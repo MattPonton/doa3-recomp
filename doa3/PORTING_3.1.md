@@ -4228,3 +4228,16 @@ and in the record's animation speed +0x10 while +0x33 == 8 (the stun
 state 0x14D70 tests), and puts a speed still equal to it back to 1.00
 when the stun ends. [STAGGER-TRACE] dummy lines log its state changes
 while a hold is set.
+
+## 0.2.6 - Stagger Escape clean-up; American spelling
+
+Matt: 0.2.5 works. Removed what turned out not to be the dummy's path:
+the 0.2.2 scripted-input hooks (0x16449 hand edits and functions), the
+0.2.3 0x1BAE0 override (probe and overrides list restored; the frame-start
+seed already covers a human fighter), and the 0.2.4 [STAGGER-TRACE] /
+[STAGGER] stun handler logs. Kept: the 0x1817E0 dummy hold (with its one
+[STAGGER] Sparring dummy line) and the 0.1.14 0x16840 CPU wrap.
+
+The colour switch is now "Random includes alternate costume colors from
+disc"; user-facing text (dip switch help, README, DEBUG.md) uses American
+spelling. The ini key RandomAltCostumes is unchanged.

@@ -116,8 +116,8 @@ effect immediately and are saved in the `[DipSwitches]` section of
 | --- | --- |
 | Menu navigation with Left Stick | The left stick moves menu cursors as well as the directional pad. Fights are unchanged. |
 | Random is default stage option | Stage Select opens on Random instead of Beach (Day). A stage the game remembers (returning to Stage Select after a match) is kept. |
-| Random includes alternate costume colours | Random on Character Select can pick a costume's alternate colours (X, Y, L), and Survival and Time Attack opponents get a random unlocked costume and colour. Story mode is unchanged. |
-| Random includes costumes from storage | Random, and Survival and Time Attack opponents, can pick storage costumes and their options. Works on its own or together with the colour switch. |
+| Random includes alternate costume colors from disc | Random on Character Select can pick a costume's alternate colors (X, Y, L), and Survival and Time Attack opponents get a random unlocked costume and color. Story mode is unchanged. |
+| Random includes costumes from storage | Random, and Survival and Time Attack opponents, can pick storage costumes and their options. Works on its own or together with the color switch. |
 | Allow players to select alternate options of the same costume | With both sides on the same character, a player can take a costume the other side has, in a different option (A, X, Y, L or a storage option). Only the exact costume and option the other side confirmed is refused, with the game's refusal sound. |
 | Correct offset of menu layout | The game draws its menus, frames and HUD one pixel right of and below the screen edge (hidden by a CRT's overscan). This lines the 2D layer up with the screen edges. |
 

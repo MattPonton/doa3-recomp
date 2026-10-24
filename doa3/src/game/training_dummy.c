@@ -323,72 +323,7 @@ void training_stagger_cpu_after(void)
     if (v>2.0f) v=2.0f;
     MEMF(0x4DA2D4+s_cpu_side*4)=v;
     if (fighter) MEMF(fighter+0x10)=v;
-    {   static int s_log;
-        if (s_log<12) {
-            s_log++;
-            fprintf(stderr,"[STAGGER] stun handler, side %d (+0x59 %u): base %.2f -> slot %.2f (held %.2f)\n",
-                    s_cpu_side,fighter?MEM8(fighter+0x59):0xFFu,s_cpu_base,v,s_stagger_value[s_cpu_side]);
-            fflush(stderr);
-        }
-    }
     s_cpu_side=-1;
-}
-
-/* 0.2.2: the Sparring dummy under the CPU does not go through the CPU stun
- * handler (0x16840) but through the scripted-input player 0x14D70
- * (script 0x4DA5BC): at a stun's first frame (+8 == 0) it resets the slot
- * to 1.00 (0x1642D); on later frames (0x16449) it adds 0.03 when its script
- * mashes or takes 0.01, clamps and copies the slot to the fighter's
- * animation speed (+0x10). Hand edits in gen/recomp_0000.c call these
- * around that mash/decay step: the held value replaces the slot, with that
- * frame's change on top. The CPU-handler hook above stays for real CPU
- * fighters. */
-static float s_script_base;
-static int s_script_side = -1;
-void training_stagger_script_before(void)
-{
-    unsigned side=MEM8(0x4DA2DD);
-    s_script_side=-1;
-    if (side>1 || !s_stagger_hold[side] || !training_available()) return;
-    s_script_side=(int)side;
-    s_script_base=MEMF(0x4DA2D4+side*4);
-}
-void training_stagger_script_after(void)
-{
-    float v;
-    if (s_script_side<0) return;
-    v=s_stagger_value[s_script_side]+(MEMF(0x4DA2D4+s_script_side*4)-s_script_base);
-    if (v<1.0f) v=1.0f;
-    if (v>2.0f) v=2.0f;
-    MEMF(0x4DA2D4+s_script_side*4)=v;   /* the caller copies it to +0x10 */
-    {   static int s_log;
-        if (s_log<8) {
-            s_log++;
-            fprintf(stderr,"[STAGGER] scripted dummy, side %d: slot %.2f (held %.2f)\n",
-                    s_script_side,v,s_stagger_value[s_script_side]);
-            fflush(stderr);
-        }
-    }
-    s_script_side=-1;
-}
-
-/* 0.2.4 diagnostic: which stun routine runs for which side, logged whether
- * or not a hold is set (first 40 per routine). */
-void training_stagger_trace(int which, int phase)
-{
-    static int s_n[3];
-    static float s_in;
-    unsigned side=MEM8(0x4DA2DD), fighter=MEM32(0x4DA1C4);
-    static const char *const names[3]={"CPU 0x16840","player 0x1BAE0","script 0x16449"};
-    if (which<0 || which>2) return;
-    if (!phase) { s_in=side<2 ? MEMF(0x4DA2D4+side*4) : 0.0f; return; }
-    if (s_n[which]>=40) return;
-    s_n[which]++;
-    fprintf(stderr,"[STAGGER-TRACE] %s side %u human %u +0x59 %u: slot %.2f -> %.2f, speed %.2f, hold %d %.2f, available %d, mode %u\n",
-            names[which],side,side<2?MEM8(0x59CF58+side*0x68):0xFFu,fighter?MEM8(fighter+0x59):0xFFu,
-            s_in,side<2?MEMF(0x4DA2D4+side*4):0.0f,fighter?MEMF(fighter+0x10):0.0f,
-            side<2?s_stagger_hold[side]:-1,side<2?s_stagger_value[side]:0.0f,training_available(),MEM8(0x5A2858));
-    fflush(stderr);
 }
 
 /* 0.2.5: in Sparring the game runs a fighter that is not human through
@@ -408,16 +343,6 @@ void training_stagger_dummy(void)
     fighter=MEM32(0x4DA1C4);
     if (!fighter) return;
     v=s_stagger_value[side];
-    {   /* diagnostic: the dummy's state changes while a hold is set */
-        static unsigned s_prev[2]={0xFF,0xFF}; static int s_n;
-        unsigned st=MEM8(fighter+0x33);
-        if (s_stagger_hold[side] && st!=s_prev[side] && s_n<40) {
-            s_n++;
-            fprintf(stderr,"[STAGGER-TRACE] dummy side %u state %u -> %u, speed %.2f\n",side,s_prev[side],st,MEMF(fighter+0x10));
-            fflush(stderr);
-        }
-        s_prev[side]=st;
-    }
     if (s_stagger_hold[side] && MEM8(fighter+0x33)==8) {
         MEMF(0x4DA2D4+side*4)=v;
         MEMF(fighter+0x10)=v;

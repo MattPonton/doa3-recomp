@@ -68,24 +68,9 @@ void sub_00011980(void) { sub_00011980_gen(); doa3_costume_watch(); training_inp
 void sub_00016840_gen(void);
 void sub_00016840(void)
 {
-    training_stagger_trace(0, 0);
     training_stagger_cpu_before();
     sub_00016840_gen();
     training_stagger_cpu_after();
-    training_stagger_trace(0, 1);
-    if (g_fib_slice_due) xbox_fiber_timeslice();
-}
-/* Player stun handler (0x1BAE0, 0.2.3): it also resets the value to 1.00
- * every frame while the fighter's +0x59 is 1, which the Sparring dummy is
- * when the CPU runs it, so the hold needs the same wrap as 0x16840. */
-void sub_0001BAE0_gen(void);
-void sub_0001BAE0(void)
-{
-    training_stagger_trace(1, 0);
-    training_stagger_cpu_before();
-    sub_0001BAE0_gen();
-    training_stagger_cpu_after();
-    training_stagger_trace(1, 1);
     if (g_fib_slice_due) xbox_fiber_timeslice();
 }
 void sub_00012B60(void) { sub_00012B60_gen(); training_input_end(); }
@@ -749,7 +734,7 @@ void sub_0001EF20(void)   /* fight stick reader (player in [esp+4]) */
     sub_0001EF20_gen();
     if (g_fib_slice_due) xbox_fiber_timeslice();
 }
-/* Dip switch "Random includes alternate costume colours" (0.1.15).
+/* Dip switch "Random includes alternate costume colors from disc" (0.1.15).
  * 0xCC980 resolves a random character -- the player's Random (char 0xFF) and
  * the CPU's random opponents (Story, Survival, Time Attack...) -- then turns
  * the random costume slot into a costume with 0xCD870(al = char, dl = slot,
