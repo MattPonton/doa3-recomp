@@ -16,6 +16,7 @@ set(KERNEL_SOURCES
     kernel_file.c
     kernel_thread.c
     kernel_sync.c
+    kernel_replay.c
     kernel_hal.c
     kernel_xbox.c
     kernel_ob.c
@@ -23,7 +24,11 @@ set(KERNEL_SOURCES
     kernel_crypto.c
     kernel_thunks.c
     kernel_bridge.c
+    kernel_interrupt.c
+    kernel_apc.c
+    kernel_stream.c
     xbox_fiber.c
+    xbox_heap.c
     xbox_memory_layout.c
 )
 

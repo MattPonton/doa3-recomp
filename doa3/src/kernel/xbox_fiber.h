@@ -17,6 +17,40 @@
 #define XBOX_FIBER_H
 
 #include <stdint.h>
+#include <stddef.h>
+
+/* LOCAL checkpoints of the opt-in explicit fight tasks. These include saved
+ * guest registers and generated continuation locals, NOT guest RAM/stacks,
+ * ordinary Windows fibers, worker state or external resources. Capture/restore
+ * only from primary at a quiescent dispatcher boundary. A topology change or
+ * a nested native yield, native worker/coroutine execution, or a worker wake
+ * invalidates restoration. This guard detects advancement; it does not save
+ * worker continuations or suppress workers. Whole-game rollback must
+ * checkpoint the other state separately; these APIs cannot rewind a match alone. */
+size_t xbox_fiber_task_snapshot_size(void);
+int xbox_fiber_task_capture(void *out, size_t bytes);
+int xbox_fiber_task_restore(const void *saved, size_t bytes);
+
+/* Combined LOCAL checkpoint of converted tasks and opt-in 3.1 workers:
+ * watchdog, two vblank workers and the file worker at its self-suspend wait.
+ * Requires deterministic-clock ownership and a primary dispatcher boundary.
+ * Returns total converted fibers. Includes worker rotation/idle scheduling;
+ * caller still owns RAM, clocks, kernel objects, APU and file state. Unconverted
+ * worker execution/wakes, nested native worker waits and topology changes
+ * invalidate the whole checkpoint.
+ * Validates everything before changing any fiber. Never serializes a C stack. */
+size_t xbox_fiber_converted_snapshot_size(void);
+int xbox_fiber_converted_capture(void *out,size_t bytes);
+int xbox_fiber_converted_restore(const void *saved,size_t bytes);
+int xbox_fiber_converted_validate(const void *saved,size_t bytes); /* no mutation */
+int xbox_fiber_run_restorable_watchdog(void); /* DOA3_ROLLBACK_WORKERS=1 opt-in */
+int xbox_fiber_run_restorable_stream_worker(uint32_t routine); /* DOA3_ROLLBACK_STREAM_WORKERS=1 */
+/* Read-only handoff check: live vblank workers must be converted and parked
+ * at their deterministic yield, not their former wall-clock vblank block. */
+int xbox_fiber_converted_clock_ready(void);
+/* Admission only: named thread operations may affect converted workers;
+ * native self-suspend and coroutine yield paths are excluded. */
+int xbox_fiber_replay_thread_allowed(uint32_t handle,int resume);
 
 /* Convert the current (main) OS thread into the primary fiber. Call once at
  * startup, before running the recompiled entry point. */
@@ -91,6 +125,10 @@ void xbox_fiber_switch_direct(int idx);
 
 /* From a coroutine: switch back to whoever direct-switched into it. */
 void xbox_fiber_yield_back(void);
+
+/* Called at a supported guest task body, inside its normal entry wrapper.
+ * Returns zero when disabled; enabled infinite tasks park inside this call. */
+int xbox_fiber_run_restorable_task(uint32_t routine);
 
 /* Index of the currently running fiber (0 = primary). */
 int  xbox_fiber_current(void);

@@ -1,10 +1,14 @@
 /* Cooperative fiber scheduler — see xbox_fiber.h. */
 #include "xbox_fiber.h"
 #include "xbox_det.h"
+#include "rollback_tasks.h"
+#include "rollback_workers.h"
+#include "rollback_capture.h"
 #include "xbox_memory_layout.h"          /* xbox_HeapAlloc */
 
 #include <windows.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
 
@@ -52,6 +56,14 @@ typedef struct {
                              * thread; a shared handle deadlocked the Sofdec player. */
     int      is_coroutine;  /* direct-switched (XAPI fiber), never round-robin scheduled */
     int      resume_to;     /* fiber to park back into when this one finishes/yields */
+    int      restorable_task;
+    uint32_t task_routine;  /* actual body inside the shared guest task wrapper */
+    int      task_in_step;
+    unsigned task_nested_yields;
+    int restorable_worker, worker_parked;
+    unsigned worker_in_step,worker_nested_yields;
+    Doa3RollbackWorker worker;
+    Doa3RollbackTask task;
     /* saved recompiler register-globals */
     uint32_t r_eax, r_ecx, r_edx, r_esp, r_ebx, r_esi, r_edi, r_sehebp;
     /* saved x87 FPU state (g_fp_stack/g_fp_top are process globals) */
@@ -61,6 +73,17 @@ typedef struct {
 
 static Fiber g_fib[MAX_FIBERS];
 static unsigned g_fib_runs[MAX_FIBERS];   /* times each fiber was resumed (diagnostic) */
+static uint64_t g_fib_topology;
+/* A task checkpoint cannot roll back a native worker's C continuation. Even
+ * returning to the same wait key after one stream read invalidates it. */
+static uint64_t g_external_epoch;
+static uint64_t g_worker_epoch; /* invalidates task-only checkpoints */
+static int g_worker_rr;
+static unsigned g_idle_yields;
+unsigned g_rollback_worker_steps; /* diagnostic only; never rewound */
+unsigned g_rollback_stream_worker_steps[3],g_rollback_stream_worker_nested_yields[3];
+/* Exported diagnostic counters, read-only to probes. No capture is automatic. */
+unsigned g_rollback_task_steps[DOA3_RB_TASK_COUNT];
 static int   g_nfib   = 0;
 static int   g_cur    = 0;
 static int   g_active = 0;
@@ -72,11 +95,34 @@ static int   g_active = 0;
  * the server pump re-entered CRI code and broke playback (bisected). */
 static int   g_direct_return = -1;
 
+static void note_external_change(int index)
+{
+    if (!index || g_fib[index].restorable_task) return;
+    if (g_fib[index].restorable_worker) ++g_worker_epoch;
+    else ++g_external_epoch;
+}
+
 extern double g_fp_stack[8];
 extern int    g_fp_top;
 
 static void save_regs(Fiber *f)
 {
+    if (f->restorable_worker && f->worker_in_step && !f->worker_nested_yields) {
+        f->worker_nested_yields=1;
+        ++g_fib_topology;
+        unsigned slot=f->ctx1==0x1927D0 ? 2u : f->ctx1==0x192760 ? 1u : 0u;
+        if (++g_rollback_stream_worker_nested_yields[slot]<=4)
+            fprintf(stderr,"[ROLLBACK] worker %08X yielded inside a native helper; prior checkpoints invalidated\n",f->ctx1);
+        doa3_rollback_capture_cancel();
+    }
+    /* Catch every scheduler handoff, including direct switches and waits,
+     * not just the expected frame-yield API. A nested C stack cannot rewind. */
+    if (f->restorable_task && f->task_in_step && !f->task_nested_yields) {
+        f->task_nested_yields = 1;
+        ++g_fib_topology; /* invalidate checkpoints made before this native handoff */
+        doa3_rollback_capture_cancel();
+        fprintf(stderr, "[ROLLBACK] task %08X yielded from a nested native call; prior checkpoints invalidated, capture cancelled if active; fresh checkpoints require native step return\n", f->task_routine);
+    }
     f->r_eax = g_eax; f->r_ecx = g_ecx; f->r_edx = g_edx; f->r_esp = g_esp;
     f->r_ebx = g_ebx; f->r_esi = g_esi; f->r_edi = g_edi; f->r_sehebp = g_seh_ebp;
     memcpy(f->r_fp_stack, g_fp_stack, sizeof(g_fp_stack));
@@ -84,6 +130,7 @@ static void save_regs(Fiber *f)
 }
 static void load_regs(Fiber *f)
 {
+    note_external_change((int)(f-g_fib));
     g_eax = f->r_eax; g_ecx = f->r_ecx; g_edx = f->r_edx; g_esp = f->r_esp;
     g_ebx = f->r_ebx; g_esi = f->r_esi; g_edi = f->r_edi; g_seh_ebp = f->r_sehebp;
     memcpy(g_fp_stack, f->r_fp_stack, sizeof(g_fp_stack));
@@ -223,6 +270,7 @@ int xbox_fiber_spawn(uint32_t start_routine, uint32_t ctx1, uint32_t ctx2,
     f->start_routine = start_routine;
     f->ctx1 = ctx1; f->ctx2 = ctx2;
     f->stack_top = base + WORKER_STACK_SIZE - 16;
+    f->stack_size = WORKER_STACK_SIZE;
     f->xhandle = xhandle;
     /* NOTE: CreateSuspended is intentionally IGNORED (fiber starts READY).
      * Honoring it parked the CRI ADX workers and the whole boot pipeline
@@ -231,6 +279,7 @@ int xbox_fiber_spawn(uint32_t start_routine, uint32_t ctx1, uint32_t ctx2,
     (void)suspended;
     f->state = FIB_READY;
     g_nfib++;
+    ++g_fib_topology;
     fprintf(stderr, "[FIBER] spawned #%d routine=0x%08X ctx1=0x%08X stack_top=0x%08X handle=0x%08X%s\n",
             i, start_routine, ctx1, f->stack_top, xhandle, suspended ? " (suspended)" : "");
     fflush(stderr);
@@ -271,9 +320,8 @@ void xbox_fiber_yield(void)
          * server #4 to clear 0xB24D3C) ping-ponged with the watchdog forever
          * and the server never ran: the story-mode pre-FMV freeze (hang dump
          * 2026-10-01). */
-        static int s_rr;
-        n = pick_next(s_rr);
-        if (n >= 0) s_rr = n;
+        n = pick_next(g_worker_rr);
+        if (n >= 0) g_worker_rr = n;
     } else {
         n = pick_next(me);
     }
@@ -298,15 +346,15 @@ void xbox_fiber_yield(void)
          *
          * Apply the same release, but only after enough fruitless yields
          * that this cannot be ordinary scheduling. */
-        static unsigned s_idle;
         int waiters = 0, i;
         for (i = 0; i < g_nfib; i++)
             if (g_fib[i].state == FIB_WAITING) waiters++;
-        if (!waiters) { s_idle = 0; return; }
-        if (++s_idle < 200000u) return;
-        s_idle = 0;
+        if (!waiters) { g_idle_yields = 0; return; }
+        if (++g_idle_yields < 200000u) return;
+        g_idle_yields = 0;
         for (i = 0; i < g_nfib; i++)
             if (g_fib[i].state == FIB_WAITING) {
+                note_external_change(i);
                 g_fib[i].state = FIB_READY; g_fib[i].wait_event = 0;
             }
         {   static int logged;
@@ -411,7 +459,10 @@ void xbox_fiber_block(uint32_t event_va)
         /* Nobody runnable. Wake all waiters to avoid a hard deadlock; they will
          * re-check their own condition and block again if still unsatisfied. */
         for (int i = 0; i < g_nfib; i++)
-            if (g_fib[i].state == FIB_WAITING) { g_fib[i].state = FIB_READY; g_fib[i].wait_event = 0; }
+            if (g_fib[i].state == FIB_WAITING) {
+                note_external_change(i);
+                g_fib[i].state = FIB_READY; g_fib[i].wait_event = 0;
+            }
         n = pick_next(me);
         if (n < 0) { g_fib[me].state = FIB_RUNNING; g_fib[me].wait_event = 0; return; }
     }
@@ -435,6 +486,7 @@ int xbox_fiber_wake_count(uint32_t event_va)
     if (!g_active) return 0;
     for (int i = 0; i < g_nfib; i++)
         if (g_fib[i].state == FIB_WAITING && (event_va == 0 || g_fib[i].wait_event == event_va)) {
+            note_external_change(i);
             g_fib[i].state = FIB_READY;
             g_fib[i].wait_event = 0;
             n++;
@@ -619,6 +671,7 @@ int xbox_fiber_create_dormant(uint32_t routine_va, uint32_t param,
     f->is_coroutine = 1;
     f->resume_to = 0;
     f->state = FIB_DORMANT;
+    ++g_fib_topology;
     if (i >= g_nfib) g_nfib = i + 1;
     return i;
 }
@@ -628,6 +681,7 @@ void xbox_fiber_destroy(int idx)
     if (idx <= 0 || idx >= g_nfib) return;
     Fiber *f = &g_fib[idx];
     if (!f->is_coroutine) return;             /* never destroy scheduler threads */
+    ++g_fib_topology;
     if (f->handle) { DeleteFiber(f->handle); f->handle = NULL; }
     f->state = FIB_FREE;                       /* stack_top kept for reuse */
     f->is_coroutine = 0;
@@ -673,6 +727,270 @@ void xbox_fiber_switch_direct(int idx)
     g_cur = me; g_fib_runs[g_cur]++;
     g_fib[me].state = FIB_RUNNING;
 }
+
+int xbox_fiber_run_restorable_task(uint32_t routine)
+{
+    if (!g_active || !g_fib[g_cur].is_coroutine ||
+        !doa3_rollback_tasks_enabled() || !doa3_rollback_task_supported(routine)) return 0;
+    Fiber *f = &g_fib[g_cur];
+    f->restorable_task = 1;
+    f->task_routine = routine;
+    ++g_fib_topology;
+    fprintf(stderr, "[ROLLBACK] task %08X uses an explicit continuation (fiber %d)\n", routine, g_cur);
+    /* Enter through the actual task body, preserving the game's shared entry
+     * wrapper. Every live body local is saved before parking here. */
+    for (;;) {
+        doa3_rollback_capture_before(routine, &f->task);
+        f->task_in_step = 1;
+        if (!doa3_rollback_task_step(routine, &f->task)) {
+            fprintf(stderr, "[ROLLBACK] restorable task %08X did not yield normally\n", routine);
+            abort();
+        }
+
+        f->task_in_step = 0;
+        /* The generated step has now returned: no nested native stack remains.
+         * Old checkpoints stay invalid through the topology epoch above. */
+        f->task_nested_yields = 0;
+        doa3_rollback_capture_after(routine, &f->task);
+        { static const uint32_t routines[DOA3_RB_TASK_COUNT] = {DOA3_RB_TASK_ROUTINES};
+          for (unsigned k = 0; k < DOA3_RB_TASK_COUNT; ++k)
+              if (routine == routines[k]) ++g_rollback_task_steps[k]; }
+        xbox_fiber_yield_back();
+    }
+}
+
+int xbox_fiber_run_restorable_stream_worker(uint32_t routine)
+{
+    static int enabled=-1;
+    if (enabled<0) {
+        const char *value=getenv("DOA3_ROLLBACK_STREAM_WORKERS");
+        enabled=value && !strcmp(value,"1") && doa3_rollback_tasks_enabled();
+    }
+    if (!enabled || !g_active || g_cur<=0 || !doa3_rollback_worker_supported(routine)) return 0;
+    Fiber *f=&g_fib[g_cur];
+    if (f->is_coroutine || f->start_routine!=0x18C690 || f->ctx1!=routine) return 0;
+    f->restorable_worker=1; ++g_fib_topology;
+    fprintf(stderr,"[ROLLBACK] streaming worker %08X uses an explicit outer wait (fiber %d)\n",routine,g_cur);
+    for (;;) {
+        f->worker_in_step=1;
+        if (!doa3_rollback_worker_step(routine,&f->worker)) {
+            fprintf(stderr,"[ROLLBACK] streaming worker %08X failed at its explicit wait\n",routine);
+            abort();
+        }
+        f->worker_in_step=f->worker_nested_yields=0;
+        ++g_rollback_stream_worker_steps[routine==0x1927D0 ? 2 : routine==0x192760 ? 1 : 0];
+        f->worker_parked=1;
+        if (f->worker.wait_key) xbox_fiber_block(f->worker.wait_key);
+        else xbox_fiber_yield();
+        f->worker_parked=0;
+    }
+}
+
+int xbox_fiber_run_restorable_watchdog(void)
+{
+    static int enabled=-1;
+    if (enabled<0) {
+        const char *value=getenv("DOA3_ROLLBACK_WORKERS");
+        enabled=value && !strcmp(value,"1") && doa3_rollback_tasks_enabled();
+    }
+    if (!enabled || !g_active || g_cur<=0) return 0;
+    Fiber *f=&g_fib[g_cur];
+    /* Only the audited 3.1 idle worker, inside its unchanged XAPI startup
+     * wrapper. No native helper runs between its explicit yield boundaries. */
+    if (f->is_coroutine || f->start_routine!=0x18C690 || f->ctx1!=0x1926B0) return 0;
+    f->restorable_worker=1;
+    ++g_fib_topology;
+    fprintf(stderr,"[ROLLBACK] watchdog 001926B0 uses an explicit worker boundary (fiber %d)\n",g_cur);
+    while (!FMEM32(0x40C718)) {
+        FMEM32(0x40C700)=FMEM32(0x40C700)+1;
+        ++g_rollback_worker_steps;
+        /* The only C local that survives this park is f, whose immutable
+         * identity is checked by restore. yield's post-switch path uses only
+         * the immutable fiber index before returning here. */
+        f->worker_parked=1;
+        xbox_fiber_yield();
+        f->worker_parked=0;
+    }
+    f->restorable_worker=0;
+    ++g_fib_topology; /* the enclosing native startup/exit path may now unwind */
+    FMEM32(0x40C71C)=1;
+    g_esp+=4;
+    return 1;
+}
+
+/* The opaque snapshot is process-local. Native fiber handles are identity
+ * checks only, never restored or used as a serialized execution context. The
+ * native stack is always parked in the same trampoline for these tasks. */
+typedef struct {
+    uint32_t version, count, workers, idle_yields, clock_epoch;
+    int worker_rr;
+    uint64_t topology, mask, external_epoch, worker_epoch;
+    Fiber tasks[MAX_FIBERS];
+} TaskSnapshot;
+
+size_t xbox_fiber_task_snapshot_size(void) { return sizeof(TaskSnapshot); }
+size_t xbox_fiber_converted_snapshot_size(void) { return sizeof(TaskSnapshot); }
+
+static int checkpoint_ready(const Fiber *f)
+{
+    if (f->restorable_worker) {
+        if (f->is_coroutine || f->restorable_task || f->worker_parked!=1 ||
+            f->worker_in_step || f->worker_nested_yields || f->start_routine!=0x18C690) return 0;
+        if (f->ctx1==0x1926B0) return f->state==FIB_READY && !f->wait_event;
+        if (f->ctx1==0x1927D0 && f->worker.wait_key!=f->xhandle) return 0;
+        return doa3_rollback_worker_checkpoint_valid(f->ctx1,&f->worker) && f->r_esp==f->worker.wait_sp &&
+            ((f->state==FIB_READY && !f->wait_event) ||
+             (f->state==FIB_WAITING && f->worker.wait_key && f->wait_event==f->worker.wait_key));
+    }
+    return f->restorable_task && f->state==FIB_DORMANT &&
+        !f->task_in_step && !f->task_nested_yields &&
+        doa3_rollback_task_checkpoint_valid(f->task_routine,&f->task);
+}
+
+static int task_snapshot_mask(uint64_t *mask,int workers)
+{
+    int count = 0;
+    *mask = 0;
+    if (!g_active || g_cur != 0) return 0;
+    if (workers && (!g_xbox_det_active || g_direct_return!=-1)) return 0;
+    for (int i = 1; i < g_nfib; ++i) {
+        Fiber *f = &g_fib[i];
+        if ((!f->restorable_task && !(workers && f->restorable_worker)) ||
+            f->state == FIB_FREE || f->state == FIB_DONE) continue;
+        if (!checkpoint_ready(f)) return 0;
+        *mask |= UINT64_C(1) << i;
+        ++count;
+    }
+    return count;
+}
+
+int xbox_fiber_converted_clock_ready(void)
+{
+    uint64_t mask;
+    if(!task_snapshot_mask(&mask,1))return 0;
+    unsigned vblank_workers=0;
+    for(int i=1;i<g_nfib;++i){
+        const Fiber *f=&g_fib[i];
+        if(f->state==FIB_FREE || f->state==FIB_DONE || f->is_coroutine)continue;
+        if(f->ctx1!=0x1926F0 && f->ctx1!=0x192760)continue;
+        if(!f->restorable_worker || !checkpoint_ready(f) || f->worker.wait_key ||
+           f->state!=FIB_READY || f->wait_event)return 0;
+        ++vblank_workers;
+    }
+    return vblank_workers!=0;
+}
+
+int xbox_fiber_replay_thread_allowed(uint32_t handle,int resume)
+{
+    if(!g_active || !g_xbox_det_active || !handle || handle==UINT32_MAX ||
+       handle==0xFFFFFFFEu || g_fib[g_cur].is_coroutine)return 0;
+    if(g_cur && !g_fib[g_cur].restorable_worker)return 0;
+    /* A worker self-suspend would park inside the native bridge rather than
+     * its converted trampoline, so it cannot be rewound there. */
+    if(!resume)return !g_cur || handle!=g_fib[g_cur].xhandle;
+    int named=0;
+    for(int i=1;i<g_nfib;++i){
+        const Fiber *f=&g_fib[i];
+        if(f->state==FIB_FREE || f->state==FIB_DONE)continue;
+        if(f->xhandle==handle)named=1;
+        /* Wake touches every matching wait; directed primary resume can
+         * also run a READY worker with the named handle. Check both sets. */
+        if((f->state==FIB_WAITING && f->wait_event==handle) ||
+           (!g_cur && !f->is_coroutine &&
+            (f->state==FIB_READY || f->state==FIB_WAITING) && f->xhandle==handle)){
+            if(!f->restorable_worker || !checkpoint_ready(f))return 0;
+        }
+    }
+    return named;
+}
+
+static int checkpoint_capture(void *out,size_t bytes,int workers)
+{
+    uint64_t mask;
+    int count = task_snapshot_mask(&mask,workers);
+    TaskSnapshot *saved = (TaskSnapshot *)out;
+    if (!out || bytes != sizeof(*saved) || !count) return 0;
+    memset(saved, 0, sizeof(*saved));
+    saved->version = DOA3_RB_TASK_SCHEMA;
+    saved->count = (uint32_t)count;
+    saved->topology = g_fib_topology;
+    saved->external_epoch = g_external_epoch;
+    saved->workers=(uint32_t)workers;
+    saved->worker_epoch=workers ? 0 : g_worker_epoch;
+    if (workers) {
+        saved->worker_rr=g_worker_rr; saved->idle_yields=g_idle_yields;
+        saved->clock_epoch=xbox_det_epoch();
+    }
+    saved->mask = mask;
+    for (int i = 1; i < g_nfib; ++i)
+        if (mask & (UINT64_C(1) << i)) saved->tasks[i] = g_fib[i];
+    return count;
+}
+
+static int checkpoint_restore(const void *data,size_t bytes,int workers,int apply)
+{
+    const TaskSnapshot *saved = (const TaskSnapshot *)data;
+    uint64_t mask;
+    int count = task_snapshot_mask(&mask,workers);
+    if (!saved || bytes != sizeof(*saved) || !count || saved->version != DOA3_RB_TASK_SCHEMA ||
+        saved->topology != g_fib_topology || saved->external_epoch != g_external_epoch ||
+        saved->workers!=(uint32_t)workers || (!workers && saved->worker_epoch!=g_worker_epoch) ||
+        (workers && (saved->clock_epoch!=xbox_det_epoch() || saved->worker_rr<0 ||
+            saved->worker_rr>=g_nfib || saved->idle_yields>=200000u)) ||
+        saved->count != (uint32_t)count || saved->mask != mask) {
+        if(!apply && saved && bytes==sizeof(*saved))
+            fprintf(stderr,"[ROLLBACK-FIBERS] header refusal: count=%u/%d topology=%llu/%llu external=%llu/%llu workers=%u/%d worker_epoch=%llu/%llu clock=%u/%u rr=%d idle=%u mask=%llX/%llX\n",
+                saved->count,count,(unsigned long long)saved->topology,(unsigned long long)g_fib_topology,
+                (unsigned long long)saved->external_epoch,(unsigned long long)g_external_epoch,saved->workers,workers,
+                (unsigned long long)saved->worker_epoch,(unsigned long long)g_worker_epoch,saved->clock_epoch,xbox_det_epoch(),
+                saved->worker_rr,saved->idle_yields,(unsigned long long)saved->mask,(unsigned long long)mask);
+        return 0;
+    }
+    /* Validate every record before restoring any record. */
+    for (int i = 1; i < g_nfib; ++i) {
+        const Fiber *old = &saved->tasks[i], *now = &g_fib[i];
+        if (!(mask & (UINT64_C(1) << i))) continue;
+        if (old->handle != now->handle || old->start_routine != now->start_routine ||
+            old->task_routine != now->task_routine ||
+            old->restorable_worker != now->restorable_worker || old->restorable_task != now->restorable_task ||
+            old->is_coroutine != now->is_coroutine || old->xhandle != now->xhandle ||
+            old->stack_top != now->stack_top || old->stack_size != now->stack_size ||
+            old->ctx1 != now->ctx1 || old->ctx2 != now->ctx2 ||
+            old->resume_to != now->resume_to || !checkpoint_ready(old) ||
+            (old->restorable_worker && old->worker.wait_key!=now->worker.wait_key) ||
+            old->r_esp < now->stack_top + 16u - now->stack_size || old->r_esp > now->stack_top) {
+            if(!apply)fprintf(stderr,"[ROLLBACK-FIBERS] fiber=%d routine=%08X task=%08X ready=%d return=%d/%d wait_key=%08X/%08X esp=%08X range=%08X..%08X identity=%d\n",
+                i,old->ctx1,old->task_routine,checkpoint_ready(old),old->resume_to,now->resume_to,
+                old->worker.wait_key,now->worker.wait_key,old->r_esp,now->stack_top+16u-now->stack_size,now->stack_top,
+                old->handle==now->handle && old->start_routine==now->start_routine && old->task_routine==now->task_routine &&
+                old->restorable_worker==now->restorable_worker && old->restorable_task==now->restorable_task &&
+                old->is_coroutine==now->is_coroutine && old->xhandle==now->xhandle && old->stack_top==now->stack_top &&
+                old->stack_size==now->stack_size && old->ctx1==now->ctx1 && old->ctx2==now->ctx2);
+            return 0;
+        }
+    }
+    if (!apply) return count;
+    for (int i = 1; i < g_nfib; ++i) {
+        const Fiber *old = &saved->tasks[i];
+        Fiber *now = &g_fib[i];
+        if (!(mask & (UINT64_C(1) << i))) continue;
+        now->task = old->task;
+        now->worker=old->worker;
+        if (now->restorable_worker) { now->state=old->state; now->wait_event=old->wait_event; }
+        now->r_eax = old->r_eax; now->r_ecx = old->r_ecx; now->r_edx = old->r_edx;
+        now->r_esp = old->r_esp; now->r_ebx = old->r_ebx; now->r_esi = old->r_esi;
+        now->r_edi = old->r_edi; now->r_sehebp = old->r_sehebp;
+        memcpy(now->r_fp_stack, old->r_fp_stack, sizeof(now->r_fp_stack));
+        now->r_fp_top = old->r_fp_top;
+    }
+    if (workers) { g_worker_rr=saved->worker_rr; g_idle_yields=saved->idle_yields; }
+    return count;
+}
+int xbox_fiber_task_capture(void *out,size_t bytes) { return checkpoint_capture(out,bytes,0); }
+int xbox_fiber_task_restore(const void *saved,size_t bytes) { return checkpoint_restore(saved,bytes,0,1); }
+int xbox_fiber_converted_capture(void *out,size_t bytes) { return checkpoint_capture(out,bytes,1); }
+int xbox_fiber_converted_restore(const void *saved,size_t bytes) { return checkpoint_restore(saved,bytes,1,1); }
+int xbox_fiber_converted_validate(const void *saved,size_t bytes) { return checkpoint_restore(saved,bytes,1,0); }
 
 int xbox_fiber_count(void)
 {

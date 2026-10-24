@@ -29,6 +29,10 @@
 #include "xbox_memory_layout.h"
 #include "xbox_fiber.h"
 #include "xbox_det.h"
+#include "kernel_apc.h"
+#include "kernel_interrupt.h"
+#include "kernel_stream.h"
+#include "kernel_replay.h"
 #include "../game/save_compat.h"
 #include <stdio.h>
 #include <string.h>
@@ -399,44 +403,47 @@ static void bridge_NtWaitForSingleObject(void)
  * the KINTERRUPT's service routine + context; KeInsertQueueDpc queues the
  * DPC (routine/context live in the KDPC written by KeInitializeDpc). The
  * game thread drains both from doa3_apu_deliver_irq once per frame. */
-typedef struct { uint32_t obj, routine, ctx; } XboxIsr;
-static XboxIsr  s_isr[4];
-static int      s_isr_n;
-typedef struct { uint32_t dpc, a1, a2; } XboxDpc;
-static XboxDpc  s_dpcq[16];
-static int      s_dpcq_n;
+static XboxInterruptState s_interrupts;
 
 static void bridge_KeInitializeInterrupt(void)
 {
-    uint32_t obj = STACK_ARG(0), routine = STACK_ARG(1), ctx = STACK_ARG(2);
-    if (s_isr_n < 4) { s_isr[s_isr_n].obj = obj; s_isr[s_isr_n].routine = routine; s_isr[s_isr_n].ctx = ctx; s_isr_n++; }
-    g_eax = 0;
+    xbox_interrupt_register(&s_interrupts,(XboxIsrEntry){STACK_ARG(0),STACK_ARG(1),STACK_ARG(2)});
+    g_eax=0;
 }
-
 static void bridge_KeInsertQueueDpc(void)
 {
-    uint32_t dpc = STACK_ARG(0), a1 = STACK_ARG(1), a2 = STACK_ARG(2);
-    int i;
-    for (i = 0; i < s_dpcq_n; i++)
-        if (s_dpcq[i].dpc == dpc) { g_eax = 0; return; }   /* already queued */
-    if (s_dpcq_n < 16) { s_dpcq[s_dpcq_n].dpc = dpc; s_dpcq[s_dpcq_n].a1 = a1; s_dpcq[s_dpcq_n].a2 = a2; s_dpcq_n++; }
-    g_eax = 1;
+    g_eax=(uint32_t)xbox_interrupt_push(&s_interrupts,(XboxDpcEntry){STACK_ARG(0),STACK_ARG(1),STACK_ARG(2)});
 }
-
-int xbox_kernel_get_isr(int i, uint32_t *obj, uint32_t *routine, uint32_t *ctx)
+int xbox_kernel_get_isr(int i,uint32_t *obj,uint32_t *routine,uint32_t *ctx)
 {
-    if (i < 0 || i >= s_isr_n) return 0;
-    *obj = s_isr[i].obj; *routine = s_isr[i].routine; *ctx = s_isr[i].ctx;
-    return 1;
+    XboxIsrEntry e;
+    if(i<0 || !xbox_interrupt_get_isr(&s_interrupts,(unsigned)i,&e)) return 0;
+    *obj=e.obj;*routine=e.routine;*ctx=e.ctx;return 1;
 }
-
-int xbox_kernel_pop_dpc(uint32_t *dpc, uint32_t *a1, uint32_t *a2)
+int xbox_kernel_pop_dpc(uint32_t *dpc,uint32_t *a1,uint32_t *a2)
 {
-    if (s_dpcq_n == 0) return 0;
-    *dpc = s_dpcq[0].dpc; *a1 = s_dpcq[0].a1; *a2 = s_dpcq[0].a2;
-    memmove(&s_dpcq[0], &s_dpcq[1], (size_t)(s_dpcq_n - 1) * sizeof(s_dpcq[0]));
-    s_dpcq_n--;
-    return 1;
+    XboxDpcEntry e;
+    if(!xbox_interrupt_pop(&s_interrupts,&e)) return 0;
+    *dpc=e.dpc;*a1=e.a1;*a2=e.a2;return 1;
+}
+int xbox_kernel_interrupt_begin(void) { return xbox_interrupt_begin(&s_interrupts); }
+void xbox_kernel_interrupt_end(void) { xbox_interrupt_end(&s_interrupts); }
+static int interrupt_checkpoint_boundary(void)
+{
+    extern unsigned char xbox_current_irql(void);
+    return g_xbox_det_active && xbox_fiber_is_primary() && xbox_current_irql()==0;
+}
+int xbox_kernel_interrupt_capture(void *out,size_t bytes)
+{
+    return interrupt_checkpoint_boundary() && xbox_interrupt_capture(&s_interrupts,xbox_det_epoch(),out,bytes);
+}
+int xbox_kernel_interrupt_validate(const void *saved,size_t bytes)
+{
+    return interrupt_checkpoint_boundary() && xbox_interrupt_validate(&s_interrupts,xbox_det_epoch(),saved,bytes);
+}
+int xbox_kernel_interrupt_restore(const void *saved,size_t bytes)
+{
+    return interrupt_checkpoint_boundary() && xbox_interrupt_restore(&s_interrupts,xbox_det_epoch(),saved,bytes);
 }
 
 /* ── NtClose (ordinal 187) ───────────────────────────────
@@ -729,35 +736,16 @@ static void bridge_KeQueryPerformanceCounter(void)
          * counted together with the game thread's polls (and adding to one
          * shared boost) that moved the game thread's time and yields. Each
          * fiber now sees frame time plus only its own boost. */
-        static uint32_t d_consec[64], d_run[64];
-        static long long d_last[64];
-        static uint32_t d_epoch = 0;
         extern int xbox_fiber_is_primary(void);
-        int fb = xbox_fiber_current();
-        long long kc = (long long)xbox_det_fiber_kcalls();
         uint64_t dv;
-        if (fb < 0 || fb >= 64) fb = 63;
-        if (d_epoch != xbox_det_epoch()) {
-            int i;
-            d_epoch = xbox_det_epoch();
-            memset(d_consec, 0, sizeof(d_consec));
-            memset(d_run, 0, sizeof(d_run));
-            for (i = 0; i < 64; i++) d_last[i] = -2;
-        }
-        if (kc <= d_last[fb] + 2) {
-            if (++d_consec[fb] > 150) hot = 1;
-        } else {
-            d_consec[fb] = 0;
-        }
-        d_last[fb] = kc;
-        if (hot || ++d_run[fb] >= 2048) {
-            xbox_det_add_qpc_boost(733333);
+        /* The poll history must rewind with time, not survive in bridge
+         * statics and change the first post-restore boost/yield decision. */
+        if (xbox_det_qpc_poll()) {
             /* The game thread's poll loops wait on worker results (loads):
              * let the workers finish everything, so the number of polls --
              * and with it the boost, which reaches the game's frame delta
              * time (sub_000A06D0 -> 0x85B9C0) -- is the same everywhere. */
             if (xbox_fiber_active() && xbox_fiber_is_primary()) xbox_fiber_run_workers_idle(1024);
-            d_run[fb] = 0;
         }
         dv = xbox_det_qpc();
         g_eax = (uint32_t)(dv & 0xFFFFFFFFu);
@@ -1353,6 +1341,24 @@ static HANDLE s_fh[XFH_MAX];
 static WCHAR  s_fh_path[XFH_MAX][MAX_PATH];
 static unsigned char s_fh_write[XFH_MAX];   /* opened with write access */
 static unsigned s_fh_next;
+static unsigned char s_fh_mutable[XFH_MAX];
+static uint64_t s_fh_epoch;
+static int s_fh_untracked;
+static uint32_t s_fh_first_untracked;
+static const char *s_fh_untracked_reason;
+static XboxStreamFiles *s_stream_files;
+static uint32_t s_stream_clock_epoch;
+static void stream_directory_handle_closed(HANDLE handle);
+static void stream_directory_guard_end(void);
+
+static void stream_files_changed(void)
+{
+    ++s_fh_epoch;
+    stream_directory_guard_end();
+    /* Drop pins before the normal operation, so an experimental checkpoint
+     * never makes a legitimate open/write fail because of its sharing lease. */
+    xbox_stream_files_end(s_stream_files);
+}
 
 /* Is any live guest handle writing this host path? (the wxCi cache
  * installer holds its z:\ target open for write while it copies) */
@@ -1367,7 +1373,13 @@ static int xbox_fh_has_writer(const WCHAR *win_path)
 
 static uint32_t xbox_fh_publish(HANDLE h, const WCHAR *win_path)
 {
+    stream_files_changed();
     if (s_fh_next >= XFH_MAX) {
+        if (!s_fh_untracked) {
+            s_fh_first_untracked=(uint32_t)(uintptr_t)h;
+            s_fh_untracked_reason="table-capacity";
+        }
+        s_fh_untracked=1;
         static int told = 0;
         if (!told) { told = 1;
              }
@@ -1395,6 +1407,7 @@ static HANDLE xbox_fh_resolve(uint32_t gh)
          * bytes instead. Re-open the file this id actually named, so the
          * read gets the right data and boot proceeds. */
         if (i < XFH_MAX && s_fh_path[i][0]) {
+            stream_files_changed();
             HANDLE r = CreateFileW(s_fh_path[i], GENERIC_READ,
                                    FILE_SHARE_READ | FILE_SHARE_WRITE,
                                    NULL, OPEN_EXISTING,
@@ -1409,6 +1422,12 @@ static HANDLE xbox_fh_resolve(uint32_t gh)
         }
         return INVALID_HANDLE_VALUE;
     }
+    if (!s_fh_untracked) {
+        s_fh_first_untracked=gh;
+        s_fh_untracked_reason="raw-handle-resolve";
+    }
+    s_fh_untracked=1;
+    stream_files_changed();
     return (HANDLE)(uintptr_t)gh;               /* not ours: unchanged */
 }
 
@@ -1426,9 +1445,11 @@ static int xbox_fh_release(uint32_t gh)
     if ((gh & 0xFF000000u) == XFH_TAG) {
         unsigned i = (gh & 0x00FFFFFFu) / 4u;
         if (i < XFH_MAX && s_fh[i]) {
+            stream_files_changed();
             { static int nrel = 0;
               if (nrel < 64) { nrel++;
                    } }
+            stream_directory_handle_closed(s_fh[i]);
             CloseHandle(s_fh[i]);
             s_fh[i] = NULL;   /* id never reissued; path kept for reopen */
         }
@@ -1506,6 +1527,7 @@ static NTSTATUS bridge_create_file_impl(
     uint32_t iostatus_va, ULONG file_attrs, ULONG share,
     ULONG disposition, ULONG options)
 {
+    stream_files_changed();
     WCHAR win_path[MAX_PATH];
     HANDLE h;
     DWORD win_access = 0, win_share = 0, win_disp, flags_and_attrs = FILE_ATTRIBUTE_NORMAL;
@@ -1629,6 +1651,9 @@ static NTSTATUS bridge_create_file_impl(
 
     {
         uint32_t gh = xbox_fh_publish(h, win_path);
+        if ((gh & 0xFF000000u)==XFH_TAG)
+            s_fh_mutable[(gh & 0x00FFFFFFu)/4u]=(win_access &
+                (GENERIC_WRITE|GENERIC_ALL|FILE_WRITE_DATA|FILE_APPEND_DATA|FILE_WRITE_ATTRIBUTES|DELETE))!=0;
         if ((gh & 0xFF000000u) == XFH_TAG &&
             (win_access & (GENERIC_WRITE | GENERIC_ALL | FILE_WRITE_DATA | FILE_APPEND_DATA)))
             s_fh_write[(gh & 0x00FFFFFFu) / 4u] = 1;
@@ -1685,17 +1710,109 @@ static void bridge_NtOpenFile(void)
 /* ── Pending user-APC queue (I/O completions from ReadFileEx/WriteFileEx).
  * Real NT delivers these during an alertable wait; the CRI's completion
  * handshake depends on that ordering. Delivered by KeDelayExecutionThread. */
-#define APC_QUEUE_MAX 16
-static struct { uint32_t ctx, iosb, bytes; } s_apc_queue[APC_QUEUE_MAX];
-static int s_apc_count = 0;
+static XboxApcQueue s_apc_queue;
+static int stream_directory_guard_prepare(void);
+static void stream_directory_guard_begin(void);
+static int stream_directory_guard_valid(void);
+int xbox_stream_file_checkpoint_begin(void)
+{
+    if (!g_xbox_det_active || !xbox_fiber_is_primary() || s_fh_untracked ||
+        s_apc_queue.delivering || s_apc_queue.tainted) {
+        fprintf(stderr,"[ROLLBACK-FILES] refused: clock=%d primary=%d untracked=%d first_untracked=%08X source=%s apc_delivering=%u apc_tainted=%u\n",
+            g_xbox_det_active,xbox_fiber_is_primary(),s_fh_untracked,s_fh_first_untracked,
+            s_fh_untracked_reason ? s_fh_untracked_reason:"none",
+            (unsigned)s_apc_queue.delivering,(unsigned)s_apc_queue.tainted);
+        return 0;
+    }
+    int enumerations=stream_directory_guard_prepare();
+    if (enumerations<0) {
+        fprintf(stderr,"[ROLLBACK-FILES] refused: untracked-directory-enumeration\n");
+        return 0;
+    }
+    if (!s_stream_files) s_stream_files=xbox_stream_files_create();
+    if (!s_stream_files) {
+        fprintf(stderr,"[ROLLBACK-FILES] refused: session-allocation\n"); return 0;
+    }
+    XboxStreamFileBinding *bindings=calloc(XFH_MAX,sizeof(*bindings));
+    if (!bindings) {
+        fprintf(stderr,"[ROLLBACK-FILES] refused: bindings-allocation\n"); return 0;
+    }
+    unsigned count=0;
+    for (unsigned i=0;i<s_fh_next;++i) if (s_fh[i]) {
+        bindings[count].guest=XFH_TAG|(i*4u);
+        bindings[count].file=s_fh[i]; bindings[count].path=s_fh_path[i];
+        bindings[count].directory_guarded=1;
+        bindings[count++].writable=s_fh_mutable[i];
+    }
+    XboxStreamFileFailure failure;
+    int ok=xbox_stream_files_begin_diagnostic(s_stream_files,bindings,count,s_fh_epoch,&failure);
+    if (!ok) fprintf(stderr,"[ROLLBACK-FILES] refused: reason=%s index=%u guest=%08X win32=%lu live=%u epoch=%llu path=%ls\n",
+        failure.reason ? failure.reason:"unknown",failure.index,failure.guest,
+        failure.win32_error,count,(unsigned long long)s_fh_epoch,
+        failure.guest && failure.index<count ? bindings[failure.index].path:L"(none)");
+    else fprintf(stderr,"[ROLLBACK-FILES] pinned: live=%u epoch=%llu bytes=%zu retained_enumerations=%d\n",
+        count,(unsigned long long)s_fh_epoch,xbox_stream_files_size(s_stream_files),enumerations);
+    free(bindings);
+    if (ok) {
+        s_stream_clock_epoch=xbox_det_epoch();
+        stream_directory_guard_begin();
+    }
+    return ok;
+}
+void xbox_stream_file_checkpoint_end(void)
+{
+    stream_directory_guard_end();
+    xbox_stream_files_end(s_stream_files);
+}
+size_t xbox_stream_file_checkpoint_size(void) { return xbox_stream_files_size(s_stream_files); }
+static int stream_file_checkpoint_ready(void)
+{
+    return g_xbox_det_active && xbox_fiber_is_primary() && !s_fh_untracked &&
+        !s_apc_queue.delivering && !s_apc_queue.tainted && stream_directory_guard_valid() &&
+        s_stream_clock_epoch==xbox_det_epoch();
+}
+int xbox_stream_file_checkpoint_capture(void *out,size_t bytes)
+{
+    return stream_file_checkpoint_ready() &&
+        xbox_stream_files_capture(s_stream_files,s_fh_epoch,out,bytes);
+}
+int xbox_stream_file_checkpoint_restore(const void *saved,size_t bytes)
+{
+    if (!stream_file_checkpoint_ready()) return 0;
+    return xbox_stream_files_restore(s_stream_files,s_fh_epoch,saved,bytes);
+}
+int xbox_stream_file_checkpoint_validate(const void *saved,size_t bytes)
+{
+    return stream_file_checkpoint_ready() &&
+        xbox_stream_files_validate(s_stream_files,s_fh_epoch,saved,bytes);
+}
+/* Diagnostic counters, not part of restored state. */
+unsigned g_rollback_apc_queued, g_rollback_apc_delivered;
 
+size_t xbox_stream_completion_snapshot_size(void) { return sizeof(XboxApcSnapshot); }
+int xbox_stream_completion_capture(void *out,size_t bytes)
+{
+    return g_xbox_det_active && xbox_fiber_is_primary() &&
+        xbox_apc_capture(&s_apc_queue,out,bytes);
+}
+int xbox_stream_completion_restore(const void *saved,size_t bytes)
+{
+    return g_xbox_det_active && xbox_fiber_is_primary() &&
+        xbox_apc_restore(&s_apc_queue,saved,bytes);
+}
+
+int xbox_stream_completion_validate(const void *saved,size_t bytes)
+{
+    return g_xbox_det_active && xbox_fiber_is_primary() &&
+        xbox_apc_validate(&s_apc_queue,saved,bytes);
+}
 static void bridge_apc_queue(uint32_t ctx, uint32_t iosb, uint32_t bytes)
 {
-    if (s_apc_count < APC_QUEUE_MAX) {
-        s_apc_queue[s_apc_count].ctx = ctx;
-        s_apc_queue[s_apc_count].iosb = iosb;
-        s_apc_queue[s_apc_count].bytes = bytes;
-        s_apc_count++;
+    XboxApcEntry entry={ctx,iosb,bytes};
+    if (xbox_apc_push(&s_apc_queue,entry)) ++g_rollback_apc_queued;
+    else {
+        static int warned;
+        if (!warned++) fprintf(stderr,"[APC] completion queue overflow/invalid entry; streaming checkpoints disabled\n");
     }
 }
 
@@ -1703,23 +1820,25 @@ static void bridge_apc_queue(uint32_t ctx, uint32_t iosb, uint32_t bytes)
  * Returns nonzero if any were delivered. */
 static int bridge_apc_deliver(void)
 {
-    int n = s_apc_count, i;
+    XboxApcEntry batch[XBOX_APC_CAPACITY];
+    unsigned n=xbox_apc_begin(&s_apc_queue,batch), i;
     if (!n) return 0;
-    s_apc_count = 0;
     for (i = 0; i < n; i++) {
-        recomp_func_t fn = recomp_lookup_manual(s_apc_queue[i].ctx);
-        if (!fn) fn = recomp_lookup(s_apc_queue[i].ctx);
+        recomp_func_t fn = recomp_lookup_manual(batch[i].ctx);
+        if (!fn) fn = recomp_lookup(batch[i].ctx);
         if (fn) {
             uint32_t saved_esp = g_esp;
-            g_esp -= 4; BRIDGE_MEM32(g_esp) = s_apc_queue[i].iosb;  /* lpOverlapped */
-            g_esp -= 4; BRIDGE_MEM32(g_esp) = s_apc_queue[i].bytes; /* dwBytesTransferred */
+            g_esp -= 4; BRIDGE_MEM32(g_esp) = batch[i].iosb;  /* lpOverlapped */
+            g_esp -= 4; BRIDGE_MEM32(g_esp) = batch[i].bytes; /* dwBytesTransferred */
             g_esp -= 4; BRIDGE_MEM32(g_esp) = 0;                    /* dwErrorCode */
             g_esp -= 4; BRIDGE_MEM32(g_esp) = 0;                    /* dummy return address */
             fn();
             g_esp = saved_esp;  /* stdcall callee-clean; force-restore */
+            ++g_rollback_apc_delivered;
         } else {
         }
     }
+    xbox_apc_end(&s_apc_queue);
     return n;
 }
 
@@ -1855,6 +1974,7 @@ static void bridge_NtReadFile(void)
 /* ── NtWriteFile (ordinal 236, 8 args = 32 bytes) ─────── */
 static void bridge_NtWriteFile(void)
 {
+    stream_files_changed();
     HANDLE   handle     = xbox_fh_resolve(STACK_ARG(0)); /* opaque guest handle */
     uint32_t iostatus   = STACK_ARG(4);
     uint32_t buffer_va  = STACK_ARG(5);
@@ -2001,6 +2121,7 @@ static void bridge_NtQueryInformationFile(void)
 /* ── NtSetInformationFile (ordinal 226, 5 args = 20 bytes) ─ */
 static void bridge_NtSetInformationFile(void)
 {
+    if (STACK_ARG(4)!=14) stream_files_changed();
     HANDLE   handle    = xbox_fh_resolve(STACK_ARG(0)); /* opaque guest handle */
     uint32_t ios_va    = STACK_ARG(1);
     uint32_t info_va   = STACK_ARG(2);
@@ -2177,6 +2298,7 @@ static void bridge_NtFlushBuffersFile(void)
 /* ── NtDeleteFile (ordinal 195, 1 arg = 4 bytes) ─────── */
 static void bridge_NtDeleteFile(void)
 {
+    stream_files_changed();
     uint32_t obj_attrs = STACK_ARG(0);
     WCHAR win_path[MAX_PATH];
     const char* xbox_path = bridge_get_xbox_path(obj_attrs);
@@ -2198,7 +2320,54 @@ static void bridge_NtDeleteFile(void)
  * RestartScan). FileMask is a counted STRING; FileMask==NULL means "continue
  * the previous enumeration on this handle", so per-handle find state is kept. */
 #define QDIR_MAX_ENUM 8
-static struct { HANDLE dir; HANDLE find; } s_qdir_enum[QDIR_MAX_ENUM];
+typedef struct { HANDLE dir; HANDLE find; } DirectoryEnumeration;
+static DirectoryEnumeration s_qdir_enum[QDIR_MAX_ENUM];
+static DirectoryEnumeration s_stream_qdir_enum[QDIR_MAX_ENUM];
+static int s_stream_qdir_guard;
+static int stream_directory_guard_prepare(void)
+{
+    int count=0;
+    for (unsigned i=0;i<QDIR_MAX_ENUM;++i) if (s_qdir_enum[i].find) {
+        if (s_qdir_enum[i].find==INVALID_HANDLE_VALUE || !s_qdir_enum[i].dir) return -1;
+        unsigned j;
+        for (j=0;j<s_fh_next && j<XFH_MAX;++j)
+            if (s_fh[j]==s_qdir_enum[i].dir) break;
+        if (j==s_fh_next || j==XFH_MAX) return -1;
+        for (j=0;j<i;++j)
+            if (s_qdir_enum[j].find==s_qdir_enum[i].find) return -1;
+        ++count;
+    }
+    return count;
+}
+static void stream_directory_guard_begin(void)
+{
+    /* Process-local retained state, not a serialized/reopenable find cursor.
+     * All queries/restarts/guest closes invalidate BEFORE changing this table
+     * or advancing FindNextFileW. A valid snapshot may only leave it untouched.
+     * These operations and checkpoint calls run on the primary guest thread. */
+    memcpy(s_stream_qdir_enum,s_qdir_enum,sizeof(s_qdir_enum));
+    s_stream_qdir_guard=1;
+}
+static int stream_directory_guard_valid(void)
+{
+    return s_stream_qdir_guard &&
+        !memcmp(s_stream_qdir_enum,s_qdir_enum,sizeof(s_qdir_enum));
+}
+static void stream_directory_guard_end(void)
+{
+    s_stream_qdir_guard=0;
+    memset(s_stream_qdir_enum,0,sizeof(s_stream_qdir_enum));
+}
+static void stream_directory_handle_closed(HANDLE handle)
+{
+    /* A find cursor belongs to the guest directory handle. Leaving it alive
+     * after close both leaks it and can alias a subsequently recycled HANDLE. */
+    for (unsigned i=0;i<QDIR_MAX_ENUM;++i) if (s_qdir_enum[i].dir==handle) {
+        if (s_qdir_enum[i].find) FindClose(s_qdir_enum[i].find);
+        s_qdir_enum[i].find=NULL;
+        s_qdir_enum[i].dir=NULL;
+    }
+}
 
 /* FATX has no "." or ".." entries, so the Xbox kernel never reports them.
  * Win32 FindFirstFile/FindNextFile do, and handing them to the guest broke
@@ -2214,6 +2383,7 @@ static int qdir_is_dot_entry(const WCHAR *n)
 
 static void bridge_NtQueryDirectoryFile(void)
 {
+    stream_files_changed();
     HANDLE   handle      = xbox_fh_resolve(STACK_ARG(0)); /* opaque guest handle */
     /* arg1: Event, arg2: ApcRoutine, arg3: ApcContext - ignored */
     uint32_t ios_va      = STACK_ARG(4);
@@ -2943,6 +3113,8 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
 static bridge_func_t g_slot_bridges[XBOX_KERNEL_THUNK_TABLE_SIZE];
 static int g_slot_arg_bytes[XBOX_KERNEL_THUNK_TABLE_SIZE];
 
+#include "kernel_audio_sync.inc"
+
 /* Current dispatching slot */
 static int g_kernel_dispatch_slot = -1;
 
@@ -2955,6 +3127,11 @@ unsigned long long xbox_kernel_call_count(void) { return g_kernel_call_count; }
 /* Per-ordinal call counts (watchdog report: which kernel calls a stalled
  * loop is still making, long after the [KCALL] trace has stopped). */
 static unsigned g_kcount[400];
+/* Read on the cooperative game thread for the bounded dispatcher audit. */
+void xbox_kernel_copy_counts(uint32_t counts[400])
+{
+    memcpy(counts,g_kcount,sizeof(g_kcount));
+}
 void doa3_kcount_dump(void)
 {
     int i, shown = 0;
@@ -2977,6 +3154,17 @@ void doa3_ktrace_dump(const char *why)
     fflush(stderr);
 }
 
+static int kernel_replay_supported(ULONG ordinal,bridge_func_t bridge);
+#if defined(DOA3_XBE_ID_3_1)
+extern void sub_001F3FFA(void),sub_001F8C51(void);
+#endif
+/* Routine tracing is opt-in; failure reporting stays available. */
+static int kernel_diagnostics_enabled(void)
+{
+    static int enabled=-1;
+    if(enabled<0){const char *e=getenv("DOA3_KERNEL_DIAGNOSTICS");enabled=e && *e=='1';}
+    return enabled;
+}
 static void kernel_thunk_dispatch(void)
 {
     int log_result = 0;
@@ -2985,6 +3173,7 @@ static void kernel_thunk_dispatch(void)
     ULONG ordinal;
 
     if (slot < 0 || slot >= XBOX_KERNEL_THUNK_TABLE_SIZE) {
+        (void)xbox_kernel_replay_check(UINT32_MAX,0);
         g_eax = 0;
         g_esp += 4;  /* pop dummy return address */
         return;
@@ -2993,20 +3182,36 @@ static void kernel_thunk_dispatch(void)
     ordinal = g_slot_ordinals[slot];
     bridge = g_slot_bridges[slot];
 
+    /* Reject before clock, scheduler, trace or host bridge side effects. The
+     * trial observes the sticky fault at its bounded advance boundary. Zero
+     * registers are placeholders, not guest success/failure emulation: the
+     * caller must stop the failed trial, not continue ordinary gameplay. */
+    if(!xbox_kernel_replay_check(ordinal,kernel_replay_supported(ordinal,bridge))){
+        g_eax=0;g_edx=0;g_esp+=4+g_slot_arg_bytes[slot];return;
+    }
+
     g_kernel_call_count++;
     if (ordinal < 400) g_kcount[ordinal]++;
     xbox_det_on_kernel_call(ordinal);
+    int ran_workers = g_fib_slice_due != 0;
     {   /* worker-thread scheduling point (see xbox_fiber_timeslice). Only
          * once the movie is over (its verified timing is left alone), and
          * never from inside the CRI server pump or with the CRI lock held. */
-        if (g_fib_slice_due) xbox_fiber_timeslice();
+        if (ran_workers) xbox_fiber_timeslice();
+    }
+    /* A scheduled worker may have faulted the guard. Do not then run the
+     * originally approved bridge after returning from that worker. With no
+     * scheduling, only deterministic call counters changed since admission;
+     * do not take a second guard lock for that same uninterrupted dispatch. */
+    if(ran_workers && !xbox_kernel_replay_healthy()){
+        g_eax=0;g_edx=0;g_esp+=4+g_slot_arg_bytes[slot];return;
     }
 
     /* Flight recorder: the last kernel calls before a silent death. The first
      * DOA3_KTRACE calls (default 400) are logged as they happen; after that a
      * ring of the last 32 is kept and dumped by doa3_ktrace_dump() (process
      * detach, unhandled exception, watchdog). */
-    {
+    if (kernel_diagnostics_enabled()) {
         static long s_trace_n = -1;
         int fib = xbox_fiber_current();
         if (s_trace_n < 0) {
@@ -3027,7 +3232,7 @@ static void kernel_thunk_dispatch(void)
         }
     }
 
-    {
+    if (kernel_diagnostics_enabled()) {
         static DWORD last_summary_tick = 0;
         DWORD now = GetTickCount();
         if (last_summary_tick == 0) last_summary_tick = now;
@@ -3506,6 +3711,7 @@ static int kx_resolve(ULONG ordinal, uint32_t *data_va, bridge_func_t *fn, int *
  */
 void xbox_kernel_bridge_init(void)
 {
+    xbox_interrupt_reset(&s_interrupts);
     int i;
     int resolved = 0;
     int bridged = 0;
@@ -3611,5 +3817,89 @@ static uint32_t doa3_vblank_count_va(void)
     return dev ? dev + DOA3_D3D_VBLANK_COUNT_OFS : 0;
 #else
     return 0;
+#endif
+}
+
+/* Intentionally narrow 3.1 policy: RAM/heap, captured interrupt queues,
+ * guest event/fiber signaling, deterministic clocks and fixed heap queries.
+ * Match the actual binding too, so an ordinal remap cannot silently opt in.
+ * File IO, host objects, VM protection, thread lifecycle, native fallbacks,
+ * unreviewed waits and all other calls remain unsupported during a trial. */
+static int kernel_replay_supported(ULONG ordinal,bridge_func_t bridge)
+{
+#if defined(DOA3_XBE_ID_3_1)
+    switch(ordinal){
+    case 14:return bridge==kx_ExAllocatePool;
+    case 15:return bridge==kx_ExAllocatePoolWithTag;
+    case 17:return bridge==kx_ExFreePool;
+    case 23:return bridge==kx_ExQueryPoolBlockSize;
+    case 107:return bridge==bridge_KeInitializeDpc;
+    case 109:return bridge==bridge_KeInitializeInterrupt;
+    case 119:return bridge==bridge_KeInsertQueueDpc;
+    /* kx_resolve binds these null table entries to the zero-return stub,
+     * not to host thread-priority APIs or a null dispatch target. */
+    case 124:case 143:return bridge==bridge_generic_stub;
+    /* Buffer pages are already resident; this table entry is a no-op. The
+     * physical-address bridge only returns the supplied guest value. */
+    case 175:return bridge==bridge_generic_stub;
+    case 173:return bridge==bridge_MmGetPhysicalAddress && xbox_GetMemorySize()>=8 &&
+        g_esp<=xbox_GetMemorySize()-8;
+    case 153:{
+        if(bridge!=bridge_KeSynchronizeExecution || xbox_GetMemorySize()<0x700 ||
+           g_esp<12 || g_esp>xbox_GetMemorySize()-16)return 0;
+        uint32_t routine=BRIDGE_MEM32(g_esp+8),context=BRIDGE_MEM32(g_esp+12);
+        recomp_func_t expected=NULL;
+        /* Only two audited RAM-only DirectSound completion callbacks. */
+        if(routine==0x1F3FFA && context && !(context&3) && context<=xbox_GetMemorySize()-0x700)
+            expected=sub_001F3FFA;
+        if(routine==0x1F8C51 && context && context<=xbox_GetMemorySize()-0x3C)
+            expected=sub_001F8C51;
+        if(!expected)return 0;
+        recomp_func_t actual=recomp_lookup_manual(routine);
+        if(!actual)actual=recomp_lookup(routine);
+        return actual==expected;
+    }
+    case 126:return bridge==bridge_KeQueryPerformanceCounter;
+    case 127:return bridge==bridge_KeQueryPerformanceFrequency;
+    case 128:return bridge==bridge_KeQuerySystemTime;
+    case 145:return bridge==bridge_KeSetEvent;
+    /* These CS bridges are currently no-ops in kernel_rtl.c. IRQL changes
+     * touch only the thread's level and guest mirror; the fight checkpoint
+     * refuses recovery until both are back at passive level. */
+    case 160:return bridge==bridge_KfRaiseIrql;
+    case 161:return bridge==bridge_KfLowerIrql;
+    case 277:return bridge==bridge_RtlEnterCriticalSection;
+    case 294:return bridge==bridge_RtlLeaveCriticalSection;
+    /* The port's worker-side object reference writes a null object, with no
+     * host object/refcount. Coroutine calls also yield inside the bridge and
+     * remain excluded. Check arguments before touching guest memory. */
+    case 246:{
+        if(bridge!=bridge_ObReferenceObjectByHandle || xbox_fiber_is_coroutine() ||
+           xbox_GetMemorySize()<16 || g_esp>xbox_GetMemorySize()-16)return 0;
+        uint32_t out=BRIDGE_MEM32(g_esp+12);
+        return !out || (!(out&3) && out<=xbox_GetMemorySize()-4);
+    }
+    case 250:return bridge==bridge_ObfDereferenceObject;
+    case 224:case 231:{
+        if(bridge!=(ordinal==224 ? bridge_NtResumeThread:bridge_NtSuspendThread) ||
+           xbox_GetMemorySize()<12 || g_esp>xbox_GetMemorySize()-12)return 0;
+        uint32_t out=BRIDGE_MEM32(g_esp+8);
+        if(out && ((out&3) || out>xbox_GetMemorySize()-4))return 0;
+        return xbox_fiber_replay_thread_allowed(BRIDGE_MEM32(g_esp+4),ordinal==224);
+    }
+    /* Only the null-object wait produced by the reference stub. Real events
+     * (including vblank), blocking and timed scheduling remain unadmitted. */
+    case 159:{
+        if(bridge!=bridge_KeWaitForSingleObject || xbox_GetMemorySize()<24 ||
+           g_esp>xbox_GetMemorySize()-24 || BRIDGE_MEM32(g_esp+4))return 0;
+        uint32_t timeout=BRIDGE_MEM32(g_esp+20);
+        return !timeout || timeout<=xbox_GetMemorySize()-8;
+    }
+    case 179:return bridge==kx_MmQueryAddressProtect;
+    case 180:return bridge==kx_MmQueryAllocationSize;
+    default:return 0;
+    }
+#else
+    (void)ordinal;(void)bridge;return 0;
 #endif
 }

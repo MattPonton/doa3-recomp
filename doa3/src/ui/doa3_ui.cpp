@@ -870,6 +870,7 @@ extern "C" int doa3_ui_init(void)
         return 0;
     }
 
+    InitOnlineMenuRenderer(dev, ctx);
     g_ready = true;
     return 1;
 }
@@ -879,6 +880,7 @@ extern "C" void doa3_ui_shutdown(void)
     combat_world_shutdown();
     if (!g_ready) return;
     g_ready = false;
+    ShutdownOnlineMenuRenderer();
     ImGui_ImplDX11_Shutdown();
     ImGui_ImplWin32_Shutdown();
     ImGui::DestroyContext();

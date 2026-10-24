@@ -12,6 +12,91 @@ file(GLOB RECOMP_GEN_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/recomp/gen/recomp_*.c"
 )
 
+# Explicit continuations for the opt-in rollback task experiment. Generate from
+# the current translated bodies, so future recompilation cannot leave stale code.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+file(GLOB ROLLBACK_HOST_MODEL CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/apu/*.[ch]")
+list(APPEND ROLLBACK_HOST_MODEL "${CMAKE_SOURCE_DIR}/src/kernel/kernel_rtl.c"
+    "${CMAKE_SOURCE_DIR}/src/nv2a/nv2a_queue.h" "${CMAKE_SOURCE_DIR}/src/nv2a/nv2a_core.c"
+    "${CMAKE_SOURCE_DIR}/src/nv2a/nv2a_submission.h"
+    "${CMAKE_SOURCE_DIR}/src/nv2a/nv2a_geometry_cache.h"
+    "${CMAKE_SOURCE_DIR}/src/nv2a/nv2a_targets.h"
+    "${CMAKE_SOURCE_DIR}/src/nv2a/nv2a_pfifo_registers.h" "${CMAKE_SOURCE_DIR}/src/nv2a/nv2a_regs.h"
+    "${CMAKE_SOURCE_DIR}/src/nv2a/nv2a_mmio_hook.c" "${CMAKE_SOURCE_DIR}/src/nv2a/nv2a_mmio_hook.h"
+    "${CMAKE_SOURCE_DIR}/src/kernel/kernel_hal.c" "${CMAKE_SOURCE_DIR}/src/kernel/kernel_bridge.c"
+    "${CMAKE_SOURCE_DIR}/src/kernel/xbox_fiber.c" "${CMAKE_SOURCE_DIR}/src/kernel/xbox_fiber.h"
+    "${CMAKE_SOURCE_DIR}/src/kernel/kernel_apc.c" "${CMAKE_SOURCE_DIR}/src/kernel/kernel_apc.h"
+    "${CMAKE_SOURCE_DIR}/src/kernel/kernel_stream.c" "${CMAKE_SOURCE_DIR}/src/kernel/kernel_stream.h"
+    "${CMAKE_SOURCE_DIR}/src/online/rollback_capture.h"
+    "${CMAKE_SOURCE_DIR}/src/online/rollback_frame.h"
+    "${CMAKE_SOURCE_DIR}/src/game/rollback_frame.c"
+    "${CMAKE_SOURCE_DIR}/src/game/rollback_fight_checkpoint.c"
+    "${CMAKE_SOURCE_DIR}/src/game/rollback_fight_checkpoint.h"
+    "${CMAKE_SOURCE_DIR}/src/game/rollback_fight_probe.c"
+    "${CMAKE_SOURCE_DIR}/src/game/rollback_fight_window.c"
+    "${CMAKE_SOURCE_DIR}/src/game/rollback_native_frame.c"
+    "${CMAKE_SOURCE_DIR}/src/game/rollback_native_frame.h"
+    "${CMAKE_SOURCE_DIR}/src/game/rollback_guest_render.inc"
+    "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_guest_render.py"
+    "${CMAKE_SOURCE_DIR}/src/game/rollback_ownership.c"
+    "${CMAKE_SOURCE_DIR}/src/game/rollback_state_audit.c"
+    "${CMAKE_SOURCE_DIR}/src/game/rollback_state_audit.h"
+    "${CMAKE_SOURCE_DIR}/src/game/rollback_input.c" "${CMAKE_SOURCE_DIR}/src/game/rollback_input.h"
+    "${CMAKE_SOURCE_DIR}/src/game/rollback_input_tape.c" "${CMAKE_SOURCE_DIR}/src/game/rollback_input_tape.h"
+    "${CMAKE_SOURCE_DIR}/src/game/rollback_input_audit.c"
+    "${CMAKE_SOURCE_DIR}/src/game/rollback_workers.c"
+    "${CMAKE_SOURCE_DIR}/src/online/rollback_workers.h"
+    "${CMAKE_SOURCE_DIR}/src/nv2a/nv2a_frontend.c"
+    "${CMAKE_SOURCE_DIR}/src/nv2a/nv2a_frontend.h"
+    "${CMAKE_SOURCE_DIR}/src/nv2a/nv2a_pgraph_d3d11.c"
+    "${CMAKE_SOURCE_DIR}/src/nv2a/nv2a_pgraph_d3d11.h"
+    "${CMAKE_SOURCE_DIR}/src/nv2a/nv2a_pgraph_state.c"
+    "${CMAKE_SOURCE_DIR}/src/nv2a/nv2a_pgraph_state.h"
+    "${CMAKE_SOURCE_DIR}/src/nv2a/nv2a_renderer_checkpoint.c"
+    "${CMAKE_SOURCE_DIR}/src/nv2a/nv2a_renderer_checkpoint.h"
+    "${CMAKE_SOURCE_DIR}/src/d3d/d3d8_device.c"
+    "${CMAKE_SOURCE_DIR}/src/d3d/d3d8_nv2aff.h"
+    "${CMAKE_SOURCE_DIR}/src/d3d/d3d8_resources.c"
+    "${CMAKE_SOURCE_DIR}/src/d3d/d3d8_swizzle.h"
+    "${CMAKE_SOURCE_DIR}/src/d3d/d3d8_replay_images.c"
+    "${CMAKE_SOURCE_DIR}/src/d3d/d3d8_replay_images.h"
+    "${CMAKE_SOURCE_DIR}/src/d3d/d3d8_render_checkpoint.inc"
+    "${CMAKE_SOURCE_DIR}/src/d3d/d3d8_pipeline_checkpoint.h"
+    "${CMAKE_SOURCE_DIR}/src/d3d/d3d8_pipeline_checkpoint.inc"
+    "${CMAKE_SOURCE_DIR}/src/d3d/d3d8_internal.h"
+    "${CMAKE_SOURCE_DIR}/src/d3d/d3d8_shaders.c" "${CMAKE_SOURCE_DIR}/src/d3d/d3d8_states.c"
+    "${CMAKE_SOURCE_DIR}/src/d3d/d3d8_combiners.c" "${CMAKE_SOURCE_DIR}/src/d3d/d3d8_combiners.h"
+    "${CMAKE_SOURCE_DIR}/src/d3d/d3d8_vsh.c" "${CMAKE_SOURCE_DIR}/src/d3d/d3d8_vsh.h"
+    "${CMAKE_SOURCE_DIR}/src/nv2a/nv2a_vertex_program.c"
+    "${CMAKE_SOURCE_DIR}/src/nv2a/nv2a_vertex_program.h"
+    "${CMAKE_SOURCE_DIR}/src/online/rollback_checkpoint.c" "${CMAKE_SOURCE_DIR}/src/online/rollback_checkpoint.h"
+    "${CMAKE_SOURCE_DIR}/src/kernel/kernel_interrupt.c"
+    "${CMAKE_SOURCE_DIR}/src/kernel/kernel_interrupt.h"
+    "${CMAKE_SOURCE_DIR}/src/kernel/xbox_heap.c"
+    "${CMAKE_SOURCE_DIR}/src/kernel/xbox_heap.h"
+    "${CMAKE_SOURCE_DIR}/src/kernel/xbox_memory_layout.c"
+    "${CMAKE_SOURCE_DIR}/src/kernel/xbox_memory_layout.h"
+    "${CMAKE_SOURCE_DIR}/src/online/xbox_det.c" "${CMAKE_SOURCE_DIR}/src/online/xbox_det.h"
+    "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_workers.py"
+    "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_boundaries.py"
+    "${CMAKE_SOURCE_DIR}/src/online/rollback_tasks.h"
+    "${CMAKE_SOURCE_DIR}/src/online/rollback_nested.h"
+    "${CMAKE_SOURCE_DIR}/src/online/rollback_nested.c"
+    "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_nested.py"
+    "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_match.py")
+set(ROLLBACK_TASK_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/rollback_tasks.generated.c")
+list(APPEND ROLLBACK_HOST_MODEL
+    "${CMAKE_SOURCE_DIR}/src/apu/apu_live_checkpoint.inc")
+add_custom_command(OUTPUT "${ROLLBACK_TASK_SOURCE}"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_tasks.py"
+            --gen "${CMAKE_CURRENT_SOURCE_DIR}/recomp/gen" --output "${ROLLBACK_TASK_SOURCE}"
+    DEPENDS "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_tasks.py" ${RECOMP_GEN_SOURCES} ${ROLLBACK_HOST_MODEL}
+            "${CMAKE_SOURCE_DIR}/tools/recomp/overrides_3.1.txt"
+            "${CMAKE_CURRENT_SOURCE_DIR}/recomp/gen/xbe_layout.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/recomp/recomp_types.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/recomp/recomp_manual.c"
+    VERBATIM)
+
 # ── NV2A GPU emulation (from xemu) — FULL stack, mirrors burnout3 ──
 set(NV2A_DIR "${CMAKE_SOURCE_DIR}/src/nv2a")
 set(NV2A_SOURCES
@@ -19,6 +104,8 @@ set(NV2A_SOURCES
     ${NV2A_DIR}/nv2a_mmio_hook.c
     ${NV2A_DIR}/nv2a_pb_test.c
     ${NV2A_DIR}/nv2a_pgraph_d3d11.c
+    ${NV2A_DIR}/nv2a_pgraph_state.c
+    ${NV2A_DIR}/nv2a_renderer_checkpoint.c
     ${NV2A_DIR}/nv2a_vertex_program.c
     # nv2a_pb_replay.c -- Burnout 3 menu-replay harness, unreachable from DOA3
 )
@@ -36,6 +123,19 @@ set(GAME_SOURCES
     combat_debug.c
     training_dummy.c
     online_menu.c
+    rollback_tasks.c
+    rollback_workers.c
+    rollback_capture.c
+    rollback_frame.c
+    rollback_fight_probe.c
+    rollback_fight_window.c
+    rollback_native_frame.c
+    rollback_ownership.c
+    rollback_state_audit.c
+    rollback_input.c
+    rollback_input_tape.c
+    rollback_input_audit.c
+    ${ROLLBACK_TASK_SOURCE}
     log_settings.c           # log files on/off (Esc menu, doa3_settings.ini)
     xiso_extract.c           # first-run install of the game files from a disc image
     recomp/recomp_manual.c
@@ -87,7 +187,7 @@ if(MSVC)
     set_property(TARGET doa3 PROPERTY MSVC_RUNTIME_CHECKS "")
     # Generated/recompiled code is mechanical: silence its warnings, and allow
     # the huge translation units (/bigobj).
-    set_source_files_properties(${RECOMP_GEN_SOURCES} recomp/recomp_manual.c
+    set_source_files_properties(${RECOMP_GEN_SOURCES} ${ROLLBACK_TASK_SOURCE} recomp/recomp_manual.c
         PROPERTIES COMPILE_FLAGS "/w /bigobj")
     # NV2A emulation (from xemu) — silence its warnings too.
     set_source_files_properties(${NV2A_SOURCES} PROPERTIES COMPILE_FLAGS "/w")

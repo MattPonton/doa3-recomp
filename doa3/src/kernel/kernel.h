@@ -680,6 +680,8 @@ VOID    __stdcall xbox_HalInitiateShutdown(void);
 BOOLEAN __stdcall xbox_HalIsResetOrShutdownPending(void);
 
 KIRQL   __fastcall xbox_KfRaiseIrql(KIRQL NewIrql);
+KIRQL xbox_current_irql(void);
+KIRQL xbox_set_irql(KIRQL irql);
 VOID    __fastcall xbox_KfLowerIrql(KIRQL NewIrql);
 KIRQL   __stdcall xbox_KeRaiseIrqlToDpcLevel(void);
 

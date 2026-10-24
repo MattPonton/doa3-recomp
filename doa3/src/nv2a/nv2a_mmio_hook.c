@@ -391,6 +391,7 @@ static bool decode_and_handle(PCONTEXT ctx, uint32_t mmio_offset, int is_write)
  * Public API
  * ============================================================ */
 
+#ifndef DOA3_NV2A_DECODER_ONLY
 void nv2a_hook_init(ptrdiff_t xbox_mem_offset)
 {
     g_mem_offset = xbox_mem_offset;
@@ -413,6 +414,7 @@ void nv2a_hook_init(ptrdiff_t xbox_mem_offset)
     fprintf(stderr, "[NV2A] MMIO hook initialized: VRAM=%p RAMIN=%p\n",
             (void*)g_nv2a_vram, (void*)ramin_ptr);
 }
+#endif
 
 bool nv2a_hook_handle_mmio(PCONTEXT ctx, uintptr_t fault_addr,
                            uint32_t fault_xbox_va, int is_write)
@@ -423,6 +425,7 @@ bool nv2a_hook_handle_mmio(PCONTEXT ctx, uintptr_t fault_addr,
     return decode_and_handle(ctx, mmio_offset, is_write);
 }
 
+#ifndef DOA3_NV2A_DECODER_ONLY
 bool nv2a_hook_handle_vram(uintptr_t fault_addr, uint32_t fault_xbox_va)
 {
     /* For VRAM range (0xF0000000-0xF3FFFFFF), allocate pages as before.
@@ -441,3 +444,4 @@ bool nv2a_hook_handle_vram(uintptr_t fault_addr, uint32_t fault_xbox_va)
     }
     return false;
 }
+#endif

@@ -7,6 +7,7 @@
 
 add_library(apu_emu STATIC
     apu_core.c
+    apu_rollback.c
     apu_vp.c
     apu_dsp.c
     apu_mmio_hook.c

@@ -26,5 +26,6 @@ int xa2_movie_start(void);
 int xa2_movie_submit(const int16_t *samples, int num_samples, int end_of_stream);
 uint64_t xa2_movie_samples_played(void);
 void xa2_movie_stop(void);
+int xa2_movie_is_active(void);
 
 #endif /* APU_XAUDIO2_H */

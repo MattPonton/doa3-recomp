@@ -1,3 +1,4 @@
+#include "nv2a_targets.h"
 /*
  * NV2A PGRAPH → D3D11 Translator
  *
@@ -13,19 +14,39 @@
 
 #include "nv2a_pgraph_d3d11.h"
 #include "nv2a_regs.h"
+#include "nv2a_texture_signature.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <malloc.h>
 #include <math.h>
+#include <xmmintrin.h>
 
 /* D3D8 device — we include the full header for COM vtable access */
 #include "../d3d/d3d8_xbox.h"
 #include "../d3d/d3d8_swizzle.h"
 #include "nv2a_vertex_program.h"
 #include "../d3d/d3d8_nv2aff.h"
+#include "nv2a_geometry_cache.h"
+static NvGeometryCache g_geometry;
+/* Live A/B validation matched, but reuse regressed execution time. Keep the
+ * original preparation/upload path as default; bounded A/B may opt in. */
+static int force_geometry_rebuild=1;
+static uint64_t g_geometry_resident_draws;
+static int skip_replay_preparation;
+static uint64_t skipped_prep_batches,skipped_prep_indices,skipped_prep_inline_words;
+int pgraph_d3d11_skip_preparation(int skip)
+{ int old=skip_replay_preparation;skip_replay_preparation=skip!=0;return old; }
+void pgraph_d3d11_preparation_stats(uint64_t *batches,uint64_t *indices,uint64_t *inline_words)
+{ *batches=skipped_prep_batches;*indices=skipped_prep_indices;*inline_words=skipped_prep_inline_words; }
+int pgraph_d3d11_force_geometry_rebuild(int force)
+{ int old=force_geometry_rebuild;force_geometry_rebuild=force!=0;return old; }
+void pgraph_d3d11_geometry_stats(uint64_t *hits,uint64_t *misses,uint64_t *verts,uint64_t *resident)
+{ *hits=g_geometry.hits;*misses=g_geometry.misses;*verts=g_geometry.vertices_reused;*resident=g_geometry_resident_draws; }
 #include "../d3d/d3d8_combiners.h"
 #include "../d3d/d3d8_polygon_offset.h"
+#include "../d3d/d3d8_pipeline_checkpoint.h"
+#include "nv2a_renderer_checkpoint.h"
 #include "../game/debug_capture.h"
 #include "../game/debug_settings.h"
 #include "../game/video_settings.h"
@@ -165,14 +186,13 @@ static uint32_t nv2a_blend_to_d3d(uint32_t nv) {
  * ══════════════════════════════════════════════════════════════════════ */
 
 /* Inline vertex buffer - max 16K vertices per draw */
-#define MAX_INLINE_VERTS 16384
+#include "nv2a_pgraph_state.h"
+/* Limits shared with the pointer-free draw state. */
 /* Indexed / DRAW_ARRAYS batches. The snow stage's deformable ground is one
  * DrawIndexedVertices of far more than 16K indices; capping the index list
  * at the inline limit silently dropped the rest of the mesh (holes in the
  * snow). Kept separate from the inline cap, which sizes a 5-dword-per-vertex
  * accumulator. */
-#define MAX_IDX 65536
-#define INLINE_VERT_DWORDS 5  /* X, Y, U, V, Color */
 
 /* XYZRHW/diffuse/UV0 prefix; UV1 is used by two-texture vertex programs. */
 typedef struct {
@@ -183,119 +203,6 @@ typedef struct {
 } OutputVertex;
 
 static struct {
-    /* Draw state */
-    int in_draw;           /* Between BEGIN and END */
-    uint32_t draw_mode;    /* NV2A draw mode (0=end, 6=tristrip, etc.) */
-    int d3d_prim_type;     /* Translated D3D prim type */
-
-    /* Inline vertex accumulator */
-    uint32_t inline_data[MAX_INLINE_VERTS * INLINE_VERT_DWORDS];
-    uint32_t inline_count; /* Number of dwords accumulated */
-    uint32_t vert_stride;  /* Dwords per vertex (auto-detected) */
-    /* DOA3: inline vertex LAYOUT supplied by the recompiled D3D draw wrapper
-     * (sub_001B3760 in recomp_manual.c). The XDK never emits
-     * SET_VERTEX_DATA_ARRAY_FORMAT on this path, so the pgraph can't derive
-     * it from methods; the CPU-side FVF object holds the truth. Offsets are
-     * DWORD indices within a vertex; -1 = attribute absent. */
-    /* DOA3: the vertex count the guest passed to DrawVerticesUP, plus the
-     * dword count its shader object declares. The push buffer carries the
-     * attributes the DEVICE is set up to copy, which for the D3DX sprite path
-     * is neither the API stride nor what the shader object lists (position +
-     * diffuse + up to four texcoord sets). inline_count / this count is the
-     * only exact per-vertex stride available. 0 = no hint for this draw. */
-    uint32_t hint_verts;
-    uint32_t hint_declared_dw;
-    int layout_pos_dw;     /* dwords of position (2=XY, 3=XYZ, 4=XYZRHW) */
-    int layout_uv_off;     /* dword offset of texcoord0, or -1 */
-    int layout_color_off;  /* dword offset of diffuse (D3DCOLOR), or -1 */
-
-    /* Clear state */
-    uint32_t clear_color;
-    uint32_t clear_rect_h;  /* (width << 16) | x */
-    uint32_t clear_rect_v;  /* (height << 16) | y */
-
-    /* Render state cache */
-    int depth_test;
-    int depth_mask;        /* NV097_SET_DEPTH_MASK: depth writes enabled */
-    uint32_t depth_func;   /* NV097_SET_DEPTH_FUNC, GL constant 0x200..0x207 */
-    int blend_enable;
-    uint32_t blend_sfactor;
-    uint32_t blend_dfactor;
-    int cull_enable;
-    uint32_t cull_face;      /* 0x404 FRONT, 0x405 BACK, 0x408 BOTH */
-    uint32_t front_face;     /* 0x900 CW, 0x901 CCW */
-    int stencil_enable;
-    uint32_t stencil_mask, stencil_func, stencil_ref, stencil_func_mask;
-    uint32_t stencil_fail, stencil_zfail, stencil_zpass;
-    int alpha_test;
-    uint32_t alpha_func;   /* NV097_SET_ALPHA_FUNC, GL constant 0x200..0x207 */
-    uint32_t alpha_ref;    /* NV097_SET_ALPHA_REF, 0..255 */
-    uint32_t color_mask;
-    uint32_t line_width;      /* NV097_SET_LINE_WIDTH, 6.3 fixed point surface pixels */
-    uint32_t shader_prog;     /* NV097_SET_SHADER_STAGE_PROGRAM (0x1E70): 5 bits per stage, 1 = 2D projective */
-    uint32_t fog_enable, fog_mode, fog_gen, fog_color;   /* NV097_SET_FOG_* (0x2A4/0x29C/0x2A0/0x2A8) */
-    float    fog_param[3];    /* NV097_SET_FOG_PARAMS (0x9C0): bias, scale, - */
-    float    fog_plane[4];    /* NV097_SET_FOG_PLANE (0x9D0) */
-    uint32_t comb_factor0[8];
-    /* from doa3_pb_tss_marker: 0xA3<<24 | stage1-off<<17 | op<<12 | arg1<<6 | arg2 */
-    uint32_t gtss;
-    int      gtss_valid;
-    uint32_t comb_control;  /* NV097_SET_COMBINER_CONTROL: bits 7:0 = stage count */
-    /* Point sprites (the snow stage's falling snow). SET_POINT_PARAMS_ENABLE
-     * 0x0318, SET_POINT_SMOOTH_ENABLE 0x031C (the sprite-coordinate switch:
-     * the NV2A feeds a point's 0..1 coordinates to texture unit 3 only),
-     * SET_POINT_SIZE 0x043C in 1/8 pixel units, SET_POINT_PARAMS 0x0A30. */
-    uint32_t point_params_en, point_smooth, point_size;
-    float    point_params[8];
-    /* Stage-3 texture ops from the guest's TSS table (doa3_pb_tss_marker
-     * 0xA4 = colour, 0xA5 = alpha: op<<12 | arg1<<6 | arg2). */
-    uint32_t tss3_color, tss3_alpha;
-    int      tss3_valid;
-    /* Stage-1 ops (markers 0xA6 colour / 0xA7 alpha, same packing) and the
-     * guest's D3DRS_TEXTUREFACTOR (markers 0xA9 low 24 bits / 0xAA high 8).
-     * The push buffer's SET_COMBINER_FACTOR0 is NOT this value: the XDK's
-     * combiner compiler never completes in this port, so factor0 reads
-     * FFFFFFFF on every draw while the game's factor is e.g. 0x23FFFFFF. */
-    uint32_t tss1_color, tss1_alpha;
-    uint32_t tss0_alpha;               /* marker 0xAB: guest stage-0 ALPHAOP/args */
-    int      tss0_alpha_valid;
-    int      tss1_valid;
-    uint32_t tfactor_lo, tfactor_hi;
-
-    /* Viewport */
-    float vp_offset[4];
-    float vp_scale[4];
-    /* NV097_SET_WINDOW_CLIP_* (0x02B4/0x02C0/0x02E0): the hardware scissor.
-     * DOA3 programs it ~18.8k times per 2 s and it is what confines the
-     * character-select portrait to its window. */
-    uint32_t window_clip_type;
-    uint32_t window_clip_h[8];
-    uint32_t window_clip_v[8];
-    uint32_t surface_clip_h;
-    uint32_t surface_clip_v;
-    /* DOA3: depth range the fixed-function output is normalised with.
-     * SET_CLIP_MIN/MAX (0x0394/0x0398) are what the hardware clips z
-     * against; the zeta format (SET_SURFACE_FORMAT bits 7:4) gives the
-     * z-buffer range: Z16 = 65535, Z24S8 = 16777215. */
-    float    clip_min, clip_max;
-    uint32_t surface_fmt;
-
-    /* Texture state per stage (4 stages) */
-    struct {
-        uint32_t offset;     /* NV2A VRAM offset (method 0x1B00) */
-        uint32_t format;     /* Format register (method 0x1B04) */
-        uint32_t address;    /* Address modes: U bits 0-3, V bits 8-11 (0x1B08) */
-        uint32_t control0;   /* Control0 register (method 0x1B0C) */
-        uint32_t control1;   /* Control1: linear pitch in hi16 (method 0x1B10) */
-        uint32_t filter;     /* MIN bits 16-23, MAG bits 24-27 (method 0x1B14) */
-        uint32_t image_rect; /* Linear size: (width<<16)|height (method 0x1B1C) */
-        /* Palette for the indexed formats (method 0x1B20): bit 0 selects the
-         * context DMA, bits 3:2 the entry count (0=256, 1=128, 2=64, 3=32)
-         * and bits 31:6 the 64-byte-aligned offset of an A8R8G8B8 table. */
-        uint32_t palette;
-        int enabled;         /* Decoded from control0 bit 30 */
-    } tex[4];
-
     /* DOA3: dynamic texture created from guest RAM (the movie frame surface
      * and other linear textures the game renders from memory). Re-uploaded
      * every draw; recreated when offset/dims/format change. */
@@ -316,19 +223,22 @@ static struct {
      * Lookups go through a hash instead of scanning every slot. */
 #define TEXCACHE_N      1024
 #define TEXCACHE_HASH_N 4096                       /* power of two */
-#define TEXCACHE_BUDGET (192u * 1024u * 1024u)     /* host bytes: GPU + staging */
+#define TEXCACHE_BUDGET (192u * 1024u * 1024u) /* GPU + staging + source copies */
     struct {
         IDirect3DTexture8 *tex;
         uint32_t off, w, h, fmt, levels;
         uint32_t pal;       /* palette register this upload was expanded with */
-        int uploaded;       /* static source already uploaded */
+        int uploaded;       /* 0: upload needed, 1: valid, 2: validate after rewind */
+        uint8_t *source;    /* exact source of the last complete static upload */
+        uint32_t source_size, palette_size, source_fmt, source_pitch;
         uint32_t sig;       /* sampled fingerprint of level 0 at that upload */
-        uint32_t last_frame;/* g_pg.frame of the last draw that bound it */
-        uint32_t bytes;     /* host bytes held: D3D11 texture + D3D8 staging copy */
+        uint32_t last_frame;/* g_pg_host.frame of the last draw that bound it */
+        uint32_t bytes;     /* GPU + staging + reserved exact-source capacity */
     } texcache[TEXCACHE_N];
     int16_t  texhash[TEXCACHE_HASH_N];   /* slot index + 1, 0 = empty bucket */
     uint32_t texcache_bytes;             /* sum of .bytes over live slots */
     uint32_t frame;                      /* bumped once per pgraph_d3d11_flush */
+    uint64_t bulk_words;                 /* host-only count, no per-word instrumentation */
 
     /* Cached texture pointers */
     void *menu_texture;           /* IDirect3DTexture8* from Global.txd */
@@ -338,59 +248,31 @@ static struct {
     /* Stats */
     PgraphD3D11Stats stats;
 
-    /* Chyron scroll */
-    float chyron_scroll_offset;  /* Pixels to shift X for chyron text */
-
-    /* Transform program state.
-     *
-     * DOA3 draws its 3D screens with MODE_PROGRAM, so attribute 0 is an
-     * object-space position that only becomes screen space after the uploaded
-     * program runs. `attr_fmt` is the authoritative inline vertex layout from
-     * SET_VERTEX_DATA_ARRAY_FORMAT, which this title does emit (the previous
-     * title did not, hence the wrapper-supplied fallback layout above). */
-    Nv2aVertexProgram vp;
-    uint32_t xform_mode;        /* NV097_SET_TRANSFORM_EXECUTION_MODE */
-    uint32_t attr_fmt[16];      /* SET_VERTEX_DATA_ARRAY_FORMAT per slot */
-    int      attr_fmt_seen;
-
-    /* Vertex-array (indexed / DRAW_ARRAYS) submission.
-     *
-     * The title screen does not use INLINE_ARRAY at all: it binds vertex
-     * buffers and issues ~378 D3DDevice_DrawIndexedVertices per frame with
-     * fixed-function T&L (confirmed against a cxbx trace of the real game).
-     * Those arrive as SET_VERTEX_DATA_ARRAY_OFFSET + ARRAY_ELEMENT/DRAW_ARRAYS,
-     * every one of which this translator previously ignored -- so the whole
-     * screen was silently dropped. */
-    uint32_t attr_off[16];      /* SET_VERTEX_DATA_ARRAY_OFFSET per slot */
-    uint32_t idx[MAX_IDX];
-    uint32_t idx_count;
-    uint32_t idx_dropped;       /* indices past MAX_IDX in the current batch */
-    float    composite[16];     /* NV097_SET_COMPOSITE_MATRIX */
-    int      composite_seen;
-    uint32_t lighting;          /* NV097_SET_LIGHTING_ENABLE 0x0314 */
-
-    /* Fixed-function vertex lighting state (NV2A registers written by the
-     * Xbox D3D runtime; light colours already carry the material factors). */
-    struct {
-        float amb[3], dif[3], spec[3];   /* 0x1000 / 0x100C / 0x1018 (+0x80*i) */
-        float range;                     /* 0x1024 */
-        float half[3], dir[3];           /* 0x1028 / 0x1034 (eye space) */
-        float spot_fall[3], spot_dir[4]; /* 0x1040 / 0x104C */
-        float pos[3], att[3];            /* 0x105C / 0x1068 (eye space) */
-    } light[4];
-    uint32_t light_mask;        /* 0x03BC: 2 bits per light, 0 off 1 inf 2 local 3 spot */
-    uint32_t light_control;     /* 0x0294 */
-    uint32_t color_material;    /* 0x0298 */
-    uint32_t spec_enable;       /* 0x03B8 */
-    uint32_t normalize_en;      /* 0x03A4 */
-    float    scene_ambient[3];  /* 0x0A10 */
-    float    emission[3];       /* 0x03A8 */
-    float    material_alpha;    /* 0x03B4 */
-    float    spec_params[6];    /* 0x09E0 */
-
     /* Init flag */
     int initialized;
-} g_pg;
+} g_pg_host;
+
+static Nv2aPgraphDrawState g_pg;
+static DWORD g_pg_owner;
+static uint64_t g_pg_checkpoint_generation;
+
+static Nv2aPgraphAuxState g_pg_aux = {
+    .blend_color = 0xFFFFFFFFu,
+    .blend_src_valid = D3DBLEND_SRCALPHA,
+    .blend_dst_valid = D3DBLEND_INVSRCALPHA,
+    .draw_has_uv = 1
+};
+#define g_pg_cpu_layout_seen (g_pg_aux.cpu_layout_seen)
+#define g_nv_draw_has_uv (g_pg_aux.draw_has_uv)
+#define g_nv_draw_inline (g_pg_aux.draw_inline)
+#define g_pg_surf_coff (g_pg_aux.surface_offset)
+#define g_pg_surf_pitch (g_pg_aux.surface_pitch)
+#define g_pg_blend_color (g_pg_aux.blend_color)
+#define g_fb_offs (g_pg_aux.framebuffer_offsets)
+#define g_fb_offs_n (g_pg_aux.framebuffer_count)
+#define g_nvreg (g_pg_aux.registers)
+
+
 
 /* ══════════════════════════════════════════════════════════════════════
  * Float/uint32 conversion
@@ -407,7 +289,11 @@ static float u2f(uint32_t u) {
 
 void pgraph_d3d11_init(void)
 {
+    nv_geometry_clear(&g_geometry);
+    ++g_pg_checkpoint_generation;
+    g_pg_owner=GetCurrentThreadId();
     memset(&g_pg, 0, sizeof(g_pg));
+    memset(&g_pg_host, 0, sizeof(g_pg_host));
     g_pg.vert_stride = INLINE_VERT_DWORDS;  /* Default: 5 dwords per vertex */
     g_pg.layout_pos_dw = 2;                 /* burnout default: X,Y,U,V,color */
     g_pg.layout_uv_off = 2;
@@ -423,14 +309,88 @@ void pgraph_d3d11_init(void)
     g_pg.stencil_func_mask = 0xFF;
     g_pg.stencil_fail = g_pg.stencil_zfail = g_pg.stencil_zpass = 0x1E00; /* KEEP */
     g_pg.color_mask = 0x01010101;
-    g_pg.initialized = 1;
+    g_pg_host.initialized = 1;
 
 }
 
 void pgraph_d3d11_shutdown(void)
 {
-    g_pg.initialized = 0;
+    nv_geometry_clear(&g_geometry);
+    for (unsigned i = 0; i < TEXCACHE_N; i++) {
+        free(g_pg_host.texcache[i].source);
+        g_pg_host.texcache[i].source = NULL;
+        g_pg_host.texcache[i].uploaded = 0;
+    }
+    ++g_pg_checkpoint_generation;
+    g_pg_owner=0;
+    g_pg_host.initialized = 0;
 }
+
+/* Buffer the observations, then write once after 120 complete passes. No
+ * per-frame disk writes or guest-memory/GPU copies in this diagnostic. */
+static struct {
+    int enabled, initialized, pending;
+    unsigned warmup, count;
+    D3D8BoundaryProbe samples[240];
+} g_boundary_audit;
+
+int pgraph_d3d11_rollback_audit_enabled(void)
+{
+    if (!g_boundary_audit.initialized) {
+        const char *path=getenv("DOA3_ROLLBACK_RENDER_AUDIT");
+        g_boundary_audit.initialized=1;
+        g_boundary_audit.enabled=path && *path;
+    }
+    return g_boundary_audit.enabled;
+}
+
+static void boundary_audit_finish(const char *reason)
+{
+    const char *path=getenv("DOA3_ROLLBACK_RENDER_AUDIT");
+    FILE *f=path && *path ? fopen(path,"w"):NULL;
+    unsigned blocked=0,changes=0;
+    int failed=!f;
+    if (f) {
+        if (fprintf(f,"sample,before,flags,images,image_bytes,identity\n")<0) failed=1;
+        for (unsigned i=0;i<g_boundary_audit.count;i++) {
+            const D3D8BoundaryProbe *s=&g_boundary_audit.samples[i];
+            if (s->flags) ++blocked;
+            if (i && s->identity!=g_boundary_audit.samples[i-1].identity) ++changes;
+            if (fprintf(f,"%u,%u,%u,%u,%llu,%llu\n",i,!(i&1),s->flags,s->image_count,
+                (unsigned long long)s->image_bytes,(unsigned long long)s->identity)<0) failed=1;
+        }
+        if (fclose(f)) failed=1;
+    }
+    g_boundary_audit.enabled=0;
+    fprintf(stderr,"[ROLLBACK-RENDER] %s%s: %u observations, %u blocked, %u inventory changes; audit only, no restore\n",
+        reason,failed ? " (output failed)":"",g_boundary_audit.count,blocked,changes);
+}
+
+void pgraph_d3d11_rollback_audit_boundary(int before,int eligible)
+{
+    D3D8BoundaryProbe *s;
+    if (!pgraph_d3d11_rollback_audit_enabled()) return;
+    if (!eligible) {
+        g_boundary_audit.warmup=0;
+        if (g_boundary_audit.count) boundary_audit_finish("left eligible fight");
+        return;
+    }
+    if (before) {
+        if (g_boundary_audit.pending) { boundary_audit_finish("unpaired boundary"); return; }
+        if (g_boundary_audit.warmup<120) { ++g_boundary_audit.warmup; return; }
+        g_boundary_audit.pending=1;
+    } else {
+        if (!g_boundary_audit.pending) return;
+        g_boundary_audit.pending=0;
+    }
+    s=&g_boundary_audit.samples[g_boundary_audit.count++];
+    d3d8_pipeline_probe(g_pg_owner,s);
+    if (!(s->flags&D3D8_PROBE_OWNER) && g_pg.in_draw) s->flags|=D3D8_PROBE_BATCH;
+    if (s->flags&D3D8_PROBE_OWNER) { boundary_audit_finish("owner mismatch"); return; }
+    if (g_boundary_audit.count==240) boundary_audit_finish("complete");
+}
+
+
 
 /* ══════════════════════════════════════════════════════════════════════
  * Draw Submission
@@ -571,31 +531,8 @@ static void nv_apply_tex_address(IDirect3DDevice8 *dev, int stage)
     uint32_t a = g_pg.tex[stage].address;
     {   uint32_t f = g_pg.tex[stage].filter;
         DWORD mn = nv_d3d_minfilter(f >> 16), mg = nv_d3d_magfilter(f >> 24);
-        {   /* DOA3 DIAG: what the game asks for, and what we were doing
-             * before this (the stage states were never written at all, so the
-             * shim's mapper fell through to MIN_MAG_MIP_POINT). */
-            extern volatile int g_doa3_post_movie;
-            static DWORD s_next = 0; static uint32_t s_n[3][4];
-            s_n[0][mn & 3]++; s_n[1][mg & 3]++; s_n[2][(f == 0) ? 0 : 1]++;
-            if (g_doa3_post_movie && GetTickCount() >= s_next) {
-                s_next = GetTickCount() + 2000;
-                 memset(s_n, 0, sizeof s_n);
-            }
-        }
-        {   /* DOA3 DIAG: mip levels the source declares, and how many stages
-             * the game actually enables -- the two texture features this
-             * translator still does not implement. */
-            extern volatile int g_doa3_post_movie;
-            static DWORD s_nx = 0; static uint32_t s_mip[16], s_stg[5];
-            int k, n = 0;
-            s_mip[(g_pg.tex[stage].format >> 16) & 0xF]++;
-            for (k = 0; k < 4; k++) if (g_pg.tex[k].enabled) n++;
-            s_stg[n & 4]++;
-            if (g_doa3_post_movie && GetTickCount() >= s_nx) {
-                s_nx = GetTickCount() + 2000;
-                memset(s_mip, 0, sizeof s_mip); memset(s_stg, 0, sizeof s_stg);
-            }
-        }
+        
+        
         {   /* Filter bits 12:0: mip LOD bias, signed 5.8; control0 bits 29:18:
              * min-LOD clamp, 5.8. */
             int bias = (int)(f & 0x1FFF); if (bias & 0x1000) bias -= 0x2000;
@@ -607,17 +544,9 @@ static void nv_apply_tex_address(IDirect3DDevice8 *dev, int stage)
         dev->lpVtbl->SetTextureStageState(dev, stage, 16 /*MAGFILTER*/, mg);
         dev->lpVtbl->SetTextureStageState(dev, stage, 17 /*MINFILTER*/, mn);
         dev->lpVtbl->SetTextureStageState(dev, stage, 18 /*MIPFILTER*/,
-                                          g_pg.dyn_levels > 1 ? nv_d3d_mipfilter(f >> 16) : 0);
+                                          g_pg_host.dyn_levels > 1 ? nv_d3d_mipfilter(f >> 16) : 0);
     }
-    {   /* DOA3 DIAG: what the game actually asks for, per 2 s. */
-        extern volatile int g_doa3_post_movie;
-        static DWORD s_next = 0; static uint32_t s_u[16], s_v[16];
-        s_u[a & 0xF]++; s_v[(a >> 8) & 0xF]++;
-        if (g_doa3_post_movie && GetTickCount() >= s_next) {
-            int i; s_next = GetTickCount() + 2000;
-            memset(s_u, 0, sizeof s_u); memset(s_v, 0, sizeof s_v);
-        }
-    }
+    
     dev->lpVtbl->SetTextureStageState(dev, stage, 13 /*ADDRESSU*/, nv_d3d_address(a));
     dev->lpVtbl->SetTextureStageState(dev, stage, 14 /*ADDRESSV*/, nv_d3d_address(a >> 8));
 }
@@ -626,19 +555,6 @@ static void nv_apply_tex_address(IDirect3DDevice8 *dev, int stage)
  * Images up to 16 KB are hashed whole; larger ones by 256 dwords spread
  * across the image. 64 samples missed animations that rewrite only part of
  * a small texture in place. */
-static uint32_t nv_tex_signature(const uint8_t *p, size_t n)
-{
-    uint32_t h = 2166136261u ^ (uint32_t)n;
-    size_t i, step = (n <= 16384) ? 4 : (n / 256) & ~(size_t)3;
-    if (step < 4) step = 4;
-    for (i = 0; i + 4 <= n; i += step) {
-        uint32_t v;
-        memcpy(&v, p + i, 4);
-        h = (h ^ v) * 16777619u;
-    }
-    return h;
-}
-
 /* ---- texture cache: hash lookup + least-recently-used eviction ---- */
 static uint32_t texcache_hash(uint32_t off, uint32_t w, uint32_t h, uint32_t fmt, uint32_t pal)
 {
@@ -650,11 +566,11 @@ static int texcache_find(uint32_t off, uint32_t w, uint32_t h, uint32_t fmt, uin
 {
     uint32_t b = texcache_hash(off, w, h, fmt, pal), n;
     for (n = 0; n < TEXCACHE_HASH_N; n++, b = (b + 1) & (TEXCACHE_HASH_N - 1)) {
-        int s = g_pg.texhash[b] - 1;
+        int s = g_pg_host.texhash[b] - 1;
         if (s < 0) return -1;
-        if (g_pg.texcache[s].off == off && g_pg.texcache[s].w == w &&
-            g_pg.texcache[s].h == h && g_pg.texcache[s].fmt == fmt &&
-            g_pg.texcache[s].pal == pal)
+        if (g_pg_host.texcache[s].off == off && g_pg_host.texcache[s].w == w &&
+            g_pg_host.texcache[s].h == h && g_pg_host.texcache[s].fmt == fmt &&
+            g_pg_host.texcache[s].pal == pal)
             return s;
     }
     return -1;
@@ -662,16 +578,16 @@ static int texcache_find(uint32_t off, uint32_t w, uint32_t h, uint32_t fmt, uin
 
 static uint32_t texcache_home(int slot)
 {
-    return texcache_hash(g_pg.texcache[slot].off, g_pg.texcache[slot].w,
-                         g_pg.texcache[slot].h, g_pg.texcache[slot].fmt,
-                         g_pg.texcache[slot].pal);
+    return texcache_hash(g_pg_host.texcache[slot].off, g_pg_host.texcache[slot].w,
+                         g_pg_host.texcache[slot].h, g_pg_host.texcache[slot].fmt,
+                         g_pg_host.texcache[slot].pal);
 }
 
 static void texcache_hash_insert(int slot)
 {
     uint32_t b = texcache_home(slot);
-    while (g_pg.texhash[b]) b = (b + 1) & (TEXCACHE_HASH_N - 1);
-    g_pg.texhash[b] = (int16_t)(slot + 1);
+    while (g_pg_host.texhash[b]) b = (b + 1) & (TEXCACHE_HASH_N - 1);
+    g_pg_host.texhash[b] = (int16_t)(slot + 1);
 }
 
 /* Drop a slot's bucket, then backward-shift the rest of its probe run so a
@@ -679,20 +595,20 @@ static void texcache_hash_insert(int slot)
 static void texcache_hash_remove(int slot)
 {
     uint32_t b = texcache_home(slot), hole, j;
-    while (g_pg.texhash[b] && g_pg.texhash[b] != slot + 1)
+    while (g_pg_host.texhash[b] && g_pg_host.texhash[b] != slot + 1)
         b = (b + 1) & (TEXCACHE_HASH_N - 1);
-    if (!g_pg.texhash[b]) return;
+    if (!g_pg_host.texhash[b]) return;
     hole = b;
-    g_pg.texhash[hole] = 0;
-    for (j = (hole + 1) & (TEXCACHE_HASH_N - 1); g_pg.texhash[j];
+    g_pg_host.texhash[hole] = 0;
+    for (j = (hole + 1) & (TEXCACHE_HASH_N - 1); g_pg_host.texhash[j];
          j = (j + 1) & (TEXCACHE_HASH_N - 1)) {
-        uint32_t home = texcache_home(g_pg.texhash[j] - 1);
+        uint32_t home = texcache_home(g_pg_host.texhash[j] - 1);
         /* j may move into the hole unless its home lies cyclically in (hole, j]. */
         int stays = (hole <= j) ? (home > hole && home <= j)
                                 : (home > hole || home <= j);
         if (!stays) {
-            g_pg.texhash[hole] = g_pg.texhash[j];
-            g_pg.texhash[j] = 0;
+            g_pg_host.texhash[hole] = g_pg_host.texhash[j];
+            g_pg_host.texhash[j] = 0;
             hole = j;
         }
     }
@@ -701,10 +617,12 @@ static void texcache_hash_remove(int slot)
 static void texcache_evict(int slot)
 {
     texcache_hash_remove(slot);
-    g_pg.texcache[slot].tex->lpVtbl->Release(g_pg.texcache[slot].tex);
-    g_pg.texcache[slot].tex = NULL;
-    g_pg.texcache_bytes -= g_pg.texcache[slot].bytes;
-    g_pg.texcache[slot].bytes = 0;
+    free(g_pg_host.texcache[slot].source);
+    g_pg_host.texcache[slot].source = NULL;
+    g_pg_host.texcache[slot].tex->lpVtbl->Release(g_pg_host.texcache[slot].tex);
+    g_pg_host.texcache[slot].tex = NULL;
+    g_pg_host.texcache_bytes -= g_pg_host.texcache[slot].bytes;
+    g_pg_host.texcache[slot].bytes = 0;
 }
 
 /* A free slot for a new texture of `bytes`: an empty slot while under the
@@ -718,21 +636,47 @@ static int texcache_make_room(uint32_t bytes)
     for (;;) {
         int i, free_slot = -1, lru = -1, lru_any = -1;
         for (i = 0; i < TEXCACHE_N; i++) {
-            if (!g_pg.texcache[i].tex) { if (free_slot < 0) free_slot = i; continue; }
+            if (!g_pg_host.texcache[i].tex) { if (free_slot < 0) free_slot = i; continue; }
             if (lru_any < 0 ||
-                (int32_t)(g_pg.texcache[i].last_frame - g_pg.texcache[lru_any].last_frame) < 0)
+                (int32_t)(g_pg_host.texcache[i].last_frame - g_pg_host.texcache[lru_any].last_frame) < 0)
                 lru_any = i;
-            if (g_pg.texcache[i].last_frame != g_pg.frame &&
+            if (g_pg_host.texcache[i].last_frame != g_pg_host.frame &&
                 (lru < 0 ||
-                 (int32_t)(g_pg.texcache[i].last_frame - g_pg.texcache[lru].last_frame) < 0))
+                 (int32_t)(g_pg_host.texcache[i].last_frame - g_pg_host.texcache[lru].last_frame) < 0))
                 lru = i;
         }
-        if (free_slot >= 0 && g_pg.texcache_bytes + bytes <= TEXCACHE_BUDGET)
+        if (free_slot >= 0 && g_pg_host.texcache_bytes + bytes <= TEXCACHE_BUDGET)
             return free_slot;
         if (lru < 0) lru = lru_any;
         if (lru < 0) return free_slot >= 0 ? free_slot : 0;   /* nothing resident */
         texcache_evict(lru);
     }
+}
+
+/* Owner-thread, bounded A/B test only; never part of guest checkpoint state. */
+static int force_guest_uploads;
+int pgraph_d3d11_force_guest_uploads(int force)
+{
+    int previous = force_guest_uploads;
+    force_guest_uploads = force != 0;
+    return previous;
+}
+
+void pgraph_d3d11_invalidate_guest_uploads(void)
+{
+    unsigned i;
+    for (i = 0; i < TEXCACHE_N; i++) {
+        /* Host uploads survive RAM restore. Reuse only after comparing their
+         * complete source, including lower mips and palette, on the next bind.
+         * Failed/incomplete uploads and linear surfaces always upload again. */
+        g_pg_host.texcache[i].uploaded =
+            !force_guest_uploads && g_pg_host.texcache[i].uploaded &&
+            g_pg_host.texcache[i].source ? 2 : 0;
+    }
+    g_pg_host.dyn_tex = NULL; /* borrowed cache pointer, not another owner */
+    g_pg_host.dyn_src_valid = 0;
+    g_pg_host.dyn_src_off = 0;
+    g_pg_host.dyn_w = g_pg_host.dyn_h = g_pg_host.dyn_fmt = g_pg_host.dyn_levels = 0;
 }
 
 static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
@@ -744,14 +688,13 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
     int swizzled, compressed, palettised;
     uint32_t palreg = g_pg.tex[0].palette;
     uint32_t sig;
+    uint32_t source_size = 0, palette_size = 0;
+    const uint8_t *source = NULL, *palette = NULL;
+    int cache_slot = -1;
     D3DFORMAT d3dfmt;
 
     if (!off || off >= 0x08000000u) return NULL; /* DOA3: guest RAM to 128 MB */
-    {   /* DOA3 DIAG: why textures do or do not materialise. */
-        extern uint32_t g_texfmt[64], g_texnull[4];
-        g_texfmt[nvfmt & 63]++;
-        if (!off || off >= 0x08000000u) g_texnull[0]++;
-    }
+    
     if (!nv_texture_format(nvfmt, &d3dfmt, &bpp, &swizzled, &compressed,
                            &palettised)) {
         extern uint32_t g_texnull[4];
@@ -830,6 +773,16 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
             g_texnull[3]++;
             return NULL;
         }
+        source_size = (uint32_t)need;
+    }
+    source = (const uint8_t *)((uintptr_t)off + g_xbox_mem_offset);
+    if (palettised) {
+        uint32_t paloff = palreg & 0xFFFFFFC0u;
+        uint32_t size = 4u * (256u >> ((palreg >> 2) & 3u));
+        if (paloff && (uint64_t)paloff + size <= 0x08000000ull) {
+            palette = (const uint8_t *)((uintptr_t)paloff + g_xbox_mem_offset);
+            palette_size = size;
+        }
     }
     {   size_t l0 = compressed ? (size_t)pitch * ((h + 3) / 4) : (size_t)pitch * h;
         sig = nv_tex_signature((const uint8_t *)((uintptr_t)off + g_xbox_mem_offset), l0);
@@ -861,6 +814,15 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
     {
         uint32_t keypal = palettised ? palreg : 0u;
         int slot = texcache_find(off, w, h, (uint32_t)d3dfmt, keypal);
+        if (slot >= 0 && (g_pg_host.texcache[slot].levels != nlevels ||
+            g_pg_host.texcache[slot].source_fmt != nvfmt ||
+            g_pg_host.texcache[slot].source_pitch != pitch ||
+            g_pg_host.texcache[slot].source_size != source_size ||
+            g_pg_host.texcache[slot].palette_size != palette_size)) {
+            /* A rewind can change the chain while retaining its base level. */
+            texcache_evict(slot);
+            slot = -1;
+        }
         if (slot < 0) {
             /* Host bytes this texture will hold: every level in the host
              * format (DXT stays block-compressed, swizzled sources keep their
@@ -875,15 +837,18 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
                 lh = (lh > 1) ? lh / 2 : 1;
             }
             bytes *= 2;
+            /* Reserve the exact source copy in the same bounded LRU budget.
+             * Allocation failure simply falls back to reupload on rewind. */
+            if (swizzled || compressed) bytes += source_size + palette_size;
             slot = texcache_make_room(bytes);
             if (dev->lpVtbl->CreateTexture(dev, w, h, nlevels, 0, d3dfmt, 0,
-                                           &g_pg.texcache[slot].tex) != 0 ||
-                !g_pg.texcache[slot].tex) {
-                g_pg.texcache[slot].tex = NULL;
+                                           &g_pg_host.texcache[slot].tex) != 0 ||
+                !g_pg_host.texcache[slot].tex) {
+                g_pg_host.texcache[slot].tex = NULL;
                 return NULL;
             }
-            g_pg.texcache[slot].bytes = bytes;
-            g_pg.texcache_bytes += bytes;
+            g_pg_host.texcache[slot].bytes = bytes;
+            g_pg_host.texcache_bytes += bytes;
             /* Everything uploaded below is row-major: swizzled sources are
              * unswizzled here (they have to be, so palettised ones can be
              * expanded), and linear ones are copied straight through. Say so,
@@ -892,21 +857,37 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
              * Xbox layout -- which scrambled every swizzled texture in the
              * game, the corner logo included. */
             {   extern void d3d8_TextureSetLinearData(IDirect3DTexture8 *, BOOL);
-                d3d8_TextureSetLinearData(g_pg.texcache[slot].tex, TRUE); }
-            g_pg.texcache[slot].off = off;
-            g_pg.texcache[slot].w = w;
-            g_pg.texcache[slot].h = h;
-            g_pg.texcache[slot].fmt = (uint32_t)d3dfmt;
-            g_pg.texcache[slot].levels = nlevels;
-            g_pg.texcache[slot].pal = palettised ? palreg : 0u;
-            g_pg.texcache[slot].uploaded = 0;
-            g_pg.texcache[slot].sig = 0;
+                d3d8_TextureSetLinearData(g_pg_host.texcache[slot].tex, TRUE); }
+            g_pg_host.texcache[slot].off = off;
+            g_pg_host.texcache[slot].w = w;
+            g_pg_host.texcache[slot].h = h;
+            g_pg_host.texcache[slot].fmt = (uint32_t)d3dfmt;
+            g_pg_host.texcache[slot].levels = nlevels;
+            g_pg_host.texcache[slot].source_fmt = nvfmt;
+            g_pg_host.texcache[slot].source_pitch = pitch;
+            g_pg_host.texcache[slot].source_size = source_size;
+            g_pg_host.texcache[slot].palette_size = palette_size;
+            g_pg_host.texcache[slot].pal = palettised ? palreg : 0u;
+            g_pg_host.texcache[slot].uploaded = 0;
+            g_pg_host.texcache[slot].sig = 0;
             texcache_hash_insert(slot);
         }
-        g_pg.texcache[slot].last_frame = g_pg.frame;
-        g_pg.dyn_tex = g_pg.texcache[slot].tex;
-        g_pg.dyn_w = w; g_pg.dyn_h = h; g_pg.dyn_fmt = (uint32_t)d3dfmt;
-        g_pg.dyn_levels = g_pg.texcache[slot].levels;
+        g_pg_host.texcache[slot].last_frame = g_pg_host.frame;
+        g_pg_host.dyn_tex = g_pg_host.texcache[slot].tex;
+        g_pg_host.dyn_w = w; g_pg_host.dyn_h = h; g_pg_host.dyn_fmt = (uint32_t)d3dfmt;
+        g_pg_host.dyn_levels = g_pg_host.texcache[slot].levels;
+
+        if (g_pg_host.texcache[slot].uploaded == 2) {
+            if (g_pg_host.texcache[slot].source &&
+                !memcmp(g_pg_host.texcache[slot].source, source, source_size) &&
+                (!palette_size || !memcmp(g_pg_host.texcache[slot].source + source_size,
+                                          palette, palette_size))) {
+                g_pg_host.texcache[slot].uploaded = 1;
+                g_pg_host.texcache[slot].sig = sig;
+                return g_pg_host.dyn_tex;
+            }
+            g_pg_host.texcache[slot].uploaded = 0;
+        }
 
         /* Swizzled and DXT textures come from the XPR0 bundles and never
          * change in place, so once uploaded they are not redone --
@@ -921,11 +902,11 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
          * cache kept serving Kasumi's blue costume as Hitomi's face. Compare
          * a sampled fingerprint of the source on every hit and re-upload when
          * the bytes behind the address have changed. */
-        if ((swizzled || compressed) && g_pg.texcache[slot].uploaded &&
-            g_pg.texcache[slot].sig == sig)
-            return g_pg.dyn_tex;
-        g_pg.texcache[slot].uploaded = (swizzled || compressed);
-        g_pg.texcache[slot].sig = sig;
+        if ((swizzled || compressed) && g_pg_host.texcache[slot].uploaded == 1 &&
+            g_pg_host.texcache[slot].sig == sig)
+            return g_pg_host.dyn_tex;
+        cache_slot = slot;
+        g_pg_host.texcache[slot].uploaded = 0;
     }
     {
         const uint8_t *srcp = (const uint8_t *)((uintptr_t)off + g_xbox_mem_offset);
@@ -962,7 +943,7 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
                 : (swizzled ? lw * bpp : pitch);
             size_t lsize = compressed ? (size_t)lp * ((lh + 3) / 4)
                                       : (size_t)lp * lh;
-            if (g_pg.dyn_tex->lpVtbl->LockRect(g_pg.dyn_tex, l, &lr, NULL, 0) == 0 &&
+            if (g_pg_host.dyn_tex->lpVtbl->LockRect(g_pg_host.dyn_tex, l, &lr, NULL, 0) == 0 &&
                 lr.pBits) {
                 uint8_t *dstp = (uint8_t *)lr.pBits;
                 if (compressed) {
@@ -991,6 +972,9 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
                                        (size_t)lw * bpp);
                         }
                         free(lin);
+                    } else {
+                        g_pg_host.dyn_tex->lpVtbl->UnlockRect(g_pg_host.dyn_tex, l);
+                        return NULL;
                     }
                 } else if (palettised) {
                     uint32_t yy;
@@ -1006,14 +990,26 @@ static IDirect3DTexture8 *get_dynamic_texture(IDirect3DDevice8 *dev)
                         memcpy(dstp + (size_t)yy * lr.Pitch,
                                srcp + (size_t)yy * lp, row_bytes);
                 }
-                g_pg.dyn_tex->lpVtbl->UnlockRect(g_pg.dyn_tex, l);
-            }
+                if (g_pg_host.dyn_tex->lpVtbl->UnlockRect(g_pg_host.dyn_tex, l) != 0)
+                    return NULL;
+            } else return NULL;
             srcp += lsize;
             lw = (lw > 1) ? lw / 2 : 1;
             lh = (lh > 1) ? lh / 2 : 1;
         }
     }
-    return g_pg.dyn_tex;
+    g_pg_host.texcache[cache_slot].uploaded = (swizzled || compressed);
+    g_pg_host.texcache[cache_slot].sig = sig;
+    if (swizzled || compressed) {
+        if (!g_pg_host.texcache[cache_slot].source)
+            g_pg_host.texcache[cache_slot].source = (uint8_t *)malloc(source_size + palette_size);
+        if (g_pg_host.texcache[cache_slot].source) {
+            memcpy(g_pg_host.texcache[cache_slot].source, source, source_size);
+            if (palette_size)
+                memcpy(g_pg_host.texcache[cache_slot].source + source_size, palette, palette_size);
+        }
+    }
+    return g_pg_host.dyn_tex;
 }
 
 /* Called by the recompiled D3D draw wrapper before each inline draw. */
@@ -1023,7 +1019,6 @@ void pgraph_d3d11_set_inline_hint(uint32_t nverts, uint32_t declared_dw)
     g_pg.hint_declared_dw = declared_dw;
 }
 
-static int g_pg_cpu_layout_seen;   /* a CPU-side DrawVerticesUP hook supplies layouts (3.0) */
 void pgraph_d3d11_set_vertex_layout(uint32_t stride_dw, int pos_dw,
                                     int uv_off, int color_off)
 {
@@ -1240,6 +1235,32 @@ static void nv_transform_clip(const float in[4], OutputVertex *v,
  * and what did it produce? Reported on the [PG-ARRAY] line. */
 int   g_vp_used, g_vpn;
 float g_mv[16];
+
+static uint64_t live_renderer_epoch(void *context)
+{
+    (void)context;
+    return g_pg_owner==GetCurrentThreadId() && g_pg_host.initialized && !g_pg.in_draw ?
+        g_pg_checkpoint_generation:0;
+}
+static void live_renderer_invalidate(void *context)
+{
+    (void)context;
+    pgraph_d3d11_invalidate_guest_uploads();
+}
+int pgraph_d3d11_rollback_snapshot_source(Nv2aRendererCheckpointSource *out)
+{
+    D3D8BoundaryProbe probe;
+    if (!out) return 0;
+    memset(out,0,sizeof(*out));
+    d3d8_pipeline_probe(g_pg_owner,&probe);
+    if (!(probe.flags&D3D8_PROBE_OWNER) && g_pg.in_draw) probe.flags|=D3D8_PROBE_BATCH;
+    fprintf(stderr,"[ROLLBACK-RENDER] capture boundary: flags=%u images=%u image_bytes=%llu\n",
+        probe.flags,probe.image_count,(unsigned long long)probe.image_bytes);
+    if (probe.flags || !live_renderer_epoch(NULL)) return 0;
+    *out=(Nv2aRendererCheckpointSource){&g_pg,&g_pg_aux,g_mv,NULL,
+        live_renderer_epoch,live_renderer_invalidate};
+    return 1;
+}
 float g_vp_in0[4], g_vp_out0[4], g_fix_in0[4];
 float g_vp_d0[4], g_vp_t0[4], g_vpbb[8];
 
@@ -1452,14 +1473,7 @@ static void nv_build_array_vertex(uint32_t index, OutputVertex *v,
              * The divide is per vertex: the floors are finely tessellated. */
             if ((g_pg.shader_prog & 0x1Fu) == 1u) {
                 float q = out[NV2A_VP_OUT_T0][3];
-                {   /* DOA3 DIAG: projective texcoords behind the projector */
-                    static DWORD s_nx; static unsigned s_neg, s_tot;
-                    s_tot++; if (q < 0.0f) s_neg++;
-                    if (GetTickCount() >= s_nx) {
-                        if (s_neg) fprintf(stderr, "[PROJ] last 5 s: %u of %u projective vertices with q < 0\n", s_neg, s_tot);
-                        s_nx = GetTickCount() + 5000; s_neg = s_tot = 0;
-                    }
-                }
+                
                 if (q == q && (q > 1e-6f || q < -1e-6f) && q != 1.0f) { v->u /= q; v->v /= q; }
             }
             return;
@@ -1508,9 +1522,7 @@ static void nv_build_array_vertex(uint32_t index, OutputVertex *v,
  * background gradient are position+diffuse only (5 dwords), and binding the
  * stale dynamic texture for them sampled texel (0,0) and multiplied them away.
  * The array path leaves this set, so only the inline path can clear it. */
-static int g_nv_draw_has_uv = 1;
 /* DOA3: 1 while submit_draw (the inline 2D path) is applying state. */
-static int g_nv_draw_inline = 0;
 /* Stage 1 from the guest's texture-stage table when it is CURRENT x TFACTOR
  * with no texture of its own (the beach's palm shadow is 0x99FFFFFF, the
  * Kowloon street's additive wet-road sheen 0x23FFFFFF: a pink gradient blended
@@ -1541,13 +1553,9 @@ static void nv_apply_stage1_factor(IDirect3DDevice8 *dev)
     dev->lpVtbl->SetTextureStageState(dev, 1, 6 /*ALPHAARG2*/, 3 /*TFACTOR*/);
 }
 
-static uint32_t g_pg_surf_coff;   /* defined with g_pg_surf_pitch below */
-static uint32_t g_pg_blend_color = 0xFFFFFFFFu;   /* NV097_SET_BLEND_COLOR */
 /* Colour surfaces that are the frame buffer (both flip buffers), recorded by
  * nv_sync_render_target. A draw sampling one of them reads the frame on
  * screen -- the previous presented frame. */
-static uint32_t g_fb_offs[4];
-static int      g_fb_offs_n;
 static int nv_samples_framebuffer(uint32_t tex_off)
 {
     int k;
@@ -1573,7 +1581,6 @@ typedef struct {
 } NvPostOps;
 
 /* Raw value of every NV097 method last written (index = method >> 2). */
-static uint32_t g_nvreg[0x800];
 #define NVREG(m) g_nvreg[(m) >> 2]
 
 static int nv_use_vertex_diffuse(int all_zero)
@@ -1629,15 +1636,7 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, const NvDrawSummary *sum,
         DWORD zf = (g_pg.depth_func >= 0x200 && g_pg.depth_func <= 0x207)
                  ? (g_pg.depth_func - 0x200) + 1 : 4 /*LESSEQUAL*/;
         dev->lpVtbl->SetRenderState(dev, D3DRS_ZFUNC, zf);
-        {   extern volatile int g_doa3_post_movie;
-            static DWORD s_nx = 0; static uint32_t s_t, s_nt, s_m, s_nm;
-            if (g_pg.depth_test) s_t++; else s_nt++;
-            if (g_pg.depth_mask) s_m++; else s_nm++;
-            if (g_doa3_post_movie && GetTickCount() >= s_nx) {
-                s_nx = GetTickCount() + 2000;
-                 s_t = s_nt = s_m = s_nm = 0;
-            }
-        }
+        
     }
     dev->lpVtbl->SetRenderState(dev, D3DRS_LIGHTING, FALSE);
     {   /* Fog. Only the GPU fixed-function path computes a per-vertex factor;
@@ -1661,14 +1660,7 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, const NvDrawSummary *sum,
             cm = (front_cw == cull_front) ? 2 /*CW*/ : 3 /*CCW*/;
         }
         dev->lpVtbl->SetRenderState(dev, D3DRS_CULLMODE, cm);
-        {   extern volatile int g_doa3_post_movie;
-            static DWORD s_nx = 0; static uint32_t s_on, s_off;
-            if (cm != 1) s_on++; else s_off++;
-            if (g_doa3_post_movie && GetTickCount() >= s_nx) {
-                s_nx = GetTickCount() + 2000;
-                 s_on = s_off = 0;
-            }
-        }
+        
     }
 
     /* Stencil. */
@@ -1693,14 +1685,7 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, const NvDrawSummary *sum,
         dev->lpVtbl->SetRenderState(dev, D3DRS_STENCILFAIL, nv_d3d_stencil_op(g_pg.stencil_fail));
         dev->lpVtbl->SetRenderState(dev, D3DRS_STENCILZFAIL, nv_d3d_stencil_op(g_pg.stencil_zfail));
         dev->lpVtbl->SetRenderState(dev, D3DRS_STENCILPASS, nv_d3d_stencil_op(g_pg.stencil_zpass));
-        {   extern volatile int g_doa3_post_movie;
-            static DWORD s_nx = 0; static uint32_t s_on, s_off;
-            if (g_pg.stencil_enable) s_on++; else s_off++;
-            if (g_doa3_post_movie && GetTickCount() >= s_nx) {
-                s_nx = GetTickCount() + 2000;
-                 s_on = s_off = 0;
-            }
-        }
+        
     }
     /* Blending. This used to be forced on with SRCALPHA/INVSRCALPHA for every
      * draw while SET_BLEND_ENABLE/SFACTOR/DFACTOR were tracked and never read.
@@ -1710,16 +1695,15 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, const NvDrawSummary *sum,
      * depend on an alpha channel it was not written for, and rendered the
      * additive pass as an ordinary blend. */
     {
-        static DWORD s_sf = D3DBLEND_SRCALPHA, s_df = D3DBLEND_INVSRCALPHA;
         DWORD sf = nv2a_blend_to_d3d(g_pg.blend_sfactor);
         DWORD df = nv2a_blend_to_d3d(g_pg.blend_dfactor);
-        if (sf) s_sf = sf;          /* a non-factor is parse garbage: keep the */
-        if (df) s_df = df;          /* last value the guest really programmed  */
+        if (sf) g_pg_aux.blend_src_valid = sf;          /* a non-factor is parse garbage: keep the */
+        if (df) g_pg_aux.blend_dst_valid = df;          /* last value the guest really programmed  */
         dev->lpVtbl->SetRenderState(dev, D3DRS_ALPHABLENDENABLE,
                                     g_pg.blend_enable ? TRUE : FALSE);
-        dev->lpVtbl->SetRenderState(dev, D3DRS_SRCBLEND, s_sf);
-        dev->lpVtbl->SetRenderState(dev, D3DRS_DESTBLEND, s_df);
-        if (s_sf >= D3DBLEND_BLENDFACTOR || s_df >= D3DBLEND_BLENDFACTOR) {
+        dev->lpVtbl->SetRenderState(dev, D3DRS_SRCBLEND, g_pg_aux.blend_src_valid);
+        dev->lpVtbl->SetRenderState(dev, D3DRS_DESTBLEND, g_pg_aux.blend_dst_valid);
+        if (g_pg_aux.blend_src_valid >= D3DBLEND_BLENDFACTOR || g_pg_aux.blend_dst_valid >= D3DBLEND_BLENDFACTOR) {
             /* CONSTANT_ALPHA factors use the blend colour's alpha for every
              * channel, CONSTANT_COLOR its rgba. */
             extern void d3d8_SetBlendFactor(float r, float g, float b, float a);
@@ -1744,14 +1728,7 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, const NvDrawSummary *sum,
         dev->lpVtbl->SetRenderState(dev, D3DRS_ALPHATESTENABLE, g_pg.alpha_test ? TRUE : FALSE);
         dev->lpVtbl->SetRenderState(dev, D3DRS_ALPHAFUNC, func);
         dev->lpVtbl->SetRenderState(dev, D3DRS_ALPHAREF, g_pg.alpha_ref & 0xFF);
-        {   extern volatile int g_doa3_post_movie;
-            static DWORD s_nx = 0; static uint32_t s_on, s_off;
-            if (g_pg.alpha_test) s_on++; else s_off++;
-            if (g_doa3_post_movie && GetTickCount() >= s_nx) {
-                s_nx = GetTickCount() + 2000;
-                 s_on = s_off = 0;
-            }
-        }
+        
     }
 
     /* Set FVF for pre-transformed 2D with texture */
@@ -1762,8 +1739,8 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, const NvDrawSummary *sum,
      * Global.txd entries identified via xemu dimension/format matching. */
     if (g_textures_loaded) {
         /* Build lookup table on first use */
-        if (!g_pg.texture_lookup_done) {
-            g_pg.texture_lookup_done = 1;
+        if (!g_pg_host.texture_lookup_done) {
+            g_pg_host.texture_lookup_done = 1;
             /* Dump all texture names+sizes for reference */
             for (int ti = 0; ti < g_global_txd.count; ti++) {
             }
@@ -1794,12 +1771,12 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, const NvDrawSummary *sum,
                 return;  /* Skip draw */
             case 0x021C4100:
                 /* Font atlas — create from captured DXT5 data on first use */
-                if (!g_pg.font_atlas) {
-                    g_pg.font_atlas = create_dxt5_texture(dev,
+                if (!g_pg_host.font_atlas) {
+                    g_pg_host.font_atlas = create_dxt5_texture(dev,
                         FONT_ATLAS_WIDTH, FONT_ATLAS_HEIGHT,
                         font_atlas_dxt5, FONT_ATLAS_SIZE);
                 }
-                tex = g_pg.font_atlas;
+                tex = g_pg_host.font_atlas;
                 break;
             case 0: tex = NULL; break;  /* No texture set — vertex color only */
             default: tex = NULL; break; /* Unknown — render with vertex color only */
@@ -1939,17 +1916,17 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, const NvDrawSummary *sum,
             int use_diffuse = use_vertex_diffuse;
             /* Does the bound image carry an alpha channel worth sampling? */
             int tex_has_alpha =
-                (g_pg.dyn_fmt == (uint32_t)D3DFMT_LIN_A8R8G8B8 ||
-                 g_pg.dyn_fmt == (uint32_t)D3DFMT_LIN_A1R5G5B5 ||
-                 g_pg.dyn_fmt == (uint32_t)D3DFMT_LIN_A4R4G4B4 ||
-                 g_pg.dyn_fmt == (uint32_t)D3DFMT_A8R8G8B8 ||
-                 g_pg.dyn_fmt == (uint32_t)D3DFMT_A1R5G5B5 ||
-                 g_pg.dyn_fmt == (uint32_t)D3DFMT_A4R4G4B4 ||
-                 g_pg.dyn_fmt == (uint32_t)D3DFMT_A8 ||
-                 g_pg.dyn_fmt == (uint32_t)D3DFMT_A8L8 ||
-                 g_pg.dyn_fmt == (uint32_t)D3DFMT_DXT1 ||
-                 g_pg.dyn_fmt == (uint32_t)D3DFMT_DXT3 ||
-                 g_pg.dyn_fmt == (uint32_t)D3DFMT_DXT5);
+                (g_pg_host.dyn_fmt == (uint32_t)D3DFMT_LIN_A8R8G8B8 ||
+                 g_pg_host.dyn_fmt == (uint32_t)D3DFMT_LIN_A1R5G5B5 ||
+                 g_pg_host.dyn_fmt == (uint32_t)D3DFMT_LIN_A4R4G4B4 ||
+                 g_pg_host.dyn_fmt == (uint32_t)D3DFMT_A8R8G8B8 ||
+                 g_pg_host.dyn_fmt == (uint32_t)D3DFMT_A1R5G5B5 ||
+                 g_pg_host.dyn_fmt == (uint32_t)D3DFMT_A4R4G4B4 ||
+                 g_pg_host.dyn_fmt == (uint32_t)D3DFMT_A8 ||
+                 g_pg_host.dyn_fmt == (uint32_t)D3DFMT_A8L8 ||
+                 g_pg_host.dyn_fmt == (uint32_t)D3DFMT_DXT1 ||
+                 g_pg_host.dyn_fmt == (uint32_t)D3DFMT_DXT3 ||
+                 g_pg_host.dyn_fmt == (uint32_t)D3DFMT_DXT5);
             /* An alpha-only image carries no colour: A8 samples as
              * (0,0,0,A). The glyph atlas the in-scene dialogue is drawn from
              * is one of these -- 128x128 A8, one quad per character, diffuse
@@ -1957,7 +1934,7 @@ static void nv_apply_draw_state(IDirect3DDevice8 *dev, const NvDrawSummary *sum,
              * texture's RGB into it painted every letter black with the
              * right shape. The colour has to come from the diffuse, and only
              * the alpha from the image. */
-            int tex_alpha_only = (g_pg.dyn_fmt == (uint32_t)D3DFMT_A8);
+            int tex_alpha_only = (g_pg_host.dyn_fmt == (uint32_t)D3DFMT_A8);
             int mask_stage = 0;
             dev->lpVtbl->SetTexture(dev, 0, (IDirect3DBaseTexture8 *)dtex);
             dev->lpVtbl->SetTextureStageState(dev, 0, 1 /*COLOROP*/,
@@ -2248,7 +2225,6 @@ static uint32_t nv_clip_batch(const OutputVertex *out, uint32_t n, int prim, Out
  * width restores the swap chain. Keying this on the clip rectangle or on
  * learning offsets both misclassified one of the two frame buffers at some
  * point, which routed the scene offscreen and froze the picture. */
-static uint32_t g_pg_surf_coff, g_pg_surf_pitch;
 extern int  d3d8_OffscreenTargetActive(void);
 /* Map guest screen coordinates onto the host backbuffer.
  *
@@ -2504,7 +2480,7 @@ static void nv_sync_render_target(void)
      * surface and then classed the frame buffer itself as offscreen. */
     unsigned pw = (g_pg_surf_pitch & 0xFFFF) / 4;
     unsigned h  = (g_pg.surface_clip_v >> 16) & 0xFFFF;
-    extern uint32_t g_doa3_offrt_offs[64]; extern int g_doa3_offrt_n;
+
     if (pw < 16 || pw > 2048) return;             /* pitch not programmed yet */
     if (g_doa3_offrt_n) {
         /* Colour-offset routing: the SetRenderTarget wrapper records every
@@ -2789,8 +2765,8 @@ static int submit_inline_points(IDirect3DDevice8 *dev, const uint32_t *src, uint
         if (clipped) { extern void d3d8_ResetScissorRect(void); d3d8_ResetScissorRect(); }
         if (got == 0) dev->lpVtbl->SetVertexShader(dev, prev_vs);
     }
-    g_pg.stats.draw_calls++;
-    g_pg.stats.vertices_submitted += num_verts;
+    g_pg_host.stats.draw_calls++;
+    g_pg_host.stats.vertices_submitted += num_verts;
     return 1;
 }
 
@@ -2956,15 +2932,15 @@ static IDirect3DTexture8 *nv_stage_texture(IDirect3DDevice8 *dev, int stage)
 {
     IDirect3DTexture8 *t;
     unsigned char save0[sizeof g_pg.tex[0]];
-    IDirect3DTexture8 *sdt = g_pg.dyn_tex;
-    uint32_t so = g_pg.dyn_src_off, sw = g_pg.dyn_w, sh = g_pg.dyn_h, sf = g_pg.dyn_fmt, sl = g_pg.dyn_levels;
-    int sv = g_pg.dyn_src_valid;
+    IDirect3DTexture8 *sdt = g_pg_host.dyn_tex;
+    uint32_t so = g_pg_host.dyn_src_off, sw = g_pg_host.dyn_w, sh = g_pg_host.dyn_h, sf = g_pg_host.dyn_fmt, sl = g_pg_host.dyn_levels;
+    int sv = g_pg_host.dyn_src_valid;
     memcpy(save0, &g_pg.tex[0], sizeof save0);
     memcpy(&g_pg.tex[0], &g_pg.tex[stage], sizeof save0);
     t = get_dynamic_texture(dev);
     memcpy(&g_pg.tex[0], save0, sizeof save0);
-    g_pg.dyn_tex = sdt; g_pg.dyn_src_off = so; g_pg.dyn_w = sw; g_pg.dyn_h = sh;
-    g_pg.dyn_fmt = sf; g_pg.dyn_levels = sl; g_pg.dyn_src_valid = sv;
+    g_pg_host.dyn_tex = sdt; g_pg_host.dyn_src_off = so; g_pg_host.dyn_w = sw; g_pg_host.dyn_h = sh;
+    g_pg_host.dyn_fmt = sf; g_pg_host.dyn_levels = sl; g_pg_host.dyn_src_valid = sv;
     return t;
 }
 
@@ -2979,6 +2955,40 @@ static int nv_attr_enabled(int slot)
     return ((fmt >> 4) & 0xF) != 0 && base != 0 && base < 0x08000000u;
 }
 
+/* Snapshot all bytes a fixed-function pack can read. Merge overlapping
+ * interleaved streams, but conservatively include gaps and a full 16 bytes
+ * at the last vertex. Reject overflow and excessively sparse spans. */
+static int nv_geometry_inputs(NvGeometryKey *key,NvGeometrySpan spans[5],unsigned *ns,
+                              uint32_t mask,int prim,int quads)
+{
+    static const unsigned slots[5]={0,2,3,9,10};
+    uint32_t lo=UINT32_MAX,hi=0;size_t total=(size_t)g_pg.idx_count*4;
+    memset(key,0,sizeof(*key));*ns=0;
+    if(!g_pg.idx_count || total>NV_GEOM_SOURCE_LIMIT)return 0;
+    for(unsigned i=0;i<g_pg.idx_count;i++){if(g_pg.idx[i]<lo)lo=g_pg.idx[i];if(g_pg.idx[i]>hi)hi=g_pg.idx[i];}
+    key->count=g_pg.idx_count;key->prim=prim;key->quads=quads;key->mask=mask;
+    key->fp_control=_mm_getcsr()&0xFFC0u; /* conversion rounding/denormal policy */
+    for(unsigned i=0;i<5;i++)if(mask&(1u<<i)){
+        uint32_t fmt=g_pg.attr_fmt[slots[i]],off=g_pg.attr_off[slots[i]],stride=fmt>>8;
+        uint64_t begin=(uint64_t)off+(uint64_t)lo*stride,end=(uint64_t)off+(uint64_t)hi*stride+16;
+        if(!off || !((fmt>>4)&15) || begin>=0x08000000u || end>0x08000000u || end-begin>NV_GEOM_SOURCE_LIMIT)return 0;
+        key->fmt[i]=fmt;key->off[i]=off;
+        NvGeometrySpan span={(uint32_t)begin,(uint32_t)(end-begin)};
+        unsigned j=(*ns)++;
+        while(j && spans[j-1].address>span.address){spans[j]=spans[j-1];--j;}
+        spans[j]=span;
+    }
+    unsigned count=0;
+    for(unsigned i=0;i<*ns;i++){
+        if(count && spans[i].address<=spans[count-1].address+spans[count-1].size){
+            uint32_t end=spans[i].address+spans[i].size;
+            if(end>spans[count-1].address+spans[count-1].size)spans[count-1].size=end-spans[count-1].address;
+        }else spans[count++]=spans[i];
+    }
+    *ns=count;for(unsigned i=0;i<count;i++)total+=spans[i].size;
+    return total<=NV_GEOM_SOURCE_LIMIT;
+}
+
 /* 1 = drawn (or legitimately dropped) on the GPU, 0 = use the CPU path. */
 static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int prim, int is_quads)
 {
@@ -2989,6 +2999,15 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     uint32_t bound_mask = 0;
     NvDrawSummary sum;
     NvPostOps post;
+    NvGeometryKey geometry_key;
+    NvGeometrySpan geometry_spans[5];unsigned geometry_ns=0;
+    NvGeometryEntry *geometry=NULL;
+    uint64_t geometry_hash=0;
+    int geometry_valid=0,geometry_hit=0;
+    const Nv2aFFVertex *draw_verts;
+    const uint16_t *draw_indices;
+    extern ptrdiff_t g_xbox_mem_offset;
+    const unsigned char *geometry_ram=(const unsigned char *)(uintptr_t)g_xbox_mem_offset;
     static int s_flip = -1;
     if (s_flip < 0) { const char *e = getenv("DOA3_FLIPW"); s_flip = (e && *e == '1'); }
 
@@ -3014,6 +3033,19 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
          * alpha to be non-zero to be decidable without lighting on the CPU. */
         int a = (int)(g_pg.material_alpha * 255.0f + 0.5f);
         if (a <= 0) return 0;
+    }
+    if(!force_geometry_rebuild){
+        uint32_t mask=1u | ((lit || (need_nrm && nv_attr_enabled(2))) ? 2u:0u) |
+            (has_color ? 4u:0u) | (has_uv ? 8u:0u) | (has_uv1 ? 16u:0u);
+        geometry_valid=nv_geometry_inputs(&geometry_key,geometry_spans,&geometry_ns,mask,prim,is_quads);
+        if(geometry_valid){
+            geometry_hash=nv_geometry_hash(&geometry_key,g_pg.idx);
+            geometry=nv_geometry_find(&g_geometry,&geometry_key,geometry_spans,geometry_ns,g_pg.idx,geometry_ram,geometry_hash);
+            if(geometry){
+                nv=geometry->nv;ni=geometry->ni;all_zero=geometry->all_zero;geometry_hit=1;
+                draw_verts=geometry->verts;draw_indices=geometry->indices;goto geometry_ready;
+            }
+        }
     }
     if (!nv_vreuse_begin(g_pg.idx, n, &lo)) return 0;
 
@@ -3061,6 +3093,11 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
         for (i = 0; i < n; i++) s_gi[ni++] = s_gs[i];
     }
     if (ni < 3) return 1;
+    draw_verts=s_gv;draw_indices=s_gi;
+    if(geometry_valid)geometry=nv_geometry_store(&g_geometry,&geometry_key,geometry_spans,geometry_ns,
+        g_pg.idx,geometry_ram,geometry_hash,s_gv,nv,s_gi,ni,all_zero);
+
+geometry_ready:
 
     /* The vertex colour summary, from the inputs. */
     if (has_color)              sum.all_zero = all_zero;
@@ -3180,21 +3217,7 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
         if (s_s1 < 0) { const char *e = getenv("DOA3_COMB_STAGE1_ONLY"); s_s1 = (e && *e == '1'); }
         use_comb = !s_off && (!s_s1 || (g_pg.tex[1].enabled && ((g_pg.shader_prog >> 5) & 0x1Fu) != 0u));
     }
-    {   /* DOA3 DIAG: every distinct combiner configuration seen on this path. */
-        static uint32_t s_seen[64][4]; static int s_n;
-        uint32_t key[4] = { NVREG(0x0AC0) ^ (NVREG(0x0AC4) * 3u) ^ (NVREG(0x0AC8) * 7u), NVREG(0x0260) ^ (NVREG(0x0264) * 3u),
-                            NVREG(0x0288), NVREG(0x028C) ^ (NVREG(0x1E60) << 20) ^ (g_pg.shader_prog << 8) ^ (g_pg.tex[1].enabled << 31) };
-        int q, found = 0;
-        for (q = 0; q < s_n; q++) if (!memcmp(s_seen[q], key, sizeof key)) { found = 1; break; }
-        if (!found && s_n < 64) {
-            memcpy(s_seen[s_n++], key, sizeof key);
-            fprintf(stderr, "[COMB] #%d ctl %X cICW %08X %08X %08X aICW %08X %08X %08X cOCW %X %X %X aOCW %X %X %X final %08X %08X prog %X tex1 %c gen %X matEn %X spec %X lit %d c0 %08X%s\n",
-                    s_n, NVREG(0x1E60), NVREG(0x0AC0), NVREG(0x0AC4), NVREG(0x0AC8), NVREG(0x0260), NVREG(0x0264), NVREG(0x0268),
-                    NVREG(0x1E40), NVREG(0x1E44), NVREG(0x1E48), NVREG(0x0AA0), NVREG(0x0AA4), NVREG(0x0AA8),
-                    NVREG(0x0288), NVREG(0x028C), g_pg.shader_prog, g_pg.tex[1].enabled ? 'E' : '-', NVREG(0x03D0), NVREG(0x0424),
-                    NVREG(0x03B8), lit, NVREG(0x0A60), use_comb ? " [combiner path]" : "");
-        }
-    }
+    
     if (use_comb) {
         NV2ACombinerState cs;
         int st;
@@ -3215,9 +3238,18 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     {
         int clipped = nv_apply_window_clip(0);
         dev->lpVtbl->BeginScene(dev);
-        d3d8_DrawNv2aFF(s_gv, nv, s_gi, ni,
-                        (prim == D3DPT_TRIANGLESTRIP) ? 5 /* D3D11 TRIANGLESTRIP */ : 4 /* TRIANGLELIST */,
-                        &cb);
+        int topology=(prim == D3DPT_TRIANGLESTRIP) ? 5 : 4;
+        /* Admit GPU buffers only on a verified second use. One-off animated
+         * geometry keeps the existing upload rings, avoiding CreateBuffer
+         * churn. Exact source matches remain mandatory for every reuse. */
+        if(geometry_hit && !geometry->mesh)
+            geometry->mesh=d3d8_Nv2aFF_MeshCreate(draw_verts,nv,draw_indices,ni);
+        if(geometry_hit && geometry->mesh && d3d8_DrawNv2aFFMesh(geometry->mesh,topology,&cb)>=0)
+            ++g_geometry_resident_draws;
+        else {
+            if(geometry && geometry->mesh){d3d8_Nv2aFF_MeshDestroy(geometry->mesh);geometry->mesh=NULL;}
+            d3d8_DrawNv2aFF(draw_verts,nv,draw_indices,ni,topology,&cb);
+        }
         if (clipped) { extern void d3d8_ResetScissorRect(void); d3d8_ResetScissorRect(); }
     }
     dev->lpVtbl->SetRenderState(dev, D3DRS_SPECULARENABLE, FALSE);
@@ -3229,8 +3261,8 @@ static int nv_gpu_ff_submit(IDirect3DDevice8 *dev, const NvBatchCtx *ctx, int pr
     }
     g_gpuff_stat[0]++;
     g_gpuff_stat[2] += nv;
-    g_pg.stats.draw_calls++;
-    g_pg.stats.vertices_submitted += ni;
+    g_pg_host.stats.draw_calls++;
+    g_pg_host.stats.vertices_submitted += ni;
     return 1;
 }
 
@@ -3366,40 +3398,7 @@ static void submit_array_draw(void)
                 nv_build_array_vertex(g_pg.idx[i], &out[i], &ctx);
         }
 
-        {   /* Post-movie the title screen submits ~500 of these per frame and the
-             * window stays black. pos0 alone cannot separate a degenerate batch
-             * (every vertex on one point) from a shading problem, so report the
-             * screen bounding box, the colour range and the bound texture. */
-            extern volatile int g_doa3_post_movie;
-            static int s_n = 0, s_pm = 0;
-            static DWORD s_next = 0;
-            static int s_burst = 0;
-            int want = (s_n < 8);
-            /* Post-movie: a burst of draws every couple of seconds rather than the
-             * first 20 in a row, so the sample spans different batches. */
-            if (!want && g_doa3_post_movie && s_pm < 80) {
-                DWORD now = GetTickCount();
-                if (now >= s_next) { s_next = now + 2000; s_burst = 0; }
-                if (s_burst < 4) { s_burst++; s_pm++; want = 1; }
-            }
-            if (want) {
-                float x0 = out[0].x, x1 = out[0].x, y0 = out[0].y, y1 = out[0].y;
-                uint32_t cmin = out[0].color, cmax = out[0].color, k;
-                for (k = 1; k < out_n; k++) {
-                    if (out[k].x < x0) x0 = out[k].x;
-                    if (out[k].x > x1) x1 = out[k].x;
-                    if (out[k].y < y0) y0 = out[k].y;
-                    if (out[k].y > y1) y1 = out[k].y;
-                    if (out[k].color < cmin) cmin = out[k].color;
-                    if (out[k].color > cmax) cmax = out[k].color;
-                }
-                if (s_n < 8) s_n++;
-                { extern int g_vp_used, g_vpn;
-                  extern float g_vp_in0[4], g_vp_out0[4], g_vp_d0[4], g_vp_t0[4], g_vpbb[8];
-                { extern float g_fix_in0[4];
-                   } }
-                 }
-        }
+        
     }
 
     {   /* A non-finite transform output cannot be rasterised into anything
@@ -3432,14 +3431,7 @@ static void submit_array_draw(void)
         OutputVertex *cl = nv_scratch_verts(1, ntri * 9);
         if (!cl) { g_pg.idx_count = 0; g_pg.idx_dropped = 0; return; }
         uint32_t cn = nv_clip_batch(out, out_n, prim, cl);
-        {   /* DOA3 DIAG: clip statistics, one line every ~2 s. */
-            static DWORD s_next = 0; static uint32_t s_b = 0, s_ti = 0, s_to = 0, s_empty = 0;
-            s_b++; s_ti += ntri; s_to += cn / 3; if (cn < 3) s_empty++;
-            if (GetTickCount() >= s_next) {
-                s_next = GetTickCount() + 2000;
-                s_b = s_ti = s_to = s_empty = 0;
-            }
-        }
+        
         if (!getenv("DOA3_NOCLIP")) {
             if (cn < 3) { g_doa3_drop[1]++; g_pg.idx_count = 0; return; }
             out = cl; out_n = cn; prim = D3DPT_TRIANGLELIST; prim_count = cn / 3;
@@ -3476,9 +3468,9 @@ static void submit_array_draw(void)
         if (clipped) { extern void d3d8_ResetScissorRect(void); d3d8_ResetScissorRect(); }
         if (got == 0) dev->lpVtbl->SetVertexShader(dev, prev_vs);
     }
-    g_pg.stats.draw_calls++;
+    g_pg_host.stats.draw_calls++;
     g_doa3_drop[2]++;
-    g_pg.stats.vertices_submitted += out_n;
+    g_pg_host.stats.vertices_submitted += out_n;
     g_pg.idx_count = 0;
     g_pg.idx_dropped = 0;
 }
@@ -3527,6 +3519,22 @@ static int nv_is_aa_resolve(void)
 static void submit_draw(void)
 {
     nv_sync_render_target();
+    if(skip_replay_preparation){
+        /* END still consumes the batch and the caller ends in_draw. Command
+         * registers, input payload, target routing and GPU completion handling
+         * remain live. No vertex fetch/program, clipping, packing, texture
+         * binding, material setup or host draw is needed for this hidden frame.
+         * Do NOT synthesize derived state from a recorded reference endpoint.
+         * The final normally rendered frame must independently reproduce it. */
+        if(g_pg.idx_count || g_pg.inline_count){
+            ++skipped_prep_batches;
+            skipped_prep_indices+=g_pg.idx_count;
+            skipped_prep_inline_words+=g_pg.inline_count;
+        }
+        g_pg.idx_count=0;
+        g_pg.idx_dropped=0;
+        return;
+    }
     if (nv_is_aa_resolve()) {
         g_pg.idx_count = 0;
         g_pg.inline_count = 0;
@@ -3658,10 +3666,7 @@ static void submit_draw(void)
     }
     g_dbail[4]++;
 
-    {   /* DOA3 DIAG: per-draw-mode tally (count, last vert count, stride). */
-            int dm = g_pg.draw_mode & 15;
-        g_dstat[dm][0]++; g_dstat[dm][1] = num_verts; g_dstat[dm][2] = stride;
-    }
+    
 
     const uint32_t *src = g_pg.inline_data;
 
@@ -3671,40 +3676,7 @@ static void submit_draw(void)
     }
 
 
-    {   /* DOA3 DIAG: census of post-FMV draws -- what is actually being
-         * submitted, and why none of it reaches the screen. */
-        extern uint32_t g_census[12];
-        if (g_pg.stats.draw_calls > 150000) {
-            uint32_t nv = num_verts;
-            int all_zero_col = 1, any_alpha = 0;
-            float mnx = 1e9f, mxx = -1e9f, mny = 1e9f, mxy = -1e9f;
-            for (uint32_t i = 0; i < nv && i < 64; i++) {
-                uint32_t b = i * stride;
-                float x = u2f(src[b + 0]), y = u2f(src[b + 1]);
-                if (x < mnx) mnx = x;
-                if (x > mxx) mxx = x;
-                if (y < mny) mny = y;
-                if (y > mxy) mxy = y;
-                if (lay_col >= 0) {
-                    uint32_t c = src[b + lay_col];
-                    if (c) all_zero_col = 0;
-                    if (c >> 24) any_alpha = 1;
-                }
-            }
-            g_census[0]++;
-            if (all_zero_col) g_census[1]++;
-            if (any_alpha) g_census[2]++;
-            if (g_pg.tex[0].offset) g_census[3]++;
-            if (mnx >= 0.0f && mxx <= 720.0f && mny >= 0.0f && mxy <= 512.0f)
-                g_census[4]++;      /* plausibly on-screen */
-            else
-                g_census[5]++;      /* off-screen / not screen space */
-            if (g_pg.blend_enable) g_census[6]++;
-            if (g_pg.alpha_test) g_census[7]++;
-            if ((g_pg.xform_mode & 3) == 2) g_census[8]++;
-            if (mxx - mnx > 8.0f && mxy - mny > 8.0f) g_census[9]++;
-        }
-    }
+    
 
     int actual_prim_type = g_pg.d3d_prim_type;
     uint32_t out_vert_count = num_verts;
@@ -3838,7 +3810,7 @@ static void submit_draw(void)
     }
 
     /* Log first few draws' vertex positions (once) */
-    if (g_pg.stats.draw_calls < 3 && num_verts >= 3) {
+    if (g_pg_host.stats.draw_calls < 3 && num_verts >= 3) {
         uint32_t show = num_verts < 8 ? num_verts : 8;
         for (uint32_t i = 0; i < show; i++) {
             uint32_t b = i * stride;
@@ -3876,18 +3848,7 @@ static void submit_draw(void)
     /* Begin scene if needed */
     dev->lpVtbl->BeginScene(dev);
 
-    {   /* DOA3 DIAG: the D3D11 state the draw actually lands in.
-         * movie_present.c binds its own RTV and viewport for the intro
-         * movie and never restores the D3D8 layer's, so a post-movie
-         * draw can be perfectly valid and still rasterise nowhere. */
-        extern volatile int g_doa3_post_movie;
-        extern void d3d8_DebugDumpTargetState(void);
-        static int s_n = 0;
-        (void)g_doa3_post_movie;
-        /* Sampled unconditionally: the same wiring question applies to the
-         * draws issued while the movie is still playing. */
-        if (s_n < 3 || (g_doa3_post_movie && s_n < 6)) { s_n++; d3d8_DebugDumpTargetState(); }
-    }
+    
     /* Draw.
      *
      * OutputVertex is PRE-TRANSFORMED (XYZRHW screen space, diffuse, one
@@ -3948,8 +3909,8 @@ static void submit_draw(void)
                 dev->lpVtbl->DrawPrimitiveUP(dev, D3DPT_TRIANGLELIST, m / 3, q, sizeof(OutputVertex));
                 if (clipped) { extern void d3d8_ResetScissorRect(void); d3d8_ResetScissorRect(); }
                 if (got == 0) dev->lpVtbl->SetVertexShader(dev, prev_vs);
-                g_pg.stats.draw_calls++;
-                g_pg.stats.vertices_submitted += num_verts;
+                g_pg_host.stats.draw_calls++;
+                g_pg_host.stats.vertices_submitted += num_verts;
                 return;
             }
         }
@@ -3970,33 +3931,10 @@ static void submit_draw(void)
             dev->lpVtbl->SetVertexShader(dev, prev_vs);
     }
 
-    g_pg.stats.draw_calls++;
-    g_pg.stats.vertices_submitted += num_verts;
+    g_pg_host.stats.draw_calls++;
+    g_pg_host.stats.vertices_submitted += num_verts;
 
-    {   /* DOA3 DIAG: what the post-movie screen actually submits --
-         * which texture, where on screen, and with what colour. */
-        extern volatile int g_doa3_post_movie;
-        static int s_n = 0;
-        if (g_doa3_post_movie && s_n < 24) {
-            float mnx = 1e9f, mxx = -1e9f, mny = 1e9f, mxy = -1e9f;
-            uint32_t i;
-            s_n++;
-            for (i = 0; i < out_vert_count; i++) {
-                if (out[i].x < mnx) mnx = out[i].x;
-                if (out[i].x > mxx) mxx = out[i].x;
-                if (out[i].y < mny) mny = out[i].y;
-                if (out[i].y > mxy) mxy = out[i].y;
-            }
-            {   /* Is the source surface the fade samples actually non-black? */
-                extern ptrdiff_t g_xbox_mem_offset;
-                const uint32_t *src32 =
-                    (const uint32_t *)((uintptr_t)g_pg.tex[0].offset + g_xbox_mem_offset);
-                unsigned nz = 0, k;
-                for (k = 0; k < 4096; k++)
-                    if (src32[k * 64] & 0x00FFFFFFu) nz++;
-            }
-        }
-    }
+    
     if (doa3_auto_capture_enabled()) {
         /* DOA3 DIAG: dump presented frames after the movie hand-off, timed
          * relative to it (g_doa3_post_movie is set when the movie teardown
@@ -4009,24 +3947,24 @@ static void submit_draw(void)
         static const unsigned offs[4] = { 200u, 2000u, 8000u, 20000u };
         /* DOA3: early diagnostic captures -- runs reach ~3k draws, so the
          * 5000/60000 marks below and the post-movie offsets never fire. */
-        if (g_pg.stats.draw_calls == 5u || g_pg.stats.draw_calls == 15u ||
-            g_pg.stats.draw_calls == 30u ||
-            g_pg.stats.draw_calls == 400u || g_pg.stats.draw_calls == 1200u ||
-            g_pg.stats.draw_calls == 2400u ||
-            g_pg.stats.draw_calls == 5000u || g_pg.stats.draw_calls == 60000u) {
+        if (g_pg_host.stats.draw_calls == 5u || g_pg_host.stats.draw_calls == 15u ||
+            g_pg_host.stats.draw_calls == 30u ||
+            g_pg_host.stats.draw_calls == 400u || g_pg_host.stats.draw_calls == 1200u ||
+            g_pg_host.stats.draw_calls == 2400u ||
+            g_pg_host.stats.draw_calls == 5000u || g_pg_host.stats.draw_calls == 60000u) {
             char ep[64];
             extern unsigned g_doa3_frames_presented, g_doa3_frame_at_draw30, g_doa3_frame_at_draw400;
             /* stored +1 so that 0 means "not yet" */
-            if (g_pg.stats.draw_calls == 30u)  g_doa3_frame_at_draw30  = g_doa3_frames_presented + 1;
-            if (g_pg.stats.draw_calls == 400u) g_doa3_frame_at_draw400 = g_doa3_frames_presented + 1;
-            sprintf(ep, "frame_at%u.bmp", g_pg.stats.draw_calls);
+            if (g_pg_host.stats.draw_calls == 30u)  g_doa3_frame_at_draw30  = g_doa3_frames_presented + 1;
+            if (g_pg_host.stats.draw_calls == 400u) g_doa3_frame_at_draw400 = g_doa3_frames_presented + 1;
+            sprintf(ep, "frame_at%u.bmp", g_pg_host.stats.draw_calls);
             doa3_capture_backbuffer(ep);
             fprintf(stderr, "[CAPTURE] draw %u = presented frame %u\n",
-                    g_pg.stats.draw_calls, g_doa3_frames_presented);
+                    g_pg_host.stats.draw_calls, g_doa3_frames_presented);
         }
         if (g_doa3_post_movie) {
-            if (!s_base) s_base = g_pg.stats.draw_calls;
-            if (s_shot < 4 && g_pg.stats.draw_calls == s_base + offs[s_shot]) {
+            if (!s_base) s_base = g_pg_host.stats.draw_calls;
+            if (s_shot < 4 && g_pg_host.stats.draw_calls == s_base + offs[s_shot]) {
                 char path[64];
                 sprintf(path, "frame_post%u.bmp", offs[s_shot]);
                 s_shot++;
@@ -4035,14 +3973,14 @@ static void submit_draw(void)
         }
     }
 
-    if (g_pg.stats.draw_calls <= 5 || (g_pg.stats.draw_calls % 1000) == 0) {
+    if (g_pg_host.stats.draw_calls <= 5 || (g_pg_host.stats.draw_calls % 1000) == 0) {
     }
 }
 
 /* Presented-frame counter (the 3.1 flip path counts it) and the frames on
  * which draws 30 / 400 were captured, for frame-numbered captures. */
 unsigned g_doa3_frames_presented, g_doa3_frame_at_draw30, g_doa3_frame_at_draw400;
-unsigned pgraph_draw_count(void) { return g_pg.stats.draw_calls; }
+unsigned pgraph_draw_count(void) { return g_pg_host.stats.draw_calls; }
 
 /* ══════════════════════════════════════════════════════════════════════
  * Method Handler
@@ -4202,6 +4140,51 @@ void pgraph_mtrace_flush_run(void)
     }
     s_mt_last = 0xFFFFFFFFu;
 }
+static int force_scalar_data;
+int pgraph_d3d11_force_scalar_data(int force)
+{
+    int previous=force_scalar_data;
+    force_scalar_data=force!=0;
+    return previous;
+}
+uint64_t pgraph_d3d11_bulk_words(void) { return g_pg_host.bulk_words; }
+
+int pgraph_d3d11_data_packet(int subchannel, uint32_t method,
+                           const uint32_t *words, uint32_t count)
+{
+    (void)subchannel; /* Same 3D-class routing as the scalar handler. */
+    if(force_scalar_data || g_doa3_mtrace || !g_pg_host.initialized ||
+       !words || !count || count>0x7FF ||
+       (method!=0x1818 && method!=0x1800 && method!=0x1808))return 0;
+    /* These three methods have no MF_PRE/MF_POST behavior and never submit
+     * a draw. Intermediate register-shadow writes are unobservable until the
+     * next method. Preserve final shadow, stats and even discarded payloads. */
+    g_nvreg[method>>2]=words[count-1];
+    g_pg_host.stats.methods_handled+=count;
+    g_pg_host.bulk_words+=count;
+    if(!g_pg.in_draw)return 1;
+    if(method==0x1818) {
+        uint32_t capacity=MAX_INLINE_VERTS*INLINE_VERT_DWORDS;
+        uint32_t room=g_pg.inline_count<capacity ? capacity-g_pg.inline_count:0;
+        uint32_t n=count<room ? count:room;
+        if(n)memcpy(g_pg.inline_data+g_pg.inline_count,words,n*sizeof(*words));
+        g_pg.inline_count+=n;
+    } else {
+        uint32_t total=method==0x1800 ? count*2:count;
+        uint32_t room=g_pg.idx_count<MAX_IDX ? MAX_IDX-g_pg.idx_count:0;
+        uint32_t n=total<room ? total:room;
+        uint32_t *out=g_pg.idx+g_pg.idx_count;
+        if(method==0x1808) {
+            if(n)memcpy(out,words,n*sizeof(*words));
+        } else {
+            for(uint32_t i=0;i<n;i++)out[i]=(words[i/2]>>((i&1)*16))&0xFFFFu;
+        }
+        g_pg.idx_count+=n;
+        g_pg.idx_dropped+=total-n;
+    }
+    return 1;
+}
+
 int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
 {
     const NvMethodEntry *me;
@@ -4223,10 +4206,10 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
         /* Outside the table (the push-buffer walker masks methods to 0x1FFC,
          * so this never happens): no handler matched such a method before
          * either, so it went straight to the switch default. */
-        if (!g_pg.initialized) return 0;
-        g_pg.stats.methods_handled++;
+        if (!g_pg_host.initialized) return 0;
+        g_pg_host.stats.methods_handled++;
         if (nv_method_silent(method)) return 1;
-        g_pg.stats.methods_ignored++;
+        g_pg_host.stats.methods_ignored++;
         return 0;
     }
     g_nvreg[method >> 2] = param;     /* raw shadow of every 3D-class register */
@@ -4271,17 +4254,12 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
             return 1;
         }
     }
-    if (!g_pg.initialized)
+    if (!g_pg_host.initialized)
         return 0;
 
-    g_pg.stats.methods_handled++;
+    g_pg_host.stats.methods_handled++;
 
-    {   /* DOA3 DIAG: exact per-method histogram + transform mode. */
-        extern uint32_t g_mhist[0x800];
-        extern uint32_t g_xmode, g_xmode_n[4];
-        g_mhist[method >> 2]++;
-        if (f & MF_XMODE) { g_xmode = param; g_xmode_n[param & 3]++; }
-    }
+    
 
     if (f & MF_POST) {
         /* Range methods: the pushbuffer streams these as runs, so they cannot be
@@ -4433,7 +4411,7 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
                       }
             }
         }
-        g_pg.stats.clears++;
+        g_pg_host.stats.clears++;
         return 1;
     }
 
@@ -4710,15 +4688,7 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
         int stage = (method - NV097_SET_TEXTURE_CONTROL0) / 0x40;
         g_pg.tex[stage].control0 = param;
         g_pg.tex[stage].enabled = (param >> 30) & 1;
-        {   extern volatile int g_doa3_post_movie;
-            static DWORD s_nx = 0; static uint32_t s_w[4], s_en[4], s_last[4];
-            s_w[stage & 3]++; if ((param >> 30) & 1) s_en[stage & 3]++;
-            s_last[stage & 3] = param;
-            if (g_doa3_post_movie && GetTickCount() >= s_nx) {
-                s_nx = GetTickCount() + 2000;
-                 memset(s_w, 0, sizeof s_w); memset(s_en, 0, sizeof s_en);
-            }
-        }
+        
         return 1;
     }
 
@@ -4761,7 +4731,7 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
     default:
         if (f & MF_SILENT)
             return 1;  /* Silently handled (ignored but acknowledged) */
-        g_pg.stats.methods_ignored++;
+        g_pg_host.stats.methods_ignored++;
         return 0;  /* Truly unhandled */
     }
 }
@@ -4786,8 +4756,8 @@ void pgraph_d3d11_flush(void)
         submit_draw();
         g_pg.in_draw = 0;
     }
-    g_pg.stats.frames++;
-    g_pg.frame++;
+    g_pg_host.stats.frames++;
+    g_pg_host.frame++;
 }
 
 void pgraph_d3d11_set_chyron_scroll(uint32_t pixels)
@@ -4797,5 +4767,5 @@ void pgraph_d3d11_set_chyron_scroll(uint32_t pixels)
 
 void pgraph_d3d11_get_stats(PgraphD3D11Stats *out)
 {
-    if (out) *out = g_pg.stats;
+    if (out) *out = g_pg_host.stats;
 }

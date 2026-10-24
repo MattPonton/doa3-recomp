@@ -1675,8 +1675,86 @@ D6300 still refreshes mapped input through D5110. Closing input is consumed,
 so Back cannot also leave Mode Select. Escape settings retain input priority.
 
 The standalone tests/online_menu target covers navigation, both confirm/back
-bits, closing-input isolation, queued mouse actions, settings capture, native
+bits, closing-input isolation, queued frontend actions, settings capture, native
 transitions and frame-counter wraparound. Live checks exercise left/right
 carousel wrapping, Host and Join, and returning to the selected Online slot.
 Test-only keyboard latching and post-UI screenshot capture are removed before
 the final build; no user controller mappings are changed.
+
+### Online menu visual alignment (2026-10-16, experimental branch)
+
+Replaced the centered popup with a full menu using DOA3-style monochrome
+scanlines, an angled black heading band, italic serif choices, silver selection
+bars and the information strip. The carousel globe has charcoal edging, a
+muted silver orbit and clearance above its label. The footer follows the
+native left-aligned italic treatment and selected sprite fade. Only the custom
+Online artwork changes; native main-menu sprites and pixel offsets are intact.
+
+Text and shapes share the native canvas transform, including horizontal text
+stretching. All five aspect settings preserve the existing presentation rules;
+ultrawide controls stay centered within 16:9 while the background fills the game
+area. Fonts use Windows Times/Arial variants with ImGui fallback; they are an
+approximation of the original bitmap lettering. Host/Join remain previews,
+with no networking changes. Existing Online navigation tests pass, and actual
+view-source previews were rendered with D3D11 WARP at all five aspect settings.
+
+Custom Online artwork now rasterizes into a 720x480 menu layer before linear
+upscaling, matching the guest menu canvas instead of drawing sharp vectors and
+text at the output resolution. Ultrawide backgrounds add native-resolution
+columns around the same centered 720-pixel HUD. This includes the carousel
+icon, its label, information text and Host/Join preview artwork. Transparent
+carousel fades use premultiplied-alpha compositing to avoid dark fringes or
+double attenuation. The render target is reused until the aspect changes and
+released at UI shutdown; allocation failure falls back to direct drawing.
+Escape settings stay at output resolution, and native game assets/offsets are
+unchanged.
+
+### Online menu native lettering, controls and audio
+
+The carousel label now assembles ONLINE from the resident 3.1 menu atlas
+(texture slot 112, loadfile.afs entry 35). It retains the original 24-pixel label
+height, serif strokes and charcoal outline instead of using a Windows font.
+Each glyph's connected ink and nearest outline are isolated before assembly,
+excluding neighboring italic serifs that previously left stray pixels between
+letters. Native-size and enlarged previews contain six clean ink components.
+The assembled lettering uses a 235/255 silver tint to bring its average ink
+brightness closer to the native labels. A separate soft black shadow sits one
+native pixel right and two down, scaling and fading with the captured sprite;
+it does not restore any of the removed neighboring-letter fragments.
+The six letters are composed once from the user's swizzled 256x256 P8 texture
+and palette; no game artwork is shipped in the repository. Bounds and format
+are checked before reading guest memory. The immutable host texture follows
+the captured carousel placement, scaling and fade and is released at shutdown.
+
+Online pages accept mapped keyboard/controller navigation and Escape Back.
+There are no mouse hit targets, hover highlights or mouse capture in this
+window. Only the top heading says ONLINE; the duplicate section/icon labels
+were removed. Host and Join remain non-networking previews.
+
+Native update hook D6360 consumes one sound event per actual selection/page
+change and calls A5610 with ESI=0, as the original menu does: 0x23 for scrolling
+(D6428), 0x24 for confirmation (D653B), 0x29 for returning (D6A55). Guest integer
+and x87 state are preserved around the call. Idle/blocked input emits no cue,
+confirming Back uses the back sound, and native carousel cues are not doubled.
+Navigation tests cover these events and one-time consumption. D3D11 previews
+cover all five aspect settings, transparent carousel fades and ignored mouse
+clicks with the production view code.
+
+### Opt-in rollback guest model rendering experiment
+
+`17D900`, `17DF00` and `52046` now have 3.1-only manual wrappers in
+`rollback_guest_render.inc`. Normal execution delegates to the original
+generated bodies. A bounded intermediate replay experiment can bypass their
+model command construction and rendered vertex deformation; the final replay
+frame always delegates normally. Return-slot sizes are 4/8/4 bytes. The
+override list and stack-probe exclusions agree, and generation rejects changed
+guest bodies or missing/duplicate wrappers. See `ROLLBACK.md` for the precise
+scope, unchanged exact checkpoint checks and pending live verification. This
+is not enabled for normal gameplay or network sessions.
+
+The first live whole-model skip failed verification. The current wrappers
+for `17D900` and `17DF00` therefore delegate unconditionally: material setup,
+command-buffer bookkeeping and deferred submissions must remain intact.
+Only `52046` remains eligible for the intermediate-frame skip experiment.
+Generation and driver tests enforce that restriction; no checkpoint
+comparison has been relaxed to accommodate the earlier mismatch.

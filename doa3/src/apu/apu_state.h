@@ -470,6 +470,10 @@ struct MCPXAPUState {
     QemuCond idle_cond;
     bool pause_requested;
     bool is_idle;
+    /* Host-only ownership bookkeeping, protected by lock. A monitor wait
+     * can release lock without finishing the current chip frame. */
+    bool rollback_frame_active;
+    bool rollback_det_pending;
 
     MemoryRegion *ram;
     uint8_t *ram_ptr;

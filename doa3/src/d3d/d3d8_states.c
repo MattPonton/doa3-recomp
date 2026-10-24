@@ -11,6 +11,7 @@
  */
 
 #include "d3d8_internal.h"
+#include "d3d8_pipeline_checkpoint.h"
 #include "d3d8_debug_views.h"
 #include "d3d8_polygon_offset.h"
 #include <math.h>
@@ -477,4 +478,19 @@ void d3d8_states_apply(void)
             d3d8_states_apply_sampler(s);
     }
     d3d8_debug_views_apply();
+}
+
+void d3d8_states_capture_private(D3D8RasterImage *s)
+{
+    s->polygon_bias=g_polygon_bias;s->polygon_slope=g_polygon_slope;
+    memcpy(s->blend_factor,g_blend_factor,sizeof(g_blend_factor));
+}
+void d3d8_states_restore_private(const D3D8RasterImage *s)
+{
+    unsigned i;
+    g_polygon_bias=s->polygon_bias;g_polygon_slope=s->polygon_slope;
+    memcpy(g_blend_factor,s->blend_factor,sizeof(g_blend_factor));
+    /* Immutable state objects remain cached, but ClearState removed bindings.
+     * Sampler fast paths must not mistake the old cache keys for live bindings. */
+    for(i=0;i<4;i++) { g_sampler_key[i]=~(uint64_t)0;g_sampler_states[i]=NULL; }
 }

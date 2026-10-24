@@ -21,8 +21,16 @@ void online_menu_reset(void);
 int online_menu_tick(unsigned frame, int ready, unsigned buttons, int settings_open);
 int online_menu_blocks_native(void);
 OnlineMenuState online_menu_state(unsigned frame);
-/* Mouse/Escape actions are consumed at the next native update. */
+/* Native carousel open / keyboard Back are consumed at the next update. */
 void online_menu_queue(int action);
+/* Native 3.1 menu cue IDs; consumed once on the guest game thread. */
+enum OnlineMenuSound { ONLINE_MENU_SILENT=0, ONLINE_MENU_SCROLL_SOUND=0x23,
+    ONLINE_MENU_CONFIRM_SOUND=0x24, ONLINE_MENU_BACK_SOUND=0x29 };
+int online_menu_take_sound(void);
+enum { ONLINE_MENU_LABEL_WIDTH=78, ONLINE_MENU_LABEL_HEIGHT=24 };
+/* Compose from the user's resident 256x256 P8 carousel atlas, not bundled art. */
+void online_menu_build_label(const unsigned char *indices, const unsigned char *palette);
+const unsigned *online_menu_label_pixels(void); /* BGRA8, or null until loaded. */
 #ifdef __cplusplus
 }
 #endif

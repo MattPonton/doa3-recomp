@@ -53,6 +53,12 @@ def main():
         if L.VERSION == "3.1" and os.path.basename(f) == "recomp_0003.c":
             from tools.recomp.online_carousel import patch
             s2 = patch(s2)
+        if L.VERSION == "3.1" and re.search(r"^void sub_000A6450(?:_gen)?\(void\)",s2,re.M):
+            from tools.recomp.rollback_boundaries import patch as patch_boundaries
+            s2 = patch_boundaries(s2)
+        if L.VERSION == "3.1" and re.search(r"^void sub_00199DB0(?:_gen)?\(void\)",s2,re.M):
+            from tools.recomp.rollback_boundaries import patch_audio_wait
+            s2 = patch_audio_wait(s2)
         if s2 != s:
             open(f, "w").write(s2)
     missing = want - done

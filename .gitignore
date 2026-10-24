@@ -1,4 +1,6 @@
 *.iso
+__pycache__/
+*.py[cod]
 *.xiso.iso
 /burnout3
 /cxbx

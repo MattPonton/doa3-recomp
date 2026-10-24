@@ -735,16 +735,13 @@ void d3d8_shaders_prepare_draw(DWORD fvf)
     const D3DMATRIX *world, *view, *proj;
     const DWORD *rs;
     HRESULT hr;
-    UINT tex_count;
 
     if (!ctx || !g_vs || !g_ps) return;
 
     rs = d3d8_GetRenderStates();
-    tex_count = (fvf & D3DFVF_TEXCOUNT_MASK) >> D3DFVF_TEXCOUNT_SHIFT;
 
     /* Bind shaders */
     ID3D11DeviceContext_VSSetShader(ctx, g_vs, NULL, 0);
-    ID3D11DeviceContext_PSSetShader(ctx, g_ps, NULL, 0);
 
     /* Bind input layout */
     layout = get_or_create_layout(fvf);
@@ -886,6 +883,25 @@ void d3d8_shaders_prepare_draw(DWORD fvf)
         ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource *)g_vs_light_cb, 0);
     }
 
+    {
+        ID3D11Buffer *vs_cbs[2] = { g_vs_cb, g_vs_light_cb };
+        ID3D11DeviceContext_VSSetConstantBuffers(ctx, 0, 2, vs_cbs);
+    }
+    d3d8_shaders_prepare_pixel();
+}
+
+/* NV2A fixed-function draws supply their own VS, layout and lighting buffer.
+ * Share the full pixel setup without uploading unused generic VS constants.
+ * Always rebind: checkpoint restore and other draw paths can change bindings. */
+void d3d8_shaders_prepare_pixel(void)
+{
+    ID3D11DeviceContext *ctx = d3d8_GetD3D11Context();
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    const DWORD *rs = d3d8_GetRenderStates();
+    HRESULT hr;
+    if (!ctx || !g_ps) return;
+    ID3D11DeviceContext_PSSetShader(ctx, g_ps, NULL, 0);
+
     /* ---- PS Constant Buffer ---- */
     hr = ID3D11DeviceContext_Map(ctx, (ID3D11Resource *)g_ps_cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
     if (SUCCEEDED(hr)) {
@@ -952,11 +968,6 @@ void d3d8_shaders_prepare_draw(DWORD fvf)
         ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource *)g_ps_cb, 0);
     }
 
-    /* Bind constant buffers */
-    {
-        ID3D11Buffer *vs_cbs[2] = { g_vs_cb, g_vs_light_cb };
-        ID3D11DeviceContext_VSSetConstantBuffers(ctx, 0, 2, vs_cbs);
-    }
     ID3D11DeviceContext_PSSetConstantBuffers(ctx, 0, 1, &g_ps_cb);
 }
 

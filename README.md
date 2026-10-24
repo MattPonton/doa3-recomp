@@ -3,10 +3,15 @@
 Translation of the original Xbox binary of Dead or Alive 3 into native C
 that compiles and runs on Windows as a native x86-64 executable.
 
-**Status:** All game modes are fully playable
+**Branch status: experimental rollback development.** This branch contains the
+Online carousel prototype and opt-in local rollback tests. It does **not**
+provide playable online rollback. Four/eight-frame combat replays have matched
+captured state in earlier tests, but performance work is ongoing. The latest
+vertex-deformation skip still fails command-buffer/RAM verification and remains
+disabled by default. See [rollback status and test results](doa3/ROLLBACK.md).
 
 ## Features
-- New online mode added for single and tag matches
+- Online carousel with Host/Join menu previews (network play is not connected)
 - Capped at 60 FPS
 - Windowed/Borderless and 4:3/16:9 options
 - Internal resolution scaling to 1440p (3x)

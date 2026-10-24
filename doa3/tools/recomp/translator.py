@@ -325,7 +325,9 @@ class FunctionTranslator:
         if needs_ebp:
             reg_decls.append("ebp")
         if reg_decls:
-            lines.append(f"    uint32_t {', '.join(reg_decls)};")
+            # EBP is local in this translator, but its saved prologue value
+            # must still be guest state, never uninitialized host stack data.
+            lines.append("    uint32_t ebp = g_seh_ebp;")
 
         # Add _flags variable if function has conditional instructions
         has_conditionals = any(
@@ -462,7 +464,7 @@ class FunctionTranslator:
                                 if not ln.lstrip().startswith(("/*", "*", "//")))
             if body_refs_ebp:
                 sig_idx = lines.index("{")
-                lines.insert(sig_idx + 1, "    uint32_t ebp;")
+                lines.insert(sig_idx + 1, "    uint32_t ebp = g_seh_ebp;")
                 # fpo functions inherit the caller's frame pointer
                 if frame_type == "fpo_leaf" and not has_prologue:
                     lines.insert(sig_idx + 2,

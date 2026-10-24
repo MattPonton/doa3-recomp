@@ -14,7 +14,7 @@
 
 #include <stdint.h>
 
-/* One packed vertex: 40 bytes. */
+/* One packed vertex: 48 bytes. */
 typedef struct {
     float    pos[4];
     float    nrm[3];
@@ -56,6 +56,17 @@ typedef struct {
 long d3d8_DrawNv2aFF(const Nv2aFFVertex *verts, unsigned nverts,
                      const uint16_t *idx, unsigned nidx, int topology,
                      const Nv2aFFConstants *cb);
+
+/* Immutable derived geometry; caller owns lifetime and exact source checks. */
+typedef struct Nv2aFFMesh Nv2aFFMesh;
+/* Owner-thread bounded replay diagnostic. Normal drawing is the default.
+ * Keeps pipeline bookkeeping, targets/clears/copies and guest processing;
+ * omits draw calls and their transient geometry uploads. Returns old mode. */
+int d3d8_replay_suppress_draws(int suppress);
+uint64_t d3d8_replay_skipped_draws(void);
+Nv2aFFMesh *d3d8_Nv2aFF_MeshCreate(const Nv2aFFVertex *,unsigned,const uint16_t *,unsigned);
+void d3d8_Nv2aFF_MeshDestroy(Nv2aFFMesh *);
+long d3d8_DrawNv2aFFMesh(Nv2aFFMesh *,int,const Nv2aFFConstants *);
 
 /* d3d8_shaders.c: compile once; bind VS + layout + constants for one draw. */
 long d3d8_Nv2aFF_Init(void);

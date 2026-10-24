@@ -5,23 +5,34 @@
 static unsigned frame;
 static int tick(unsigned buttons) { return online_menu_tick(++frame,1,buttons,0); }
 static int page(void) { return online_menu_state(frame).page; }
+static void sound(int expected) {
+    CHECK(online_menu_take_sound()==expected);
+    CHECK(online_menu_take_sound()==ONLINE_MENU_SILENT);
+}
 int main(void)
 {
     online_menu_reset();
     CHECK(!online_menu_state(frame).visible);
     CHECK(!tick(0));
     CHECK(!tick(0x110)); /* Existing carousel confirmation passes through. */
+    sound(ONLINE_MENU_SILENT); /* Native carousel owns its own cues. */
     CHECK(!tick(8));
     CHECK(!tick(1)); online_menu_queue(ONLINE_MENU_OPEN); CHECK(tick(0)); CHECK(page()==ONLINE_MENU_OPTIONS);
+    sound(ONLINE_MENU_CONFIRM_SOUND);
     CHECK(tick(0)); CHECK(page()==ONLINE_MENU_OPTIONS); /* no double-confirm */
+    sound(ONLINE_MENU_SILENT);
     CHECK(tick(0x10)); CHECK(page()==ONLINE_MENU_HOST);
+    sound(ONLINE_MENU_CONFIRM_SOUND);
     CHECK(tick(0x200)); CHECK(page()==ONLINE_MENU_OPTIONS);
+    sound(ONLINE_MENU_BACK_SOUND);
     CHECK(tick(2)); CHECK(online_menu_state(frame).selection==1);
+    sound(ONLINE_MENU_SCROLL_SOUND);
     CHECK(tick(0x100)); CHECK(page()==ONLINE_MENU_JOIN);
     CHECK(tick(0x20)); CHECK(page()==ONLINE_MENU_OPTIONS);
     CHECK(online_menu_state(frame).selection==1);
     CHECK(tick(2)); CHECK(online_menu_state(frame).selection==2);
     CHECK(tick(0x100)); CHECK(page()==ONLINE_MENU_CAROUSEL);
+    sound(ONLINE_MENU_BACK_SOUND); /* Confirming Back is still a back cue. */
     CHECK(online_menu_blocks_native()); /* closing B must not exit the game menu */
     CHECK(!tick(0)); CHECK(!online_menu_blocks_native());
 
@@ -32,12 +43,14 @@ int main(void)
     online_menu_queue(ONLINE_MENU_BACK); CHECK(tick(0));
     CHECK(page()==ONLINE_MENU_OPTIONS);
     CHECK(online_menu_tick(++frame,1,0x200,1)); /* Escape settings owns input */
+    sound(ONLINE_MENU_SILENT);
     CHECK(page()==ONLINE_MENU_OPTIONS);
     CHECK(tick(0x200)); CHECK(page()==ONLINE_MENU_CAROUSEL);
     CHECK(!tick(8)); CHECK(page()==ONLINE_MENU_CAROUSEL);
     CHECK(!tick(8));
     CHECK(!online_menu_tick(++frame,0,1,0)); /* fade / other native submenu */
     CHECK(!online_menu_state(frame).visible);
+    sound(ONLINE_MENU_SILENT);
     online_menu_queue(ONLINE_MENU_OPEN); CHECK(!tick(0)); /* stale click ignored */
     CHECK(page()==ONLINE_MENU_CAROUSEL);
     online_menu_queue(ONLINE_MENU_OPEN); CHECK(tick(0));

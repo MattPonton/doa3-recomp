@@ -2,6 +2,13 @@
  * Each wrapper calls the lifted body and reports when esp does not end
  * 4 + N bytes above where it started (N from the function's `ret N`). */
 #include "recomp_types.h"
+#include "xbe_layout.h"
+#include "online/rollback_frame.h"
+#ifdef DOA3_XBE_ID_3_1
+#define RB_BOUNDARY(va, before) do { if (0x##va##u == 0x1C650Cu || 0x##va##u == 0x1C64C7u) doa3_rollback_frame_boundary(0x##va##u, before); } while (0)
+#else
+#define RB_BOUNDARY(va, before) ((void)0)
+#endif
 void esp_probe_report(uint32_t va, uint32_t esp_in, uint32_t esp_out, uint32_t expect);
 void doa3_fn_trace(uint32_t va, uint32_t esp_in);   /* DOA3_TRACE_FN, recomp_manual.c */
 extern int g_fn_trace_on;
@@ -10,7 +17,7 @@ extern int g_fn_trace_on;
  * hardware scheduler would preempt a polling loop. */
 void doa3_fn_register(uint32_t va, unsigned *count);   /* call profile, recomp_manual.c */
 #define P(va, n) static unsigned c_##va; void sub_##va##_gen(void); void sub_##va(void) { \
-    uint32_t e0 = g_esp; if (!c_##va++) doa3_fn_register(0x##va##u, &c_##va); sub_##va##_gen(); \
+    uint32_t e0 = g_esp; if (!c_##va++) doa3_fn_register(0x##va##u, &c_##va); RB_BOUNDARY(va, 1); sub_##va##_gen(); RB_BOUNDARY(va, 0); \
     if (g_fib_slice_due) xbox_fiber_timeslice(); \
     if (g_fn_trace_on) doa3_fn_trace(0x##va##u, e0); \
     if (g_esp - e0 != 4u + (n)) esp_probe_report(0x##va##u, e0, g_esp, 4u + (n)); }
@@ -505,7 +512,6 @@ P(00051CF0, 0)
 P(00051E30, 0)
 P(00051F00, 0)
 P(00051FFB, 0)
-P(00052046, 0)
 P(00052386, 0)
 P(000525C0, 0)
 P(00052660, 0)
@@ -2987,9 +2993,7 @@ P(0017D430, 8)
 P(0017D530, 0)
 P(0017D780, 0)
 P(0017D7B0, 0)
-P(0017D900, 0)
 P(0017DD20, 4)
-P(0017DF00, 4)
 P(0017E1D0, 8)
 P(0017E3D0, 8)
 P(0017E3F0, 4)
@@ -4228,7 +4232,6 @@ P(001C1BE4, 0)
 P(001C1C0E, 0)
 P(001C1D0F, 0)
 P(001C5F54, 0)
-P(001C60AB, 0)
 P(001C61F0, 0)
 P(001C627E, 0)
 P(001C6294, 0)
