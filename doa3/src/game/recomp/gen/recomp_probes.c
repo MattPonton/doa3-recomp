@@ -29,6 +29,16 @@ void game_mem_watch_leave(uint32_t va, int depth, unsigned before);
     else if (_wa) { unsigned _wb = MEM8(_wa + 1); int _wd; game_audio_bgm_watch_enter(0x##va##u, &_wd); \
         sub_##va##_gen(); game_audio_bgm_watch_leave(0x##va##u, _wd, _wb); } \
     else sub_##va##_gen(); } while (0)
+/* rollback.14: on hidden replay frames (rollback_native_frame.c), optionally
+ * skip listed functions and profile every wrapped call's fiber CPU time. */
+extern volatile int g_fn_hidden_diag;
+int doa3_fn_hidden_skip(uint32_t va);
+unsigned long long doa3_fn_prof_enter(void);
+void doa3_fn_prof_leave(uint32_t va, unsigned long long t0);
+#define FN_CALL(va, n) do { if (g_fn_hidden_diag) { \
+        if (doa3_fn_hidden_skip(0x##va##u)) { g_esp += 4u + (n); break; } \
+        { unsigned long long _t0 = doa3_fn_prof_enter(); BGM_WATCH_CALL(va); doa3_fn_prof_leave(0x##va##u, _t0); } } \
+    else BGM_WATCH_CALL(va); } while (0)
 void doa3_fn_trace(uint32_t va, uint32_t esp_in);   /* DOA3_TRACE_FN, recomp_manual.c */
 extern int g_fn_trace_on;
 /* Each wrapper is also a scheduling point: give the worker fibers their
@@ -41,13 +51,13 @@ void doa3_fn_register(uint32_t va, unsigned *count);   /* call profile, recomp_m
  * scheduling point, which every build needs. */
 #if defined(DOA3_PROBES)
 #define P(va, n) static unsigned c_##va; void sub_##va##_gen(void); void sub_##va(void) { \
-    uint32_t e0 = g_esp; if (!c_##va++) doa3_fn_register(0x##va##u, &c_##va); RB_BOUNDARY(va, 1); BGM_WATCH_CALL(va); RB_BOUNDARY(va, 0); \
+    uint32_t e0 = g_esp; if (!c_##va++) doa3_fn_register(0x##va##u, &c_##va); RB_BOUNDARY(va, 1); FN_CALL(va, n); RB_BOUNDARY(va, 0); \
     if (g_fib_slice_due) xbox_fiber_timeslice(); \
     if (g_fn_trace_on) doa3_fn_trace(0x##va##u, e0); \
     if (g_esp - e0 != 4u + (n)) esp_probe_report(0x##va##u, e0, g_esp, 4u + (n)); }
 #else
 #define P(va, n) void sub_##va##_gen(void); void sub_##va(void) { \
-    BGM_WATCH_CALL(va); if (g_fib_slice_due) xbox_fiber_timeslice(); }
+    FN_CALL(va, n); if (g_fib_slice_due) xbox_fiber_timeslice(); }
 #endif
 P(00011000, 0)
 P(00011B00, 0)

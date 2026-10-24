@@ -41,6 +41,61 @@ int g_doa3_skip_head;
 uint32_t g_doa3_skip_tasks[8];unsigned g_doa3_skip_task_count;
 static int hidden_now;
 static uint64_t tasks_skipped;
+/* rollback.14: DOA3_ROLLBACK_SKIP_FNS=addr,... -- wrapped functions not
+ * called on hidden replay frames of the logic-only arm (void functions
+ * only; the wrapper pops the return slot and its ret-N arguments).
+ * DOA3_ROLLBACK_FN_PROFILE=1 -- fiber CPU time of every wrapped call on
+ * hidden replay frames, top 40 printed after each replay. */
+volatile int g_fn_hidden_diag;
+static uint32_t skip_fns[32];static unsigned skip_fn_count;static uint64_t skip_fn_calls;
+static int fn_profile=-1,fn_skip_now;
+#define PROF_SLOTS 16384u
+static struct { uint32_t va; unsigned calls; unsigned long long ticks; } prof[PROF_SLOTS];
+static unsigned long long prof_hidden_ticks;
+static void fn_diag_init(void){
+    if(fn_profile>=0)return;
+    const char *e=getenv("DOA3_ROLLBACK_FN_PROFILE");fn_profile=e && *e=='1';
+    e=getenv("DOA3_ROLLBACK_SKIP_FNS");
+    while(e && *e && skip_fn_count<32){
+        char *end;unsigned long v=strtoul(e,&end,16);
+        if(end==e)break;
+        if(v)skip_fns[skip_fn_count++]=(uint32_t)v;
+        e=*end==',' ? end+1:end;
+    }
+    if(skip_fn_count){
+        fprintf(stderr,"[ROLLBACK-LOGIC-ONLY] hidden frames also skip:");
+        for(unsigned i=0;i<skip_fn_count;++i)fprintf(stderr," %06X",skip_fns[i]);
+        fprintf(stderr,"\n");
+    }
+}
+int doa3_fn_hidden_skip(uint32_t va){
+    if(!fn_skip_now)return 0;
+    for(unsigned i=0;i<skip_fn_count;++i)if(skip_fns[i]==va){++skip_fn_calls;return 1;}
+    return 0;
+}
+unsigned long long doa3_fn_prof_enter(void){return fn_profile>0 ? xbox_fiber_cpu_ticks():0;}
+void doa3_fn_prof_leave(uint32_t va,unsigned long long t0){
+    if(fn_profile<=0)return;
+    unsigned long long d=xbox_fiber_cpu_ticks()-t0;
+    unsigned h=(va*2654435761u)>>18;
+    for(unsigned k=0;k<PROF_SLOTS;++k,h=(h+1)&(PROF_SLOTS-1)){
+        if(prof[h].va==va || !prof[h].va){prof[h].va=va;prof[h].calls++;prof[h].ticks+=d;return;}
+    }
+}
+static void prof_report(unsigned hidden_frames){
+    LARGE_INTEGER f;QueryPerformanceFrequency(&f);
+    double ms=1000.0/(double)f.QuadPart;
+    fprintf(stderr,"[ROLLBACK-FN-PROFILE] %u hidden frames, %.2f ms; inclusive fiber CPU time per wrapped function (nested calls counted in their callers too):\n",
+        hidden_frames,(double)prof_hidden_ticks*ms);
+    for(unsigned n=0;n<40;++n){
+        unsigned best=PROF_SLOTS;
+        for(unsigned i=0;i<PROF_SLOTS;++i)if(prof[i].va && prof[i].calls && (best==PROF_SLOTS || prof[i].ticks>prof[best].ticks))best=i;
+        if(best==PROF_SLOTS)break;
+        fprintf(stderr,"[ROLLBACK-FN-PROFILE]   %06X %8.3f ms %7u calls\n",prof[best].va,(double)prof[best].ticks*ms,prof[best].calls);
+        prof[best].calls=0;
+    }
+    memset(prof,0,sizeof(prof));prof_hidden_ticks=0;
+}
 int doa3_native_frame_skip_task(uint32_t routine){
     if(!active || !hidden_now || !skip_guest_render)return 0;
     for(unsigned i=0;i<g_doa3_skip_task_count;++i)if(g_doa3_skip_tasks[i]==routine){++tasks_skipped;return 1;}
@@ -85,6 +140,9 @@ int doa3_native_frame_run(void *context){
       int hidden=frame+1<count && (!g_doa3_skip_head || frame<(unsigned)g_doa3_skip_head);
       skip_guest_render=f->skip_intermediate_guest_render && hidden;
       hidden_now=hidden;
+      fn_diag_init();
+      fn_skip_now=skip_guest_render && skip_fn_count;
+      g_fn_hidden_diag=hidden && (fn_skip_now || fn_profile>0);
       pgraph_d3d11_skip_preparation((f->skip_intermediate_preparation || f->skip_intermediate_guest_render) && hidden);
       /* Intermediate frames may modify texture RAM without binding it. Force
        * exact source validation before the first normally rendered frame. */
@@ -93,6 +151,7 @@ int doa3_native_frame_run(void *context){
       previous_hidden=hidden;
       if(frame && !doa3_input_tape_replay(f->tape,first+frame+1))goto done;
       xbox_det_frame();mcpx_apu_det_frame();
+      LONGLONG frame_started=ticks();
       unsigned previous_flips=flips;int completed=0;
       for(unsigned calls=0;calls<=DOA3_LOOP_MAX_CALLS;++calls){
         Doa3LoopAction action;
@@ -115,12 +174,18 @@ int doa3_native_frame_run(void *context){
            !doa3_input_tape_replay_ready(f->tape) ||
            !doa3_loop_complete(f->loop,action.routine))break;
     }
+      if(hidden)prof_hidden_ticks+=(unsigned long long)(ticks()-frame_started);
+      g_fn_hidden_diag=0;fn_skip_now=0;
       if(!completed)goto done;
     }
     result=1;
 done:
     LONGLONG elapsed=ticks()-started;
-    skip_guest_render=0;hidden_now=0;
+    skip_guest_render=0;hidden_now=0;g_fn_hidden_diag=0;fn_skip_now=0;
+    if(fn_profile>0 && count>1)prof_report(count-1);
+    if(skip_fn_count && f->skip_intermediate_guest_render)
+        fprintf(stderr,"[ROLLBACK-LOGIC-ONLY] listed function calls skipped on hidden frames: %llu\n",(unsigned long long)skip_fn_calls);
+    skip_fn_calls=0;
     if(g_doa3_skip_task_count && f->skip_intermediate_guest_render)
         fprintf(stderr,"[ROLLBACK-LOGIC-ONLY] task steps skipped on hidden frames: %llu\n",(unsigned long long)tasks_skipped);
     if(f->skip_intermediate_guest_render)

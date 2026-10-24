@@ -4688,3 +4688,41 @@ DOA3_WATCH=addr[,addr...] (hex, up to 24 dwords): during fights the
 innermost recompiled function whose call changes a listed dword is logged
 ([MEM-WATCH]) with its callers on that fiber, three times per address;
 changes made outside every wrapped function show in the per-frame check.
+
+## 0.2.6-rollback.14 - keep the logic, cut the drawing: profile first
+
+Matt: DOA3's hit detection uses bone positions -- collision cylinders /
+capsules on shins, thighs, hips, torso, head, upper arms and forearms,
+plus extra hit-frame colliders mostly around hands and feet. Walls and
+boundaries are static per floor tier; a few stages have breakable
+pillars (wall colliders, broken and removed on the first wall hit).
+
+The WATCH run of .13 (fibers: 7 = 0691F0, 19 = 049790, 20 = 0E8030):
+- 049790 computes the skeleton. The fighters' heap ranges (0x027Axxxx..,
+  0x02C4xxxx..) and the tables at 0x4F55BC.., 0x516C9C, 0x568BE8,
+  0x56A4E8, 0x584AF0 are written under 049AE0 -> 049BA0 -> 049D80 ->
+  03B850 -> 03BDD0 / 03C080 / 03E520 / 03EC90 / 0438C0 / 043A00, through
+  the matrix helpers 17C0C0 / 17C4F0 and 03D900 / 043CC0 / 03CF50. The
+  same traversal also draws (03B850's subtree reaches 17D900). So the
+  bone matrices the hit detection uses come from the render task: it
+  cannot be skipped; only its drawing can.
+- 0691F0: 054D60 (from 0694B0) steps 0x5A8A8C, 0xC58E4C and the float at
+  0x259F18 by one a frame; 0559A0 counts 0x5A857C down from 0x3F. HUD
+  animation counters, by the look.
+- 0E8030: 154B90 / 1557D0 / 158E30 / 15C720 / 17EFE0 write 0xA34100,
+  0xA44D50, 0x275070, 0x1BD3124 and 0x1D58084.
+- 0xA53CA4, 0xB5A04C and 0xAD3920 are render-list blocks from 1805E0 /
+  17BEF0 / 180990 (049790's 049EC0 and 0691F0's 180510).
+
+Plan: every task runs on hidden frames; only drawing is left out. Done
+so far: the model / alpha-model command builders (17D900 / 17DF00) and
+deformation (52046), whose skip earlier left only render bookkeeping.
+To choose further cut points:
+- DOA3_ROLLBACK_FN_PROFILE=1: fiber CPU time (time other fibers ran
+  excluded) of every wrapped call on hidden replay frames, top 40 after
+  each replay, both A/B arms.
+- DOA3_ROLLBACK_SKIP_FNS=addr,...: wrapped void functions not called on
+  the logic-only arm's hidden frames (the wrapper pops its return slot
+  and ret-N arguments).
+- LOGIC_ONLY no longer leaves tasks out unless DOA3_ROLLBACK_SKIP_TASKS
+  names them.

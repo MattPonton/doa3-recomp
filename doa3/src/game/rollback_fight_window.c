@@ -31,14 +31,20 @@ int g_doa3_logic_only,g_doa3_logic_only_arm;
 static unsigned logic_results[7];
 static void logic_only_tasks(unsigned t)
 {
+    /* rollback.14: every task runs; DOA3_ROLLBACK_SKIP_TASKS=addr,... (hex)
+     * still lets an experiment leave tasks out on hidden frames. */
     extern uint32_t g_doa3_skip_tasks[8];extern unsigned g_doa3_skip_task_count;
-    static const uint32_t all[4]={0x49790,0x691F0,0xE8030,0x1C60AB};
+    const char *e=getenv("DOA3_ROLLBACK_SKIP_TASKS");
     g_doa3_skip_task_count=0;
-    if(t>=1 && t<=4)g_doa3_skip_tasks[g_doa3_skip_task_count++]=all[t-1];
-    else for(unsigned i=0;i<4;++i)g_doa3_skip_tasks[g_doa3_skip_task_count++]=all[i];
-    fprintf(stderr,"[ROLLBACK-LOGIC-ONLY] trial %u: hidden frames skip model and alpha-model command builders, deformation and task(s)",t);
+    while(e && *e && g_doa3_skip_task_count<8){
+        char *end;unsigned long v=strtoul(e,&end,16);
+        if(end==e)break;
+        if(v)g_doa3_skip_tasks[g_doa3_skip_task_count++]=(uint32_t)v;
+        e=*end==',' ? end+1:end;
+    }
+    fprintf(stderr,"[ROLLBACK-LOGIC-ONLY] trial %u: hidden frames skip the model and alpha-model command builders and deformation; tasks left out:",t);
     for(unsigned i=0;i<g_doa3_skip_task_count;++i)fprintf(stderr," %06X",g_doa3_skip_tasks[i]);
-    fprintf(stderr,"\n");
+    fprintf(stderr,g_doa3_skip_task_count ? "\n":" none\n");
 }
 static ULONGLONG capture_started;
 static uint32_t epoch;
@@ -84,8 +90,7 @@ static void finish(int success){
         if(g_doa3_logic_only && trial<=6)logic_results[trial]=success ? 1:2;
         if((success || g_doa3_logic_only) && trial<6){enabled=1;warmup=0;}
         else if(g_doa3_logic_only){
-            static const char *const sets[7]={"","049790 (models)","0691F0 (2D/sprites)","0E8030","1C60AB","all four","all four"};
-            for(unsigned t=1;t<=6;++t)fprintf(stderr,"[ROLLBACK-LOGIC-ONLY] summary trial %u skipping %s: %s\n",t,sets[t],
+            for(unsigned t=1;t<=6;++t)fprintf(stderr,"[ROLLBACK-LOGIC-ONLY] summary trial %u: %s\n",t,
                 logic_results[t]==1 ? "logic matched":logic_results[t]==2 ? "LOGIC DIFFERS or refused":"not run");
         }
         else fprintf(stderr,"[ROLLBACK-COMBAT] sequence %s after %u trials\n",success ? "passed":"stopped",trial);

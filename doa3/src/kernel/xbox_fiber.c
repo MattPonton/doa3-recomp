@@ -668,6 +668,15 @@ int xbox_fiber_current(void)
     return g_cur;
 }
 
+/* rollback.14: host time the running fiber has run so far (excludes time
+ * other fibers ran while it was switched out). */
+unsigned long long xbox_fiber_cpu_ticks(void)
+{
+    LARGE_INTEGER t; QueryPerformanceCounter(&t);
+    if (g_fib_prev != g_cur || !g_fib_t0) return (unsigned long long)t.QuadPart;
+    return (unsigned long long)(g_fib_ticks[g_cur] + (t.QuadPart - g_fib_t0));
+}
+
 /* doa3.1-rollback.8 diagnostic: once per presented frame. For a slow frame
  * under the controlled clock, how long each fiber ran and how often it was
  * resumed during it (at most 120 reports). */
