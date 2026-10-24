@@ -4156,3 +4156,13 @@ table, the "Storage costume limits" bullet and the Storage costumes
 section; the costume list bullet no longer names COS.99. The Dip
 Switches table is unchanged. "Changes to the game" moved out of the
 Settings section to sit before Building.
+
+## 0.2.0 - milestone version
+
+Release of the 0.1.x work: DualSense support and per-model controller
+numbering, the Training tab's dummy control and Stagger Escape, the Dip
+Switches (left stick in menus, Random as the default stage, Random with
+alternate and storage costumes, shared costumes, menu layout offset),
+the costume list past nine, Random before Ein is unlocked, 16:9 as the
+movie default, rendering fixes (menu header at ultrawide, Beach ocean
+flicker), and the updated README. No code change from 0.1.36.
