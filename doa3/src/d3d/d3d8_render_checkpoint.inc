@@ -9,6 +9,7 @@ struct D3D8RenderCheckpoint {
     D3D11_VIEWPORT viewport;
 };
 
+typedef char render_checkpoint_image_limit_fits[(4 + OFFRT_N * 2 <= D3D8_REPLAY_IMAGE_LIMIT) ? 1 : -1];
 static int render_checkpoint_inventory(ID3D11Texture2D **images)
 {
     unsigned i;
@@ -25,7 +26,7 @@ static int render_checkpoint_inventory(ID3D11Texture2D **images)
         images[2 + i * 2] = g_offrt[i].tex;
         images[3 + i * 2] = g_offrt[i].depth;
     }
-    images[18] = g_fbcopy.tex; images[19] = g_prevframe.tex;
+    images[2 + OFFRT_N * 2] = g_fbcopy.tex; images[3 + OFFRT_N * 2] = g_prevframe.tex;
     return 1;
 }
 

@@ -22,7 +22,7 @@ parts=[
     span('static DWORD g_d3d_begin_count', 'static int g_off_active;')+'static int g_off_active;\n',
     function('static HRESULT __stdcall dev_BeginScene'),
     function('static HRESULT __stdcall dev_EndScene'),
-    span('#define OFFRT_N 8', 'static HRESULT __stdcall dev_Clear'),
+    span('#define OFFRT_N 16', 'static HRESULT __stdcall dev_Clear'),
     span('static HRESULT __stdcall dev_Clear', 'static void __stdcall dev_SetGammaRamp'),
     'static ID3D11Buffer *g_nv2aff_idx_ring;\nstatic UINT g_nv2aff_idx_off;\n',
     s[s.index('#define NV2AFF_IDX_RING_SIZE'):],

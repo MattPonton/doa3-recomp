@@ -4392,3 +4392,14 @@ Checked here: all C sources compile (clang, Windows headers), the five
 generators run, the localized gen compiles, and every symbol links except
 the C++ UI (not built here). Not run: MSVC build, his tests/rollback suite,
 any live test.
+
+## 0.2.6-rollback.2 - renderer checkpoint image list sized for 16 targets
+
+Matt: the combat probe crashed at the first trial, right after
+[ROLLBACK-FILES] pinned and before [ROLLBACK-RENDER] capture boundary.
+Jay's renderer inventory lists colour+depth for every offscreen target
+plus fbcopy and prevframe in D3D8_REPLAY_IMAGE_LIMIT = 20 entries, sized
+for his OFFRT_N 8; doa3.1 raised OFFRT_N to 16, so the inventory wrote 36
+entries into a 20-entry stack array. Limit now 36, fbcopy/prevframe at
+2 + OFFRT_N*2, and a compile-time check ties the two. The two fixture
+generators in tests/rollback look for '#define OFFRT_N 16'.

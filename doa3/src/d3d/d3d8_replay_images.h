@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <d3d11.h>
 
-#define D3D8_REPLAY_IMAGE_LIMIT 20
+#define D3D8_REPLAY_IMAGE_LIMIT 36   /* default colour+depth, OFFRT_N (16 in doa3.1) colour+depth pairs, fbcopy, prevframe */
 typedef struct D3D8ReplayImages D3D8ReplayImages;
 /* Experimental, owner-thread GPU copies, not serialized snapshots. Caller
  * must stop all renderer writers, supply a nonzero session epoch, and keep
