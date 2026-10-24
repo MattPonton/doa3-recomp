@@ -7,6 +7,7 @@
 #include "recomp_funcs.h"
 #include "debug_settings.h"
 #include <math.h>
+uint32_t doa3_costume_confirm_mask(uint32_t cursor, uint32_t port);   /* DOA3 0.1.28, recomp_manual.c */
 
 /**
  * sub_000AFB4F
@@ -74376,7 +74377,7 @@ loc_000CB81C: ;
     PUSH32(esp, 0); sub_000A5610(); /* call 0x000A5610 */
 
 loc_000CB83F: ;
-    if (TEST_Z(MEM16(ebx * 8 + 0x9B7C0E), 0xD10)) goto loc_000CB889; /* je: equal / zero */
+    if (TEST_Z(MEM16(ebx * 8 + 0x9B7C0E), doa3_costume_confirm_mask(ebp, ebx))) goto loc_000CB889; /* DOA3 0.1.28: no duplicate costume + option */
 
 loc_000CB84B: ;
     esi = 0; /* xor self */

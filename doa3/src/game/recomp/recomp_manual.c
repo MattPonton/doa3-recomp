@@ -1307,6 +1307,98 @@ void sub_000CD900(void)
     if (g_fib_slice_due) xbox_fiber_timeslice();
 }
 
+/* Dip switch "Same costume, different option" (0.1.28).
+ * Character Select keeps a costume from being highlighted when an opposing
+ * player on the same character has it (0xCCC70: an opponent's cursor record
+ * on that slot; 0xCCD40: the opposing side's confirmed picks -- slot
+ * 0x9B7C00[side*5+i] (0xFF = none), character 0x588838[..], costume id
+ * 0x5A26F8[..]). Cursor record S: +0x14 character, +0x16 grid index, slot at
+ * S + (int8)index, +0x1A side (bit 0).
+ * With the switch on, such a costume can be highlighted when it has two or
+ * more options (disc options plus storage options) and at least one is not
+ * confirmed by the other side; confirming (0xCB760, buttons 0xD10) is
+ * refused only for the exact costume + option the other side confirmed. */
+static uint32_t costume_slot_ids(uint32_t ch, uint32_t slot, uint8_t ids[8])
+{
+    uint32_t grp, have, max, count, vt, ct, total, n = 0, s, base = 0, a, v;
+    if (ch > 0x18) return 0;
+    grp = MEM8(0x2FF868 + ch);
+    have = doa3_debug_unlock_read8(0x59FB16 + grp, MEM8(0x59FB16 + grp));
+    max = MEM8(0x29C70C + ch);
+    count = have < max ? have : max;
+    vt = MEM32(0x29C790 + ch * 4); ct = MEM32(0x29C728 + ch * 4); total = MEM8(0x29C660 + ch);
+    if (slot >= count) {   /* a numbered storage costume: one option */
+        ids[n++] = (uint8_t)(0x40 + (slot - count));
+        return n;
+    }
+    if (!vt || !ct) return 0;
+    for (s = 0; s < slot; s++) base += MEM8(vt + s);
+    v = MEM8(vt + slot);
+    for (a = 0; a < v && base + a < total && n < 8; a++) ids[n++] = MEM8(ct + base + a);
+    for (a = v; a <= 3 && n < 8; a++) {
+        int id = doa3_opt_costume(ch, slot, a);
+        if (id >= 0) ids[n++] = (uint8_t)id;
+    }
+    return n;
+}
+static int costume_taken_by_other_side(uint32_t side, uint32_t ch, uint32_t id)
+{
+    uint32_t other = (side & 1) ^ 1, m;
+    for (m = 0; m < 5; m++) {
+        uint32_t k = other * 5 + m;
+        if (MEM8(0x9B7C00 + k) != 0xFF && MEM8(0x588838 + k) == ch && MEM8(0x5A26F8 + k) == id)
+            return 1;
+    }
+    return 0;
+}
+void sub_000CCC70_gen(void);
+void sub_000CCC70(void)   /* al = slot, edi = cursor record -> eax nonzero = blocked */
+{
+    uint32_t slot = eax & 0xFF, rec = edi;
+    sub_000CCC70_gen();
+    if (eax && dip_get(DIP_SHARED_COSTUMES)) {
+        uint32_t ch = MEM8(rec + 0x14), side = MEM8(rec + 0x1A), n, i, free = 0;
+        uint8_t ids[8];
+        n = costume_slot_ids(ch, slot, ids);
+        for (i = 0; i < n; i++) if (!costume_taken_by_other_side(side, ch, ids[i])) free++;
+        if (n >= 2 && free >= 1) eax = 0;
+    }
+    if (g_fib_slice_due) xbox_fiber_timeslice();
+}
+/* The confirm test: 0xD10 (Start A X Y), or 0 when the press would give the
+ * exact costume + option the other side confirmed. The option follows
+ * 0xCD110 (and its storage-option extension). */
+uint32_t doa3_costume_confirm_mask(uint32_t rec, uint32_t port)
+{
+    uint32_t ch, slot, v, btn, a, want, grp, have, max, count;
+    int lt, id = -1;
+    if (!dip_get(DIP_SHARED_COSTUMES) || port >= 4) return 0xD10u;
+    ch = MEM8(rec + 0x14);
+    slot = MEM8(rec + (uint32_t)(int32_t)(int8_t)MEM8(rec + 0x16));
+    if (ch > 0x18) return 0xD10u;
+    v = disc_variants(ch, slot);
+    btn = MEM8(0x9B7C0F + port * 8);
+    lt = (MEM32(0x73C8D0 + port * 0x2C) & 0x4000u) != 0;
+    if (lt && v >= 4) a = (btn & 1) ? 3 : ((btn & 4) && v >= 5) ? 4 : ((btn & 8) && v >= 6) ? 5 : 3;
+    else a = ((btn & 4) && v >= 2) ? 1 : ((btn & 8) && v >= 3) ? 2 : 0;
+    want = lt ? 3 : (btn & 4) ? 1 : (btn & 8) ? 2 : 0;
+    if (v && want >= v && doa3_opt_costume(ch, slot, want) >= 0) a = want;
+    if (v && a >= v) id = doa3_opt_costume(ch, slot, a);
+    else if (v) {
+        uint32_t vt = MEM32(0x29C790 + ch * 4), ct = MEM32(0x29C728 + ch * 4), s, base = 0;
+        for (s = 0; s < slot; s++) base += MEM8(vt + s);
+        id = MEM8(ct + base + a);
+    } else {
+        grp = MEM8(0x2FF868 + ch);
+        have = doa3_debug_unlock_read8(0x59FB16 + grp, MEM8(0x59FB16 + grp));
+        max = MEM8(0x29C70C + ch);
+        count = have < max ? have : max;
+        if (slot >= count) id = (int)(0x40 + (slot - count));
+    }
+    if (id >= 0 && costume_taken_by_other_side(MEM8(rec + 0x1A), ch, (uint32_t)id)) return 0;
+    return 0xD10u;
+}
+
 void doa3_costume_watch(void)
 {
     static uint32_t s_last = 0xFFFFFFFFu;

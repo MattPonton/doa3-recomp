@@ -28,6 +28,11 @@ static const struct { const char *key, *label, *help; } k_dip[DIP_COUNT] = {
       "(more than four for Kasumi, five for Leifang) cannot be chosen. On: every unlocked and "
       "storage costume is listed; the nine buttons stay where they are and their numbers "
       "move as the cursor goes past the first or last one (COS.10 and up)." },
+    { "SharedCostumes", "Same costume, different option",
+      "With both sides on the same character, the original game will not let a player highlight "
+      "a costume the other side has. On: it can be highlighted when it has another option "
+      "(A, X, Y, L, or a storage option) left; only the exact costume and option the other "
+      "side confirmed cannot be chosen." },
 };
 
 static volatile LONG g_loaded;

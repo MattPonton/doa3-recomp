@@ -4020,3 +4020,29 @@ An option file now attaches to the costume slot whose disc ids include
 its number. That is resolved per character, so the API takes the
 character (doa3_opt_costume / doa3_opt_lookup). The [TDATA] option line
 names the file number.
+
+## 0.1.28 - Dip switch: same costume, different option
+
+With both sides on the same character, Character Select will not let a
+player highlight a costume the other side has. Cursor-move check
+0xCCC70(al = slot, edi = cursor record):
+- an opposing player's cursor record active on that slot and the same
+  character (the 0x9B79D0 records, 0x38 apart, side = +0x1A bit 0);
+- then 0xCCD40, the opposing side's confirmed picks: slot
+  0x9B7C00[side*5+i] (0xFF = none), character 0x588838[..], costume
+  id 0x5A26F8[..].
+The cursor skips a blocked costume. Confirming (0xCC760) writes the
+costume id to record +0x15 and the side's pick lists; +0x34 = 2 when
+the player's selection is complete.
+
+DIP_SHARED_COSTUMES (SharedCostumes, off by default):
+- 0xCCC70 is an override. When the game blocks, the costume is still
+  allowed if it has two or more options (disc options plus storage
+  options) and at least one is not confirmed by the other side. A
+  one-option costume keeps the original block.
+- The confirm test in 0xCB760 (buttons 0xD10) calls
+  doa3_costume_confirm_mask (hand edit in gen/recomp_0003.c). It works
+  out the costume id the press would give (0xCD110's button rules plus
+  storage options) and returns 0, ignoring the press, when the other
+  side confirmed that exact costume + option on that character.
+  Otherwise 0xD10 as before.
