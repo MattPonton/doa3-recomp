@@ -56,6 +56,12 @@ static void fn_diag_init(void){
     if(fn_profile>=0)return;
     const char *e=getenv("DOA3_ROLLBACK_FN_PROFILE");fn_profile=e && *e=='1';
     e=getenv("DOA3_ROLLBACK_SKIP_FNS");
+    {   /* rollback.15: the logic-only default (verified by Matt's .14 runs):
+         * the renderer's other command builders, the 2D draw-list flush and
+         * the D3D draw call. DOA3_ROLLBACK_SKIP_FNS replaces it ("0" = none). */
+        extern int g_doa3_logic_only;
+        if(!e && g_doa3_logic_only)e="17EA20,17ECF0,17F0C0,17F1A0,17F400,17F6A0,180730,180510,12FC74,1DF690";
+    }
     while(e && *e && skip_fn_count<32){
         char *end;unsigned long v=strtoul(e,&end,16);
         if(end==e)break;

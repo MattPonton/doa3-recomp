@@ -136,6 +136,7 @@ int  xbox_fiber_current(void);
 int  xbox_fiber_stack_of(uint32_t va, int *fiber, uint32_t *routine); /* rollback diff map */
 void xbox_fiber_frame_report(unsigned frame, double frame_ms); /* slow controlled-clock frames */
 unsigned long long xbox_fiber_cpu_ticks(void); /* rollback.14 profile */
+const char *xbox_fiber_snapshot_field(size_t offset, int *fiber); /* rollback.15 diff map */
 uint32_t xbox_fiber_current_ctx1(void);
 uint32_t xbox_fiber_current_xhandle(void); /* the running fiber's NT thread handle (0 = none) */   /* start context of the running fiber (0 = primary) */
 

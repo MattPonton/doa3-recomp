@@ -4726,3 +4726,30 @@ To choose further cut points:
   and ret-N arguments).
 - LOGIC_ONLY no longer leaves tasks out unless DOA3_ROLLBACK_SKIP_TASKS
   names them.
+
+## 0.2.6-rollback.15 - logic-only resimulation holds; render arenas labelled
+
+Matt's two LOGICONLY runs of .14, every task running on hidden frames:
+- Model / alpha-model builders and deformation skipped: trials 2, 5, 6
+  logic matched; 1 and 4 failed on 0xB5B804 (a render-list block past the
+  old arena label), 3 on 0x5AA224, 4 also on fiber 7's saved r_sehebp.
+- Plus DOA3_ROLLBACK_SKIP_FNS=17EA20,17ECF0,17F0C0,17F1A0,17F400,17F6A0,
+  180730,180510,12FC74,1DF690 (the renderer's other command builders,
+  the 2D draw-list flush 180510, the D3D draw 1DF690; all void, ret N as
+  their wrappers): every comparison matched except two at 0xB5BD84, the
+  same render-list block. 138 / 322 calls skipped per 3 / 7 hidden frames.
+- Hidden-frame cost (profile run, wrapper timing included): ~4.8 ms a
+  frame with the guest render intact, ~2.2 with the builders skipped,
+  ~1.7 with the list. What remains is mostly the skeleton pass (049AE0
+  ~0.5 ms a frame), 2D (069560 / 06F310 ~0.23 ms), sound and ADX servers.
+  The final rendered frame adds ~7-9 ms (a normal frame).
+
+Now:
+- Render arenas, all reset by 180490 every frame before the scheduler:
+  0xA538F0..0xAD38F0, list block 0xAD38F0..0xAD8A78, 0xAD8A78..0xB58A88,
+  0xB58A88..0xC58A94 (with cursors) -- labelled render-only.
+- Fiber-snapshot differences are named by fiber and field; a difference
+  only in r_sehebp (the recompiler's inherited-frame global saved at a
+  park) is accepted by the logic-only check.
+- The skip list above is the logic-only default (DOA3_ROLLBACK_SKIP_FNS
+  replaces it).

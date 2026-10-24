@@ -1154,3 +1154,29 @@ void xbox_fiber_dump(void)
                 i, g_fib[i].start_routine, S[g_fib[i].state], g_fib[i].wait_event);
     fflush(stderr);
 }
+
+/* rollback.15 diagnostic: which fiber and field an offset in the converted
+ * fiber snapshot (TaskSnapshot) belongs to. */
+const char *xbox_fiber_snapshot_field(size_t offset, int *fiber)
+{
+    static const struct { size_t at; const char *name; } fields[] = {
+#define F(x) { offsetof(Fiber, x), #x }
+        F(handle), F(state), F(start_routine), F(ctx1), F(ctx2), F(stack_top), F(stack_size),
+        F(wait_event), F(xhandle), F(is_coroutine), F(resume_to), F(restorable_task),
+        F(task_routine), F(task_in_step), F(task_nested_yields), F(restorable_worker),
+        F(worker_parked), F(worker_in_step), F(worker_nested_yields), F(worker), F(task),
+        F(r_eax), F(r_ecx), F(r_edx), F(r_esp), F(r_ebx), F(r_esi), F(r_edi), F(r_sehebp),
+        F(r_fp_stack), F(r_fp_top)
+#undef F
+    };
+    size_t base = offsetof(TaskSnapshot, tasks), rel, i;
+    *fiber = -1;
+    if (offset < base) return "snapshot header";
+    rel = offset - base;
+    if (rel >= sizeof(Fiber) * MAX_FIBERS) return NULL;
+    *fiber = (int)(rel / sizeof(Fiber)); rel %= sizeof(Fiber);
+    for (i = sizeof(fields) / sizeof(fields[0]); i-- > 0; )
+        if (rel >= fields[i].at) return fields[i].name;
+    return NULL;
+}
+

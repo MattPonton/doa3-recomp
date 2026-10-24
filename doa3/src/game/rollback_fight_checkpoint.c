@@ -261,9 +261,11 @@ extern volatile uint32_t g_doa3_pb_dev;   /* recomp_manual.c, last KickOff devic
  *   D3D device             device block (write cursor, fences, state shadow)
  *   deform scratch         0x587FF0..0x588010, used only by 0x52046
  *   fence 0x9B23A0         D3D fence from 0x1DC740 (0x1E28B0) each frame
- *   render arena           0xAD8A78..0xB58A78 bump allocator (0x180490 resets
- *                          it every frame; 0x17DD20 / 0x17E1D0 allocate) and the
- *                          block from 0xB58A88 it points the renderer at */
+ *   render arenas          0xA538F0..0xAD38F0, list block 0xAD38F0..0xAD8A78,
+ *                          0xAD8A78..0xB58A78 and 0xB58A88..0xC58A88, with their
+ *                          cursors (0xAD38F8/FC, 0xB58A78.., 0xC58A88..0xC58A90):
+ *                          0x180490 resets them all every frame; 0x17DD20 /
+ *                          0x17E1D0 / 0x1805E0 / 0x17BEF0 allocate */
 static const char *diff_label(uint32_t a)
 {
     uint32_t dev=g_doa3_pb_dev;
@@ -274,7 +276,12 @@ static const char *diff_label(uint32_t a)
     }
     if(a>=0x587FF0u && a<0x588010u)return "deform scratch";
     if(a>=0x9B23A0u && a<0x9B23A4u)return "fence 0x9B23A0";
-    if(a>=0xAD8A78u && a<0xB5A000u)return "render arena";
+    /* rollback.15: 180490 resets all of these every frame, before the task
+     * scheduler runs: per-frame render arenas and their cursors. */
+    if(a>=0xA538F0u && a<0xAD38F0u)return "render arena (0xA538F0)";
+    if(a>=0xAD38F0u && a<0xAD8A78u)return "render list block (0xAD38F0)";
+    if(a>=0xAD8A78u && a<0xB58A88u)return "render arena";
+    if(a>=0xB58A88u && a<0xC58A94u)return "render arena (0xB58A88)";
     return "";
 }
 /* rollback.7: what the differing dwords of an unlabelled range look like.
@@ -285,6 +292,7 @@ static const char *diff_label(uint32_t a)
  * whether the bytes are below its saved stack pointer (dead). */
 /* rollback.12: totals of the last RAM diff map, for the logic-only test. */
 size_t g_doa3_diff_unexplained_bytes,g_doa3_diff_unexplained_ranges;
+size_t g_doa3_diff_fiber_unexplained;
 static uint32_t rd32(const unsigned char *p,size_t n,size_t off){uint32_t v=0;if(off+4<=n)memcpy(&v,p+off,4);return v;}
 static void diff_map(unsigned part,const unsigned char *a,const unsigned char *b,size_t n)
 {
@@ -294,6 +302,18 @@ static void diff_map(unsigned part,const unsigned char *a,const unsigned char *b
     uint32_t dev=g_doa3_pb_dev,lo=0,hi=0,ctr_at=0,ca=0,cb=0;
     if(dev && dev<0x08000000u){lo=MEM32(dev+0x24);hi=MEM32(dev+0x28)+4;}
     fprintf(stderr,"[ROLLBACK-DIFFMAP] part=%s bytes=%zu\n",part_names[part],n);
+    if(part==DOA3_CP_FIBERS){
+        /* rollback.15: name each differing fiber-snapshot byte. The saved
+         * SEH-frame global (r_sehebp) is the recompiler's inherited-frame
+         * register: whatever the last function before the park left in it. */
+        size_t odd=0;
+        for(size_t k=0;k<n;++k)if(a[k]!=b[k]){
+            int fiber=-1;const char *field=xbox_fiber_snapshot_field(k,&fiber);
+            if(!field || strcmp(field,"r_sehebp"))++odd;
+            if(lines<600){++lines;fprintf(stderr,"[ROLLBACK-DIFFMAP]   fibers +%zX: fiber %d field %s\n",k,fiber,field ? field:"?");}
+        }
+        g_doa3_diff_fiber_unexplained=odd;
+    }
     if(part==DOA3_CP_RAM && lo>=0x1000u){
         ctr_at=lo-0x1000u;ca=rd32(a,n,hdr+ctr_at);cb=rd32(b,n,hdr+ctr_at);
         fprintf(stderr,"[ROLLBACK-DIFFMAP] GPU reference counter (ring - 0x1000) @%08X: reference %X replay %X\n",ctr_at,ca,cb);
@@ -431,10 +451,12 @@ static int visit(Doa3FightCheckpoint *s,
                  * memory, fence stamps, push-buffer pointers or dead stack). */
                 extern int g_doa3_logic_only,g_doa3_logic_only_arm;
                 extern size_t g_doa3_diff_unexplained_bytes;
-                const unsigned render_parts=(1u<<DOA3_CP_RAM)|(1u<<DOA3_CP_GPU_FRONTEND);
+                extern size_t g_doa3_diff_fiber_unexplained;
+                const unsigned render_parts=(1u<<DOA3_CP_RAM)|(1u<<DOA3_CP_GPU_FRONTEND)|(1u<<DOA3_CP_FIBERS);
                 if(pixel_probe && g_doa3_logic_only && g_doa3_logic_only_arm && equal==0){
                     int logic=!(difference->different_parts&~render_parts) &&
-                        (!(difference->different_parts&(1u<<DOA3_CP_RAM)) || !g_doa3_diff_unexplained_bytes);
+                        (!(difference->different_parts&(1u<<DOA3_CP_RAM)) || !g_doa3_diff_unexplained_bytes) &&
+                        (!(difference->different_parts&(1u<<DOA3_CP_FIBERS)) || !g_doa3_diff_fiber_unexplained);
                     fprintf(stderr,"[ROLLBACK-LOGIC-ONLY] %s: differing parts %03X, unexplained RAM bytes %zu, renderer logical state %s\n",
                         logic ? "LOGIC MATCHED (only render bookkeeping differs)":"LOGIC DIFFERS",
                         difference->different_parts,g_doa3_diff_unexplained_bytes,
