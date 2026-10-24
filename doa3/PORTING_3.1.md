@@ -3876,3 +3876,37 @@ wrappers removed):
 The buttons never move; only labels and the costume behind them change
 (Matt's design). Storage is still limited to 7 per character (scan
 table 0x5B1E58, 7 entries per group); lifting that is Stage 2.
+
+## 0.1.20 - storage costumes: 64 per character, 2048 files (Stage 2)
+
+The TDATA scan runs once at boot (0x87420 -> 0x86AD0/0x86B20).
+- Per character group (19; prefixes at 0x302C58: zac tin jan kte ryu
+  kas gen hik bay bas lei aya, sam nin kor bni sui gok), it lists
+  T:\<prefix>??.* and copies each name (16 bytes) into 0x5B2140. The
+  counter 0x5B212C is capped at 0x100 files in total; that is the
+  "100".
+- 0x86C20 reads the two characters after the prefix as hex ("%2X",
+  kas14 = 0x14; 256 numbers per character) and files .xpr/.cat under
+  that number in a 7-entry working list 0x5B3148.
+- 0x86CC0 (unrolled seven times) copies complete pairs into the pair
+  table 0x5B1E58 (19 x 7 x {cat|0x8000, xpr|0x8000}) and the count
+  into 0x5B3174[group].
+- A storage costume is 0x40 + n: 0x840D0 and 0x86060 read
+  pairs[group*7 + n], and 0x85C40 reads the name.
+So: 7 per character and 256 files.
+
+Now, at the start of the scan (doa3_tdata_alloc), the name table,
+working list and pair table move to guest heap allocations sized for
+2048 files and 64 costumes per character (costumes 0x40-0x7F: clear of
+0xFF and the high bit). The scan and the three readers use variables
+in place of the fixed addresses, the 7 and the 0x100 (hand edits in
+gen/recomp_0002.c, marked "DOA3 0.1.20"). The variables start at the
+original addresses and limits, which also remain if the allocation
+fails. 0x86CC0 is now an override: the same step as a loop. Logged as
+[TDATA] (capacity, then the count for each group that has storage
+costumes).
+
+With the carousel switch off, Character Select still shows at most
+nine buttons. The costumes past that are reachable with "Costume list
+scrolls past nine" or picked by "Random includes costumes from
+storage".

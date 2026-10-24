@@ -1008,6 +1008,81 @@ void sub_0006DF00(void)
     if (g_fib_slice_due) xbox_fiber_timeslice();
 }
 
+/* Storage costume capacity (0.1.20). At boot (0x87420 -> 0x86AD0) the game
+ * scans T:\<prefix>??.* for each of the 19 character groups (prefix table
+ * 0x302C58: "zac", "tin", ... "gok"), reads the two characters after the
+ * prefix as a hex number ("%2X", so kas14 is costume 0x14) and pairs .xpr
+ * with .cat. Original limits:
+ *   - name table 0x5B2140, 16 bytes per file, counter 0x5B212C capped at
+ *     0x100 files in total (128 pairs) -- the "100";
+ *   - per group, a working list of 7 numbers (0x5B3148, 6 bytes each:
+ *     number, xpr file, cat file) and 7 slots in the pair table 0x5B1E58
+ *     (19 groups x 7 x {cat|0x8000, xpr|0x8000}), count in 0x5B3174[group].
+ * A storage costume is costume 0x40 + n, read back as pair table
+ * [group*7 + n] by 0x840D0 and 0x86060, file names via 0x85C40.
+ * The scan and those readers now use the variables below. They start at the
+ * original addresses and limits, and doa3_tdata_alloc() (start of the scan)
+ * moves them to larger tables in guest memory: 2048 files and 64 costumes per
+ * character (costumes 0x40-0x7F). If the allocation fails the originals
+ * stay. */
+uint32_t g_tdata_names = 0x5B2140u, g_tdata_pairs = 0x5B1E58u, g_tdata_tmp = 0x5B3148u;
+uint32_t g_tdata_cap = 7, g_tdata_max_files = 0x100, g_tdata_pair_dwords = 0x85;
+#define TDATA_GROUPS    19u
+#define TDATA_CAP       64u
+#define TDATA_MAX_FILES 2048u
+void doa3_tdata_alloc(void)
+{
+    extern uint32_t xbox_HeapAllocHigh(uint32_t size, uint32_t alignment);
+    static int s_done;
+    uint32_t names, pairs, tmp;
+    if (s_done) return;
+    s_done = 1;
+    names = xbox_HeapAllocHigh(TDATA_MAX_FILES * 16u, 16);
+    pairs = xbox_HeapAllocHigh(TDATA_GROUPS * TDATA_CAP * 4u, 16);
+    tmp   = xbox_HeapAllocHigh(TDATA_CAP * 6u + 16u, 16);
+    if (!names || !pairs || !tmp) {
+        fprintf(stderr, "[TDATA] could not allocate the larger storage-costume tables; keeping 7 per character, 256 files\n");
+        fflush(stderr);
+        return;
+    }
+    memset((void *)XBOX_PTR(names), 0, TDATA_MAX_FILES * 16u);
+    memset((void *)XBOX_PTR(pairs), 0, TDATA_GROUPS * TDATA_CAP * 4u);
+    memset((void *)XBOX_PTR(tmp), 0xFF, TDATA_CAP * 6u + 16u);
+    g_tdata_names = names; g_tdata_pairs = pairs; g_tdata_tmp = tmp;
+    g_tdata_cap = TDATA_CAP; g_tdata_max_files = TDATA_MAX_FILES;
+    g_tdata_pair_dwords = TDATA_GROUPS * TDATA_CAP;
+    fprintf(stderr, "[TDATA] storage costumes: up to %u per character, %u files (tables at %08X / %08X)\n",
+            TDATA_CAP, TDATA_MAX_FILES, pairs, names);
+    fflush(stderr);
+}
+/* 0x86CC0 (group in bl): copy the group's complete xpr+cat pairs from the
+ * working list into the pair table and store the count. The original is
+ * unrolled seven times; this is the same per-entry step as a loop. */
+void sub_00086CC0_gen(void);
+void sub_00086CC0(void)
+{
+    uint32_t grp = ebx & 0xFF, n = 0, i;
+    for (i = 0; i < g_tdata_cap; i++) {
+        uint32_t e = g_tdata_tmp + i * 6u, xpr, cat, slot;
+        if (MEM8(e) == 0xFF) break;
+        xpr = MEM16(e + 2); cat = MEM16(e + 4);
+        if (xpr == 0xFFFFu || cat == 0xFFFFu) continue;
+        slot = (grp * g_tdata_cap + n) * 4u;
+        MEM16(g_tdata_pairs + slot + 2) = (uint16_t)(xpr | 0x8000u);
+        MEM16(g_tdata_pairs + slot) = (uint16_t)(cat | 0x8000u);
+        n++;
+    }
+    MEM8(0x5B3174 + grp) = (uint8_t)n;
+    if (n) {
+        fprintf(stderr, "[TDATA] group %u (%.3s): %u storage costume(s)\n", grp,
+                (const char *)XBOX_PTR(MEM32(0x302C58 + grp * 4)), n);
+        fflush(stderr);
+    }
+    eax = grp; ecx = n;
+    esp += 4;   /* ret */
+    if (g_fib_slice_due) xbox_fiber_timeslice();
+}
+
 void doa3_costume_watch(void)
 {
     static uint32_t s_last = 0xFFFFFFFFu;

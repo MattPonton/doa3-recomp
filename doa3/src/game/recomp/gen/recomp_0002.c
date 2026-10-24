@@ -6,6 +6,9 @@
 #define RECOMP_GENERATED_CODE
 #include "recomp_funcs.h"
 #include <math.h>
+/* DOA3 0.1.20: TDATA storage-costume tables (recomp_manual.c). */
+extern uint32_t g_tdata_names, g_tdata_pairs, g_tdata_tmp, g_tdata_cap, g_tdata_max_files, g_tdata_pair_dwords;
+void doa3_tdata_alloc(void);
 
 /**
  * sub_00082980
@@ -3726,11 +3729,11 @@ loc_0008413E: ;
 
 loc_00084161: ;
     ecx = ZX8(MEM8(ecx + 0x2FF868));
-    ecx = (uint32_t)((int32_t)ecx * (int32_t)7);
+    ecx = (uint32_t)((int32_t)ecx * (int32_t)g_tdata_cap);   /* DOA3 0.1.20 */
     SET_LO8(eax, LO8(eax) - 0x40);
     eax = ZX8(LO8(eax));
     ecx = ecx + eax;
-    eax = ecx * 4 + 0x5B1E58;
+    eax = ecx * 4 + g_tdata_pairs;
     goto loc_0008418D;
 
 loc_0008417B: ;
@@ -7942,7 +7945,7 @@ loc_00085C62: ;
     eax = ZX16(LO16(eax));
     eax = eax & 0xFFFF7FFFu;
     eax = eax << 4;
-    eax = eax + 0x5B2140;
+    eax = eax + g_tdata_names;   /* DOA3 0.1.20 */
     PUSH32(esp, eax);
     ecx = esp + 0xC;
     PUSH32(esp, 0x2355D8);
@@ -9018,11 +9021,11 @@ loc_00086060: ;
 
 loc_0008607A: ;
     esi = ZX8(MEM8(ecx + 0x2FF868));
-    esi = (uint32_t)((int32_t)esi * (int32_t)7);
+    esi = (uint32_t)((int32_t)esi * (int32_t)g_tdata_cap);   /* DOA3 0.1.20 */
     SET_LO8(eax, LO8(eax) - 0x40);
     edx = ZX8(LO8(eax));
     esi = esi + edx;
-    esi = esi * 4 + 0x5B1E58;
+    esi = esi * 4 + g_tdata_pairs;
     goto loc_000860A6;
 
 loc_00086094: ;
@@ -10951,8 +10954,9 @@ loc_00086AD0: ;
     esi = 0; /* xor self */
     eax = 0; /* xor self */
     PUSH32(esp, edi);
-    ecx = 0x85;
-    edi = 0x5B1E58;
+    doa3_tdata_alloc();   /* DOA3 0.1.20: storage tables may be relocated */
+    ecx = g_tdata_pair_dwords;
+    edi = g_tdata_pairs;
     { uint32_t _i; for (_i = 0; _i < ecx; _i++) MEM32(edi + _i*4) = eax; }
     edi += ecx * 4; ecx = 0; /* rep stosd */
     MEM32(0x5B3174) = eax;
@@ -10960,7 +10964,7 @@ loc_00086AD0: ;
     MEM32(0x5B317C) = eax;
     MEM32(0x5B3180) = eax;
     MEM16(0x5B3184) = LO16(eax);
-    MEM16(0x5B2140) = LO16(esi);
+    MEM16(g_tdata_names) = LO16(esi);
     MEM16(0x5B212C) = LO16(esi);
     MEM8(0x5B3186) = LO8(eax);
     MEM32(esp + 0x10) = esi;
@@ -11009,8 +11013,8 @@ loc_00086B5B: ;
     if (CMP_EQ(ebp, 0xFFFFFFFFu)) goto loc_00086BFE; /* je: equal / zero */
 
 loc_00086B66: ;
-    eax = 0x5B314C;
-    ecx = 7;
+    eax = g_tdata_tmp + 4;   /* DOA3 0.1.20 */
+    ecx = g_tdata_cap;
 
 loc_00086B70: ;
     MEM8(eax + -4) = 0xFF;
@@ -11030,7 +11034,7 @@ loc_00086B8F: ;
     ebx = MEM32(0x5B212C);
     SET_LO16(esi, LO16(ebx));
     esp = esp + 4;
-    if (CMP_AE(LO16(esi), 0x100)) goto loc_00086BD3; /* jae: above or equal (unsigned >=) */
+    if (CMP_AE(LO16(esi), g_tdata_max_files)) goto loc_00086BD3; /* jae: above or equal (unsigned >=) */
 
 loc_00086BA2: ;
     ecx = ZX16(LO16(esi));
@@ -11041,7 +11045,7 @@ loc_00086BA2: ;
     eax = esp + 0x50;
     _fs2 = (uint32_t)(edx); /* flag operand kept for a later jcc */
     _fs3 = (uint32_t)(ecx); /* flag operand kept for a later jcc */
-    edx = edx + 0x5B2140;
+    edx = edx + g_tdata_names;
     /* nop */
 
 loc_00086BC0: ;
@@ -11108,7 +11112,7 @@ void sub_00086C20_gen(void)
 
 loc_00086C20: ;
     esp = esp - 8;
-    if (CMP_AE(LO16(ebx), 0x100)) goto loc_00086CB2; /* jae: above or equal (unsigned >=) */
+    if (CMP_AE(LO16(ebx), g_tdata_max_files)) goto loc_00086CB2; /* jae: above or equal (unsigned >=) */
 
 loc_00086C2E: ;
     SET_LO8(eax, MEM8(edi + 3));
@@ -11127,7 +11131,7 @@ loc_00086C2E: ;
 loc_00086C56: ;
     SET_LO8(edx, MEM8(esp + 0x13));
     esp = esp + 0xC;
-    esi = 0x5B3148;
+    esi = g_tdata_tmp;   /* DOA3 0.1.20 */
     ecx = 0; /* xor self */
 
 loc_00086C64: ;
@@ -11140,7 +11144,7 @@ loc_00086C6A: ;
 loc_00086C6E: ;
     ecx++;
     esi = esi + 6;
-    if (CMP_L(ecx, 7)) goto loc_00086C64; /* jl: less (signed <) */
+    if (CMP_L(ecx, g_tdata_cap)) goto loc_00086C64; /* jl: less (signed <) */
 
 loc_00086C77: ;
     POP32(esp, esi);
