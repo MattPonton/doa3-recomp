@@ -922,6 +922,12 @@ static void bridge_KeWaitForSingleObject(void)
          * Sofdec aborted the movie with SFD ERROR(FF000C09) (thirtieth run). */
         if (!g_xbox_det_active && !xbox_fiber_is_primary() && !xbox_fiber_is_coroutine())
             xbox_fiber_vblank_wait();
+        /* doa3.1-rollback.8: under the controlled clock the same workers
+         * take one vblank per xbox_det_frame, like the USA build's vsync
+         * server. A plain yield here ran them on every idle lap and the
+         * music stopped on ADX's stall check. */
+        else if (g_xbox_det_active && !xbox_fiber_is_primary() && !xbox_fiber_is_coroutine())
+            xbox_fiber_block(XBOX_DET_VBLANK_KEY);
         else
 #endif
         if (g_xbox_det_active && (xbox_fiber_is_primary() || xbox_fiber_is_coroutine())) xbox_fiber_run_workers_idle(1024);

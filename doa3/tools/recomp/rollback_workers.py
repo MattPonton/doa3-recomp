@@ -50,7 +50,7 @@ int doa3_rollback_worker_checkpoint_valid(uint32_t routine,const Doa3RollbackWor
         worker->wait_object && worker->wait_object<0x08000000u-8u &&
         worker->wait_sp>=24u && worker->wait_sp<0x08000000u-24u &&
         (routine==0x1927D0 ? (worker->wait_key && worker->wait_object==worker->wait_sp+16u) :
-         (worker->wait_key==0 || worker->wait_key==0xB1A4B1A4u));
+         (worker->wait_key==0 || worker->wait_key==0xB1A4B1A4u || worker->wait_key==0xDE7FB1A0u));
 }
 '''
     return result

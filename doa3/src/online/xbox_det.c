@@ -177,6 +177,9 @@ void xbox_det_end(void)
         s_epoch++;
     }
     ReleaseSRWLockExclusive(&s_lock);
+    /* doa3.1-rollback.8: release workers parked on the controlled-clock
+     * vblank; their next wait is on the host vblank again. */
+    xbox_fiber_wake(XBOX_DET_VBLANK_KEY);
 }
 
 void xbox_det_frame(void)

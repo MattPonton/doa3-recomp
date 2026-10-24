@@ -110,6 +110,25 @@ static int bw_fiber(void)
     int f = xbox_fiber_current();
     return (f < 0 || f >= BW_FIB) ? 0 : f;
 }
+/* ADXT_ExecErrChk (0x196300) fields: +0x38 server rate, +0x60 error
+ * (0xFFFE no decode progress, 0xFFFF input starved), +0x64 last decoded
+ * count, +0x68 no-progress server ticks (limit 5 x rate), +0x6A starved
+ * ticks (5 x rate playing, 20 x rate preparing), +0x6D recovery mode
+ * (1/2 stop), +0x72 paused; +4 decoder (+1 state, +0x2C decoded samples),
+ * +8 stream (+1 state, 4 = error). 0x40C704 counts the ADX vblank worker's
+ * server calls (0x1926F0). */
+static void bgm_err_fields(const char *why, uint32_t a)
+{
+    extern unsigned g_doa3_frames_presented;
+    uint32_t sjd = MEM32(a + 4), stm = MEM32(a + 8);
+    fprintf(stderr, "[BGM-ERRCHK] frame %u %s: state %u rate %u err %04X last %u noprog %d starved %d mode %u paused %u"
+            " | decoder %08X state %d decoded %u | stream %08X state %d | vblank-server calls %u\n",
+            g_doa3_frames_presented, why, MEM8(a + 1), MEM32(a + 0x38), MEM16(a + 0x60), MEM32(a + 0x64),
+            (int)(int16_t)MEM16(a + 0x68), (int)(int16_t)MEM16(a + 0x6A), MEM8(a + 0x6D), MEM8(a + 0x72),
+            sjd, (sjd >= 0x1000 && sjd < 0x08000000u) ? (int)(int8_t)MEM8(sjd + 1) : -99,
+            (sjd >= 0x1000 && sjd < 0x08000000u) ? MEM32(sjd + 0x2C) : 0,
+            stm, (stm >= 0x1000 && stm < 0x08000000u) ? (int)(int8_t)MEM8(stm + 1) : -99, MEM32(0x40C704));
+}
 void game_audio_bgm_watch_enter(uint32_t va, int *depth)
 {
     int f = bw_fiber(), d = s_bw_depth[f]++;
@@ -136,6 +155,7 @@ void game_audio_bgm_watch_leave(uint32_t va, int depth, unsigned before)
     lo = depth > 24 ? depth - 24 : 0;
     for (i = (depth < BW_DEPTH ? depth : BW_DEPTH) - 1; i >= lo; i--) fprintf(stderr, " %08X", s_bw_stk[f][i]);
     fprintf(stderr, "\n");
+    if (after == 0) bgm_err_fields("at stop", a);
     fflush(stderr);
 }
 void game_audio_bgm_watch(void)
@@ -171,6 +191,19 @@ void game_audio_bgm_watch(void)
             }
             s_bw_seen = st0;
             g_bgm_watch_adxt = h0;
+            {   /* every frame for 40 frames after the clock changes, else once a second */
+                extern volatile int g_apu_det;
+                extern volatile int g_xbox_det_active;
+                static int s_det = -1; static unsigned s_trace, s_n, s_errlines;
+                int det = (g_apu_det || g_xbox_det_active) ? 1 : 0;
+                if (det != s_det) { s_trace = 40; s_det = det; }
+                if ((s_trace || !(s_n % 60)) && s_errlines < 200) {
+                    s_errlines++;
+                    bgm_err_fields(det ? "clock ON" : "clock off", h0);
+                }
+                if (s_trace) s_trace--;
+                s_n++;
+            }
         }
     }
 }

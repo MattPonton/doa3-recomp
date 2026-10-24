@@ -939,8 +939,9 @@ int xbox_fiber_converted_clock_ready(void)
         const Fiber *f=&g_fib[i];
         if(f->state==FIB_FREE || f->state==FIB_DONE || f->is_coroutine)continue;
         if(f->ctx1!=0x1926F0 && f->ctx1!=0x192760)continue;
-        if(!f->restorable_worker || !checkpoint_ready(f) || f->worker.wait_key ||
-           f->state!=FIB_READY || f->wait_event)return 0;
+        /* doa3.1-rollback.8: parked on the controlled-clock vblank (or woken
+         * from it and not yet run), never on the host vblank. */
+        if(!f->restorable_worker || !checkpoint_ready(f) || f->worker.wait_key!=XBOX_DET_VBLANK_KEY)return 0;
         ++vblank_workers;
     }
     return vblank_workers!=0;

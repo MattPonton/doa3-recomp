@@ -61,9 +61,15 @@ int doa3_rollback_worker_wait_prepare(Doa3RollbackWorker *worker)
     g_esp+=4; /* kernel thunk consumes its dummy return before the bridge */
     worker->wait_sp=g_esp;
     worker->wait_object=g_eax;
-    /* Preserve the existing 3.1 bridge's mode: host vblank in ordinary play,
-     * cooperative yield under the controlled clock. No new pacing policy. */
-    worker->wait_key=g_xbox_det_active ? 0 : XBOX_FIB_VBLANK_KEY;
+    /* Host vblank in ordinary play; one controlled-clock vblank per
+     * xbox_det_frame under the controlled clock (as the 3.1 bridge now does).
+     * doa3.1-rollback.8: the old cooperative yield left both vblank workers
+     * always ready, so every run_workers_idle pass ran CRI's vsync server up
+     * to 1024 times. ADXT_ExecErrChk (0x196300) counts its no-progress check
+     * in server ticks (limit 5 x server rate), so the music player saw five
+     * seconds without decode progress within one frame and stopped
+     * (0x191150): the music cutting out at the clock hand-over. */
+    worker->wait_key=g_xbox_det_active ? XBOX_DET_VBLANK_KEY : XBOX_FIB_VBLANK_KEY;
     return 1;
 #else
     (void)worker; return 0;

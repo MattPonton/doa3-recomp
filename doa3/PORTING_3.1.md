@@ -4533,3 +4533,33 @@ New diagnostics:
   ranges inside a fiber's stack name the fiber, its routine and whether
   the bytes lie below its saved stack pointer (dead). Only ranges none of
   that explains print values and count as unexplained.
+
+## 0.2.6-rollback.8 - the music survives the controlled clock
+
+Matt's CLOCKTEST run of .7 named the culprit: at the clock hand-over the
+music player was stopped by ADXT_Stop (0x191150) called from
+ADXT_ExecErrChk (0x196300), inside the ADX server (0x196470 / 0x191540)
+run by CRI's vblank worker (0x1926F0 -> 0x19A640). The error check counts
+"no decode progress" in server ticks and stops the player after
+5 x server rate of them (~5 s at 60 Hz).
+
+Under the controlled clock both 3.1 vblank workers (0x1926F0, 0x192760)
+only yielded at their vblank wait -- both the bridge path and the
+converted-worker path (wait_key 0) -- so they stayed ready, and every
+xbox_fiber_run_workers_idle pass (up to 1024 laps per vblank wait) ran the
+ADX server again: five seconds of ticks went by within one frame. The USA
+build had already been fixed for the same reason (its vsync server blocks
+on XBOX_DET_VBLANK_KEY in a session); 3.1 never was.
+
+Fix: under the controlled clock a worker's vblank wait parks on
+XBOX_DET_VBLANK_KEY, which xbox_det_frame wakes once per frame -- one
+server tick per frame, like the hardware's 60 Hz:
+- bridge (kernel_bridge.c): workers block on the key instead of yielding;
+- converted workers (rollback_workers.c): wait_key is the key under the
+  controlled clock; rollback_workers.py's checkpoint check accepts it;
+- xbox_fiber_converted_clock_ready: the vblank workers must be parked on
+  (or freshly woken from) that key, not merely ready;
+- xbox_det_end wakes the key so parked workers return to the host vblank.
+
+The [BGM-WATCH] / [BGM-ERRCHK] diagnostics stay (DOA3_BGM_WATCH=1) to
+confirm it.
