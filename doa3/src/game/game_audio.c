@@ -158,9 +158,77 @@ void game_audio_bgm_watch_leave(uint32_t va, int depth, unsigned before)
     if (after == 0) bgm_err_fields("at stop", a);
     fflush(stderr);
 }
+/* doa3.1-rollback.13 diagnostic, DOA3_WATCH=addr[,addr...] (hex, up to
+ * 24): during fights (mode 7), the innermost recompiled function whose call
+ * changed a listed dword is logged with its callers on that fiber, the
+ * first 3 times per address; changes made outside every wrapped function
+ * are reported by the per-frame check. */
+volatile int g_mem_watch_on;
+static uint32_t s_mw_addr[24], s_mw_seen[24];
+static unsigned s_mw_hits[24], s_mw_n, s_mw_lines;
+unsigned game_mem_watch_mix(void)
+{
+    unsigned h = 0, i;
+    for (i = 0; i < s_mw_n; i++) h = h * 0x9E3779B1u + MEM32(s_mw_addr[i]);
+    return h;
+}
+static void mem_watch_report(uint32_t va, int f, int depth, unsigned i, uint32_t now)
+{
+    extern unsigned g_doa3_frames_presented;
+    int k, lo;
+    if (s_mw_hits[i] >= 3 || s_mw_lines >= 200) return;
+    s_mw_hits[i]++; s_mw_lines++;
+    if (va) {
+        fprintf(stderr, "[MEM-WATCH] frame %u: %08X %08X -> %08X in %08X (fiber %d); called from:",
+                g_doa3_frames_presented, s_mw_addr[i], s_mw_seen[i], now, va, f);
+        lo = depth > 28 ? depth - 28 : 0;
+        for (k = (depth < BW_DEPTH ? depth : BW_DEPTH) - 1; k >= lo; k--) fprintf(stderr, " %08X", s_bw_stk[f][k]);
+        fprintf(stderr, "\n");
+    } else {
+        fprintf(stderr, "[MEM-WATCH] frame %u: %08X %08X -> %08X outside every wrapped function\n",
+                g_doa3_frames_presented, s_mw_addr[i], s_mw_seen[i], now);
+    }
+    fflush(stderr);
+}
+void game_mem_watch_leave(uint32_t va, int depth, unsigned before)
+{
+    int f = bw_fiber();
+    unsigned i;
+    s_bw_depth[f] = depth;
+    if (game_mem_watch_mix() == before) return;
+    for (i = 0; i < s_mw_n; i++) {
+        uint32_t now = MEM32(s_mw_addr[i]);
+        if (now != s_mw_seen[i]) { mem_watch_report(va, f, depth, i, now); s_mw_seen[i] = now; }
+    }
+}
+static void mem_watch_frame(void)
+{
+    static int s_init;
+    unsigned i;
+    if (!s_init) {
+        const char *e = getenv("DOA3_WATCH");
+        s_init = 1;
+        while (e && *e && s_mw_n < 24) {
+            char *end; unsigned long v = strtoul(e, &end, 16);
+            if (end == e) break;
+            if (v >= 0x1000 && v < 0x08000000u - 4) s_mw_addr[s_mw_n++] = (uint32_t)v & ~3u;
+            e = (*end == ',') ? end + 1 : end;
+        }
+        if (s_mw_n) fprintf(stderr, "[MEM-WATCH] watching %u dwords during fights\n", s_mw_n);
+    }
+    if (!s_mw_n) return;
+    if (MEM8(0x5A2858) != 7) { g_mem_watch_on = 0; return; }
+    for (i = 0; i < s_mw_n; i++) {
+        uint32_t now = MEM32(s_mw_addr[i]);
+        if (g_mem_watch_on && now != s_mw_seen[i]) mem_watch_report(0, 0, 0, i, now);
+        s_mw_seen[i] = now;
+    }
+    g_mem_watch_on = 1;
+}
 void game_audio_bgm_watch(void)
 {
     extern unsigned g_doa3_frames_presented;
+    mem_watch_frame();
     extern volatile int g_apu_det;
     extern volatile int g_xbox_det_active;
     static uint32_t s_last[GA_BGM_COUNT][3]; static int s_init; static unsigned s_lines;
@@ -350,6 +418,9 @@ void game_audio_frame(void) {}
 void game_audio_on_adxt_start(uint32_t a, uint32_t p, uint32_t f) { (void)a; (void)p; (void)f; }
 void game_audio_bgm_watch(void) {}
 volatile uint32_t g_bgm_watch_adxt;
+volatile int g_mem_watch_on;
+unsigned game_mem_watch_mix(void) { return 0; }
+void game_mem_watch_leave(uint32_t va, int depth, unsigned before) { (void)va; (void)depth; (void)before; }
 void game_audio_bgm_watch_enter(uint32_t va, int *depth) { (void)va; *depth = 0; }
 void game_audio_bgm_watch_leave(uint32_t va, int depth, unsigned before) { (void)va; (void)depth; (void)before; }
 void game_audio_on_movie_start(uint32_t index) { (void)index; }

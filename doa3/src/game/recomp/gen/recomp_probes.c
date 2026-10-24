@@ -18,8 +18,15 @@ void esp_probe_report(uint32_t va, uint32_t esp_in, uint32_t esp_out, uint32_t e
 extern volatile uint32_t g_bgm_watch_adxt;
 void game_audio_bgm_watch_enter(uint32_t va, int *depth);
 void game_audio_bgm_watch_leave(uint32_t va, int depth, unsigned before);
+/* rollback.13: DOA3_WATCH=addr,... (game_audio.c) -- the innermost wrapped
+ * function that changes one of the listed dwords, with its callers. */
+extern volatile int g_mem_watch_on;
+unsigned game_mem_watch_mix(void);
+void game_mem_watch_leave(uint32_t va, int depth, unsigned before);
 #define BGM_WATCH_CALL(va) do { uint32_t _wa = g_bgm_watch_adxt; \
-    if (_wa) { unsigned _wb = MEM8(_wa + 1); int _wd; game_audio_bgm_watch_enter(0x##va##u, &_wd); \
+    if (g_mem_watch_on) { unsigned _wm = game_mem_watch_mix(); int _wd; game_audio_bgm_watch_enter(0x##va##u, &_wd); \
+        sub_##va##_gen(); game_mem_watch_leave(0x##va##u, _wd, _wm); } \
+    else if (_wa) { unsigned _wb = MEM8(_wa + 1); int _wd; game_audio_bgm_watch_enter(0x##va##u, &_wd); \
         sub_##va##_gen(); game_audio_bgm_watch_leave(0x##va##u, _wd, _wb); } \
     else sub_##va##_gen(); } while (0)
 void doa3_fn_trace(uint32_t va, uint32_t esp_in);   /* DOA3_TRACE_FN, recomp_manual.c */

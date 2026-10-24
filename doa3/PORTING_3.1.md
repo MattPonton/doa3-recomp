@@ -4662,3 +4662,29 @@ stamps, push-buffer pointers, dead stack). Every trial runs; a summary
 lists each set's result. A set that leaves other state different (a
 render task that also keeps logic state, or per-frame counters of its
 own) shows as LOGIC DIFFERS with the values printed.
+
+## 0.2.6-rollback.13 - who writes what a skipped render task leaves behind
+
+Matt's LOGICONLY run of .12. Speed: skipping the render tasks on hidden
+frames cut replay to ~1.3-2.6 ms a frame (4 frames 10.5 ms, 8 frames
+10-14 ms) against ~4.5-11 ms with only the host's preparation skipped.
+Correctness: no set matched exactly; what differs:
+- 0691F0 (2D): four counters off by exactly 3 (the 3 hidden frames):
+  0x5A857C 0x34 vs 0x37, 0x5A8A8C 0x410 vs 0x40D, 0xC58E4C 0x3CD vs
+  0x3CA, a float at 0x259F18; plus 4 bytes of the clock part (per-fiber
+  poll accounting). The task keeps per-frame counters of its own.
+- 1C60AB: 785 bytes, float vectors at 0xA53CA4 / 0xB5B3FC and a list
+  pointer at 0xAD3920 (camera or lighting state, by the look).
+- 049790 (models): 33.5 KB: a table 0x4F55BC..0x4FA2D7 (rows of 0xC0),
+  0x516C9C.., 0x568BE8 / 0x56A4E8, and many small ranges in both
+  fighters' heap blocks (0x027Axxxx.., 0x02C4xxxx..).
+- 0E8030: 50.8 KB: 0xA28C60..0xA493F0, 0x01BCxxxx..0x02230018 heap.
+So the render tasks keep state across frames (counters, physics or
+smoothing, matrices), and whole-task skipping cannot be exact. What has
+to be decided per region is whether it is cosmetic (hair / cloth
+physics, camera smoothing, HUD animation) or something fight logic reads.
+
+DOA3_WATCH=addr[,addr...] (hex, up to 24 dwords): during fights the
+innermost recompiled function whose call changes a listed dword is logged
+([MEM-WATCH]) with its callers on that fiber, three times per address;
+changes made outside every wrapped function show in the per-frame check.
