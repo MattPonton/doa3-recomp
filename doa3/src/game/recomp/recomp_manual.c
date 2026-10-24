@@ -752,6 +752,7 @@ void sub_000CD870(void)
             uint32_t grp = MEM8(0x2FF868 + ch);
             uint32_t have = MEM8(0x59FB16 + grp), max = MEM8(0x29C70C + ch);
             uint32_t count = have < max ? have : max, extra = MEM8(0x5B3174 + grp);
+            if (count + extra > 99) extra = count < 99 ? 99 - count : 0;   /* the list's 99 */
             if (extra && count + extra < 0xFF) {
                 static uint32_t s_stir2;
                 uint32_t pool = MEM32(0x404998);
@@ -844,6 +845,7 @@ void sub_00076B30(void)
             int tries;
             /* Storage costumes (0.1.18): slots past `count` are 0x40 + n. */
             uint32_t extra = dip_get(DIP_RANDOM_HDD_COSTUMES) ? MEM8(0x5B3174 + grp) : 0;
+            if (count + extra > 99) extra = count < 99 ? 99 - count : 0;   /* the list's 99 */
             for (tries = 0; tries < 4; tries++) {
                 uint32_t pool = MEM32(0x404998), base = 0, i, slot, alt, idx, costume, p;
                 uint32_t r = (pool ? MEM8(pool + ((MEM8(0x40499D) + s_stir) & 0xFF)) : 0) +
@@ -906,7 +908,11 @@ static uint32_t cc_full_count(uint32_t ch)
     max = MEM8(0x29C70C + ch);
     grp = MEM8(0x2FF868 + ch);
     have = doa3_debug_unlock_read8(0x59FB16 + grp, MEM8(0x59FB16 + grp));
-    return (have > max ? max : have) + MEM8(0x5B3174 + grp);
+    {   /* 0.1.22: labels stay two digits -- the list ends at COS.99 and
+         * wraps to COS.1 even if more storage costumes exist. */
+        uint32_t n = (have > max ? max : have) + MEM8(0x5B3174 + grp);
+        return n > 99 ? 99 : n;
+    }
 }
 void sub_000CD7C0_gen(void);
 void sub_000CD7C0(void)

@@ -3919,3 +3919,12 @@ signed: the uses are equality tests, and the pair-table readers
 (0x840D0, 0x86060) test it with an unsigned < 0x40. The working list
 takes the first 99 distinct numbers a character's files use; the
 2048-file total is unchanged.
+
+## 0.1.22 - costume list ends at COS.99
+
+Matt: labels never go past two digits. With the carousel switch the
+costume count (0xCD7C0) is capped at 99, so Down on COS.99 wraps to
+COS.1 (the cursor's own wrap) even when more storage costumes exist.
+Random from storage, for both the player and Survival/Time Attack
+opponents, draws from the same first 99, so it never picks a costume
+the list cannot reach.
