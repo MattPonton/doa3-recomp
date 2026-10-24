@@ -3965,3 +3965,9 @@ Port (always on; nothing changes without such files):
   button the disc costume already uses is never taken over.
 - 0xCD870: (costume, option) maps to the storage id.
 - 0xCD900: maps that id back to (costume, option).
+
+## 0.1.24 - storage options: x, y, l only
+
+Matt: LT+A is the game's only LT option, so the lx/ly suffixes are
+dropped. Suffixes are now x (X, option 1), y (Y, 2) and l (LT+A, 3).
+In 0xCD110, X or Y with LT held means X or Y.

@@ -1090,10 +1090,10 @@ void doa3_tdata_alloc(void)
     fflush(stderr);
 }
 /* Storage costume options (0.1.23). A file named
- *   <prefix><two hex digits>.<x|y|l|lx|ly>.<xpr|cat>      e.g. aya01.y.xpr
+ *   <prefix><two hex digits>.<x|y|l>.<xpr|cat>      e.g. aya01.y.xpr
  * is an extra option for the character's disc costume <number> (counted from
- * 0, so aya01 is Costume 2) on that button: X, Y, LT+A, LT+X, LT+Y, which are
- * options 1-5 in 0xCD110 (A / Start is 0). The original game takes the text
+ * 0, so aya01 is Costume 2) on that button: X, Y or LT+A, options 1-3 in
+ * 0xCD110 (A / Start is 0; LT+A is the only LT option the game uses). The original game takes the text
  * after the FIRST dot as the extension, so "y.xpr" is neither xpr nor cat and
  * such files are ignored on hardware. Here they are kept out of the numbered
  * storage list, appended to the pair table after it (so each gets a storage
@@ -1139,8 +1139,6 @@ void sub_00086C20(void)   /* scan: one file name at edi, its name-table index in
         if (len == 1 && (suf[0] | 0x20) == 'x') alt = 1;
         else if (len == 1 && (suf[0] | 0x20) == 'y') alt = 2;
         else if (len == 1 && (suf[0] | 0x20) == 'l') alt = 3;
-        else if (len == 2 && (suf[0] | 0x20) == 'l' && (suf[1] | 0x20) == 'x') alt = 4;
-        else if (len == 2 && (suf[0] | 0x20) == 'l' && (suf[1] | 0x20) == 'y') alt = 5;
         isx = dot && opt_ieq(dot + 1, "xpr", 4);
         isc = dot && opt_ieq(dot + 1, "cat", 4);
         if (alt && (isx || isc)) {
@@ -1226,8 +1224,8 @@ void sub_000CD110(void)
     if (ch <= 0x18 && port < 4) {
         uint32_t v = disc_variants(ch, slot), btn = MEM8(0x9B7C0F + port * 8), want;
         int lt = (MEM32(0x73C8D0 + port * 0x2C) & 0x4000u) != 0;
-        if (lt) want = (btn & 4) ? 4 : (btn & 8) ? 5 : 3;
-        else    want = (btn & 4) ? 1 : (btn & 8) ? 2 : 0;
+        /* LT+A is the only LT option the game uses (0.1.24). */
+        want = (btn & 4) ? 1 : (btn & 8) ? 2 : lt ? 3 : 0;
         if (v && want >= v && doa3_opt_costume(MEM8(0x2FF868 + ch), slot, want) >= 0)
             eax = (eax & ~0xFFu) | want;
     }
