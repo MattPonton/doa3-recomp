@@ -310,8 +310,18 @@ void mcpx_apu_monitor_frame(MCPXAPUState *d)
             if (!s_apu_replay_active) {
                 extern int xa2_queued(void);
                 int spins = 0;
-                while (xa2_queued() >= 6 && spins < 200) { qemu_mutex_unlock(&d->lock); Sleep(1); qemu_mutex_lock(&d->lock); spins++; }
-                xa2_submit_samples((const int16_t *)s_apu_stage, buf_size);
+                extern volatile int g_apu_det;
+                if (g_apu_det) {
+                    /* doa3.1-rollback.11: on the controlled clock the game
+                     * thread steps the chip, and the video frame already paces
+                     * it. Waiting here for a free XA2 slot slept the game thread
+                     * ~20 ms about every tenth frame (the [FIBER-TIME] spikes).
+                     * Never wait; past twelve queued buffers drop this one. */
+                    if (xa2_queued() < 12) xa2_submit_samples((const int16_t *)s_apu_stage, buf_size);
+                } else {
+                    while (xa2_queued() >= 6 && spins < 200) { qemu_mutex_unlock(&d->lock); Sleep(1); qemu_mutex_lock(&d->lock); spins++; }
+                    xa2_submit_samples((const int16_t *)s_apu_stage, buf_size);
+                }
             }
             s_apu_fill = 0;
         }

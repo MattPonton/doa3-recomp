@@ -4610,3 +4610,23 @@ New diagnostics, both on the main thread:
   much.
 - [FIBER-TIME] now adds the time the main thread spent stepping the APU
   on the controlled clock in that frame and its longest single chip frame.
+
+## 0.2.6-rollback.11 - the controlled clock no longer sleeps on host audio
+
+Matt's runs of .10:
+- CLOCKTEST: every slow controlled-clock frame was one chip frame of
+  ~18-25 ms on the game thread. It is not chip work: when the stage buffer
+  fills, the monitor waits (Sleep(1) loop) for a free XAudio2 slot. On the
+  APU thread that wait paces the chip to 48 kHz; on the controlled clock
+  the game thread steps the chip and the video frame paces it, so the
+  wait slept the game thread. Now it never waits on the controlled clock
+  and drops the buffer past twelve queued.
+- PROBE (six of six matched again), per step:
+  - capture 31-61 ms of 130 MB: clear 3-11, RAM part 7.4-8.5 (28 on the
+    first), hash ~4, copy out 15-30; every other part well under 1 ms;
+  - restore 31-41 ms: copy in ~7.5, header hash ~4, safety before-image
+    ~8.5, apply ~10 of which RAM ~9.7;
+  - compare 42-56 ms: parts ~21-30, renderer (pixel read-back) 21-35.
+  The essential costs are the RAM copy each way, ~8-10 ms for the whole
+  128 MB guest space (80 MB low + 48 MB high, of which the game uses about
+  50); the rest is the harness's verification.
