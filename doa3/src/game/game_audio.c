@@ -4,6 +4,7 @@
 #include "recomp/gen/xbe_layout.h"   /* DOA3_XBE_ID_JAPAN */
 #include <windows.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 /* DOA3 3.1 (NTSC-J) audio state.
  *
@@ -91,6 +92,52 @@ int game_audio_streamer_muting(void)
  * info, 2 prepare, 3 playing, 4 decode end, 5 play end, 6 error), logged on
  * every change with whether the rollback clock runs. */
 static uint32_t s_bgm_adxt;
+/* doa3.1-rollback.7 diagnostic (DOA3_BGM_WATCH=1): while channel 0 has a
+ * player, every recompiled-function wrapper (gen/recomp_probes.c) checks the
+ * player's state byte around the call. The innermost function whose call
+ * changed it is logged with the functions it was called from on that fiber.
+ * A change no wrapper saw (host code or a hand-written function with no
+ * wrapped caller) is reported by the per-frame watch below. */
+volatile uint32_t g_bgm_watch_adxt;
+#define BW_FIB   64
+#define BW_DEPTH 64
+static uint32_t s_bw_stk[BW_FIB][BW_DEPTH];
+static int s_bw_depth[BW_FIB];
+static unsigned s_bw_seen = 0xFFFFFFFFu, s_bw_lines;
+static int bw_fiber(void)
+{
+    extern int xbox_fiber_current(void);
+    int f = xbox_fiber_current();
+    return (f < 0 || f >= BW_FIB) ? 0 : f;
+}
+void game_audio_bgm_watch_enter(uint32_t va, int *depth)
+{
+    int f = bw_fiber(), d = s_bw_depth[f]++;
+    if (d >= 0 && d < BW_DEPTH) s_bw_stk[f][d] = va;
+    *depth = d;
+}
+void game_audio_bgm_watch_leave(uint32_t va, int depth, unsigned before)
+{
+    extern unsigned g_doa3_frames_presented;
+    extern volatile int g_apu_det;
+    extern volatile int g_xbox_det_active;
+    int f = bw_fiber(), i, lo;
+    uint32_t a = g_bgm_watch_adxt;
+    unsigned after;
+    s_bw_depth[f] = depth;
+    if (!a) return;
+    after = MEM8(a + 1);
+    if (after == before || after == s_bw_seen) return;
+    s_bw_seen = after;
+    if (s_bw_lines >= 60) return;
+    s_bw_lines++;
+    fprintf(stderr, "[BGM-WATCH] frame %u: player %08X state %u -> %u in %08X (fiber %d, rollback clock %s); called from:",
+            g_doa3_frames_presented, a, before, after, va, f, (g_apu_det || g_xbox_det_active) ? "ON" : "off");
+    lo = depth > 24 ? depth - 24 : 0;
+    for (i = (depth < BW_DEPTH ? depth : BW_DEPTH) - 1; i >= lo; i--) fprintf(stderr, " %08X", s_bw_stk[f][i]);
+    fprintf(stderr, "\n");
+    fflush(stderr);
+}
 void game_audio_bgm_watch(void)
 {
     extern unsigned g_doa3_frames_presented;
@@ -110,6 +157,22 @@ void game_audio_bgm_watch(void)
         s_last[c][0] = h; s_last[c][1] = ch; s_last[c][2] = st;
     }
     s_init = 1;
+    {
+        static int s_on = -1;
+        uint32_t h0 = MEM32(GA_BGM_SLOTS);
+        if (s_on < 0) { const char *e = getenv("DOA3_BGM_WATCH"); s_on = e && *e == '1'; }
+        if (s_on && h0 && h0 < 0x08000000u) {
+            unsigned st0 = MEM8(h0 + 1);
+            if (g_bgm_watch_adxt == h0 && st0 != s_bw_seen && s_bw_lines < 60) {
+                s_bw_lines++;
+                fprintf(stderr, "[BGM-WATCH] frame %u: player %08X state now %u, changed outside every wrapped function\n",
+                        g_doa3_frames_presented, h0, st0);
+                fflush(stderr);
+            }
+            s_bw_seen = st0;
+            g_bgm_watch_adxt = h0;
+        }
+    }
 }
 void game_audio_on_adxt_start(uint32_t adxt, uint32_t partition, uint32_t fid)
 {
@@ -253,6 +316,9 @@ int  game_audio_streamer_muting(void) { return 0; }
 void game_audio_frame(void) {}
 void game_audio_on_adxt_start(uint32_t a, uint32_t p, uint32_t f) { (void)a; (void)p; (void)f; }
 void game_audio_bgm_watch(void) {}
+volatile uint32_t g_bgm_watch_adxt;
+void game_audio_bgm_watch_enter(uint32_t va, int *depth) { (void)va; *depth = 0; }
+void game_audio_bgm_watch_leave(uint32_t va, int depth, unsigned before) { (void)va; (void)depth; (void)before; }
 void game_audio_on_movie_start(uint32_t index) { (void)index; }
 void game_audio_before_save(void) {}
 void game_audio_after_save(void) {}

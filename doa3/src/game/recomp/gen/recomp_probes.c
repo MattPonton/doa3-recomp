@@ -10,6 +10,18 @@
 #define RB_BOUNDARY(va, before) ((void)0)
 #endif
 void esp_probe_report(uint32_t va, uint32_t esp_in, uint32_t esp_out, uint32_t expect);
+/* DOA3 0.2.6-rollback.7 diagnostic: while g_bgm_watch_adxt names a music
+ * player, every wrapper compares its state byte (+1) before and after the
+ * call and keeps a per-fiber stack of the functions it is inside, so the
+ * innermost function that stops the music is logged with its callers
+ * (game_audio.c). Off (one load per call) when no music plays. */
+extern volatile uint32_t g_bgm_watch_adxt;
+void game_audio_bgm_watch_enter(uint32_t va, int *depth);
+void game_audio_bgm_watch_leave(uint32_t va, int depth, unsigned before);
+#define BGM_WATCH_CALL(va) do { uint32_t _wa = g_bgm_watch_adxt; \
+    if (_wa) { unsigned _wb = MEM8(_wa + 1); int _wd; game_audio_bgm_watch_enter(0x##va##u, &_wd); \
+        sub_##va##_gen(); game_audio_bgm_watch_leave(0x##va##u, _wd, _wb); } \
+    else sub_##va##_gen(); } while (0)
 void doa3_fn_trace(uint32_t va, uint32_t esp_in);   /* DOA3_TRACE_FN, recomp_manual.c */
 extern int g_fn_trace_on;
 /* Each wrapper is also a scheduling point: give the worker fibers their
@@ -22,13 +34,13 @@ void doa3_fn_register(uint32_t va, unsigned *count);   /* call profile, recomp_m
  * scheduling point, which every build needs. */
 #if defined(DOA3_PROBES)
 #define P(va, n) static unsigned c_##va; void sub_##va##_gen(void); void sub_##va(void) { \
-    uint32_t e0 = g_esp; if (!c_##va++) doa3_fn_register(0x##va##u, &c_##va); RB_BOUNDARY(va, 1); sub_##va##_gen(); RB_BOUNDARY(va, 0); \
+    uint32_t e0 = g_esp; if (!c_##va++) doa3_fn_register(0x##va##u, &c_##va); RB_BOUNDARY(va, 1); BGM_WATCH_CALL(va); RB_BOUNDARY(va, 0); \
     if (g_fib_slice_due) xbox_fiber_timeslice(); \
     if (g_fn_trace_on) doa3_fn_trace(0x##va##u, e0); \
     if (g_esp - e0 != 4u + (n)) esp_probe_report(0x##va##u, e0, g_esp, 4u + (n)); }
 #else
 #define P(va, n) void sub_##va##_gen(void); void sub_##va(void) { \
-    sub_##va##_gen(); if (g_fib_slice_due) xbox_fiber_timeslice(); }
+    BGM_WATCH_CALL(va); if (g_fib_slice_due) xbox_fiber_timeslice(); }
 #endif
 P(00011000, 0)
 P(00011B00, 0)

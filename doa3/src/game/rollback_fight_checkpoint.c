@@ -277,26 +277,56 @@ static const char *diff_label(uint32_t a)
     if(a>=0xAD8A78u && a<0xB5A000u)return "render arena";
     return "";
 }
+/* rollback.7: what the differing dwords of an unlabelled range look like.
+ * A fence stamp is a value at or below its image's GPU reference counter
+ * and within 0x8000 of it (D3D writes the counter into a resource's Lock
+ * word each time a draw uses it, so skipped draws leave older stamps). A
+ * push-buffer pointer points into the ring. Stack ranges name the fiber and
+ * whether the bytes are below its saved stack pointer (dead). */
+static uint32_t rd32(const unsigned char *p,size_t n,size_t off){uint32_t v=0;if(off+4<=n)memcpy(&v,p+off,4);return v;}
 static void diff_map(unsigned part,const unsigned char *a,const unsigned char *b,size_t n)
 {
     static int lines;
-    size_t i=0,ranges=0,bytes=0,other_ranges=0,other_bytes=0;
+    size_t i=0,ranges=0,bytes=0,other_ranges=0,other_bytes=0,unexplained_ranges=0,unexplained_bytes=0;
     const size_t hdr=sizeof(FightCpu);
+    uint32_t dev=g_doa3_pb_dev,lo=0,hi=0,ctr_at=0,ca=0,cb=0;
+    if(dev && dev<0x08000000u){lo=MEM32(dev+0x24);hi=MEM32(dev+0x28)+4;}
     fprintf(stderr,"[ROLLBACK-DIFFMAP] part=%s bytes=%zu\n",part_names[part],n);
+    if(part==DOA3_CP_RAM && lo>=0x1000u){
+        ctr_at=lo-0x1000u;ca=rd32(a,n,hdr+ctr_at);cb=rd32(b,n,hdr+ctr_at);
+        fprintf(stderr,"[ROLLBACK-DIFFMAP] GPU reference counter (ring - 0x1000) @%08X: reference %X replay %X\n",ctr_at,ca,cb);
+    }
     while(i<n){
         if(a[i]==b[i]){++i;continue;}
         size_t start=i,end=i+1,gap=0;
         for(size_t j=i+1;j<n && gap<64;++j){ if(a[j]!=b[j]){end=j+1;gap=0;} else ++gap; }
         size_t diff=0;for(size_t j=start;j<end;++j)diff+=a[j]!=b[j];
         ++ranges;bytes+=diff;
-        if(part==DOA3_CP_RAM && start>=hdr && !*diff_label((uint32_t)(start-hdr))){other_ranges++;other_bytes+=diff;}
-        if(lines<600){
-            ++lines;
-            if(part==DOA3_CP_RAM && start>=hdr){
-                uint32_t ga=(uint32_t)(start-hdr);
-                fprintf(stderr,"[ROLLBACK-DIFFMAP]   guest %08X-%08X (%zu bytes differ) %s\n",
-                        ga,(uint32_t)(end-hdr)-1,diff,diff_label(ga));
-                if(!*diff_label(ga)){   /* both values, dword-aligned, first 32 bytes */
+        if(part==DOA3_CP_RAM && start>=hdr){
+            uint32_t ga=(uint32_t)(start-hdr);
+            const char *lab=diff_label(ga);
+            char what[160]="";int fib=-1;uint32_t routine=0;int stk=0,explained=0;
+            if(!*lab){
+                unsigned dw=0,fence=0,ptr=0;
+                for(size_t j=start&~(size_t)3;j<end;j+=4){
+                    uint32_t va=rd32(a,n,j),vb=rd32(b,n,j);
+                    if(va==vb)continue;
+                    ++dw;
+                    if(ca && va<=ca && va+0x8000u>ca && vb<=cb && vb+0x8000u>cb)++fence;
+                    else if(lo && va>=lo && va<hi && vb>=lo && vb<hi)++ptr;
+                }
+                stk=xbox_fiber_stack_of(ga,&fib,&routine);
+                if(stk)snprintf(what,sizeof what,"fiber %d (routine %08X) %s stack; ",fib,routine,stk==1 ? "dead":"live");
+                snprintf(what+strlen(what),sizeof what-strlen(what),"%u differing dwords: %u fence stamps, %u push-buffer pointers",dw,fence,ptr);
+                explained=stk==1 || (dw && fence+ptr==dw);
+                other_ranges++;other_bytes+=diff;
+                if(!explained){unexplained_ranges++;unexplained_bytes+=diff;}
+            }
+            if(lines<600){
+                ++lines;
+                fprintf(stderr,"[ROLLBACK-DIFFMAP]   guest %08X-%08X (%zu bytes differ) %s%s%s\n",
+                        ga,(uint32_t)(end-hdr)-1,diff,lab,*what ? what:"",(*what && !explained) ? " -- UNEXPLAINED":"");
+                if(!*lab && !explained){   /* both values, dword-aligned, first 32 bytes */
                     size_t s0=start&~(size_t)3,s1=s0+32<end ? s0+32:((end+3)&~(size_t)3);
                     char la[200],lb[200];int pa=0,pb=0;
                     for(size_t j=s0;j<s1 && j+4<=n;j+=4){
@@ -306,14 +336,19 @@ static void diff_map(unsigned part,const unsigned char *a,const unsigned char *b
                     fprintf(stderr,"[ROLLBACK-DIFFMAP]     reference @%08X:%s\n",(uint32_t)(s0-hdr),la);
                     fprintf(stderr,"[ROLLBACK-DIFFMAP]     replay    @%08X:%s\n",(uint32_t)(s0-hdr),lb);
                 }
-            }else fprintf(stderr,"[ROLLBACK-DIFFMAP]   offset %zX-%zX (%zu bytes differ)%s\n",
-                        start,end-1,diff,part==DOA3_CP_RAM ? " CPU/loop header":"");
+            }
+        }else if(lines<600){
+            ++lines;
+            fprintf(stderr,"[ROLLBACK-DIFFMAP]   offset %zX-%zX (%zu bytes differ)%s\n",
+                    start,end-1,diff,part==DOA3_CP_RAM ? " CPU/loop header":"");
         }
         i=end;
     }
     fprintf(stderr,"[ROLLBACK-DIFFMAP] part=%s ranges=%zu differing_bytes=%zu\n",part_names[part],ranges,bytes);
-    if(part==DOA3_CP_RAM)
+    if(part==DOA3_CP_RAM){
         fprintf(stderr,"[ROLLBACK-DIFFMAP] outside the labelled render-only memory: ranges=%zu differing_bytes=%zu\n",other_ranges,other_bytes);
+        fprintf(stderr,"[ROLLBACK-DIFFMAP] not fence stamps, push-buffer pointers or dead stack: ranges=%zu differing_bytes=%zu\n",unexplained_ranges,unexplained_bytes);
+    }
     fflush(stderr);
 }
 void doa3_fight_checkpoint_diff_map_enable(void)

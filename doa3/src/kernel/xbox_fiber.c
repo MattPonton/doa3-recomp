@@ -657,6 +657,27 @@ int xbox_fiber_current(void)
     return g_cur;
 }
 
+/* doa3.1-rollback diagnostic (rollback diff map): the guest stack that holds
+ * va. 0 = no fiber's stack; 1 = below that fiber's stack pointer (dead
+ * stack); 2 = at or above it (live frames). *routine is the task body or
+ * thread routine. Fiber 0 is the main thread on the XBE's own stack. */
+int xbox_fiber_stack_of(uint32_t va, int *fiber, uint32_t *routine)
+{
+    for (int i = 0; i < g_nfib; i++) {
+        const Fiber *f = &g_fib[i];
+        uint32_t top, base, sp;
+        if (f->stack_top) { top = f->stack_top + 16; base = top - f->stack_size; }
+        else if (i == 0) { top = XBOX_STACK_TOP + 16; base = XBOX_STACK_BASE; }
+        else continue;
+        if (va < base || va >= top) continue;
+        sp = (i == g_cur) ? g_esp : f->r_esp;
+        *fiber = i;
+        *routine = f->task_routine ? f->task_routine : f->start_routine;
+        return va < sp ? 1 : 2;
+    }
+    return 0;
+}
+
 /* True if the current fiber is a direct-switched coroutine (XAPI game task). */
 int xbox_fiber_is_coroutine(void)
 {

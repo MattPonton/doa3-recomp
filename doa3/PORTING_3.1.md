@@ -4499,3 +4499,37 @@ New diagnostics:
 - [BGM] lines: each music channel's player handle, channel state (+8) and
   ADXT state byte (+1), on every change, saying whether the rollback
   clock is on.
+
+## 0.2.6-rollback.7 - who stops the music; classifying what a skipped render leaves
+
+Matt's runs of .6:
+- CLOCKTEST: at the clock hand-over (frame 1955) the music player's ADXT
+  state byte went 3 (playing) -> 0 (stop) within one frame, while the
+  channel state stayed 3 (the game still thinks the song plays) and no CRI
+  error was reported. Something calls the ADXT stop path; the game's own
+  music manager does not.
+- SKIPMAP: the persistent ranges are now readable. Almost every one is a
+  D3D resource header (Common / Data / Lock, textures with Format / Size)
+  whose Lock word differs: ~0x9E95 in the reference against ~0x9E5D after
+  the skipped replay, with the GPU reference counter at 0xF57000 0x9EB7 vs
+  0x9E7D. Lock is the push-buffer reference stamp D3D writes when a draw
+  uses the resource; skipped draws leave older stamps. 0xD017B0.. is a
+  table of (stamp, push-buffer address, 0) triples. 0x0511xxxx-0x0518xxxx
+  hold push-buffer addresses and the device pointer: game-task stacks. The
+  renderer's one logical difference (+609488) is the same counter value.
+  Left unexplained: 0x5AA224 (0x00D017B0 vs 0x005A91D8, a pointer into or
+  beside that table) and GPU frontend offsets 8-F / 8110.
+
+New diagnostics:
+- DOA3_BGM_WATCH=1: while channel 0 has a player, every recompiled
+  function's wrapper compares its state byte around the call; the
+  innermost function that changed it is logged ([BGM-WATCH]) with the
+  functions it was called from on that fiber, or the per-frame watch says
+  the change came from outside every wrapped function. Off: one load per
+  call.
+- Diff map: each unlabelled range is classified per differing dword as a
+  fence stamp (at or within 0x8000 below its image's GPU reference
+  counter, read at ring start - 0x1000) or a push-buffer pointer, and
+  ranges inside a fiber's stack name the fiber, its routine and whether
+  the bytes lie below its saved stack pointer (dead). Only ranges none of
+  that explains print values and count as unexplained.
