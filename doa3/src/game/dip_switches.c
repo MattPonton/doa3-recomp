@@ -18,6 +18,11 @@ static const struct { const char *key, *label, *help; } k_dip[DIP_COUNT] = {
       "costume's alternate colours (the ones chosen with A, X, Y, Black or LT on Character "
       "Select), and Survival and Time Attack opponents get a random unlocked costume and "
       "colour. Story mode opponents (and its outfit easter eggs) are unchanged." },
+    { "RandomStorageCostumes", "Random includes costumes from storage",
+      "Costumes loaded from the TDATA folder next to the save (the Booster Pack outfits, "
+      "or custom XPR/CAT pairs) can be chosen on Character Select, but the original game's "
+      "Random never picks them. On: Random, and the Survival and Time Attack opponents when "
+      "the colour switch is also on, can pick them too." },
 };
 
 static volatile LONG g_loaded;

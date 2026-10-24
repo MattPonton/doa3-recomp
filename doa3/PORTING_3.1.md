@@ -3822,3 +3822,24 @@ way 0xCD870 does:
 - Logged as "[RANDALT] CPU opponent ..." (first 32).
 Story (mode 2) and every other mode are untouched. The [COSTUME]
 diagnostics from 0.1.16 stay in for now.
+
+## 0.1.18 - Dip switch: Random includes costumes from storage
+
+3.0 could load extra costumes from TDATA next to the save (the Booster
+Pack outfits; fans use it for custom XPR/CAT pairs). Character Select
+offers them, but Random never picks them. In the costume mapper
+0xCD870, a slot past the unlocked count
+min(0x59FB16[0x2FF868[c]], 0x29C70C[c]) becomes 0x40 + n for the n-th
+storage costume, if n < 0x5B3174[0x2FF868[c]] (the per-group storage
+count Character Select fills). The random picker 0xCC980 draws its slot
+from the unlocked count only.
+
+DIP_RANDOM_HDD_COSTUMES (RandomStorageCostumes):
+- Player's Random and other random-picker draws: while 0xCC980 runs,
+  the slot given to 0xCD870 is redrawn over unlocked + storage. A
+  storage pick has no colour options.
+- Survival / Time Attack opponents (0x76B30, needs
+  DIP_RANDOM_ALT_COSTUMES too): the random slot is drawn over the same
+  range.
+Random bytes come from the game's pool 0x404998. Logged as [RANDHDD]
+(first 16).

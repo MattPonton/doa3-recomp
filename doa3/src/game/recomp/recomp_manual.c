@@ -741,6 +741,34 @@ void sub_000CC980(void)
 void sub_000CD870_gen(void);
 void sub_000CD870(void)
 {
+    /* 0.1.18, storage costumes: slots past the unlocked count map to 0x40 + n
+     * for the n-th costume loaded from TDATA (count per character group in
+     * 0x5B3174[0x2FF868[c]], filled by Character Select). The picker draws
+     * its slot from the unlocked count only; redraw it over both. */
+    if (s_random_pick_depth > 0 && dip_get(DIP_RANDOM_HDD_COSTUMES) && MEM8(esp + 4) == 0) {
+        uint32_t ch = eax & 0xFF;
+        if (ch <= 0x18) {
+            uint32_t grp = MEM8(0x2FF868 + ch);
+            uint32_t have = MEM8(0x59FB16 + grp), max = MEM8(0x29C70C + ch);
+            uint32_t count = have < max ? have : max, extra = MEM8(0x5B3174 + grp);
+            if (extra && count + extra < 0xFF) {
+                static uint32_t s_stir2;
+                uint32_t pool = MEM32(0x404998);
+                uint32_t r = (pool ? MEM8(pool + ((MEM8(0x40499D) + 0x55u + s_stir2) & 0xFF)) : 0) + s_stir2 * 53u + ch;
+                uint32_t pick = r % (count + extra);
+                s_stir2++;
+                edx = (edx & ~0xFFu) | pick;
+                {   static int s_log;
+                    if (s_log < 16) {
+                        s_log++;
+                        fprintf(stderr, "[RANDHDD] character %02X: slot %u of %u (%u unlocked + %u from storage)%s\n",
+                                ch, pick, count + extra, count, extra, pick >= count ? " -> storage costume" : "");
+                        fflush(stderr);
+                    }
+                }
+            }
+        }
+    }
     if (s_random_pick_depth > 0 && dip_get(DIP_RANDOM_ALT_COSTUMES) && MEM8(esp + 4) == 0) {
         uint32_t ch = eax & 0xFF, slot = edx & 0xFF;
         if (ch <= 0x18) {
@@ -813,17 +841,24 @@ void sub_00076B30(void)
             eax = (eax & ~0xFFu) | s_cache_costume[ch];
         } else if (count && vt && ct) {
             int tries;
+            /* Storage costumes (0.1.18): slots past `count` are 0x40 + n. */
+            uint32_t extra = dip_get(DIP_RANDOM_HDD_COSTUMES) ? MEM8(0x5B3174 + grp) : 0;
             for (tries = 0; tries < 4; tries++) {
                 uint32_t pool = MEM32(0x404998), base = 0, i, slot, alt, idx, costume, p;
                 uint32_t r = (pool ? MEM8(pool + ((MEM8(0x40499D) + s_stir) & 0xFF)) : 0) +
                              s_stir * 97u + ch * 13u;
                 s_stir++;
-                slot = r % count;
-                alt = (r / count) % (MEM8(vt + slot) ? MEM8(vt + slot) : 1);
-                for (i = 0; i < slot; i++) base += MEM8(vt + i);
-                idx = base + alt;
-                if (idx >= total) continue;
-                costume = MEM8(ct + idx);
+                slot = r % (count + extra);
+                if (slot >= count) {
+                    alt = 0;
+                    costume = 0x40 + (slot - count);
+                } else {
+                    alt = (r / count) % (MEM8(vt + slot) ? MEM8(vt + slot) : 1);
+                    for (i = 0; i < slot; i++) base += MEM8(vt + i);
+                    idx = base + alt;
+                    if (idx >= total) continue;
+                    costume = MEM8(ct + idx);
+                }
                 for (p = 0; p < 2; p++)
                     if (MEM8(0x59CF58 + p * 0x68) == 1 && MEM8(0x59CF59 + p * 0x68) == ch &&
                         MEM8(0x59CF5A + p * 0x68) == costume) break;
