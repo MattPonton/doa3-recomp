@@ -739,8 +739,8 @@ void sub_000CC980(void)
     s_random_pick_depth--;
     if (g_fib_slice_due) xbox_fiber_timeslice();
 }
-int doa3_opt_costume(uint32_t grp, uint32_t slot, uint32_t alt);
-int doa3_opt_lookup(uint32_t grp, uint32_t costume, uint32_t *slot, uint32_t *alt);
+int doa3_opt_costume(uint32_t ch, uint32_t slot, uint32_t alt);
+int doa3_opt_lookup(uint32_t ch, uint32_t costume, uint32_t *slot, uint32_t *alt);
 /* Disc options of costume slot `slot` (0 when it is not an unlocked disc
  * costume slot). */
 static uint32_t disc_variants(uint32_t ch, uint32_t slot)
@@ -764,7 +764,7 @@ static uint32_t random_option_set(uint32_t ch, uint32_t slot, uint32_t v, uint8_
     for (a = 0; a < v && n < 8; a++) alts[n++] = (uint8_t)a;
     if (ch <= 0x18 && dip_get(DIP_RANDOM_HDD_COSTUMES))
         for (a = v; a <= 3 && n < 8; a++)
-            if (doa3_opt_costume(MEM8(0x2FF868 + ch), slot, a) >= 0) alts[n++] = (uint8_t)a;
+            if (doa3_opt_costume(ch, slot, a) >= 0) alts[n++] = (uint8_t)a;
     return n;
 }
 void sub_000CD870_gen(void);
@@ -774,7 +774,7 @@ void sub_000CD870(void)
         uint32_t ch = eax & 0xFF, slot = edx & 0xFF, alt = MEM8(esp + 4);
         uint32_t v = disc_variants(ch, slot);
         if (v && alt >= v) {
-            int id = doa3_opt_costume(MEM8(0x2FF868 + ch), slot, alt);
+            int id = doa3_opt_costume(ch, slot, alt);
             if (id >= 0) {
                 eax = (eax & ~0xFFu) | (uint32_t)id;
                 esp += 4;
@@ -836,7 +836,7 @@ void sub_000CD870(void)
                     }
                     if (alt >= variants) {
                         /* a storage option: its own costume id */
-                        eax = (eax & ~0xFFu) | (uint32_t)doa3_opt_costume(grp, slot, alt);
+                        eax = (eax & ~0xFFu) | (uint32_t)doa3_opt_costume(ch, slot, alt);
                         esp += 4;
                         return;
                     }
@@ -908,7 +908,7 @@ void sub_00076B30(void)
                     uint32_t v = MEM8(vt + slot), nalts = random_option_set(ch, slot, v, alts);
                     alt = nalts ? alts[(r / count) % nalts] : 0;
                     if (alt >= v && v) {
-                        int sid = doa3_opt_costume(grp, slot, alt);   /* storage option */
+                        int sid = doa3_opt_costume(ch, slot, alt);   /* storage option */
                         if (sid < 0) continue;
                         costume = (uint32_t)sid;
                     } else {
@@ -1120,9 +1120,12 @@ void doa3_tdata_alloc(void)
 }
 /* Storage costume options (0.1.23). A file named
  *   <prefix><two hex digits>.<x|y|l>.<xpr|cat>      e.g. aya01.y.xpr
- * is an extra option for the character's disc costume <number> (counted from
- * 0, so aya01 is Costume 2) on that button: X, Y or L (held with A, X or
- * Y), options 1-3 in 0xCD110 (A / Start is 0). The original game takes the text
+ * is an extra option, on that button, for the character's disc costume that
+ * file number <NN> belongs to: NN is a disc costume id, the number of its own
+ * aya<NN>.xpr (0.1.27; 0.1.23-0.1.26 wrongly read it as a costume position).
+ * Ayane (0x0D): COS.1 = 02, COS.2 = 00 (+X 01), COS.3 = 03 (+X 04), so
+ * aya00.y is COS.2's Y and aya02.x COS.1's X. Buttons: X, Y or L (held with
+ * A, X or Y), options 1-3 in 0xCD110 (A / Start is 0). The original game takes the text
  * after the FIRST dot as the extension, so "y.xpr" is neither xpr nor cat and
  * such files are ignored on hardware. Here they are kept out of the numbered
  * storage list, appended to the pair table after it (so each gets a storage
@@ -1140,19 +1143,45 @@ static int opt_find(uint32_t grp, uint32_t slot, uint32_t alt)
         if (s_opt[i].ok && s_opt[i].grp == grp && s_opt[i].slot == slot && s_opt[i].alt == alt) return i;
     return -1;
 }
-/* Costume id of storage option (group, disc costume, option), or -1. */
-int doa3_opt_costume(uint32_t grp, uint32_t slot, uint32_t alt)
+/* The costume slot of character `ch` whose disc ids (0x29C728, grouped by
+ * the slot's option count 0x29C790) include `num`, or -1. */
+static int opt_num_to_slot(uint32_t ch, uint32_t num)
 {
-    int i = opt_find(grp, slot, alt);
-    return i < 0 ? -1 : 0x40 + s_opt[i].pair;
+    uint32_t max = MEM8(0x29C70C + ch), total = MEM8(0x29C660 + ch);
+    uint32_t vt = MEM32(0x29C790 + ch * 4), ct = MEM32(0x29C728 + ch * 4), s, a, base = 0;
+    if (!vt || !ct) return -1;
+    for (s = 0; s < max; s++) {
+        uint32_t v = MEM8(vt + s);
+        for (a = 0; a < v && base + a < total; a++)
+            if (MEM8(ct + base + a) == num) return (int)s;
+        base += v;
+    }
+    return -1;
 }
-/* The (disc costume, option) a storage-option costume id stands for. */
-int doa3_opt_lookup(uint32_t grp, uint32_t costume, uint32_t *slot, uint32_t *alt)
+/* Costume id of character ch's storage option (costume slot, option), or -1. */
+int doa3_opt_costume(uint32_t ch, uint32_t slot, uint32_t alt)
 {
     int i;
+    uint32_t grp;
+    if (ch > 0x18) return -1;
+    grp = MEM8(0x2FF868 + ch);
     for (i = 0; i < s_nopt; i++)
-        if (s_opt[i].ok && s_opt[i].grp == grp && 0x40u + s_opt[i].pair == costume) {
-            *slot = s_opt[i].slot; *alt = s_opt[i].alt; return 1;
+        if (s_opt[i].ok && s_opt[i].grp == grp && s_opt[i].alt == alt &&
+            opt_num_to_slot(ch, s_opt[i].slot) == (int)slot)
+            return 0x40 + s_opt[i].pair;
+    return -1;
+}
+/* The (costume slot, option) of character ch a storage-option id stands for. */
+int doa3_opt_lookup(uint32_t ch, uint32_t costume, uint32_t *slot, uint32_t *alt)
+{
+    int i, sl;
+    uint32_t grp;
+    if (ch > 0x18) return 0;
+    grp = MEM8(0x2FF868 + ch);
+    for (i = 0; i < s_nopt; i++)
+        if (s_opt[i].ok && s_opt[i].grp == grp && 0x40u + s_opt[i].pair == costume &&
+            (sl = opt_num_to_slot(ch, s_opt[i].slot)) >= 0) {
+            *slot = (uint32_t)sl; *alt = s_opt[i].alt; return 1;
         }
     return 0;
 }
@@ -1225,8 +1254,8 @@ void sub_00086CC0(void)
             MEM16(g_tdata_pairs + slot2 + 2) = (uint16_t)(s_opt[k].xpr | 0x8000u);
             MEM16(g_tdata_pairs + slot2) = (uint16_t)(s_opt[k].cat | 0x8000u);
             s_opt[k].pair = (uint8_t)at; s_opt[k].ok = 1;
-            fprintf(stderr, "[TDATA] group %u: costume %u option %u from storage (costume id %02X)\n",
-                    grp, s_opt[k].slot + 1, s_opt[k].alt, 0x40 + at);
+            fprintf(stderr, "[TDATA] group %u: option %u for the disc costume with file %02X, from storage (costume id %02X)\n",
+                    grp, s_opt[k].alt, s_opt[k].slot, 0x40 + at);
             at++;
         }
     }
@@ -1256,7 +1285,7 @@ void sub_000CD110(void)
         /* Holding L with A, X or Y is the L option (0.1.25; for Leifang's
          * first costume the game itself gives 3 for L + any of them). */
         want = lt ? 3 : (btn & 4) ? 1 : (btn & 8) ? 2 : 0;
-        if (v && want >= v && doa3_opt_costume(MEM8(0x2FF868 + ch), slot, want) >= 0)
+        if (v && want >= v && doa3_opt_costume(ch, slot, want) >= 0)
             eax = (eax & ~0xFFu) | want;
     }
     if (g_fib_slice_due) xbox_fiber_timeslice();
@@ -1268,7 +1297,7 @@ void sub_000CD900(void)
 {
     uint32_t ch = ecx & 0xFF, id = MEM8(esp + 4), out = MEM32(esp + 8), slot, alt;
     if (ch <= 0x18 && id >= 0x40 && id != 0xFF &&
-        doa3_opt_lookup(MEM8(0x2FF868 + ch), id, &slot, &alt)) {
+        doa3_opt_lookup(ch, id, &slot, &alt)) {
         if (out) MEM8(out) = (uint8_t)alt;
         eax = slot;
         esp += 4;

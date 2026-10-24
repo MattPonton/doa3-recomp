@@ -3997,3 +3997,26 @@ buttons the disc costume leaves free). This covers the player's Random
 A storage option resolves directly to its costume id. [RANDALT] lines
 now give the option, the disc and total counts, and "-> storage
 option" when one is chosen.
+
+## 0.1.27 - storage options keyed by the disc costume's file number
+
+Matt (0.1.26): aya00.y / aya00.l / aya02.x / aya04.y were found and
+recorded, but the option did not appear on the costume he expected.
+The scan had read the file number as a costume position (aya00 ->
+Costume 1). He means the disc costume's own file number, which is its
+costume id: disc costume ids (0x29C728, grouped by option counts
+0x29C790) are the aya<NN> numbers.
+
+Ayane (character 0x0D):
+- COS.1 = 02
+- COS.2 = 00, and 01 for X
+- COS.3 = 03, and 04 for X
+
+So aya00.y is COS.2's Y, aya00.l COS.2's L, aya02.x COS.1's X and
+aya04.y COS.3's Y. (His list had 01 and 02 swapped; his files match
+the table.)
+
+An option file now attaches to the costume slot whose disc ids include
+its number. That is resolved per character, so the API takes the
+character (doa3_opt_costume / doa3_opt_lookup). The [TDATA] option line
+names the file number.
