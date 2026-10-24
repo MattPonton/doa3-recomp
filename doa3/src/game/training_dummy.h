@@ -43,6 +43,8 @@ void training_stagger_hold_get(int side, int *enabled, float *value);
 /* Around the CPU stun handler 0x16840 (recomp_manual.c). */
 void training_stagger_cpu_before(void);
 void training_stagger_cpu_after(void);
+void training_stagger_script_before(void);
+void training_stagger_script_after(void);
 #ifdef __cplusplus
 }
 #endif

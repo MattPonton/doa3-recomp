@@ -5,6 +5,8 @@
 
 #define RECOMP_GENERATED_CODE
 #include "recomp_funcs.h"
+void training_stagger_script_before(void);   /* DOA3 0.2.2, training_dummy.c */
+void training_stagger_script_after(void);
 #include <math.h>
 
 /**
@@ -15448,6 +15450,7 @@ loc_0001642D: ;
     esp += 4; return; /* ret */
 
 loc_00016449: ;
+    training_stagger_script_before(); /* DOA3 0.2.2: Stagger Escape hold, scripted dummy */
     edx = MEM32(esi + 0xC);
     ecx = ZX16(MEM16(edx + 2));
     edx = SX16(LO16(eax));
@@ -15483,6 +15486,7 @@ loc_00016494: ;
 loc_0001649A: ;
     MEM16(esi + 8) = 0;
     MEM16(esi + 8) = MEM16(esi + 8) + 1;
+    training_stagger_script_after(); /* DOA3 0.2.2 */
     eax = MEM32(ecx);
     POP32(esp, edi);
     POP32(esp, esi);
@@ -15519,6 +15523,7 @@ loc_000164E7: ;
 
 loc_000164ED: ;
     MEM16(esi + 8) = MEM16(esi + 8) + 1;
+    training_stagger_script_after(); /* DOA3 0.2.2 */
     eax = MEM32(ecx);
     POP32(esp, edi);
     POP32(esp, esi);

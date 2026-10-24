@@ -5,6 +5,7 @@
 #include "free_camera.h"
 #include "ui/doa3_ui.h"
 #include <string.h>
+#include <stdio.h>
 
 /* 3.1 Sparring already implements guard, counter-action and counter-hit
  * settings. Only input recording is added here. All access is on the game's
@@ -323,4 +324,42 @@ void training_stagger_cpu_after(void)
     MEMF(0x4DA2D4+s_cpu_side*4)=v;
     if (fighter) MEMF(fighter+0x10)=v;
     s_cpu_side=-1;
+}
+
+/* 0.2.2: the Sparring dummy under the CPU does not go through the CPU stun
+ * handler (0x16840) but through the scripted-input player 0x14D70
+ * (script 0x4DA5BC): at a stun's first frame (+8 == 0) it resets the slot
+ * to 1.00 (0x1642D); on later frames (0x16449) it adds 0.03 when its script
+ * mashes or takes 0.01, clamps and copies the slot to the fighter's
+ * animation speed (+0x10). Hand edits in gen/recomp_0000.c call these
+ * around that mash/decay step: the held value replaces the slot, with that
+ * frame's change on top. The CPU-handler hook above stays for real CPU
+ * fighters. */
+static float s_script_base;
+static int s_script_side = -1;
+void training_stagger_script_before(void)
+{
+    unsigned side=MEM8(0x4DA2DD);
+    s_script_side=-1;
+    if (side>1 || !s_stagger_hold[side] || !training_available()) return;
+    s_script_side=(int)side;
+    s_script_base=MEMF(0x4DA2D4+side*4);
+}
+void training_stagger_script_after(void)
+{
+    float v;
+    if (s_script_side<0) return;
+    v=s_stagger_value[s_script_side]+(MEMF(0x4DA2D4+s_script_side*4)-s_script_base);
+    if (v<1.0f) v=1.0f;
+    if (v>2.0f) v=2.0f;
+    MEMF(0x4DA2D4+s_script_side*4)=v;   /* the caller copies it to +0x10 */
+    {   static int s_log;
+        if (s_log<8) {
+            s_log++;
+            fprintf(stderr,"[STAGGER] scripted dummy, side %d: slot %.2f (held %.2f)\n",
+                    s_script_side,v,s_stagger_value[s_script_side]);
+            fflush(stderr);
+        }
+    }
+    s_script_side=-1;
 }

@@ -4181,3 +4181,16 @@ a random pick through the colour switch's option draw. Now:
   and colours; both: everything.
 Help text and README updated. README: costume-list bullet removed; the
 movie default bullet reworded as Matt wrote it.
+
+## 0.2.2 - Stagger Escape hold for the CPU-run Sparring dummy
+
+Matt: the hold only worked with a second controller on the dummy. The
+0.1.14 hook wraps the CPU stun handler 0x16840, but the Sparring dummy
+under the CPU runs through the scripted-input player 0x14D70 (script
+0x4DA5BC): it resets the slot 0x4DA2D4[side] to 1.00 at a stun's first
+frame (0x1642D, +8 == 0) and, on later frames (0x16449), adds 0.03 when
+the script mashes or takes 0.01, clamps, and copies the slot to the
+fighter's +0x10. Hand edits in gen/recomp_0000.c call
+training_stagger_script_before at 0x16449 and _after before both copies
+to +0x10: the held value replaces the slot with that frame's change on
+top. Logged as [STAGGER] (first 8).
