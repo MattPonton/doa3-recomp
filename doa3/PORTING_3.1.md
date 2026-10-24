@@ -4129,3 +4129,11 @@ README: dip switch table, always-on changes (costume list past nine,
 storage limits, Random before Ein), storage costume and option file
 naming, Training dummy control and Stagger Escape, DualSense, the HDD\D
 and TDATA folders, Snapshots. DEBUG.md: memory snapshot button.
+
+## 0.1.34 - menu offset switch applies from boot
+
+Matt (0.1.33): with MenuOffset saved on, the Press Start fade, Main Menu,
+Character Select and Stage Select kept the gap until the first fight.
+sub_00011980 is the fight loop's frame hook and does not run on menus.
+doa3_menu_offset_apply is now also called at every frame end
+(d3d4134_frame_done), so the constant is set from the first frame.

@@ -55,8 +55,10 @@ void doa3_costume_watch(void);
  * pre-transformed passthrough program adds the screen-space offset 0.53125
  * again, so the 2D layer sits about one pixel right and down (the menu
  * header band is traced at 1.06..721.06). With the switch on the constant is
- * -0.53125, which cancels the second offset; off restores the original. */
-static void doa3_menu_offset_apply(void)
+ * -0.53125, which cancels the second offset; off restores the original.
+ * Applied at every frame end (d3d4134_frame_done): 0x11980 only runs in
+ * fights, so 0.1.33 missed the menus until the first fight (0.1.34). */
+void doa3_menu_offset_apply(void)
 {
     float want = dip_get(DIP_MENU_OFFSET) ? -0.53125f : 0.53125f;
     if (MEMF(0x251244) != want) MEMF(0x251244) = want;
@@ -2272,6 +2274,8 @@ static void perf_5s(double interval, const double ph[7], double present, double 
 
 static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
 {
+    {   extern void doa3_menu_offset_apply(void);
+        doa3_menu_offset_apply();   /* 0.1.34: every frame, menus included */ }
     {   extern void doa3_prof_set_thread(void);
         static int s_prof_reg;
         if (!s_prof_reg) { s_prof_reg = 1; doa3_prof_set_thread(); } }
