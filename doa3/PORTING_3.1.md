@@ -3928,3 +3928,40 @@ COS.1 (the cursor's own wrap) even when more storage costumes exist.
 Random from storage, for both the player and Survival/Time Attack
 opponents, draws from the same first 99, so it never picks a costume
 the list cannot reach.
+
+## 0.1.23 - storage costume options (aya01.y.xpr)
+
+A storage file named <prefix><two hex digits>.<suffix>.<xpr|cat> is an
+extra option for that disc costume (number counted from 0, so aya01 is
+Costume 2).
+
+Suffix -> button -> option (the game's own option numbers in 0xCD110,
+where A / Start is 0):
+- x -> X -> 1
+- y -> Y -> 2
+- l -> LT+A -> 3
+- lx -> LT+X -> 4
+- ly -> LT+Y -> 5
+
+Confirm-button word 0x9B7C0E + port*8, high byte: 1 A, 4 X, 8 Y; LT
+held = 0x4000 in the pad aggregate. A costume's disc options are
+0x29C790[c][slot] (Leifang's first costume: 4 = A X Y LT+A; Kasumi's:
+3).
+
+The original game takes the text after the first dot as the extension
+(0x86EF0: strstr "."), so "y.xpr" is neither xpr nor cat and these
+files are ignored on hardware. (They do use up one of the character's 7
+storage numbers there unless a plain file already uses that number.)
+
+Port (always on; nothing changes without such files):
+- 0x86C20 (scan, one file): option files go to a per-character option
+  table (up to 64 in total), not to the numbered working list.
+- 0x86CC0: complete option pairs are appended to the pair table after
+  the numbered costumes. Each gets a storage costume id 0x40 + n but
+  no COS.n entry (0x5B3174 still counts only the numbered ones).
+  Logged as "[TDATA] group g: costume c option o from storage".
+- 0xCD110: when the confirm button means an option the disc costume
+  lacks and a storage file provides it, that option is returned. A
+  button the disc costume already uses is never taken over.
+- 0xCD870: (costume, option) maps to the storage id.
+- 0xCD900: maps that id back to (costume, option).

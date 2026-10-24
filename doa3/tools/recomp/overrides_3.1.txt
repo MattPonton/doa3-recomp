@@ -50,3 +50,6 @@
 0x000D18A0  Character Select costume list draw: scroll window for the carousel dip switch
 0x0006DF00  2D sprite draw: relabels the costume buttons (COS.10+) for the carousel dip switch
 0x00086CC0  TDATA storage costumes: copy pairs into the (enlarged) pair table, loop instead of 7 unrolled copies
+0x00086C20  TDATA scan, one file: storage costume options (<prefix>NN.<x|y|l|lx|ly>.<xpr|cat>)
+0x000CD110  confirm button -> costume option: storage options past the disc ones
+0x000CD900  costume id -> costume slot + option: storage options

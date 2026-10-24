@@ -739,9 +739,36 @@ void sub_000CC980(void)
     s_random_pick_depth--;
     if (g_fib_slice_due) xbox_fiber_timeslice();
 }
+int doa3_opt_costume(uint32_t grp, uint32_t slot, uint32_t alt);
+int doa3_opt_lookup(uint32_t grp, uint32_t costume, uint32_t *slot, uint32_t *alt);
+/* Disc options of costume slot `slot` (0 when it is not an unlocked disc
+ * costume slot). */
+static uint32_t disc_variants(uint32_t ch, uint32_t slot)
+{
+    uint32_t grp, have, max, count, tab;
+    if (ch > 0x18) return 0;
+    grp = MEM8(0x2FF868 + ch);
+    have = doa3_debug_unlock_read8(0x59FB16 + grp, MEM8(0x59FB16 + grp));
+    max = MEM8(0x29C70C + ch);
+    count = have < max ? have : max;
+    tab = MEM32(0x29C790 + ch * 4);
+    return (slot < count && tab) ? MEM8(tab + slot) : 0;
+}
 void sub_000CD870_gen(void);
 void sub_000CD870(void)
 {
+    {   /* 0.1.23: an option past the disc ones that a storage file provides */
+        uint32_t ch = eax & 0xFF, slot = edx & 0xFF, alt = MEM8(esp + 4);
+        uint32_t v = disc_variants(ch, slot);
+        if (v && alt >= v) {
+            int id = doa3_opt_costume(MEM8(0x2FF868 + ch), slot, alt);
+            if (id >= 0) {
+                eax = (eax & ~0xFFu) | (uint32_t)id;
+                esp += 4;
+                return;
+            }
+        }
+    }
     /* 0.1.18, storage costumes: slots past the unlocked count map to 0x40 + n
      * for the n-th costume loaded from TDATA (count per character group in
      * 0x5B3174[0x2FF868[c]], filled by Character Select). The picker draws
@@ -1062,6 +1089,87 @@ void doa3_tdata_alloc(void)
             TDATA_CAP, TDATA_MAX_FILES, pairs, names);
     fflush(stderr);
 }
+/* Storage costume options (0.1.23). A file named
+ *   <prefix><two hex digits>.<x|y|l|lx|ly>.<xpr|cat>      e.g. aya01.y.xpr
+ * is an extra option for the character's disc costume <number> (counted from
+ * 0, so aya01 is Costume 2) on that button: X, Y, LT+A, LT+X, LT+Y, which are
+ * options 1-5 in 0xCD110 (A / Start is 0). The original game takes the text
+ * after the FIRST dot as the extension, so "y.xpr" is neither xpr nor cat and
+ * such files are ignored on hardware. Here they are kept out of the numbered
+ * storage list, appended to the pair table after it (so each gets a storage
+ * costume id 0x40 + n that the loaders already handle, but no COS.n entry),
+ * and used only for a button the disc costume does not have. */
+#define OPT_MAX 64
+static struct { uint8_t grp, slot, alt, ok; uint16_t xpr, cat; uint8_t pair; } s_opt[OPT_MAX];
+static int s_nopt;
+static int opt_hex(int c) { return c >= '0' && c <= '9' ? c - '0' : (c | 0x20) >= 'a' && (c | 0x20) <= 'f' ? (c | 0x20) - 'a' + 10 : -1; }
+static int opt_ieq(const char *a, const char *b, int n) { int i; for (i = 0; i < n; i++) if ((a[i] | 0x20) != (b[i] | 0x20)) return 0; return 1; }
+static int opt_find(uint32_t grp, uint32_t slot, uint32_t alt)
+{
+    int i;
+    for (i = 0; i < s_nopt; i++)
+        if (s_opt[i].ok && s_opt[i].grp == grp && s_opt[i].slot == slot && s_opt[i].alt == alt) return i;
+    return -1;
+}
+/* Costume id of storage option (group, disc costume, option), or -1. */
+int doa3_opt_costume(uint32_t grp, uint32_t slot, uint32_t alt)
+{
+    int i = opt_find(grp, slot, alt);
+    return i < 0 ? -1 : 0x40 + s_opt[i].pair;
+}
+/* The (disc costume, option) a storage-option costume id stands for. */
+int doa3_opt_lookup(uint32_t grp, uint32_t costume, uint32_t *slot, uint32_t *alt)
+{
+    int i;
+    for (i = 0; i < s_nopt; i++)
+        if (s_opt[i].ok && s_opt[i].grp == grp && 0x40u + s_opt[i].pair == costume) {
+            *slot = s_opt[i].slot; *alt = s_opt[i].alt; return 1;
+        }
+    return 0;
+}
+void sub_00086C20_gen(void);
+void sub_00086C20(void)   /* scan: one file name at edi, its name-table index in bx */
+{
+    const char *nm = (const char *)XBOX_PTR(edi);
+    uint32_t idx = ebx & 0xFFFF;
+    int h1 = opt_hex(nm[3]), h2 = opt_hex(nm[4]);
+    if (idx < g_tdata_max_files && h1 >= 0 && h2 >= 0 && nm[5] == '.') {
+        const char *suf = nm + 6, *dot = strchr(suf, '.');
+        int len = dot ? (int)(dot - suf) : 0, alt = 0, isx, isc;
+        if (len == 1 && (suf[0] | 0x20) == 'x') alt = 1;
+        else if (len == 1 && (suf[0] | 0x20) == 'y') alt = 2;
+        else if (len == 1 && (suf[0] | 0x20) == 'l') alt = 3;
+        else if (len == 2 && (suf[0] | 0x20) == 'l' && (suf[1] | 0x20) == 'x') alt = 4;
+        else if (len == 2 && (suf[0] | 0x20) == 'l' && (suf[1] | 0x20) == 'y') alt = 5;
+        isx = dot && opt_ieq(dot + 1, "xpr", 4);
+        isc = dot && opt_ieq(dot + 1, "cat", 4);
+        if (alt && (isx || isc)) {
+            uint32_t g, grp = 0xFF, slot = (uint32_t)(h1 * 16 + h2);
+            int i;
+            for (g = 0; g < 19; g++) {
+                uint32_t pp = MEM32(0x302C58 + g * 4);
+                if (pp && opt_ieq((const char *)XBOX_PTR(pp), nm, 3)) { grp = g; break; }
+            }
+            if (grp != 0xFF) {
+                for (i = 0; i < s_nopt; i++)
+                    if (s_opt[i].grp == grp && s_opt[i].slot == slot && s_opt[i].alt == alt) break;
+                if (i == s_nopt && s_nopt < OPT_MAX) {
+                    s_nopt++;
+                    s_opt[i].grp = (uint8_t)grp; s_opt[i].slot = (uint8_t)slot; s_opt[i].alt = (uint8_t)alt;
+                    s_opt[i].xpr = s_opt[i].cat = 0xFFFF; s_opt[i].ok = 0;
+                }
+                if (i < OPT_MAX) {
+                    if (isx) s_opt[i].xpr = (uint16_t)idx; else s_opt[i].cat = (uint16_t)idx;
+                }
+            }
+            esp += 4;   /* handled: not a numbered storage costume */
+            return;
+        }
+    }
+    sub_00086C20_gen();
+    if (g_fib_slice_due) xbox_fiber_timeslice();
+}
+
 /* 0x86CC0 (group in bl): copy the group's complete xpr+cat pairs from the
  * working list into the pair table and store the count. The original is
  * unrolled seven times; this is the same per-entry step as a loop. */
@@ -1080,6 +1188,21 @@ void sub_00086CC0(void)
         n++;
     }
     MEM8(0x5B3174 + grp) = (uint8_t)n;
+    {   /* options after the numbered ones; the count stays the numbered n */
+        int k; uint32_t at = n;
+        for (k = 0; k < s_nopt; k++) {
+            uint32_t slot2;
+            if (s_opt[k].grp != grp || s_opt[k].xpr == 0xFFFF || s_opt[k].cat == 0xFFFF) continue;
+            if (at >= g_tdata_cap || at > 0x7F) break;
+            slot2 = (grp * g_tdata_cap + at) * 4u;
+            MEM16(g_tdata_pairs + slot2 + 2) = (uint16_t)(s_opt[k].xpr | 0x8000u);
+            MEM16(g_tdata_pairs + slot2) = (uint16_t)(s_opt[k].cat | 0x8000u);
+            s_opt[k].pair = (uint8_t)at; s_opt[k].ok = 1;
+            fprintf(stderr, "[TDATA] group %u: costume %u option %u from storage (costume id %02X)\n",
+                    grp, s_opt[k].slot + 1, s_opt[k].alt, 0x40 + at);
+            at++;
+        }
+    }
     if (n) {
         fprintf(stderr, "[TDATA] group %u (%.3s): %u storage costume(s)\n", grp,
                 (const char *)XBOX_PTR(MEM32(0x302C58 + grp * 4)), n);
@@ -1087,6 +1210,43 @@ void sub_00086CC0(void)
     }
     eax = grp; ecx = n;
     esp += 4;   /* ret */
+    if (g_fib_slice_due) xbox_fiber_timeslice();
+}
+
+/* 0xCD110(al = costume slot, dl = character, ecx = port) -> option from the
+ * confirm button (word 0x9B7C0E + port*8, high byte: 1 A, 4 X, 8 Y; LT held =
+ * 0x4000 in the pad aggregate), limited to the costume's disc options.
+ * 0.1.23: when the button means an option the disc costume does not have and
+ * a storage file provides it, return that option. */
+void sub_000CD110_gen(void);
+void sub_000CD110(void)
+{
+    uint32_t slot = eax & 0xFF, ch = edx & 0xFF, port = ecx;
+    sub_000CD110_gen();
+    if (ch <= 0x18 && port < 4) {
+        uint32_t v = disc_variants(ch, slot), btn = MEM8(0x9B7C0F + port * 8), want;
+        int lt = (MEM32(0x73C8D0 + port * 0x2C) & 0x4000u) != 0;
+        if (lt) want = (btn & 4) ? 4 : (btn & 8) ? 5 : 3;
+        else    want = (btn & 4) ? 1 : (btn & 8) ? 2 : 0;
+        if (v && want >= v && doa3_opt_costume(MEM8(0x2FF868 + ch), slot, want) >= 0)
+            eax = (eax & ~0xFFu) | want;
+    }
+    if (g_fib_slice_due) xbox_fiber_timeslice();
+}
+/* 0xCD900(cl = character, [esp+4] = costume id, [esp+8] = option out) ->
+ * costume slot. A storage-option id maps back to its disc costume + button. */
+void sub_000CD900_gen(void);
+void sub_000CD900(void)
+{
+    uint32_t ch = ecx & 0xFF, id = MEM8(esp + 4), out = MEM32(esp + 8), slot, alt;
+    if (ch <= 0x18 && id >= 0x40 && id != 0xFF &&
+        doa3_opt_lookup(MEM8(0x2FF868 + ch), id, &slot, &alt)) {
+        if (out) MEM8(out) = (uint8_t)alt;
+        eax = slot;
+        esp += 4;
+        return;
+    }
+    sub_000CD900_gen();
     if (g_fib_slice_due) xbox_fiber_timeslice();
 }
 
