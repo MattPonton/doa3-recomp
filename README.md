@@ -10,8 +10,8 @@ TC-001, XBE certificate region Japan), whose balance the competitive community
 calls **v3.1**. The setup screen names the release of any other Dead or Alive 3
 disc it is given (USA, EUROPE, KOREA). The goal for v1.0 is a
 faithful 1:1 port of that version. Changes to how the game plays are optional
-**Dip Switches**, all off by default; the few that are always on only add
-things the original could not reach (see [Changes to the game](#changes-to-the-game)).
+**Dip Switches**, all off by default; a few small changes are always on (see
+[Changes to the game](#changes-to-the-game)).
 
 **Status:** every game mode is playable. Work continues on accuracy and on
 performance for low-end PCs.
@@ -117,7 +117,7 @@ effect immediately and are saved in the `[DipSwitches]` section of
 | Menu navigation with Left Stick | The left stick moves menu cursors as well as the directional pad. Fights are unchanged. |
 | Random is default stage option | Stage Select opens on Random instead of Beach (Day). A stage the game remembers (returning to Stage Select after a match) is kept. |
 | Random includes alternate costume colours | Random on Character Select can pick a costume's alternate colours (X, Y, L), and Survival and Time Attack opponents get a random unlocked costume and colour. Story mode is unchanged. |
-| Random includes costumes from storage | Random, and Survival and Time Attack opponents when the colour switch is also on, can pick storage costumes and their options. |
+| Random includes costumes from storage | Random, and Survival and Time Attack opponents, can pick storage costumes and their options. Works on its own or together with the colour switch. |
 | Allow players to select alternate options of the same costume | With both sides on the same character, a player can take a costume the other side has, in a different option (A, X, Y, L or a storage option). Only the exact costume and option the other side confirmed is refused, with the game's refusal sound. |
 | Correct offset of menu layout | The game draws its menus, frames and HUD one pixel right of and below the screen edge (hidden by a CRT's overscan). This lines the 2D layer up with the screen edges. |
 
@@ -148,17 +148,15 @@ removed before v1.0. See [docs/DEBUG.md](docs/DEBUG.md).
 
 ## Changes to the game
 
-Always on, because they only add things the original game could not reach:
+These are always on:
 
-- **Costume list past nine.** Character Select's costume list scrolls when a
-  character has more than nine costumes (COS.10 and up), and wraps from the
-  last costume to the first.
 - **Random before Ein is unlocked.** Random appears on every Character Select
   that has it (all but Story mode) from the start. Until Ein is unlocked his
   slot shows a lock and cannot be chosen, and Random never picks him.
-- **Movies default to 16:9.** The game's movie display option (Options) starts
-  at 16:9 on a new save and after Options' Default button; the original
-  defaults to 4:3. A saved setting is kept, and 4:3 is still one press away.
+- **Movies default to 16:9.** Movies default to 16:9 aspect ratio when
+  creating the save file. This option can be changed in the game's Options'
+  Video settings. Note: This does not affect 4:3 (Fullscreen) aspect ratio
+  where the FMVs will play in their native 4:3 resolution.
 
 ## Building
 

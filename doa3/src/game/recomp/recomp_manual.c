@@ -770,13 +770,15 @@ static uint32_t disc_variants(uint32_t ch, uint32_t slot)
     return (slot < count && tab) ? MEM8(tab + slot) : 0;
 }
 /* 0.1.26: the options a random pick can choose for a disc costume slot --
- * its disc options 0..v-1, plus (with both random switches on) the storage
- * options (x/y/l files, options 1-3) on buttons the disc costume leaves free.
+ * option 0, the other disc options 1..v-1 when the colour switch is on, and
+ * the storage options (x/y/l files, options 1-3) on buttons the disc
+ * costume leaves free when the storage switch is on (0.2.1: each switch on
+ * its own; the storage options no longer need the colour switch).
  * Fills alts[] and returns how many. */
 static uint32_t random_option_set(uint32_t ch, uint32_t slot, uint32_t v, uint8_t alts[8])
 {
-    uint32_t n = 0, a;
-    for (a = 0; a < v && n < 8; a++) alts[n++] = (uint8_t)a;
+    uint32_t n = 0, a, disc = dip_get(DIP_RANDOM_ALT_COSTUMES) ? v : (v ? 1 : 0);
+    for (a = 0; a < disc && n < 8; a++) alts[n++] = (uint8_t)a;
     if (ch <= 0x18 && dip_get(DIP_RANDOM_HDD_COSTUMES))
         for (a = v; a <= 3 && n < 8; a++)
             if (doa3_opt_costume(ch, slot, a) >= 0) alts[n++] = (uint8_t)a;
@@ -826,7 +828,8 @@ void sub_000CD870(void)
             }
         }
     }
-    if (s_random_pick_depth > 0 && dip_get(DIP_RANDOM_ALT_COSTUMES) && MEM8(esp + 4) == 0) {
+    if (s_random_pick_depth > 0 && (dip_get(DIP_RANDOM_ALT_COSTUMES) || dip_get(DIP_RANDOM_HDD_COSTUMES)) &&
+        MEM8(esp + 4) == 0) {
         uint32_t ch = eax & 0xFF, slot = edx & 0xFF;
         if (ch <= 0x18) {
             uint32_t grp = MEM8(0x2FF868 + ch);
@@ -898,7 +901,12 @@ void sub_00076B30(void)
     /* One entry per character: a tag fight asks for two opponents. */
     static uint32_t s_cache_frame[0x19], s_cache_costume[0x19], s_cache_valid[0x19], s_stir;
     sub_00076B30_gen();
-    if (dip_get(DIP_RANDOM_ALT_COSTUMES) && (mode == 3 || mode == 5) && ch <= 0x18) {
+    /* 0.2.1: either switch alone turns this on: the colour switch picks
+     * among unlocked disc costumes and their colours, the storage switch
+     * among unlocked disc costumes (first colour) and storage costumes and
+     * options; both together, all of them. */
+    if ((dip_get(DIP_RANDOM_ALT_COSTUMES) || dip_get(DIP_RANDOM_HDD_COSTUMES)) &&
+        (mode == 3 || mode == 5) && ch <= 0x18) {
         uint32_t grp = MEM8(0x2FF868 + ch), have = MEM8(0x59FB16 + grp), max = MEM8(0x29C70C + ch);
         uint32_t count = have < max ? have : max, total = MEM8(0x29C660 + ch);
         uint32_t vt = MEM32(0x29C790 + ch * 4), ct = MEM32(0x29C728 + ch * 4);

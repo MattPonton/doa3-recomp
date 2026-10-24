@@ -4166,3 +4166,18 @@ alternate and storage costumes, shared costumes, menu layout offset),
 the costume list past nine, Random before Ein is unlocked, 16:9 as the
 movie default, rendering fixes (menu header at ultrawide, Beach ocean
 flicker), and the updated README. No code change from 0.1.36.
+
+## 0.2.1 - storage random switch works on its own; README wording
+
+Matt: "Random includes costumes from storage" should not need the colour
+switch. Before, Survival/Time Attack opponents (0x76B30 hook) only ran
+with the colour switch on, and storage options (x/y/l files) only joined
+a random pick through the colour switch's option draw. Now:
+- random_option_set: option 0, disc options 1..v-1 with the colour
+  switch, storage options with the storage switch.
+- The Random option draw in 0xCD870 and the opponent hook in 0x76B30 run
+  when either switch is on. Storage only: disc costumes in their first
+  colour plus storage costumes and options; colour only: disc costumes
+  and colours; both: everything.
+Help text and README updated. README: costume-list bullet removed; the
+movie default bullet reworded as Matt wrote it.

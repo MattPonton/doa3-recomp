@@ -25,8 +25,8 @@ static const struct { const char *key, *label, *help; } k_dip[DIP_COUNT] = {
     { "RandomStorageCostumes", "Random includes costumes from storage",
       "Costumes loaded from the TDATA folder next to the save (the Booster Pack outfits, "
       "or custom XPR/CAT pairs) can be chosen on Character Select, but the original game's "
-      "Random never picks them. On: Random, and the Survival and Time Attack opponents when "
-      "the colour switch is also on, can pick them too." },
+      "Random never picks them. On: Random, and the Survival and Time Attack opponents, "
+      "can pick them too. Works on its own or together with the colour switch." },
     { "SharedCostumes", "Allow players to select alternate options of the same costume",
       "With both sides on the same character, the original game will not let a player highlight "
       "a costume the other side has. On: it can be highlighted when it has another option "
