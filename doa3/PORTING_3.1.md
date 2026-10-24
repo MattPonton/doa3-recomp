@@ -4205,3 +4205,12 @@ throws the seeded hold away every frame for a fighter flagged that way.
 0x1BAE0 is now an override (probe removed, overrides list) wrapped with
 the same before/after as 0x16840. Both log as [STAGGER] stun handler
 (first 12, with +0x59), so the next log shows which path the dummy takes.
+
+## 0.2.4 - Stagger Escape diagnostic
+
+Matt (0.2.3): still no effect, and the log (version 0.2.3, Sparring at
+frame 1418) has no [STAGGER] line at all, so with the hold on neither
+wrapped handler ran for the dummy. [STAGGER-TRACE] now logs every call
+of the three stun routines (0x16840 CPU, 0x1BAE0 player, 0x16449 script),
+first 40 each, hold or not: side, human flag, +0x59, slot before/after,
+animation speed, hold state, training_available, mode.

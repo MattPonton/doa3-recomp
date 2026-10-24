@@ -7,6 +7,7 @@
 #include "recomp_funcs.h"
 void training_stagger_script_before(void);   /* DOA3 0.2.2, training_dummy.c */
 void training_stagger_script_after(void);
+void training_stagger_trace(int which, int phase);
 #include <math.h>
 
 /**
@@ -15450,6 +15451,7 @@ loc_0001642D: ;
     esp += 4; return; /* ret */
 
 loc_00016449: ;
+    training_stagger_trace(2, 0); /* DOA3 0.2.4 diagnostic */
     training_stagger_script_before(); /* DOA3 0.2.2: Stagger Escape hold, scripted dummy */
     edx = MEM32(esi + 0xC);
     ecx = ZX16(MEM16(edx + 2));
@@ -15487,6 +15489,7 @@ loc_0001649A: ;
     MEM16(esi + 8) = 0;
     MEM16(esi + 8) = MEM16(esi + 8) + 1;
     training_stagger_script_after(); /* DOA3 0.2.2 */
+    training_stagger_trace(2, 1);
     eax = MEM32(ecx);
     POP32(esp, edi);
     POP32(esp, esi);
@@ -15524,6 +15527,7 @@ loc_000164E7: ;
 loc_000164ED: ;
     MEM16(esi + 8) = MEM16(esi + 8) + 1;
     training_stagger_script_after(); /* DOA3 0.2.2 */
+    training_stagger_trace(2, 1);
     eax = MEM32(ecx);
     POP32(esp, edi);
     POP32(esp, esi);

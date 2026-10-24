@@ -371,3 +371,22 @@ void training_stagger_script_after(void)
     }
     s_script_side=-1;
 }
+
+/* 0.2.4 diagnostic: which stun routine runs for which side, logged whether
+ * or not a hold is set (first 40 per routine). */
+void training_stagger_trace(int which, int phase)
+{
+    static int s_n[3];
+    static float s_in;
+    unsigned side=MEM8(0x4DA2DD), fighter=MEM32(0x4DA1C4);
+    static const char *const names[3]={"CPU 0x16840","player 0x1BAE0","script 0x16449"};
+    if (which<0 || which>2) return;
+    if (!phase) { s_in=side<2 ? MEMF(0x4DA2D4+side*4) : 0.0f; return; }
+    if (s_n[which]>=40) return;
+    s_n[which]++;
+    fprintf(stderr,"[STAGGER-TRACE] %s side %u human %u +0x59 %u: slot %.2f -> %.2f, speed %.2f, hold %d %.2f, available %d, mode %u\n",
+            names[which],side,side<2?MEM8(0x59CF58+side*0x68):0xFFu,fighter?MEM8(fighter+0x59):0xFFu,
+            s_in,side<2?MEMF(0x4DA2D4+side*4):0.0f,fighter?MEMF(fighter+0x10):0.0f,
+            side<2?s_stagger_hold[side]:-1,side<2?s_stagger_value[side]:0.0f,training_available(),MEM8(0x5A2858));
+    fflush(stderr);
+}

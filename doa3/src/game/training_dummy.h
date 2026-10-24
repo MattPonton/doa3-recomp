@@ -45,6 +45,7 @@ void training_stagger_cpu_before(void);
 void training_stagger_cpu_after(void);
 void training_stagger_script_before(void);
 void training_stagger_script_after(void);
+void training_stagger_trace(int which, int phase);
 #ifdef __cplusplus
 }
 #endif
