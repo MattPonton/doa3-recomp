@@ -939,7 +939,8 @@ void sub_00076B30(void)
     if (g_fib_slice_due) xbox_fiber_timeslice();
 }
 
-/* Dip switch "Costume list scrolls past nine" (0.1.19).
+/* Costume list scrolls past nine (0.1.19; a dip switch until 0.1.30, now
+ * always on -- a player of the original sees no difference).
  * 0xCD7C0(al = character) -> the number of costume buttons: the unlocked
  * disc costumes (min(0x59FB16[0x2FF868[c]], 0x29C70C[c])) plus the storage
  * costumes (0x5B3174[group]) that fit in nine, min(storage, 9 - 0x29C70C[c]).
@@ -947,7 +948,7 @@ void sub_00076B30(void)
  * (0xD18A0) puts one button per costume, 20 units apart, labelled "COS."
  * (sprite descriptor 0x29BC04) plus one digit (0x29BC0C: sprite 0x2E6 + the
  * digit, 10 px wide, at x 82), all through 0x6DF00.
- * With the switch on:
+ * In the port:
  *   - the count includes every storage costume, so the cursor reaches them;
  *   - during the draw only, the count is capped at nine, and each player's
  *     selected slot is shown relative to a scroll window that follows the
@@ -975,7 +976,7 @@ void sub_000CD7C0(void)
 {
     uint32_t ch = eax & 0xFF;
     sub_000CD7C0_gen();
-    if (dip_get(DIP_COSTUME_CAROUSEL) && ch <= 0x18) {
+    if (ch <= 0x18) {   /* always on since 0.1.30 */
         uint32_t full = cc_full_count(ch);
         if (s_cc_in_draw) {
             /* The draw asks once per drawn player, in its loop order. */
@@ -994,8 +995,7 @@ void sub_000D18A0(void)
     uint32_t saved_addr[4];
     uint8_t saved_val[4];
     int nsaved = 0;
-    if (!dip_get(DIP_COSTUME_CAROUSEL)) { sub_000D18A0_gen(); return; }
-    s_cc_norder = 0;
+        s_cc_norder = 0;
     for (p = 0; p < 4; p++) {
         uint32_t S = base + 0x10 + p * 0x38, idx, ch, full, sel, addr;
         int off;

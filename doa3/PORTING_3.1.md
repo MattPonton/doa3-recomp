@@ -4058,3 +4058,12 @@ confirm test now call the game's 0xCCEF0 (guest registers saved and
 restored around it). A refused confirm is logged as [SHARED] (first
 16). The only other confirm caller, 0xCB370, handles a Random
 character pick, not the costume press.
+
+## 0.1.30 - costume list past nine is always on
+
+Matt: the costume carousel (0.1.19) need not be a switch. A player of
+the original sees no difference, since it only shows costumes that
+could not be reached before. DIP_COSTUME_CAROUSEL and its table entry
+are removed, and the 0xCD7C0 / 0xD18A0 / 0x6DF00 hooks are
+unconditional. A CostumeCarousel= line left in doa3_settings.ini is
+ignored.
