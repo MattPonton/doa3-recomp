@@ -66,9 +66,35 @@ static void destroy(void *v,void *saved)
 }
 static int renderer_equal(void *source,const void *a,const void *b)
 { return nv2a_renderer_checkpoint_equal(source,a,b); }
+/* doa3.1-rollback: with the diff map on, say which renderer pieces differ
+ * and where in the logical image (offsets map onto Nv2aPgraphLogicalImage:
+ * draw = Nv2aPgraphDrawState, then aux, then model_view). */
+#include <stdio.h>
+#include <stddef.h>
+extern void (*g_doa3_checkpoint_diff_hook)(unsigned,const unsigned char *,const unsigned char *,size_t);
+static void renderer_diff_report(const RendererImage *a,const RendererImage *b)
+{
+    static int lines;
+    const unsigned char *x=(const unsigned char *)&a->logical,*y=(const unsigned char *)&b->logical;
+    size_t n=sizeof(a->logical),i=0;
+    if(!g_doa3_checkpoint_diff_hook || lines>=200)return;
+    fprintf(stderr,"[ROLLBACK-DIFFMAP] renderer: logical %s, pipeline %s, images %s (logical layout: draw @%zu size %zu, aux @%zu size %zu, model_view @%zu)\n",
+        memcmp(x,y,n) ? "DIFFER":"same",memcmp(&a->pipeline,&b->pipeline,sizeof(a->pipeline)) ? "DIFFER":"same",
+        d3d8_render_checkpoint_equal_state(a->images,b->images) ? "same":"DIFFER",
+        offsetof(Nv2aPgraphLogicalImage,draw),sizeof(a->logical.draw),
+        offsetof(Nv2aPgraphLogicalImage,aux),sizeof(a->logical.aux),offsetof(Nv2aPgraphLogicalImage,model_view));
+    while(i<n && lines<200){
+        if(x[i]==y[i]){++i;continue;}
+        size_t s=i,e=i+1;while(e<n && (x[e]!=y[e] || (e+1<n && x[e+1]!=y[e+1])))++e;
+        uint32_t va=0,vb=0;memcpy(&va,x+(s&~(size_t)3),4);memcpy(&vb,y+(s&~(size_t)3),4);
+        fprintf(stderr,"[ROLLBACK-DIFFMAP]   logical +%zu..+%zu reference %08X replay %08X\n",s,e-1,va,vb);
+        ++lines;i=e;
+    }
+}
 static int renderer_equal_state(void *source,const void *first,const void *second)
 {
     const RendererImage *a=first,*b=second;
+    renderer_diff_report(a,b);
     return validate(source,a) && validate(source,b) &&
         !memcmp(&a->logical,&b->logical,sizeof(a->logical)) &&
         !memcmp(&a->pipeline,&b->pipeline,sizeof(a->pipeline)) &&

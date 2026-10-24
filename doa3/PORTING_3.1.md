@@ -4473,3 +4473,29 @@ New:
   checkpoint or replay. Music has stopped at the first trial of every
   probe run, matched or not; this separates the clock hand-over from the
   checkpoint work.
+
+## 0.2.6-rollback.6 - what persists after a skip; where the music goes
+
+Matt's runs of .5:
+- SKIP_HEAD=2 (2 of 4 frames hidden, 2 rendered): the same small ranges
+  still differ after two normally rendered frames, so they are persistent
+  state, not per-frame scratch: 582 bytes in 39 ranges outside the
+  labelled render-only memory (per-fighter blocks 0x02796910 / 0x02C2C464,
+  a heap object now at 0x01BEFFC8.., resource-header words, 0xD017B0..),
+  and the renderer's logical state differs too. Skipped replay 27.3 ms vs
+  55.8 ms full.
+- CLOCK_ONLY: the music stopped with no checkpoint, restore or replay --
+  the controlled clock alone does it. Under it, every ~10th frame took
+  ~30 ms (game time; DirectSound voice-retire waits step the APU
+  synchronously), and after it no [XA2] trouble lines came back (the mix
+  got quieter: no music).
+
+New diagnostics:
+- Diff map: reference and replay values (first 32 bytes) of each range
+  outside the labelled render-only memory.
+- Renderer: which of logical state, pipeline and images differ, and every
+  differing byte range of the logical image with its layout offsets
+  (draw / aux / model_view).
+- [BGM] lines: each music channel's player handle, channel state (+8) and
+  ADXT state byte (+1), on every change, saying whether the rollback
+  clock is on.

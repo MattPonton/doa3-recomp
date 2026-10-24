@@ -86,11 +86,37 @@ int game_audio_streamer_muting(void)
     return (int)InterlockedCompareExchange(&s_muting, 0, 0);
 }
 
+/* doa3.1-rollback diagnostic: each music channel's player handle, channel
+ * state (+8; 3 = playing) and the ADXT state byte (+1: 0 stop, 1 decode
+ * info, 2 prepare, 3 playing, 4 decode end, 5 play end, 6 error), logged on
+ * every change with whether the rollback clock runs. */
+static uint32_t s_bgm_adxt;
+void game_audio_bgm_watch(void)
+{
+    extern unsigned g_doa3_frames_presented;
+    extern volatile int g_apu_det;
+    extern volatile int g_xbox_det_active;
+    static uint32_t s_last[GA_BGM_COUNT][3]; static int s_init; static unsigned s_lines;
+    unsigned c;
+    for (c = 0; c < GA_BGM_COUNT; c++) {
+        uint32_t slot = GA_BGM_SLOTS + c * GA_BGM_STRIDE, h = MEM32(slot), ch = MEM32(slot + 8);
+        uint32_t st = (h && h < 0x08000000u) ? MEM8(h + 1) : 0xFFu;
+        if (s_init && (h != s_last[c][0] || ch != s_last[c][1] || st != s_last[c][2]) && s_lines < 80) {
+            s_lines++;
+            fprintf(stderr, "[BGM] frame %u: channel %u player %08X channel-state %u player-state %u (rollback clock %s)\n",
+                    g_doa3_frames_presented, c, h, ch, st, (g_apu_det || g_xbox_det_active) ? "ON" : "off");
+            fflush(stderr);
+        }
+        s_last[c][0] = h; s_last[c][1] = ch; s_last[c][2] = st;
+    }
+    s_init = 1;
+}
 void game_audio_on_adxt_start(uint32_t adxt, uint32_t partition, uint32_t fid)
 {
     unsigned i;
     uint32_t f = (partition == GA_BGM_PART) ? fid : 0xFFFFFFFFu;
     if (!adxt) return;
+    if (partition == GA_BGM_PART) s_bgm_adxt = adxt;
     if (partition == GA_BGM_PART) {
         extern unsigned g_doa3_frames_presented;
         fprintf(stderr, "[BGM] frame %u: bgm.afs file %u started%s\n",
@@ -226,6 +252,7 @@ void game_audio_request(int channel, int value) { (void)channel; (void)value; }
 int  game_audio_streamer_muting(void) { return 0; }
 void game_audio_frame(void) {}
 void game_audio_on_adxt_start(uint32_t a, uint32_t p, uint32_t f) { (void)a; (void)p; (void)f; }
+void game_audio_bgm_watch(void) {}
 void game_audio_on_movie_start(uint32_t index) { (void)index; }
 void game_audio_before_save(void) {}
 void game_audio_after_save(void) {}

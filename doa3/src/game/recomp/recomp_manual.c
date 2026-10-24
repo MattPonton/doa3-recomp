@@ -2528,6 +2528,7 @@ static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
         flushed = entry ? doa3_perf_now() : 0;
     }
     { void doa3_adx_frame(unsigned frame); doa3_adx_frame(g_doa3_frames_presented); }
+    { void game_audio_bgm_watch(void); game_audio_bgm_watch(); }
     game_audio_frame();               /* game volumes, streamer mode */
 
     prepared = entry ? doa3_perf_now() : 0;

@@ -296,6 +296,16 @@ static void diff_map(unsigned part,const unsigned char *a,const unsigned char *b
                 uint32_t ga=(uint32_t)(start-hdr);
                 fprintf(stderr,"[ROLLBACK-DIFFMAP]   guest %08X-%08X (%zu bytes differ) %s\n",
                         ga,(uint32_t)(end-hdr)-1,diff,diff_label(ga));
+                if(!*diff_label(ga)){   /* both values, dword-aligned, first 32 bytes */
+                    size_t s0=start&~(size_t)3,s1=s0+32<end ? s0+32:((end+3)&~(size_t)3);
+                    char la[200],lb[200];int pa=0,pb=0;
+                    for(size_t j=s0;j<s1 && j+4<=n;j+=4){
+                        uint32_t va,vb;memcpy(&va,a+j,4);memcpy(&vb,b+j,4);
+                        pa+=snprintf(la+pa,sizeof la-pa," %08X",va);pb+=snprintf(lb+pb,sizeof lb-pb," %08X",vb);
+                    }
+                    fprintf(stderr,"[ROLLBACK-DIFFMAP]     reference @%08X:%s\n",(uint32_t)(s0-hdr),la);
+                    fprintf(stderr,"[ROLLBACK-DIFFMAP]     replay    @%08X:%s\n",(uint32_t)(s0-hdr),lb);
+                }
             }else fprintf(stderr,"[ROLLBACK-DIFFMAP]   offset %zX-%zX (%zu bytes differ)%s\n",
                         start,end-1,diff,part==DOA3_CP_RAM ? " CPU/loop header":"");
         }
