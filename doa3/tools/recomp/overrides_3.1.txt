@@ -46,3 +46,6 @@
 0x000CC980  random character/costume picker: marks the pick for the alternate-colour dip switch
 0x000CD870  costume slot + alternate -> costume: random alternate during a random pick (dip switch)
 0x00076B30  CPU opponent costume: random costume and colour in Survival/Time Attack (dip switch)
+0x000CD7C0  costume button count: all storage costumes with the carousel dip switch
+0x000D18A0  Character Select costume list draw: scroll window for the carousel dip switch
+0x0006DF00  2D sprite draw: relabels the costume buttons (COS.10+) for the carousel dip switch

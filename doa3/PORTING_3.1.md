@@ -3843,3 +3843,36 @@ DIP_RANDOM_HDD_COSTUMES (RandomStorageCostumes):
   range.
 Random bytes come from the game's pool 0x404998. Logged as [RANDHDD]
 (first 16).
+
+## 0.1.19 - Dip switch: costume list scrolls past nine (Stage 1)
+
+Character Select shows at most nine costume buttons.
+- Count: 0xCD7C0(character) = unlocked disc costumes
+  (min(0x59FB16[0x2FF868[c]], 0x29C70C[c])) + min(storage
+  0x5B3174[group], 9 - 0x29C70C[c]).
+- Cursor: 0xCCB80 wraps within that count.
+- Draw: 0xD18A0 gets the four players' cursor block in edx; each
+  player's record is base + 0x10 + p*0x38 (+0x13 active, +0x34 == 1,
+  +0x16 grid index, selected slot at record + (int8)index, character =
+  0x29CA60[0x9B76B0[index]*10]). Per costume it draws a box 20 units
+  apart, highlighted when the row equals the slot, then through 0x6DF00
+  "COS." (descriptor 0x29BC04, sprite 0x2E5, 37 px, x 45) and one
+  digit (descriptor 0x29BC0C, sprite 0x2E6 + (row+1) % 10, 10 px,
+  x 82). Digits 0-9 are sprites 0x2E6-0x2EF (sprite table 0x3049B8,
+  12 bytes each).
+
+DIP_COSTUME_CAROUSEL (CostumeCarousel). Three overrides (esp-probe
+wrappers removed):
+- 0xCD7C0 returns unlocked + all storage costumes, so the cursor
+  reaches every one.
+- 0xD18A0 keeps a scroll window per player that follows the selected
+  slot (window = slot when above it, slot - 8 when below), writes the
+  slot relative to the window for the draw only and restores it after.
+  During the draw the count is capped at nine; the player order of its
+  0xCD7C0 calls tells the hooks whose row is being drawn.
+- 0x6DF00 relabels the rows: window + row + 1. From 10 up, "COS."
+  moves 3 px left and two digit sprites are drawn (tens 3 px left of
+  the usual place, units 10 px after).
+The buttons never move; only labels and the costume behind them change
+(Matt's design). Storage is still limited to 7 per character (scan
+table 0x5B1E58, 7 entries per group); lifting that is Stage 2.

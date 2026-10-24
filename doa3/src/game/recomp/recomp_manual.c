@@ -30,6 +30,7 @@
 #include "../combat_debug.h"
 #include "../training_dummy.h"
 #include "../debug_capture.h"
+#include "../debug_settings.h"
 #include "../game_audio.h"
 
 #include "apu/apu_irq.h"
@@ -876,6 +877,133 @@ void sub_00076B30(void)
             }
             s_cache_valid[ch] = 1; s_cache_frame[ch] = g_doa3_frames_presented; s_cache_costume[ch] = eax & 0xFF;
         }
+    }
+    if (g_fib_slice_due) xbox_fiber_timeslice();
+}
+
+/* Dip switch "Costume list scrolls past nine" (0.1.19).
+ * 0xCD7C0(al = character) -> the number of costume buttons: the unlocked
+ * disc costumes (min(0x59FB16[0x2FF868[c]], 0x29C70C[c])) plus the storage
+ * costumes (0x5B3174[group]) that fit in nine, min(storage, 9 - 0x29C70C[c]).
+ * Character Select's cursor (0xCCB80) wraps within that count and the draw
+ * (0xD18A0) puts one button per costume, 20 units apart, labelled "COS."
+ * (sprite descriptor 0x29BC04) plus one digit (0x29BC0C: sprite 0x2E6 + the
+ * digit, 10 px wide, at x 82), all through 0x6DF00.
+ * With the switch on:
+ *   - the count includes every storage costume, so the cursor reaches them;
+ *   - during the draw only, the count is capped at nine, and each player's
+ *     selected slot is shown relative to a scroll window that follows the
+ *     cursor (the real slot is put back right after);
+ *   - the label of row r becomes window + r + 1, with a tens digit (and
+ *     "COS." 3 px further left) from 10 up.
+ * The buttons themselves never move. */
+static int s_cc_in_draw, s_cc_cur = -1, s_cc_ncalls;
+static int s_cc_order[4], s_cc_norder, s_cc_off[4];
+static uint32_t cc_full_count(uint32_t ch)
+{
+    uint32_t max, grp, have;
+    if (ch > 0x18) return 0;
+    max = MEM8(0x29C70C + ch);
+    grp = MEM8(0x2FF868 + ch);
+    have = doa3_debug_unlock_read8(0x59FB16 + grp, MEM8(0x59FB16 + grp));
+    return (have > max ? max : have) + MEM8(0x5B3174 + grp);
+}
+void sub_000CD7C0_gen(void);
+void sub_000CD7C0(void)
+{
+    uint32_t ch = eax & 0xFF;
+    sub_000CD7C0_gen();
+    if (dip_get(DIP_COSTUME_CAROUSEL) && ch <= 0x18) {
+        uint32_t full = cc_full_count(ch);
+        if (s_cc_in_draw) {
+            /* The draw asks once per drawn player, in its loop order. */
+            s_cc_cur = s_cc_ncalls < s_cc_norder ? s_cc_order[s_cc_ncalls] : -1;
+            s_cc_ncalls++;
+            if (full > 9) full = 9;
+        }
+        if (full > (eax & 0xFF) || s_cc_in_draw) eax = (eax & ~0xFFu) | (full & 0xFF);
+    }
+    if (g_fib_slice_due) xbox_fiber_timeslice();
+}
+void sub_000D18A0_gen(void);
+void sub_000D18A0(void)
+{
+    uint32_t base = edx, p;
+    uint32_t saved_addr[4];
+    uint8_t saved_val[4];
+    int nsaved = 0;
+    if (!dip_get(DIP_COSTUME_CAROUSEL)) { sub_000D18A0_gen(); return; }
+    s_cc_norder = 0;
+    for (p = 0; p < 4; p++) {
+        uint32_t S = base + 0x10 + p * 0x38, idx, ch, full, sel, addr;
+        int off;
+        if (!MEM8(S + 0x13) || MEM32(S + 0x34) != 1) continue;
+        s_cc_order[s_cc_norder++] = (int)p;
+        idx = MEM8(S + 0x16);
+        ch = MEM8(0x29CA60 + MEM8(0x9B76B0 + idx) * 10);
+        full = cc_full_count(ch);
+        addr = S + (uint32_t)(int32_t)(int8_t)idx;
+        sel = MEM8(addr);
+        off = s_cc_off[p];
+        if (full <= 9) off = 0;
+        else {
+            if ((int)sel < off) off = (int)sel;
+            if ((int)sel > off + 8) off = (int)sel - 8;
+            if (off > (int)full - 9) off = (int)full - 9;
+            if (off < 0) off = 0;
+        }
+        s_cc_off[p] = off;
+        if (off) {
+            saved_addr[nsaved] = addr; saved_val[nsaved] = (uint8_t)sel; nsaved++;
+            MEM8(addr) = (uint8_t)(sel - off);
+        }
+    }
+    s_cc_in_draw = 1; s_cc_ncalls = 0; s_cc_cur = -1;
+    sub_000D18A0_gen();
+    s_cc_in_draw = 0; s_cc_cur = -1;
+    while (nsaved-- > 0) MEM8(saved_addr[nsaved]) = saved_val[nsaved];
+    if (g_fib_slice_due) xbox_fiber_timeslice();
+}
+void sub_0006DF00_gen(void);
+void sub_0006DF00(void)
+{
+    if (s_cc_in_draw && s_cc_cur >= 0 && (eax == 0x29BC04u || eax == 0x29BC0Cu)) {
+        int off = s_cc_off[s_cc_cur];
+        /* "COS." is drawn with the row (0-based) in edi; the digit after
+         * edi++, so edi is then the 1-based row. */
+        int label = eax == 0x29BC04u ? off + (int)edi + 1 : off + (int)edi;
+        uint32_t desc = eax, pos = MEM32(desc + 4);
+        if (desc == 0x29BC04u) {
+            if (label >= 10) MEM32(desc + 4) = (pos & ~0xFFFu) | (((pos & 0xFFFu) - 3) & 0xFFFu);
+            sub_0006DF00_gen();
+            MEM32(desc + 4) = pos;
+        } else {
+            uint32_t id = MEM32(desc), digit0 = id - ((uint32_t)edi % 10u);
+            uint32_t sv_eax = eax, sv_edx = edx, sv_ecx = ecx;
+            if (label < 10) {
+                MEM32(desc) = digit0 + (uint32_t)label;
+                sub_0006DF00_gen();
+            } else {
+                /* tens digit 3 px left of the usual place, units 10 px on */
+                uint32_t x = (pos & 0xFFFu) - 3;
+                uint32_t a0 = MEM32(esp + 4);   /* the caller's stack argument */
+                MEM32(desc) = digit0 + (uint32_t)(label / 10 % 10);
+                MEM32(desc + 4) = (pos & ~0xFFFu) | (x & 0xFFFu);
+                sub_0006DF00_gen();
+                /* second sprite: same call shape (argument + return slot) */
+                eax = sv_eax; edx = sv_edx; ecx = sv_ecx;
+                PUSH32(esp, a0);
+                PUSH32(esp, 0);
+                MEM32(desc) = digit0 + (uint32_t)(label % 10);
+                MEM32(desc + 4) = (pos & ~0xFFFu) | ((x + 10) & 0xFFFu);
+                sub_0006DF00_gen();
+                esp += 4;
+                MEM32(desc + 4) = pos;
+            }
+            MEM32(desc) = id;
+        }
+    } else {
+        sub_0006DF00_gen();
     }
     if (g_fib_slice_due) xbox_fiber_timeslice();
 }
