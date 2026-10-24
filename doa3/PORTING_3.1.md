@@ -4439,3 +4439,37 @@ memory only the renderer uses.
   The three wrappers all carry the gate; rollback_guest_render.py checks
   that form, and doa3_native_frame_skip_guest_render admits 17D900/17DF00
   only with SKIP_MAP.
+
+## 0.2.6-rollback.5 - skip-map follow-up; clock-only music test
+
+Matt's skip-map run (.4): with the model builders, alpha models and
+deformation skipped on the three hidden frames, 4-frame replay took
+22.0 ms against 59.0 ms for the full render of the same frames. 908,450
+bytes differed: ~907,500 in the push-buffer ring, 284 in the D3D device
+block, 12 in the GPU frontend (channel PUT), and ~600 in small ranges.
+Traced so far:
+- 0x587FF0-0x58800F: scratch written and read only by 0x52046 (deform).
+- 0x9B23A0: the D3D fence 0x1DC740 (-> 0x1E28B0) returns each frame,
+  waited on by the display task 0x49AE0 (0x1DC640). Render sync.
+- 0xB58D7C: inside the render arena: 0x180490 resets the bump pointer
+  0xB58A78 to 0xAD8A78 every frame and points the renderer at 0xB58A88;
+  0x17DD20 / 0x17E1D0 (model rendering) allocate from it.
+Still open: 0x5AA224 (in a struct at 0x5AA1A8 used by the display tasks
+0x68BC0 / 0x691F0 and the sprite code 0x6DC10), heap ranges 0x014EFFC8..
+0x014F1F60, two per-fighter blocks at 0x02796910 / 0x02C2C464,
+0x00D017B0..0x00D0192A, resource-header words at 0x03AE4014, 0x03B32894,
+0x03B92834, 0x03BB2814, 0x05117DC8, 0x05181AF4, 0x05189D04. The
+renderer's logical state also differed (logical_renderer_equal=0).
+
+New:
+- The diff map labels the traced render-only memory and reports what is
+  left outside it ("outside the labelled render-only memory").
+- DOA3_ROLLBACK_SKIP_HEAD=k: only the first k replay frames are hidden,
+  the rest render normally; exact texture validation before the first
+  rendered one. Shows whether game and renderer state re-synchronise
+  after skipped frames (what is left is what a skip really changes).
+- DOA3_ROLLBACK_CLOCK_ONLY=1 (with the window test, no replay): five
+  seconds under the controlled clock / APU stepping, then back, with no
+  checkpoint or replay. Music has stopped at the first trial of every
+  probe run, matched or not; this separates the clock hand-over from the
+  checkpoint work.

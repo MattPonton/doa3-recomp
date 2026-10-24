@@ -31,6 +31,11 @@ int doa3_native_frame_active(void){return active;}
  * model and alpha-model command builders on hidden frames, to map which
  * memory a whole render skip leaves different. Not a valid replay mode. */
 int g_doa3_skip_map;
+/* DOA3_ROLLBACK_SKIP_HEAD=k (doa3.1-rollback): hide only the first k replay
+ * frames and render the rest normally, so the endpoint shows whether the
+ * game and renderer re-synchronise after skipped frames. 0 = Jay's rule
+ * (every frame but the last is hidden). */
+int g_doa3_skip_head;
 int doa3_native_frame_skip_guest_render(unsigned routine){
     if(!active || !skip_guest_render)return 0;
     /* Material/command construction is stateful even with host draws off.
@@ -65,13 +70,16 @@ int doa3_native_frame_run(void *context){
     unsigned visible_frame=g_doa3_frames_presented;
     g_doa3_frames_presented-=count; /* same frame index as the recorded batch */
     int result=0;
+    int previous_hidden=0;
     for(unsigned frame=0;frame<count;++frame){
-      skip_guest_render=f->skip_intermediate_guest_render && frame+1<count;
-      pgraph_d3d11_skip_preparation((f->skip_intermediate_preparation || f->skip_intermediate_guest_render) && frame+1<count);
+      int hidden=frame+1<count && (!g_doa3_skip_head || frame<(unsigned)g_doa3_skip_head);
+      skip_guest_render=f->skip_intermediate_guest_render && hidden;
+      pgraph_d3d11_skip_preparation((f->skip_intermediate_preparation || f->skip_intermediate_guest_render) && hidden);
       /* Intermediate frames may modify texture RAM without binding it. Force
-       * exact source validation before the final normally rendered frame. */
-      if((f->skip_intermediate_preparation || f->skip_intermediate_guest_render) && frame && frame+1==count)
+       * exact source validation before the first normally rendered frame. */
+      if((f->skip_intermediate_preparation || f->skip_intermediate_guest_render) && previous_hidden && !hidden)
           pgraph_d3d11_invalidate_guest_uploads();
+      previous_hidden=hidden;
       if(frame && !doa3_input_tape_replay(f->tape,first+frame+1))goto done;
       xbox_det_frame();mcpx_apu_det_frame();
       unsigned previous_flips=flips;int completed=0;
@@ -103,8 +111,9 @@ done:
     LONGLONG elapsed=ticks()-started;
     skip_guest_render=0;
     if(f->skip_intermediate_guest_render)
-        fprintf(stderr,"[ROLLBACK-GUEST-RENDER-AB] model_commands=preserved vertex_deforms=%llu final_frame_rendered=%d\n",
-            (unsigned long long)guest_skipped,result);
+        fprintf(stderr,"[ROLLBACK-GUEST-RENDER-AB] model_commands=%s skipped_calls=%llu hidden_frames=%u final_frame_rendered=%d\n",
+            g_doa3_skip_map ? "skipped":"preserved",(unsigned long long)guest_skipped,
+            g_doa3_skip_head && (unsigned)g_doa3_skip_head<count ? (unsigned)g_doa3_skip_head:count-1,result);
     pgraph_d3d11_skip_preparation(previous_prep_mode);
     if(f->skip_intermediate_preparation || f->skip_intermediate_guest_render){
         pgraph_d3d11_preparation_stats(&prep_after[0],&prep_after[1],&prep_after[2]);

@@ -89,7 +89,12 @@ void doa3_fight_window_probe_boundary(void){
         {   /* doa3.1-rollback diagnostics: mismatch map; whole-render skip map */
             extern int g_doa3_skip_map;
             extern void doa3_fight_checkpoint_diff_map_enable(void);
+            extern int g_doa3_skip_head;
             if(replay && armed("DOA3_ROLLBACK_SKIP_MAP")){g_doa3_skip_map=1;guest_ab=1;}
+            {   const char *h=getenv("DOA3_ROLLBACK_SKIP_HEAD");
+                g_doa3_skip_head=h ? atoi(h):0;
+                if(g_doa3_skip_head<0)g_doa3_skip_head=0;
+                if(g_doa3_skip_head)fprintf(stderr,"[ROLLBACK-SKIPMAP] only the first %d replay frame(s) hidden; the rest render\n",g_doa3_skip_head); }
             if(g_doa3_skip_map || armed("DOA3_ROLLBACK_DIFF_MAP"))doa3_fight_checkpoint_diff_map_enable();
         }
         if(texture_ab+packet_ab+geometry_ab+render_ab+prep_ab+guest_ab>1){
@@ -107,6 +112,17 @@ void doa3_fight_window_probe_boundary(void){
     if(settling){
         if(!g_xbox_det_active || !g_apu_det || xbox_det_epoch()!=epoch || !xbox_fiber_is_primary())fatal("settling ownership changed");
         if(!eligible()){fprintf(stderr,"[ROLLBACK-WINDOW] refused: mode changed during clock handoff\n");finish(0);return;}
+        {   /* doa3.1-rollback, DOA3_ROLLBACK_CLOCK_ONLY=1: five seconds under the
+             * controlled clock/APU stepping, then back, with no checkpoint,
+             * restore or replay -- isolates the music cut-out. Runs once. */
+            static int clock_only=-1;
+            if(clock_only<0)clock_only=armed("DOA3_ROLLBACK_CLOCK_ONLY");
+            if(clock_only){
+                if(++settle_frames<300){xbox_det_frame();mcpx_apu_det_frame();return;}
+                fprintf(stderr,"[ROLLBACK-CLOCK] 300 frames under the controlled clock, no checkpoint or replay; back to the normal clock\n");
+                combat=0;finish(1);return;
+            }
+        }
         if(!xbox_fiber_converted_clock_ready() || (combat && !attacking())){
             if(++settle_frames>=120){
                 fprintf(stderr,"[ROLLBACK-WINDOW] refused: worker/combat readiness exceeded 120 intervals\n");finish(0);return;

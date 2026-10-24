@@ -256,6 +256,14 @@ fatal:
  * learn which memory a skipped render leaves different, so it can be shown to
  * be render-only. Nothing is excluded from the comparison here. */
 extern volatile uint32_t g_doa3_pb_dev;   /* recomp_manual.c, last KickOff device */
+/* Known render-only memory (labels only; nothing is excluded):
+ *   push-buffer ring       device +0x24 .. +0x28 (GPU commands)
+ *   D3D device             device block (write cursor, fences, state shadow)
+ *   deform scratch         0x587FF0..0x588010, used only by 0x52046
+ *   fence 0x9B23A0         D3D fence from 0x1DC740 (0x1E28B0) each frame
+ *   render arena           0xAD8A78..0xB58A78 bump allocator (0x180490 resets
+ *                          it every frame; 0x17DD20 / 0x17E1D0 allocate) and the
+ *                          block from 0xB58A88 it points the renderer at */
 static const char *diff_label(uint32_t a)
 {
     uint32_t dev=g_doa3_pb_dev;
@@ -264,12 +272,15 @@ static const char *diff_label(uint32_t a)
         if(a>=lo && a<hi)return "push-buffer ring";
         if(a>=dev && a<dev+0x2400)return "D3D device";
     }
+    if(a>=0x587FF0u && a<0x588010u)return "deform scratch";
+    if(a>=0x9B23A0u && a<0x9B23A4u)return "fence 0x9B23A0";
+    if(a>=0xAD8A78u && a<0xB5A000u)return "render arena";
     return "";
 }
 static void diff_map(unsigned part,const unsigned char *a,const unsigned char *b,size_t n)
 {
     static int lines;
-    size_t i=0,ranges=0,bytes=0;
+    size_t i=0,ranges=0,bytes=0,other_ranges=0,other_bytes=0;
     const size_t hdr=sizeof(FightCpu);
     fprintf(stderr,"[ROLLBACK-DIFFMAP] part=%s bytes=%zu\n",part_names[part],n);
     while(i<n){
@@ -278,6 +289,7 @@ static void diff_map(unsigned part,const unsigned char *a,const unsigned char *b
         for(size_t j=i+1;j<n && gap<64;++j){ if(a[j]!=b[j]){end=j+1;gap=0;} else ++gap; }
         size_t diff=0;for(size_t j=start;j<end;++j)diff+=a[j]!=b[j];
         ++ranges;bytes+=diff;
+        if(part==DOA3_CP_RAM && start>=hdr && !*diff_label((uint32_t)(start-hdr))){other_ranges++;other_bytes+=diff;}
         if(lines<600){
             ++lines;
             if(part==DOA3_CP_RAM && start>=hdr){
@@ -290,6 +302,8 @@ static void diff_map(unsigned part,const unsigned char *a,const unsigned char *b
         i=end;
     }
     fprintf(stderr,"[ROLLBACK-DIFFMAP] part=%s ranges=%zu differing_bytes=%zu\n",part_names[part],ranges,bytes);
+    if(part==DOA3_CP_RAM)
+        fprintf(stderr,"[ROLLBACK-DIFFMAP] outside the labelled render-only memory: ranges=%zu differing_bytes=%zu\n",other_ranges,other_bytes);
     fflush(stderr);
 }
 void doa3_fight_checkpoint_diff_map_enable(void)
