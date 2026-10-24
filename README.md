@@ -30,8 +30,6 @@ performance for low-end PCs.
 - Dip Switches: optional fixes and quality-of-life changes (left stick in
   menus, Random on the stage select, Random picking alternate and storage
   costumes, shared costumes, menu pixel offset)
-- Storage costumes: up to 99 per character from the TDATA folder, plus extra
-  button options for disc costumes
 - Training: record and replay the Sparring dummy's inputs, control the dummy
   with a second controller, and hold its Stagger Escape value
 - Screenshots (PNG) at render resolution, without the overlay
@@ -56,7 +54,6 @@ Files the port keeps next to `DOA3.exe`:
 | `doa3_input.ini` | Controller and keyboard bindings |
 | `HDD\D\` | The game files copied from your disc image |
 | `HDD\E\UDATA\54430001\` | The game's save data |
-| `HDD\E\TDATA\54430001\` | Storage costumes (see below) |
 | `Screenshots\` | Screenshots |
 | `Snapshots\` | Game memory snapshots saved from **Debug > Diagnostics**; kept between launches |
 | `doa3_log.txt` | Log, only when **Write log files** is on |
@@ -142,44 +139,26 @@ menu open.
 (how fast a critical stun or guard break plays out). **Hold** fixes the value
 at the start of every frame, for the human player or the dummy, CPU or not.
 
-## Changes to the game
-
-Always on, because they only add things the original game could not reach:
-
-- **Costume list past nine.** Character Select's costume list scrolls when a
-  character has more than nine costumes (COS.10 and up, to COS.99), and wraps
-  from the last costume to the first.
-- **Storage costume limits.** The game reads extra costumes from its title
-  data folder, but stops at 7 per character and 128 in total. The port allows
-  up to 99 per character and 2048 files.
-- **Random before Ein is unlocked.** Random appears on every Character Select
-  that has it (all but Story mode) from the start. Until Ein is unlocked his
-  slot shows a lock and cannot be chosen, and Random never picks him.
-- **Movies default to 16:9.** The game's movie display option (Options) starts
-  at 16:9 on a new save and after Options' Default button; the original
-  defaults to 4:3. A saved setting is kept, and 4:3 is still one press away.
-
-## Storage costumes
-
-Put costume files in `HDD\E\TDATA\54430001\` (the Booster Pack outfits, or
-your own pairs). Each costume is an `.xpr` texture file and a `.cat` model
-file with the same name: a three-letter character prefix and a two-digit hex
-number, such as `kas14.xpr` and `kas14.cat`. They appear after the disc
-costumes in the character's costume list.
-
-An extra **option** for a disc costume (another colour on a button the costume
-does not already use) is named
-`<prefix><NN>.<button>.xpr` / `.cat`, where `NN` is the file number of the disc
-costume it belongs to and `button` is `x`, `y` or `l` (L held while pressing
-A, X or Y). For example `aya00.y.xpr` and `aya00.y.cat` add a Y option to
-Ayane's costume 00. The original game ignores files named this way.
-
 ### Debug
 
 Developer and inspection tools: unlock-all, free camera, hitbox and
 frame-data overlays, render views, a performance overlay, hiding the HUD or
 fighters, and diagnostic captures. Some of these may change or be
 removed before v1.0. See [docs/DEBUG.md](docs/DEBUG.md).
+
+## Changes to the game
+
+Always on, because they only add things the original game could not reach:
+
+- **Costume list past nine.** Character Select's costume list scrolls when a
+  character has more than nine costumes (COS.10 and up), and wraps from the
+  last costume to the first.
+- **Random before Ein is unlocked.** Random appears on every Character Select
+  that has it (all but Story mode) from the start. Until Ein is unlocked his
+  slot shows a lock and cannot be chosen, and Random never picks him.
+- **Movies default to 16:9.** The game's movie display option (Options) starts
+  at 16:9 on a new save and after Options' Default button; the original
+  defaults to 4:3. A saved setting is kept, and 4:3 is still one press away.
 
 ## Building
 

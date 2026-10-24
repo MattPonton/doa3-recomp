@@ -4147,3 +4147,12 @@ buttons (0xC2590, 0xC2786, 0xC35FA, 0xC37AA); it also picks the movie
 scale 0x2D4CE8 (0.75 for 4:3, 1.0 for 16:9). video_sync_guest_widescreen
 (startup and frame boundaries) now writes 1 there. A saved setting is
 untouched. README notes it under Changes to the game.
+
+## 0.1.36 - README: storage costume details removed
+
+Matt: keep the storage costume limits and the option file naming out of
+the README. Removed the Features bullet, the TDATA row in the files
+table, the "Storage costume limits" bullet and the Storage costumes
+section; the costume list bullet no longer names COS.99. The Dip
+Switches table is unchanged. "Changes to the game" moved out of the
+Settings section to sit before Building.
