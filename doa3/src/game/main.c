@@ -388,6 +388,8 @@ static void doa3_perf_frame(void)
         frame.draws = st.draw_calls - s_draws_prev; s_draws_prev = st.draw_calls;
     }
     doa3_perf_log_push(&frame);
+    {   extern void xbox_fiber_frame_report(unsigned frame, double frame_ms);
+        xbox_fiber_frame_report(g_doa3_frames_presented, frame.frame_ms); }
     if (frame.frame_ms > 25.0)
         fprintf(stderr, "[PERF-FRAME] frame %u %.3f ms end-qpc %lld foreground %d\n",
             g_doa3_frames_presented, frame.frame_ms, (long long)now.QuadPart, frame.foreground);

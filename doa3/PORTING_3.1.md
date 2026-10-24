@@ -4563,3 +4563,29 @@ server tick per frame, like the hardware's 60 Hz:
 
 The [BGM-WATCH] / [BGM-ERRCHK] diagnostics stay (DOA3_BGM_WATCH=1) to
 confirm it.
+
+## 0.2.6-rollback.9 - music reads inside a rollback window
+
+Matt's runs of .8: CLOCKTEST kept the music (one ADX server tick per frame,
+decode advancing steadily under the controlled clock). PROBE: trial 1
+matched, trial 2 was refused before rewind -- its recorded interval
+contained NtReadFile (219) and KeDelayExecutionThread (99), which the
+replay kernel admission did not accept. Before .8 the spinning vblank
+workers had kept the music stream topped up far ahead; paced at the
+hardware rate, bgm.afs reads now fall inside windows, as they will in
+real play.
+
+Admitted for replay (kernel_replay_supported):
+- 219 NtReadFile on a tracked, read-only, non-write handle while the
+  stream-file session is pinned for this clock epoch (cursors restored by
+  the stream-file part), with the IO status, buffer and offset inside
+  guest RAM and a translated completion routine when an APC is asked for
+  (the completion goes through the checkpointed APC queue);
+- 99 KeDelayExecutionThread under the controlled clock (it only yields and
+  delivers that queue; no host time), unless the queue is tainted.
+The endpoint comparison still decides whether such a replay matched.
+
+Still under the controlled clock: ~30 ms game time on about every tenth
+frame, unchanged by .8. New [FIBER-TIME] line for frames over 22 ms under
+the controlled clock: how long each fiber ran and how often it was
+resumed in that frame.

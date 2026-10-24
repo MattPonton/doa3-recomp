@@ -3903,6 +3903,29 @@ static int kernel_replay_supported(ULONG ordinal,bridge_func_t bridge)
     }
     case 179:return bridge==kx_MmQueryAddressProtect;
     case 180:return bridge==kx_MmQueryAllocationSize;
+    /* doa3.1-rollback.8: music streaming inside a window. With the vblank
+     * workers paced at one server tick per frame, bgm.afs reads now land
+     * inside rollback windows. A read of a pinned read-only game file is
+     * replayable: the stream-file part restores every cursor, the read's
+     * bytes depend only on file and offset, and its completion goes through
+     * the checkpointed APC queue. Refused for writable or untracked handles,
+     * guest ranges outside RAM, or completion routines with no translation. */
+    case 219:{
+        uint32_t mem=xbox_GetMemorySize();
+        if(bridge!=bridge_NtReadFile || !s_stream_files || !g_xbox_det_active || s_fh_untracked ||
+           s_apc_queue.tainted || s_stream_clock_epoch!=xbox_det_epoch() ||
+           !stream_directory_guard_valid() || mem<64 || g_esp>mem-36)return 0;
+        uint32_t gh=BRIDGE_MEM32(g_esp+4),apc=BRIDGE_MEM32(g_esp+12),ctx=BRIDGE_MEM32(g_esp+16),
+            iosb=BRIDGE_MEM32(g_esp+20),buf=BRIDGE_MEM32(g_esp+24),len=BRIDGE_MEM32(g_esp+28),
+            off=BRIDGE_MEM32(g_esp+32),i=(gh&0x00FFFFFFu)/4u;
+        if((gh&0xFF000000u)!=XFH_TAG || (gh&3u) || i>=s_fh_next || !s_fh[i] || s_fh_mutable[i] || s_fh_write[i])return 0;
+        if(!iosb || iosb>mem-8 || !buf || len>mem || buf>mem-len || (off && off>mem-8))return 0;
+        if(apc && ctx && !recomp_lookup_manual(ctx) && !recomp_lookup(ctx))return 0;
+        return 1;
+    }
+    /* SleepEx: under the controlled clock it only yields to the scheduler
+     * (no host time) and delivers the checkpointed completion queue. */
+    case 99:return bridge==bridge_KeDelayExecutionThread && g_xbox_det_active && !s_apc_queue.tainted;
     default:return 0;
     }
 #else

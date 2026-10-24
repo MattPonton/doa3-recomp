@@ -73,6 +73,17 @@ typedef struct {
 
 static Fiber g_fib[MAX_FIBERS];
 static unsigned g_fib_runs[MAX_FIBERS];   /* times each fiber was resumed (diagnostic) */
+/* doa3.1-rollback.8 diagnostic: host time each fiber ran, charged at every
+ * resume to the fiber that ran since the previous one. */
+static int g_cur;   /* defined below */
+static LONGLONG g_fib_ticks[MAX_FIBERS], g_fib_t0;
+static int g_fib_prev;
+static void fib_resumed(void)
+{
+    LARGE_INTEGER t; QueryPerformanceCounter(&t);
+    if (g_fib_t0 && g_fib_prev >= 0 && g_fib_prev < MAX_FIBERS) g_fib_ticks[g_fib_prev] += t.QuadPart - g_fib_t0;
+    g_fib_t0 = t.QuadPart; g_fib_prev = g_cur;
+}
 static uint64_t g_fib_topology;
 /* A task checkpoint cannot roll back a native worker's C continuation. Even
  * returning to the same wait key after one stream read invalidates it. */
@@ -416,7 +427,7 @@ void xbox_fiber_yield(void)
     g_cur = n; g_fib[n].state = FIB_RUNNING; load_regs(&g_fib[n]);
     SwitchToFiber(g_fib[n].handle);
     /* Resumed: the switcher already restored our register-globals. */
-    g_cur = me; g_fib[me].state = FIB_RUNNING; g_fib_runs[g_cur]++;
+    g_cur = me; g_fib[me].state = FIB_RUNNING; g_fib_runs[g_cur]++; fib_resumed();
 }
 
 /* Time-based scheduling point for the worker threads.
@@ -514,7 +525,7 @@ void xbox_fiber_block(uint32_t event_va)
     g_cur = n; g_fib[n].state = FIB_RUNNING; load_regs(&g_fib[n]);
     SwitchToFiber(g_fib[n].handle);
     /* Woken: the switcher restored our register-globals. */
-    g_cur = me; g_fib[me].state = FIB_RUNNING; g_fib[me].wait_event = 0; g_fib_runs[g_cur]++;
+    g_cur = me; g_fib[me].state = FIB_RUNNING; g_fib[me].wait_event = 0; g_fib_runs[g_cur]++; fib_resumed();
 }
 
 void xbox_fiber_wake(uint32_t event_va)
@@ -615,7 +626,7 @@ int xbox_fiber_run_thread(uint32_t xhandle)
         g_cur = i; f->state = FIB_RUNNING; load_regs(f);
         SwitchToFiber(f->handle);
         /* target parked; the direct-return path switched back to us */
-        g_cur = me; g_fib[me].state = FIB_RUNNING; g_fib_runs[g_cur]++;
+        g_cur = me; g_fib[me].state = FIB_RUNNING; g_fib_runs[g_cur]++; fib_resumed();
         g_direct_return = -1;
         return 1;
     }
@@ -655,6 +666,31 @@ uint32_t xbox_fiber_current_xhandle(void) { return g_active ? g_fib[g_cur].xhand
 int xbox_fiber_current(void)
 {
     return g_cur;
+}
+
+/* doa3.1-rollback.8 diagnostic: once per presented frame. For a slow frame
+ * under the controlled clock, how long each fiber ran and how often it was
+ * resumed during it (at most 120 reports). */
+void xbox_fiber_frame_report(unsigned frame, double frame_ms)
+{
+    static LONGLONG s_ticks[MAX_FIBERS], s_qpf;
+    static unsigned s_runs[MAX_FIBERS], s_lines;
+    int i;
+    if (!s_qpf) { LARGE_INTEGER f; QueryPerformanceFrequency(&f); s_qpf = f.QuadPart; }
+    fib_resumed();   /* charge the running fiber up to now */
+    if (g_xbox_det_active && frame_ms > 22.0 && s_lines < 120) {
+        s_lines++;
+        fprintf(stderr, "[FIBER-TIME] frame %u %.1f ms:", frame, frame_ms);
+        for (i = 0; i < g_nfib; i++) {
+            double ms = 1000.0 * (double)(g_fib_ticks[i] - s_ticks[i]) / (double)s_qpf;
+            unsigned runs = g_fib_runs[i] - s_runs[i];
+            if (ms >= 0.5 || runs >= 50)
+                fprintf(stderr, " #%d(%08X/%08X) %.1fms x%u", i, g_fib[i].ctx1,
+                        g_fib[i].task_routine ? g_fib[i].task_routine : g_fib[i].start_routine, ms, runs);
+        }
+        fprintf(stderr, "\n");
+    }
+    for (i = 0; i < MAX_FIBERS; i++) { s_ticks[i] = g_fib_ticks[i]; s_runs[i] = g_fib_runs[i]; }
 }
 
 /* doa3.1-rollback diagnostic (rollback diff map): the guest stack that holds
@@ -772,7 +808,7 @@ void xbox_fiber_yield_back(void)
     load_regs(&g_fib[r]);
     SwitchToFiber(g_fib[r].handle);
     /* Resumed (switched back into this task). */
-    g_cur = self; g_fib_runs[g_cur]++;
+    g_cur = self; g_fib_runs[g_cur]++; fib_resumed();
     g_fib[self].state = FIB_RUNNING;
 }
 
@@ -790,7 +826,7 @@ void xbox_fiber_switch_direct(int idx)
     load_regs(t);
     SwitchToFiber(t->handle);
     /* Switched back: our registers were restored by whoever resumed us. */
-    g_cur = me; g_fib_runs[g_cur]++;
+    g_cur = me; g_fib_runs[g_cur]++; fib_resumed();
     g_fib[me].state = FIB_RUNNING;
 }
 
