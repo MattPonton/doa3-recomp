@@ -4137,3 +4137,13 @@ Character Select and Stage Select kept the gap until the first fight.
 sub_00011980 is the fight loop's frame hook and does not run on menus.
 doa3_menu_offset_apply is now also called at every frame end
 (d3d4134_frame_done), so the constant is set from the first frame.
+
+## 0.1.35 - movie display option defaults to 16:9
+
+Matt: with no save the movie option starts at 4:3. Checked: the default
+is the XBE's own .data byte 0x3F456C = 0 (not the console's widescreen
+flag), read by the new-save init sub_000204B0 and the Options Default
+buttons (0xC2590, 0xC2786, 0xC35FA, 0xC37AA); it also picks the movie
+scale 0x2D4CE8 (0.75 for 4:3, 1.0 for 16:9). video_sync_guest_widescreen
+(startup and frame boundaries) now writes 1 there. A saved setting is
+untouched. README notes it under Changes to the game.

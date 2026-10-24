@@ -167,6 +167,12 @@ void video_sync_guest_widescreen(void)
      * four bytes so non-exact ratios such as 9/21 retain their mantissa.
      * Projection routines (e.g. sub_00027720) read this through MEMF. */
     *(volatile float *)(m + 0x251620) = video_projection_ratio(g_aspect);
+    /* 0.1.35: the game's default for its movie display option (Options; 0
+     * = 4:3, 1 = 16:9) is the .data byte 0x3F456C = 0. It is read when a
+     * new save is made (sub_000204B0) and by the Options Default buttons
+     * (0xC2590, 0xC2786, 0xC35FA, 0xC37AA). The port's default is 16:9; a
+     * saved setting is not changed. */
+    m[0x3F456C] = 1;
     /* sub_0017B8D0 caches XC_VIDEO here. Preserve all unrelated flag bits. */
     pp_w = (volatile uint32_t *)(m + 0xA48C30);
     pp_fl = (volatile uint32_t *)(m + 0xA48C58);

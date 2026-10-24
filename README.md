@@ -155,6 +155,9 @@ Always on, because they only add things the original game could not reach:
 - **Random before Ein is unlocked.** Random appears on every Character Select
   that has it (all but Story mode) from the start. Until Ein is unlocked his
   slot shows a lock and cannot be chosen, and Random never picks him.
+- **Movies default to 16:9.** The game's movie display option (Options) starts
+  at 16:9 on a new save and after Options' Default button; the original
+  defaults to 4:3. A saved setting is kept, and 4:3 is still one press away.
 
 ## Storage costumes
 
