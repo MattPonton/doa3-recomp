@@ -134,6 +134,11 @@ data is what the port uploads: unswizzled, palettised textures expanded to
 run time (reflections, environment maps captured from the stage) are not
 included, only textures loaded from the game's files.
 
+**Save a game memory snapshot** writes the game's 64 MB of memory as
+`Snapshots\ram_<frame>.bin` next to `DOA3.exe` (kept between launches).
+Snapshots taken in a bad state and a good one can be compared to find the
+value behind a logic bug.
+
 ## Online developer settings
 
 **Online > Developer Settings** runs a local two-player session on one PC

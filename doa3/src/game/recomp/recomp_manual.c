@@ -31,6 +31,7 @@
 #include "../training_dummy.h"
 #include "../debug_capture.h"
 #include "../debug_settings.h"
+#include "../dip_switches.h"
 #include "../game_audio.h"
 
 #include "apu/apu_irq.h"
@@ -48,7 +49,19 @@ void sub_00011980_gen(void);
 void sub_00012B60_gen(void);
 void sub_001894B0_gen(void);
 void doa3_costume_watch(void);
-void sub_00011980(void) { sub_00011980_gen(); doa3_costume_watch(); training_input_begin(); }
+/* Dip switch "Correct offset of menu layout" (0.1.33): every 2D drawer of
+ * the sprite system (0x6E6C0, 0x6EAD0, 0x6F9B0, 0x71730, 0xCF660, ...)
+ * adds the float at 0x251244, 0.53125, to its positions, and the
+ * pre-transformed passthrough program adds the screen-space offset 0.53125
+ * again, so the 2D layer sits about one pixel right and down (the menu
+ * header band is traced at 1.06..721.06). With the switch on the constant is
+ * -0.53125, which cancels the second offset; off restores the original. */
+static void doa3_menu_offset_apply(void)
+{
+    float want = dip_get(DIP_MENU_OFFSET) ? -0.53125f : 0.53125f;
+    if (MEMF(0x251244) != want) MEMF(0x251244) = want;
+}
+void sub_00011980(void) { sub_00011980_gen(); doa3_costume_watch(); training_input_begin(); doa3_menu_offset_apply(); }
 /* CPU stun handler: Stagger Escape hold for a CPU fighter (0.1.14). */
 void sub_00016840_gen(void);
 void sub_00016840(void)

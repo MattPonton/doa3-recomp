@@ -17,6 +17,7 @@ typedef enum {
     DIP_RANDOM_ALT_COSTUMES,/* random picks include alternate costume colours */
     DIP_RANDOM_HDD_COSTUMES,/* random picks include costumes from storage (TDATA) */
     DIP_SHARED_COSTUMES,    /* both players may pick a costume, in different options */
+    DIP_MENU_OFFSET,        /* 2D layer drawn without the extra pixel offset */
     DIP_COUNT
 } dip_switch;
 

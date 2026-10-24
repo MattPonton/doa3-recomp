@@ -4110,3 +4110,22 @@ Matt: Random only appears on Character Select once Ein is unlocked.
 The same-costume switch now plays sound 0x29 when it refuses a confirm
 press (Start, A, X or Y pressed this frame), the sound the game plays
 for a press on a locked slot.
+
+## 0.1.33 - dip switch: Correct offset of menu layout; README
+
+Matt: the menu frame leaves a strip of the scene along the left and top
+edges (hidden by CRT overscan in 2001). Cause: every 2D drawer of the
+sprite system (0x6E6C0, 0x6EAD0, 0x6F9B0, 0x71730, 0xCF660 and their
+entry copies) adds the float constant 0x251244 = 0.53125 to its
+positions, and the pre-transformed passthrough program adds the
+screen-space offset 0.53125 again, so the layer lands at about +1.06
+pixels: an old trace has the menu header band at 1.1,1.1-721.1,154.1.
+New switch MenuOffset (last in the list): the frame hook sub_00011980
+sets the constant to -0.53125 while it is on (total offset 0) and puts
+0.53125 back when off. Every 2D element moves together, so the HUD
+shifts by the same pixel.
+
+README: dip switch table, always-on changes (costume list past nine,
+storage limits, Random before Ein), storage costume and option file
+naming, Training dummy control and Stagger Escape, DualSense, the HDD\D
+and TDATA folders, Snapshots. DEBUG.md: memory snapshot button.

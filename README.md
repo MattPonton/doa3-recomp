@@ -9,7 +9,9 @@ This fork targets the **JAPAN release** (Redump's name for the disc; title ID
 TC-001, XBE certificate region Japan), whose balance the competitive community
 calls **v3.1**. The setup screen names the release of any other Dead or Alive 3
 disc it is given (USA, EUROPE, KOREA). The goal for v1.0 is a
-faithful 1:1 port of that version; PC additions are kept optional.
+faithful 1:1 port of that version. Changes to how the game plays are optional
+**Dip Switches**, all off by default; the few that are always on only add
+things the original could not reach (see [Changes to the game](#changes-to-the-game)).
 
 **Status:** every game mode is playable. Work continues on accuracy and on
 performance for low-end PCs.
@@ -21,11 +23,17 @@ performance for low-end PCs.
 - Windowed or borderless fullscreen
 - Aspect ratios: 4:3 (full screen or anamorphic), 16:9, 21:9 and 32:9
 - Internal resolution 1x (480p), 2x (960p), 3x (1440p) or 4x (1920p)
-- Keyboard, Xbox and PS4 controllers, up to four players, with per-player
-  bindings
+- Keyboard, Xbox, PS4 (DualShock 4) and PS5 (DualSense, DualSense Edge)
+  controllers, up to four players, with per-player bindings and rumble
 - Master volume plus the game's own Music / Sound effects / Voice levels
 - Streamer mode: mutes the licensed Aerosmith songs wherever they play
-- Training: record and replay the Sparring dummy's inputs
+- Dip Switches: optional fixes and quality-of-life changes (left stick in
+  menus, Random on the stage select, Random picking alternate and storage
+  costumes, shared costumes, menu pixel offset)
+- Storage costumes: up to 99 per character from the TDATA folder, plus extra
+  button options for disc costumes
+- Training: record and replay the Sparring dummy's inputs, control the dummy
+  with a second controller, and hold its Stagger Escape value
 - Screenshots (PNG) at render resolution, without the overlay
 
 ## Getting started
@@ -33,9 +41,9 @@ performance for low-end PCs.
 1. Download the latest release from the **Releases** tab and extract it.
 2. Run `DOA3.exe`.
 3. On first launch, choose your own disc image of Dead or Alive 3 (Japanese
-   release) in `.xiso` or `.iso` format. The game files are extracted into an
-   `assets` folder next to `DOA3.exe` and save data is created; after that the
-   game starts normally.
+   release) in `.xiso` or `.iso` format. The game files are copied into
+   `HDD\D` next to `DOA3.exe` and save data is created; after that the game
+   starts normally.
 
 Game files are **not** included and are never downloaded. You need your own
 legally obtained copy.
@@ -46,8 +54,11 @@ Files the port keeps next to `DOA3.exe`:
 | --- | --- |
 | `doa3_settings.ini` | Video, audio and general settings |
 | `doa3_input.ini` | Controller and keyboard bindings |
+| `HDD\D\` | The game files copied from your disc image |
 | `HDD\E\UDATA\54430001\` | The game's save data |
+| `HDD\E\TDATA\54430001\` | Storage costumes (see below) |
 | `Screenshots\` | Screenshots |
+| `Snapshots\` | Game memory snapshots saved from **Debug > Diagnostics**; kept between launches |
 | `doa3_log.txt` | Log, only when **Write log files** is on |
 | `Diagnostics\` | Developer captures, only when diagnostics are on; cleared at each launch |
 | `ShaderCache\` | Compiled shaders, kept so later launches start faster; safe to delete |
@@ -73,6 +84,8 @@ or join with a friend's code, with an automatic or manual input delay.
   keep playing behind the menu.
 - **Player 1–4** tabs: choose a device (Automatic, keyboard or a specific
   controller) and the Xbox controller type, then click a row to rebind it.
+  The device list shows only connected controllers, numbered per model
+  when more than one of a kind is connected.
   Right-click a binding to clear it. Player 1 defaults to Automatic; Players
   2–4 default to None until assigned.
 
@@ -97,6 +110,20 @@ or join with a friend's code, with an automatic or manual input delay.
 **Write log files** writes `doa3_log.txt`, which is useful when reporting a
 bug.
 
+**Dip Switches** change how the game itself behaves. Every switch is off by
+default, so with none set the game plays exactly as on an Xbox. They take
+effect immediately and are saved in the `[DipSwitches]` section of
+`doa3_settings.ini`.
+
+| Switch | When on |
+| --- | --- |
+| Menu navigation with Left Stick | The left stick moves menu cursors as well as the directional pad. Fights are unchanged. |
+| Random is default stage option | Stage Select opens on Random instead of Beach (Day). A stage the game remembers (returning to Stage Select after a match) is kept. |
+| Random includes alternate costume colours | Random on Character Select can pick a costume's alternate colours (X, Y, L), and Survival and Time Attack opponents get a random unlocked costume and colour. Story mode is unchanged. |
+| Random includes costumes from storage | Random, and Survival and Time Attack opponents when the colour switch is also on, can pick storage costumes and their options. |
+| Allow players to select alternate options of the same costume | With both sides on the same character, a player can take a costume the other side has, in a different option (A, X, Y, L or a storage option). Only the exact costume and option the other side confirmed is refused, with the game's refusal sound. |
+| Correct offset of menu layout | The game draws its menus, frames and HUD one pixel right of and below the screen edge (hidden by a CRT's overscan). This lines the 2D layer up with the screen edges. |
+
 ### Training
 
 Available in offline Sparring only. Three slots record up to ten seconds of
@@ -105,6 +132,44 @@ gives you control of the dummy with your normal bindings; **Escape** finishes
 the recording or stops playback. Recordings last for the current Sparring
 session. Guard, counter-action and counter-hit settings stay in the game's own
 Sparring pause menu.
+
+**Dummy control** lets a second controller (any Player port other than
+yours) drive the dummy; it returns to the CPU when that controller is
+unplugged or while a recording plays or records. It works with the Escape
+menu open.
+
+**Stagger Escape** shows each fighter's critical-stun mash value as 0–100 %
+(how fast a critical stun or guard break plays out). **Hold** fixes the value
+at the start of every frame, for the human player or the dummy, CPU or not.
+
+## Changes to the game
+
+Always on, because they only add things the original game could not reach:
+
+- **Costume list past nine.** Character Select's costume list scrolls when a
+  character has more than nine costumes (COS.10 and up, to COS.99), and wraps
+  from the last costume to the first.
+- **Storage costume limits.** The game reads extra costumes from its title
+  data folder, but stops at 7 per character and 128 in total. The port allows
+  up to 99 per character and 2048 files.
+- **Random before Ein is unlocked.** Random appears on every Character Select
+  that has it (all but Story mode) from the start. Until Ein is unlocked his
+  slot shows a lock and cannot be chosen, and Random never picks him.
+
+## Storage costumes
+
+Put costume files in `HDD\E\TDATA\54430001\` (the Booster Pack outfits, or
+your own pairs). Each costume is an `.xpr` texture file and a `.cat` model
+file with the same name: a three-letter character prefix and a two-digit hex
+number, such as `kas14.xpr` and `kas14.cat`. They appear after the disc
+costumes in the character's costume list.
+
+An extra **option** for a disc costume (another colour on a button the costume
+does not already use) is named
+`<prefix><NN>.<button>.xpr` / `.cat`, where `NN` is the file number of the disc
+costume it belongs to and `button` is `x`, `y` or `l` (L held while pressing
+A, X or Y). For example `aya00.y.xpr` and `aya00.y.cat` add a Y option to
+Ayane's costume 00. The original game ignores files named this way.
 
 ### Debug
 

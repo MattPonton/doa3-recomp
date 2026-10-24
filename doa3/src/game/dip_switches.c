@@ -32,6 +32,12 @@ static const struct { const char *key, *label, *help; } k_dip[DIP_COUNT] = {
       "a costume the other side has. On: it can be highlighted when it has another option "
       "(A, X, Y, L, or a storage option) left; only the exact costume and option the other "
       "side confirmed cannot be chosen." },
+    { "MenuOffset", "Correct offset of menu layout",
+      "The original game draws its menus, frames and HUD one pixel right of and below where "
+      "they belong: its sprite code adds a 0.53125 pixel offset, and the Xbox adds the same "
+      "offset again. A CRT's overscan hid it; on a modern screen a thin strip of the scene "
+      "shows along the left and top edges. On: the sprite code's offset is cancelled so the "
+      "2D layer lines up with the screen edges. Every 2D element moves together." },
 };
 
 static volatile LONG g_loaded;
