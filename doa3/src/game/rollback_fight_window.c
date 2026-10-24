@@ -24,6 +24,22 @@ static unsigned warmup,presented,settle_frames;
 static unsigned trial,window=1,completed;
 static unsigned repeats=1;
 static int texture_ab,packet_ab,geometry_ab,render_ab,prep_ab,guest_ab;
+/* rollback.12, DOA3_ROLLBACK_LOGIC_ONLY=1: on hidden replay frames skip the
+ * render tasks too (one set per trial, then all of them), and accept the
+ * replay when only render bookkeeping differs. Every trial runs. */
+int g_doa3_logic_only,g_doa3_logic_only_arm;
+static unsigned logic_results[7];
+static void logic_only_tasks(unsigned t)
+{
+    extern uint32_t g_doa3_skip_tasks[8];extern unsigned g_doa3_skip_task_count;
+    static const uint32_t all[4]={0x49790,0x691F0,0xE8030,0x1C60AB};
+    g_doa3_skip_task_count=0;
+    if(t>=1 && t<=4)g_doa3_skip_tasks[g_doa3_skip_task_count++]=all[t-1];
+    else for(unsigned i=0;i<4;++i)g_doa3_skip_tasks[g_doa3_skip_task_count++]=all[i];
+    fprintf(stderr,"[ROLLBACK-LOGIC-ONLY] trial %u: hidden frames skip model and alpha-model command builders, deformation and task(s)",t);
+    for(unsigned i=0;i<g_doa3_skip_task_count;++i)fprintf(stderr," %06X",g_doa3_skip_tasks[i]);
+    fprintf(stderr,"\n");
+}
 static ULONGLONG capture_started;
 static uint32_t epoch;
 static Doa3LoopState loop;
@@ -65,7 +81,13 @@ static void finish(int success){
     if(g_xbox_det_active)xbox_det_end();
     if(combat){
         fprintf(stderr,"[ROLLBACK-COMBAT] trial=%u frames=%u result=%s\n",trial,window,success ? ((render_ab || prep_ab || guest_ab) ? "state-matched (render A/B)":"matched"):"stopped");
-        if(success && trial<6){enabled=1;warmup=0;}
+        if(g_doa3_logic_only && trial<=6)logic_results[trial]=success ? 1:2;
+        if((success || g_doa3_logic_only) && trial<6){enabled=1;warmup=0;}
+        else if(g_doa3_logic_only){
+            static const char *const sets[7]={"","049790 (models)","0691F0 (2D/sprites)","0E8030","1C60AB","all four","all four"};
+            for(unsigned t=1;t<=6;++t)fprintf(stderr,"[ROLLBACK-LOGIC-ONLY] summary trial %u skipping %s: %s\n",t,sets[t],
+                logic_results[t]==1 ? "logic matched":logic_results[t]==2 ? "LOGIC DIFFERS or refused":"not run");
+        }
         else fprintf(stderr,"[ROLLBACK-COMBAT] sequence %s after %u trials\n",success ? "passed":"stopped",trial);
     }
 }
@@ -91,6 +113,7 @@ void doa3_fight_window_probe_boundary(void){
             extern void doa3_fight_checkpoint_diff_map_enable(void);
             extern int g_doa3_skip_head;
             if(replay && armed("DOA3_ROLLBACK_SKIP_MAP")){g_doa3_skip_map=1;guest_ab=1;}
+            if(replay && combat && armed("DOA3_ROLLBACK_LOGIC_ONLY")){g_doa3_logic_only=1;g_doa3_skip_map=1;guest_ab=1;}
             {   const char *h=getenv("DOA3_ROLLBACK_SKIP_HEAD");
                 g_doa3_skip_head=h ? atoi(h):0;
                 if(g_doa3_skip_head<0)g_doa3_skip_head=0;
@@ -212,6 +235,8 @@ void doa3_fight_window_probe_boundary(void){
                  * the additional guest-side saving, not the old gain twice. */
                 native.skip_intermediate_preparation=1;
                 native.skip_intermediate_guest_render=(repeat==0 || repeat==3)!=(trial%2!=0);
+                g_doa3_logic_only_arm=native.skip_intermediate_guest_render;
+                if(g_doa3_logic_only && !repeat)logic_only_tasks(trial);
                 fprintf(stderr,"[ROLLBACK-GUEST-RENDER-AB] mode=%s\n",
                     native.skip_intermediate_guest_render ? "preserve-commands-skip-deformation":"host-preparation-only");
             }
@@ -237,14 +262,15 @@ void doa3_fight_window_probe_boundary(void){
                     (unsigned long long)(pgraph_d3d11_bulk_words()-bulk_before));
             }
             if(result<0)fatal("rewind/return verification");
-            if(result!=1 && !(render_probe && result==2))break;
+            if(result!=1 && !(render_probe && (result==2 || result==3)))break;
         }
         fprintf(stderr,"[ROLLBACK-WINDOW] %s; %s\n",
             result>0 ? ((render_ab || prep_ab || guest_ab) ? "render A/B completed: CPU/logical state matched; skipped-frame pixels checked separately":"passed: checkpoint comparisons matched"):"refused or recovered to current endpoint",
             replay ? "recorded-input replay trial":"one native interval recorded, no frames replayed");
         fprintf(stderr,"[ROLLBACK-WINDOW] diagnostic_ms=%llu verify_ms=%llu frames=%u\n",
             (unsigned long long)(GetTickCount64()-capture_started),(unsigned long long)(GetTickCount64()-verify_started),window);
-        finish(result==1 || ((render_ab || prep_ab || guest_ab) && result==2));return;
+        g_doa3_logic_only_arm=0;
+        finish(result==1 || ((render_ab || prep_ab || guest_ab) && (result==2 || result==3)));return;
     }
     if(!eligible() || g_xbox_det_active || g_apu_det){warmup=0;return;}
     if(warmup<(combat ? 480u:120u))++warmup;

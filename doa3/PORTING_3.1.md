@@ -4630,3 +4630,35 @@ Matt's runs of .10:
   The essential costs are the RAM copy each way, ~8-10 ms for the whole
   128 MB guest space (80 MB low + 48 MB high, of which the game uses about
   50); the rest is the harness's verification.
+
+## 0.2.6-rollback.12 - logic-only resimulation, first test
+
+Direction (agreed with Matt): a resimulated frame runs only the game's
+logic; only the final frame of a rollback is rendered.
+
+What a frame does (A6450, one loop per presented frame): input and
+system helpers, D3D Clear (1DF010), the XAPI task scheduler (1C650C at
+the A64B0 boundary), fence (1DC740), sound / ADX servers, Swap (1E14D0)
+and end-of-frame render setup (17BCE0). Rendering is done by game tasks
+the scheduler runs. Call-graph reach of the per-frame tasks:
+- 049790: model rendering (reaches 17D900 and 52046), ~2.5 ms a frame;
+- 0691F0: 2D / sprite display, ~0.9 ms;
+- 0E8030: D3D-heavy, ~2 ms;
+- 1C60AB: D3D-heavy;
+- the rest (087420 game flow, 0B4720, 098DB0, 011110, 0235B0, ...) carry
+  the fight and mode logic and little or no D3D.
+Until now a hidden replay frame skipped only the host's D3D11 preparation
+(Jay) and, in test modes, 52046 / 17D900 / 17DF00.
+
+DOA3_ROLLBACK_LOGIC_ONLY=1 (with the combat replay probe): the guest-render
+A/B harness, where the test arm's hidden frames also do not step one set
+of render tasks -- trial 1 049790, 2 0691F0, 3 0E8030, 4 1C60AB, 5 and 6
+all four -- plus the command builders and deformation. A skipped task
+hands straight back to the scheduler (xbox_fiber_run_restorable_task).
+The final frame steps everything. The endpoint compare accepts the test
+arm as LOGIC MATCHED when only RAM and the GPU front end differ and every
+differing RAM byte is render bookkeeping (labelled render memory, fence
+stamps, push-buffer pointers, dead stack). Every trial runs; a summary
+lists each set's result. A set that leaves other state different (a
+render task that also keeps logic state, or per-frame counters of its
+own) shows as LOGIC DIFFERS with the values printed.

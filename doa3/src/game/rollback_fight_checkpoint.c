@@ -283,6 +283,8 @@ static const char *diff_label(uint32_t a)
  * word each time a draw uses it, so skipped draws leave older stamps). A
  * push-buffer pointer points into the ring. Stack ranges name the fiber and
  * whether the bytes are below its saved stack pointer (dead). */
+/* rollback.12: totals of the last RAM diff map, for the logic-only test. */
+size_t g_doa3_diff_unexplained_bytes,g_doa3_diff_unexplained_ranges;
 static uint32_t rd32(const unsigned char *p,size_t n,size_t off){uint32_t v=0;if(off+4<=n)memcpy(&v,p+off,4);return v;}
 static void diff_map(unsigned part,const unsigned char *a,const unsigned char *b,size_t n)
 {
@@ -348,6 +350,7 @@ static void diff_map(unsigned part,const unsigned char *a,const unsigned char *b
     if(part==DOA3_CP_RAM){
         fprintf(stderr,"[ROLLBACK-DIFFMAP] outside the labelled render-only memory: ranges=%zu differing_bytes=%zu\n",other_ranges,other_bytes);
         fprintf(stderr,"[ROLLBACK-DIFFMAP] not fence stamps, push-buffer pointers or dead stack: ranges=%zu differing_bytes=%zu\n",unexplained_ranges,unexplained_bytes);
+        g_doa3_diff_unexplained_bytes=unexplained_bytes;g_doa3_diff_unexplained_ranges=unexplained_ranges;
     }
     fflush(stderr);
 }
@@ -420,6 +423,24 @@ static int visit(Doa3FightCheckpoint *s,
                difference->renderer_different && difference->renderer_state_equal){
                 result=2;
                 fprintf(stderr,"[ROLLBACK-RENDER-AB] CPU and logical renderer state matched; GPU pixels differ (diagnostic only)\n");
+            }
+            {   /* rollback.12, logic-only resimulation test: the replay skipped
+                 * the render tasks on hidden frames. Accept it as a logic match
+                 * when only RAM and the GPU front end differ, and every
+                 * differing RAM byte is render bookkeeping (labelled render
+                 * memory, fence stamps, push-buffer pointers or dead stack). */
+                extern int g_doa3_logic_only,g_doa3_logic_only_arm;
+                extern size_t g_doa3_diff_unexplained_bytes;
+                const unsigned render_parts=(1u<<DOA3_CP_RAM)|(1u<<DOA3_CP_GPU_FRONTEND);
+                if(pixel_probe && g_doa3_logic_only && g_doa3_logic_only_arm && equal==0){
+                    int logic=!(difference->different_parts&~render_parts) &&
+                        (!(difference->different_parts&(1u<<DOA3_CP_RAM)) || !g_doa3_diff_unexplained_bytes);
+                    fprintf(stderr,"[ROLLBACK-LOGIC-ONLY] %s: differing parts %03X, unexplained RAM bytes %zu, renderer logical state %s\n",
+                        logic ? "LOGIC MATCHED (only render bookkeeping differs)":"LOGIC DIFFERS",
+                        difference->different_parts,g_doa3_diff_unexplained_bytes,
+                        difference->renderer_state_equal ? "same":"differs (render-only)");
+                    if(logic)result=3;
+                }
             }
             if(pixel_probe)fprintf(stderr,"[ROLLBACK-RENDER-AB] logical_renderer_equal=%d\n",difference->renderer_state_equal);
         }

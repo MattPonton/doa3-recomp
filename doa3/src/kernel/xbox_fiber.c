@@ -854,6 +854,10 @@ int xbox_fiber_run_restorable_task(uint32_t routine)
     /* Enter through the actual task body, preserving the game's shared entry
      * wrapper. Every live body local is saved before parking here. */
     for (;;) {
+        /* rollback.12 logic-only test: a render task not stepped on a hidden
+         * replay frame hands straight back to the scheduler. */
+        { extern int doa3_native_frame_skip_task(uint32_t routine);
+          if (doa3_native_frame_skip_task(routine)) { xbox_fiber_yield_back(); continue; } }
         doa3_rollback_capture_before(routine, &f->task);
         f->task_in_step = 1;
         if (!doa3_rollback_task_step(routine, &f->task)) {

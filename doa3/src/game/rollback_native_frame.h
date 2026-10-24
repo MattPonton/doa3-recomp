@@ -17,5 +17,6 @@ int doa3_native_frame_run(void *context);
 int doa3_native_frame_active(void);
 /* Audited helper allowlist; false outside intermediate replay execution. */
 int doa3_native_frame_skip_guest_render(unsigned routine);
+int doa3_native_frame_skip_task(uint32_t routine); /* logic-only test */
 void doa3_native_frame_flip(void);
 #endif

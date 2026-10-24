@@ -36,6 +36,16 @@ int g_doa3_skip_map;
  * game and renderer re-synchronise after skipped frames. 0 = Jay's rule
  * (every frame but the last is hidden). */
 int g_doa3_skip_head;
+/* rollback.12, DOA3_ROLLBACK_LOGIC_ONLY=1: game tasks not stepped on hidden
+ * replay frames (set per trial by the fight window). */
+uint32_t g_doa3_skip_tasks[8];unsigned g_doa3_skip_task_count;
+static int hidden_now;
+static uint64_t tasks_skipped;
+int doa3_native_frame_skip_task(uint32_t routine){
+    if(!active || !hidden_now || !skip_guest_render)return 0;
+    for(unsigned i=0;i<g_doa3_skip_task_count;++i)if(g_doa3_skip_tasks[i]==routine){++tasks_skipped;return 1;}
+    return 0;
+}
 int doa3_native_frame_skip_guest_render(unsigned routine){
     if(!active || !skip_guest_render)return 0;
     /* Material/command construction is stateful even with host draws off.
@@ -64,7 +74,7 @@ int doa3_native_frame_run(void *context){
     pgraph_d3d11_preparation_stats(&prep_before[0],&prep_before[1],&prep_before[2]);
     LONGLONG started=ticks();
     unsigned last_helper=0;
-    guest_skipped=0;
+    guest_skipped=0;tasks_skipped=0;
     skip_guest_render=0;
     active=1;flips=0;
     unsigned visible_frame=g_doa3_frames_presented;
@@ -74,6 +84,7 @@ int doa3_native_frame_run(void *context){
     for(unsigned frame=0;frame<count;++frame){
       int hidden=frame+1<count && (!g_doa3_skip_head || frame<(unsigned)g_doa3_skip_head);
       skip_guest_render=f->skip_intermediate_guest_render && hidden;
+      hidden_now=hidden;
       pgraph_d3d11_skip_preparation((f->skip_intermediate_preparation || f->skip_intermediate_guest_render) && hidden);
       /* Intermediate frames may modify texture RAM without binding it. Force
        * exact source validation before the first normally rendered frame. */
@@ -109,7 +120,9 @@ int doa3_native_frame_run(void *context){
     result=1;
 done:
     LONGLONG elapsed=ticks()-started;
-    skip_guest_render=0;
+    skip_guest_render=0;hidden_now=0;
+    if(g_doa3_skip_task_count && f->skip_intermediate_guest_render)
+        fprintf(stderr,"[ROLLBACK-LOGIC-ONLY] task steps skipped on hidden frames: %llu\n",(unsigned long long)tasks_skipped);
     if(f->skip_intermediate_guest_render)
         fprintf(stderr,"[ROLLBACK-GUEST-RENDER-AB] model_commands=%s skipped_calls=%llu hidden_frames=%u final_frame_rendered=%d\n",
             g_doa3_skip_map ? "skipped":"preserved",(unsigned long long)guest_skipped,
