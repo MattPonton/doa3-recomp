@@ -10,6 +10,8 @@
 uint32_t doa3_costume_confirm_mask(uint32_t cursor, uint32_t port);   /* DOA3 0.1.28, recomp_manual.c */
 extern uint8_t doa3_stage_initial_cursor(uint8_t cur);
 extern int g_stage_cursor_keep;
+extern uint8_t doa3_ein_grid_gate(uint8_t ein_unlocked);
+extern void doa3_ein_grid_restore(void);
 
 /**
  * sub_000AFB4F
@@ -81147,7 +81149,7 @@ loc_000CD9E0: ;
     if (TEST_Z(eax, eax)) goto loc_000CDA12; /* je: equal / zero */
 
 loc_000CD9E6: ;
-    SET_LO8(eax, doa3_debug_unlock_read8(0x5A0B47, MEM8(0x5A0B47)));
+    SET_LO8(eax, doa3_ein_grid_gate(doa3_debug_unlock_read8(0x5A0B47, MEM8(0x5A0B47)))); /* DOA3 0.1.32: Random without Ein */
     if (TEST_Z(LO8(eax), LO8(eax))) goto loc_000CDA12; /* je: equal / zero */
 
 loc_000CD9EF: ;
@@ -81165,6 +81167,7 @@ loc_000CDA0D: ;
     goto loc_000CDB5C;
 
 loc_000CDA12: ;
+    doa3_ein_grid_restore(); /* DOA3 0.1.32 */
     edi = 0x10;
     PUSH32(esp, ebx);
     esi = 0; /* xor self */
@@ -81358,6 +81361,7 @@ void sub_000CDA12(void)
     ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */
 
 loc_000CDA12: ;
+    doa3_ein_grid_restore(); /* DOA3 0.1.32 */
     edi = 0x10;
     PUSH32(esp, ebx);
     esi = 0; /* xor self */

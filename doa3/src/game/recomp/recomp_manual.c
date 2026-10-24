@@ -1307,6 +1307,36 @@ void sub_000CD900(void)
     if (g_fib_slice_due) xbox_fiber_timeslice();
 }
 
+/* DOA3 0.1.32: Random on Character Select without Ein.
+ * 0xCD9E0 builds the grid: with Random allowed (state +0x1D8, 0 on Story's
+ * select) and Ein unlocked (0x5A0B47) it uses all 18 cells of the table
+ * 0x29CA60 (10 bytes per cell, byte 0 = character, 3 = Ein, 0xFF = Random);
+ * otherwise 16 cells, leaving out Ein and Random. The select code already
+ * handles a cell whose character is 0xFE as a locked slot: drawn with the
+ * lock sprite 0x313 (texture 7 of the chr_sel sprite file, 0xCF9C2),
+ * refused with sound 0x29 (0xCB614), skipped by Random (0xCCA3F). So with
+ * Random allowed and Ein locked, Ein's cell (8, byte 0x29CAB0) is set to
+ * 0xFE and the 18-cell grid is used. Every other call puts the 3 back.
+ * Hand edits in gen/recomp_0003.c call these. */
+#define EIN_CELL_CHAR 0x29CAB0u
+uint8_t doa3_ein_grid_gate(uint8_t ein_unlocked)
+{
+    if (!ein_unlocked) {
+        if (MEM8(EIN_CELL_CHAR) != 0xFE) {
+            fprintf(stderr, "[SELECT] Ein locked: Random shown, Ein's slot locked\n");
+            fflush(stderr);
+        }
+        MEM8(EIN_CELL_CHAR) = 0xFE;
+        return 1;
+    }
+    MEM8(EIN_CELL_CHAR) = 3;
+    return ein_unlocked;
+}
+void doa3_ein_grid_restore(void)
+{
+    MEM8(EIN_CELL_CHAR) = 3;
+}
+
 /* DOA3 0.1.31: dip switch "Random is default stage option".
  * Stage Select init (0xD8470) takes the starting cursor as its argument;
  * every caller passes the constant 2 (Beach (Day)) except the one at
@@ -1436,6 +1466,15 @@ uint32_t doa3_costume_confirm_mask(uint32_t rec, uint32_t port)
             s_log++;
             fprintf(stderr, "[SHARED] confirm refused: character %02X costume %02X is the other side's pick\n", ch, id);
             fflush(stderr);
+        }
+        /* 0.1.32: a refused press plays sound 0x29, the sound the game
+         * itself plays for a press on a locked (0xFE) slot (0xCB614). */
+        if (MEM16(0x9B7C0E + port * 8) & 0xD10u) {
+            uint32_t sv_eax = eax, sv_ebx = ebx, sv_ecx = ecx, sv_edx = edx, sv_esi = esi, sv_edi = edi, sv_esp = esp;
+            eax = 0x29;
+            PUSH32(esp, 0);
+            sub_000A5610();
+            eax = sv_eax; ebx = sv_ebx; ecx = sv_ecx; edx = sv_edx; esi = sv_esi; edi = sv_edi; esp = sv_esp;
         }
         return 0;
     }

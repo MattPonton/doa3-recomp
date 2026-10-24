@@ -4089,3 +4089,24 @@ Labels: SharedCostumes is now "Allow players to select alternate
 options of the same costume" and LeftStickMenus is "Menu navigation
 with Left Stick". The RandomAltCostumes help no longer mentions
 Black (3.1 confirms with A, X, Y or L).
+
+## 0.1.32 - Random without Ein; a sound for a refused costume press
+
+Matt: Random only appears on Character Select once Ein is unlocked.
+- 0xCD9E0 builds the grid. With Random allowed (state +0x1D8; 0 on
+  Story's select) and Ein unlocked (0x5A0B47) it lists all 18 cells of
+  0x29CA60 (10 bytes per cell, byte 0 = character: 3 Ein, 0xFF Random)
+  and sets the count 0x29CB14 to 0x12. Otherwise it lists 16, leaving
+  out Ein and Random.
+- The select code already supports a locked cell, character 0xFE:
+  0xCF8E0 draws it with sprite 0x313 (texture 7 of the chr_sel sprite
+  file, the 60x48 lock; the same texture as sprite#0D's eighth),
+  0xCB5F9 refuses it with sound 0x29, and Random (0xCCA3F) skips it.
+- With Random allowed and Ein locked, doa3_ein_grid_gate (hand edit at
+  0xCD9E6) sets Ein's cell (0x29CAB0) to 0xFE and takes the 18-cell
+  path. Every other path puts the 3 back (doa3_ein_grid_restore at
+  0xCDA12), so Story and an unlocked Ein are as before. Not a switch.
+
+The same-costume switch now plays sound 0x29 when it refuses a confirm
+press (Start, A, X or Y pressed this frame), the sound the game plays
+for a press on a locked slot.
