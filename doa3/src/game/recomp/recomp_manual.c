@@ -1092,8 +1092,8 @@ void doa3_tdata_alloc(void)
 /* Storage costume options (0.1.23). A file named
  *   <prefix><two hex digits>.<x|y|l>.<xpr|cat>      e.g. aya01.y.xpr
  * is an extra option for the character's disc costume <number> (counted from
- * 0, so aya01 is Costume 2) on that button: X, Y or LT+A, options 1-3 in
- * 0xCD110 (A / Start is 0; LT+A is the only LT option the game uses). The original game takes the text
+ * 0, so aya01 is Costume 2) on that button: X, Y or L (held with A, X or
+ * Y), options 1-3 in 0xCD110 (A / Start is 0). The original game takes the text
  * after the FIRST dot as the extension, so "y.xpr" is neither xpr nor cat and
  * such files are ignored on hardware. Here they are kept out of the numbered
  * storage list, appended to the pair table after it (so each gets a storage
@@ -1224,8 +1224,9 @@ void sub_000CD110(void)
     if (ch <= 0x18 && port < 4) {
         uint32_t v = disc_variants(ch, slot), btn = MEM8(0x9B7C0F + port * 8), want;
         int lt = (MEM32(0x73C8D0 + port * 0x2C) & 0x4000u) != 0;
-        /* LT+A is the only LT option the game uses (0.1.24). */
-        want = (btn & 4) ? 1 : (btn & 8) ? 2 : lt ? 3 : 0;
+        /* Holding L with A, X or Y is the L option (0.1.25; for Leifang's
+         * first costume the game itself gives 3 for L + any of them). */
+        want = lt ? 3 : (btn & 4) ? 1 : (btn & 8) ? 2 : 0;
         if (v && want >= v && doa3_opt_costume(MEM8(0x2FF868 + ch), slot, want) >= 0)
             eax = (eax & ~0xFFu) | want;
     }

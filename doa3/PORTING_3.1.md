@@ -3971,3 +3971,18 @@ Port (always on; nothing changes without such files):
 Matt: LT+A is the game's only LT option, so the lx/ly suffixes are
 dropped. Suffixes are now x (X, option 1), y (Y, 2) and l (LT+A, 3).
 In 0xCD110, X or Y with LT held means X or Y.
+
+## 0.1.25 - storage "l" option: L held with A, X or Y
+
+Matt: Leifang's first costume has four options, A, X, Y and L (held
+while pressing A, X or Y). That matches 0xCD110, which for a costume
+with 4 options returns 3 for L + A, X or Y. A storage "l" option is
+now taken with L held and any of the three; previously only L+A. With
+no storage L option the game's own choice stands, so L+X on a two-option
+costume still gives X.
+
+Neither Black nor White confirms a costume in 3.1: Character Select's
+confirm test (0xCB760) accepts 0xD10 = Start, A, X, Y. The game's
+button bits are A 0x100, B 0x200, X 0x400, Y 0x800, Black 0x1000,
+White 0x2000 (analog-button table 0x2D4C98). So there is no Black or
+White suffix.
