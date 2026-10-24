@@ -8,6 +8,7 @@
 void training_stagger_script_before(void);   /* DOA3 0.2.2, training_dummy.c */
 void training_stagger_script_after(void);
 void training_stagger_trace(int which, int phase);
+void training_stagger_dummy(void);
 #include <math.h>
 
 /**
@@ -5163,6 +5164,7 @@ loc_00012AB1: ;
 
 loc_00012AB3: ;
     PUSH32(esp, 0); sub_001817E0(); /* call 0x001817E0 */
+    training_stagger_dummy(); /* DOA3 0.2.5: Stagger Escape hold for the Sparring dummy */
 
 loc_00012AB8: ;
     SET_LO8(ebx, MEM8(0x4DA2DD));
@@ -5371,6 +5373,7 @@ loc_00012AB1: ;
 
 loc_00012AB3: ;
     PUSH32(esp, 0); sub_001817E0(); /* call 0x001817E0 */
+    training_stagger_dummy(); /* DOA3 0.2.5: Stagger Escape hold for the Sparring dummy */
 
 loc_00012AB8: ;
     SET_LO8(ebx, MEM8(0x4DA2DD));
@@ -5526,6 +5529,7 @@ loc_00012AB1: ;
 
 loc_00012AB3: ;
     PUSH32(esp, 0); sub_001817E0(); /* call 0x001817E0 */
+    training_stagger_dummy(); /* DOA3 0.2.5: Stagger Escape hold for the Sparring dummy */
 
 loc_00012AB8: ;
     SET_LO8(ebx, MEM8(0x4DA2DD));

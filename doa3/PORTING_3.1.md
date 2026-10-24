@@ -4214,3 +4214,17 @@ wrapped handler ran for the dummy. [STAGGER-TRACE] now logs every call
 of the three stun routines (0x16840 CPU, 0x1BAE0 player, 0x16449 script),
 first 40 each, hold or not: side, human flag, +0x59, slot before/after,
 animation speed, hold state, training_available, mode.
+
+## 0.2.5 - Stagger Escape hold for the Sparring dummy (0x1817E0)
+
+The 0.2.4 trace: with a second controller on the dummy, 0x1BAE0 runs
+(human 1) and the hold works; with the CPU on it, no stun routine runs at
+all. In Sparring (mode 7/11) the fighter loop (0x12991) sends a fighter
+that is not human to 0x1817E0, not to the CPU code 0x12EC0, so nothing
+mashes or decays its value and its stun plays at the speed it started
+with. After each of the three 0x1817E0 calls (hand edits in
+gen/recomp_0000.c) training_stagger_dummy puts the held value in the slot
+and in the record's animation speed +0x10 while +0x33 == 8 (the stun
+state 0x14D70 tests), and puts a speed still equal to it back to 1.00
+when the stun ends. [STAGGER-TRACE] dummy lines log its state changes
+while a hold is set.

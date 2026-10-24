@@ -390,3 +390,45 @@ void training_stagger_trace(int which, int phase)
             side<2?s_stagger_hold[side]:-1,side<2?s_stagger_value[side]:0.0f,training_available(),MEM8(0x5A2858));
     fflush(stderr);
 }
+
+/* 0.2.5: in Sparring the game runs a fighter that is not human through
+ * 0x1817E0 (the dummy), not the CPU (0x12EC0) or player (0x19790) code, so
+ * none of the three stun routines runs for it: its critical stun (state
+ * +0x33 == 8 in its record 0x59CF58 + side*0x68) plays at the animation
+ * speed +0x10 the stun started with, which is what the game shows for a
+ * dummy that never mashes. With a hold set, after 0x1817E0 the value is put
+ * in the slot and in +0x10 while the stun lasts; when it ends, a speed still
+ * equal to the held value goes back to 1.00. */
+void training_stagger_dummy(void)
+{
+    static int s_set[2], s_log;
+    unsigned side=MEM8(0x4DA2DD), fighter;
+    float v;
+    if (side>1 || !training_available()) return;
+    fighter=MEM32(0x4DA1C4);
+    if (!fighter) return;
+    v=s_stagger_value[side];
+    {   /* diagnostic: the dummy's state changes while a hold is set */
+        static unsigned s_prev[2]={0xFF,0xFF}; static int s_n;
+        unsigned st=MEM8(fighter+0x33);
+        if (s_stagger_hold[side] && st!=s_prev[side] && s_n<40) {
+            s_n++;
+            fprintf(stderr,"[STAGGER-TRACE] dummy side %u state %u -> %u, speed %.2f\n",side,s_prev[side],st,MEMF(fighter+0x10));
+            fflush(stderr);
+        }
+        s_prev[side]=st;
+    }
+    if (s_stagger_hold[side] && MEM8(fighter+0x33)==8) {
+        MEMF(0x4DA2D4+side*4)=v;
+        MEMF(fighter+0x10)=v;
+        if (!s_set[side] && s_log<8) {
+            s_log++;
+            fprintf(stderr,"[STAGGER] Sparring dummy, side %u: stun at %.2f\n",side,v);
+            fflush(stderr);
+        }
+        s_set[side]=1;
+    } else if (s_set[side]) {
+        if (MEMF(fighter+0x10)==v) MEMF(fighter+0x10)=1.0f;
+        s_set[side]=0;
+    }
+}
