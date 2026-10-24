@@ -565,13 +565,24 @@ static void apu_frame_body(MCPXAPUState *d)
     if (d->rollback_det_pending) qemu_cond_broadcast(&d->cond);
 }
 
+/* doa3.1-rollback.10 diagnostic: host time spent stepping the chip on the
+ * controlled clock (all on the caller's thread), and the longest single
+ * chip frame; read and reset by xbox_fiber_frame_report. */
+volatile long long g_apu_det_ticks, g_apu_det_max_ticks;
+volatile unsigned g_apu_det_frames;
 static void apu_det_run(MCPXAPUState *d, int n)
 {
     while (n-- > 0) {
+        LARGE_INTEGER t0, t1;
+        QueryPerformanceCounter(&t0);
         s_apu_det_chip++;
         if (d->pause_requested && !g_test_tone.active && !g_mixer_active_count)
             continue;   /* the thread would be parked idle: no chip time passes */
         apu_frame_body(d);
+        QueryPerformanceCounter(&t1);
+        g_apu_det_ticks += t1.QuadPart - t0.QuadPart;
+        if (t1.QuadPart - t0.QuadPart > g_apu_det_max_ticks) g_apu_det_max_ticks = t1.QuadPart - t0.QuadPart;
+        g_apu_det_frames++;
     }
 }
 

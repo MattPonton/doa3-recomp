@@ -4589,3 +4589,24 @@ Still under the controlled clock: ~30 ms game time on about every tenth
 frame, unchanged by .8. New [FIBER-TIME] line for frames over 22 ms under
 the controlled clock: how long each fiber ran and how often it was
 resumed in that frame.
+
+## 0.2.6-rollback.10 - where checkpoints and restores spend their time
+
+Matt's runs of .9: PROBE passed all six trials twice (three 4-frame,
+three 8-frame), with the music playing throughout and no kernel call
+refused. Replay costs ~5.5 ms per frame; the earlier-image restore
+~72-85 ms. CLOCKTEST: the slow controlled-clock frames (~24-31 ms, about
+every tenth frame) are all main-thread time (18-25 ms); the game tasks
+run ~6 ms combined, as in any frame.
+
+New diagnostics, both on the main thread:
+- [ROLLBACK-PROFILE] (DOA3_ROLLBACK_REPLAY_PROFILE=1): a capture split
+  into clear / parts / validate / hash / copy, with each part's capture
+  and validate time; a restore split into copy in / header hash /
+  validate / safety before-image / renderer before-image / apply (per
+  part) / apply renderer; a compare split into parts and renderer; the
+  renderer capture. Much of the current restore is the verification
+  harness's safety copies, not the restore itself; these numbers say how
+  much.
+- [FIBER-TIME] now adds the time the main thread spent stepping the APU
+  on the controlled clock in that frame and its longest single chip frame.
