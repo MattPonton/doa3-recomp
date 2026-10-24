@@ -3986,3 +3986,14 @@ confirm test (0xCB760) accepts 0xD10 = Start, A, X, Y. The game's
 button bits are A 0x100, B 0x200, X 0x400, Y 0x800, Black 0x1000,
 White 0x2000 (analog-button table 0x2D4C98). So there is no Black or
 White suffix.
+
+## 0.1.26 - Random can pick storage costume options
+
+With both "Random includes alternate costume colours" and "Random
+includes costumes from storage" on, a random pick for a disc costume
+chooses among its disc options and its storage options (x/y/l files on
+buttons the disc costume leaves free). This covers the player's Random
+(0xCD870 during 0xCC980) and Survival/Time Attack opponents (0x76B30).
+A storage option resolves directly to its costume id. [RANDALT] lines
+now give the option, the disc and total counts, and "-> storage
+option" when one is chosen.

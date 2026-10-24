@@ -754,6 +754,19 @@ static uint32_t disc_variants(uint32_t ch, uint32_t slot)
     tab = MEM32(0x29C790 + ch * 4);
     return (slot < count && tab) ? MEM8(tab + slot) : 0;
 }
+/* 0.1.26: the options a random pick can choose for a disc costume slot --
+ * its disc options 0..v-1, plus (with both random switches on) the storage
+ * options (x/y/l files, options 1-3) on buttons the disc costume leaves free.
+ * Fills alts[] and returns how many. */
+static uint32_t random_option_set(uint32_t ch, uint32_t slot, uint32_t v, uint8_t alts[8])
+{
+    uint32_t n = 0, a;
+    for (a = 0; a < v && n < 8; a++) alts[n++] = (uint8_t)a;
+    if (ch <= 0x18 && dip_get(DIP_RANDOM_HDD_COSTUMES))
+        for (a = v; a <= 3 && n < 8; a++)
+            if (doa3_opt_costume(MEM8(0x2FF868 + ch), slot, a) >= 0) alts[n++] = (uint8_t)a;
+    return n;
+}
 void sub_000CD870_gen(void);
 void sub_000CD870(void)
 {
@@ -807,19 +820,27 @@ void sub_000CD870(void)
             uint32_t tab = MEM32(0x29C790 + ch * 4);
             if (slot < count && tab) {
                 uint32_t variants = MEM8(tab + slot);
-                if (variants > 1) {
+                uint8_t alts[8];
+                uint32_t nalts = random_option_set(ch, slot, variants, alts);
+                if (nalts > 1) {
                     uint32_t pool = MEM32(0x404998), r = pool ? MEM8(pool + MEM8(0x40499D)) : 0;
                     static int s_log;
                     /* Mix in the slot so a reused pool byte does not tie the
                      * alternate to the slot. */
-                    uint32_t alt = (r + slot * 7u + ch * 3u) % variants;
-                    MEM8(esp + 4) = (uint8_t)alt;
+                    uint32_t alt = alts[(r + slot * 7u + ch * 3u) % nalts];
                     if (s_log < 16) {
                         s_log++;
-                        fprintf(stderr, "[RANDALT] character %02X costume slot %u: alternate %u of %u\n",
-                                ch, slot, alt, variants);
+                        fprintf(stderr, "[RANDALT] character %02X costume slot %u: option %u (%u disc, %u in all)%s\n",
+                                ch, slot, alt, variants, nalts, alt >= variants ? " -> storage option" : "");
                         fflush(stderr);
                     }
+                    if (alt >= variants) {
+                        /* a storage option: its own costume id */
+                        eax = (eax & ~0xFFu) | (uint32_t)doa3_opt_costume(grp, slot, alt);
+                        esp += 4;
+                        return;
+                    }
+                    MEM8(esp + 4) = (uint8_t)alt;
                 }
             }
         }
@@ -883,11 +904,19 @@ void sub_00076B30(void)
                     alt = 0;
                     costume = 0x40 + (slot - count);
                 } else {
-                    alt = (r / count) % (MEM8(vt + slot) ? MEM8(vt + slot) : 1);
-                    for (i = 0; i < slot; i++) base += MEM8(vt + i);
-                    idx = base + alt;
-                    if (idx >= total) continue;
-                    costume = MEM8(ct + idx);
+                    uint8_t alts[8];
+                    uint32_t v = MEM8(vt + slot), nalts = random_option_set(ch, slot, v, alts);
+                    alt = nalts ? alts[(r / count) % nalts] : 0;
+                    if (alt >= v && v) {
+                        int sid = doa3_opt_costume(grp, slot, alt);   /* storage option */
+                        if (sid < 0) continue;
+                        costume = (uint32_t)sid;
+                    } else {
+                        for (i = 0; i < slot; i++) base += MEM8(vt + i);
+                        idx = base + alt;
+                        if (idx >= total) continue;
+                        costume = MEM8(ct + idx);
+                    }
                 }
                 for (p = 0; p < 2; p++)
                     if (MEM8(0x59CF58 + p * 0x68) == 1 && MEM8(0x59CF59 + p * 0x68) == ch &&
