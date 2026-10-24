@@ -1307,6 +1307,27 @@ void sub_000CD900(void)
     if (g_fib_slice_due) xbox_fiber_timeslice();
 }
 
+/* DOA3 0.1.31: dip switch "Random is default stage option".
+ * Stage Select init (0xD8470) takes the starting cursor as its argument;
+ * every caller passes the constant 2 (Beach (Day)) except the one at
+ * 0xCADAC, which passes the remembered stage (state +0x1EA) and sets
+ * g_stage_cursor_keep first. The cursor byte is 0x9B7BAA, indexing the
+ * order list 0x9B76C4[0x29CA5A]; table entry 0x0E is Random, which the
+ * init appends at the end of the list. Called after the list is built. */
+int g_stage_cursor_keep;
+uint8_t doa3_stage_initial_cursor(uint8_t cur)
+{
+    int keep = g_stage_cursor_keep;
+    unsigned n, i;
+    g_stage_cursor_keep = 0;
+    if (keep || cur != 2 || !dip_get(DIP_RANDOM_STAGE_DEFAULT)) return cur;
+    n = MEM8(0x29CA5A);
+    if (n > 32) n = 32;
+    for (i = 0; i < n; i++)
+        if (MEM8(0x9B76C4 + i) == 0x0E) return (uint8_t)i;
+    return cur;
+}
+
 /* Dip switch "Same costume, different option" (0.1.28).
  * Character Select keeps a costume from being highlighted when an opposing
  * player on the same character has it (0xCCC70: an opponent's cursor record

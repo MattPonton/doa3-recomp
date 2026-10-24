@@ -13,6 +13,7 @@ extern "C" {
 
 typedef enum {
     DIP_LSTICK_MENUS = 0,   /* left stick also navigates the menus */
+    DIP_RANDOM_STAGE_DEFAULT,/* stage select opens on Random */
     DIP_RANDOM_ALT_COSTUMES,/* random picks include alternate costume colours */
     DIP_RANDOM_HDD_COSTUMES,/* random picks include costumes from storage (TDATA) */
     DIP_SHARED_COSTUMES,    /* both players may pick a costume, in different options */

@@ -4067,3 +4067,25 @@ could not be reached before. DIP_COSTUME_CAROUSEL and its table entry
 are removed, and the 0xCD7C0 / 0xD18A0 / 0x6DF00 hooks are
 unconditional. A CostumeCarousel= line left in doa3_settings.ini is
 ignored.
+
+## 0.1.31 - Random is default stage option; label renames
+
+New dip switch RandomStageDefault (second in the list): Stage Select
+opens on Random instead of Beach (Day).
+- Cursor byte 0x9B7BAA indexes the order list 0x9B76C4 (count
+  0x29CA5A); each entry is a row of the 16-byte stage table 0x29C960.
+  Init 0xD8470 builds the list, appends 0x0E (Random) at the end, and
+  stores its stack argument as the cursor. Found by diffing Matt's
+  three snapshots: 2 (Beach Day), 1, then 14 (Random).
+- All callers of 0xD8470 pass the constant 2 except 0xCADAC, which
+  passes the remembered stage at state +0x1EA. Hand edits in
+  gen/recomp_0003.c: the three copies of loc_000D84BD pass the
+  argument through doa3_stage_initial_cursor, and the 0xCADAC caller
+  sets g_stage_cursor_keep so a remembered stage is left alone.
+- With the switch on and the argument 2, the cursor is set to the
+  list position holding 0x0E.
+
+Labels: SharedCostumes is now "Allow players to select alternate
+options of the same costume" and LeftStickMenus is "Menu navigation
+with Left Stick". The RandomAltCostumes help no longer mentions
+Black (3.1 confirms with A, X, Y or L).

@@ -8,6 +8,8 @@
 #include "debug_settings.h"
 #include <math.h>
 uint32_t doa3_costume_confirm_mask(uint32_t cursor, uint32_t port);   /* DOA3 0.1.28, recomp_manual.c */
+extern uint8_t doa3_stage_initial_cursor(uint8_t cur);
+extern int g_stage_cursor_keep;
 
 /**
  * sub_000AFB4F
@@ -72834,6 +72836,7 @@ loc_000CADAC: ;
     eax = 0; /* xor self */
     SET_LO8(eax, MEM8(esi + 0x1EA));
     PUSH32(esp, eax);
+    g_stage_cursor_keep = 1; /* DOA3 0.1.31: remembered stage, keep it */
     _fs12 = (uint32_t)(eax); /* flag operand kept for a later jcc */
     PUSH32(esp, 0); sub_000D8470(); /* call 0x000D8470 */
 
@@ -106405,6 +106408,7 @@ loc_000D84AF: ;
 
 loc_000D84BD: ;
     SET_LO8(ebx, MEM8(esp + 0xC));
+    SET_LO8(ebx, doa3_stage_initial_cursor(LO8(ebx))); /* DOA3 0.1.31: Random default stage */
     SET_LO16(edx, ZX8(MEM8(0x29CA5A)));
     PUSH32(esp, 0);
     PUSH32(esp, 0x71);
@@ -106453,6 +106457,7 @@ loc_000D84AF: ;
     SET_LO8(eax, LO8(eax) + 1);
     MEM8(0x29CA5A) = LO8(eax);
     SET_LO8(ebx, MEM8(esp + 0xC));
+    SET_LO8(ebx, doa3_stage_initial_cursor(LO8(ebx))); /* DOA3 0.1.31: Random default stage */
     SET_LO16(edx, ZX8(MEM8(0x29CA5A)));
     PUSH32(esp, 0);
     PUSH32(esp, 0x71);
@@ -106480,6 +106485,7 @@ void sub_000D84BD(void)
 
 loc_000D84BD: ;
     SET_LO8(ebx, MEM8(esp + 0xC));
+    SET_LO8(ebx, doa3_stage_initial_cursor(LO8(ebx))); /* DOA3 0.1.31: Random default stage */
     SET_LO16(edx, ZX8(MEM8(0x29CA5A)));
     PUSH32(esp, 0);
     PUSH32(esp, 0x71);

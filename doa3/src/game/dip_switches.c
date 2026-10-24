@@ -7,15 +7,19 @@
 #include "video_settings.h"
 
 static const struct { const char *key, *label, *help; } k_dip[DIP_COUNT] = {
-    { "LeftStickMenus", "Left stick navigates menus",
+    { "LeftStickMenus", "Menu navigation with Left Stick",
       "The original game reads only the directional pad in its menus; in a "
       "fight the pad and both sticks move the character. On: the left stick "
       "also moves the menu cursor (the directional pad still works). Fights "
       "are unchanged." },
+    { "RandomStageDefault", "Random is default stage option",
+      "The original game's Stage Select opens with the cursor on Beach (Day), three presses "
+      "of Left away from Random. On: it opens on Random. When the game itself remembers the "
+      "last stage (going back to Stage Select after a match) that stage is kept." },
     { "RandomAltCostumes", "Random includes alternate costume colours",
       "The original game's Random select, and the opponents Story, Survival and Time Attack "
       "pick, always use a costume's first colour. On: Random also picks one of the "
-      "costume's alternate colours (the ones chosen with A, X, Y, Black or LT on Character "
+      "costume's alternate colours (the ones chosen with A, X, Y or L on Character "
       "Select), and Survival and Time Attack opponents get a random unlocked costume and "
       "colour. Story mode opponents (and its outfit easter eggs) are unchanged." },
     { "RandomStorageCostumes", "Random includes costumes from storage",
@@ -23,7 +27,7 @@ static const struct { const char *key, *label, *help; } k_dip[DIP_COUNT] = {
       "or custom XPR/CAT pairs) can be chosen on Character Select, but the original game's "
       "Random never picks them. On: Random, and the Survival and Time Attack opponents when "
       "the colour switch is also on, can pick them too." },
-    { "SharedCostumes", "Same costume, different option",
+    { "SharedCostumes", "Allow players to select alternate options of the same costume",
       "With both sides on the same character, the original game will not let a player highlight "
       "a costume the other side has. On: it can be highlighted when it has another option "
       "(A, X, Y, L, or a storage option) left; only the exact costume and option the other "
