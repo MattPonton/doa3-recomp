@@ -308,6 +308,14 @@ int doa3_checkpoint_image_discard(Doa3CheckpointSession *s,Doa3CheckpointImage *
     if(*p) { *p=image->next;free_image(s,image);result=1; }
     leave(s);return result;
 }
+/* rollback.16 diagnostic: one part's bytes inside a kept image. */
+const unsigned char *doa3_checkpoint_image_part(const Doa3CheckpointSession *s,const Doa3CheckpointImage *image,
+    unsigned part,size_t *bytes)
+{
+    if(!s || !image || !image->bytes || part>=DOA3_CP_PARTS)return NULL;
+    *bytes=s->config.parts[part].bytes;
+    return image->bytes+s->offset[part];
+}
 /* doa3.1-rollback: optional mismatch map (set by the fight checkpoint when
  * DOA3_ROLLBACK_DIFF_MAP / SKIP_MAP is on). Read-only; called per differing
  * part with the saved and current bytes. */

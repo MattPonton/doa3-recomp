@@ -195,6 +195,9 @@ void doa3_fight_window_probe_boundary(void){
         Doa3CheckpointSession *session=doa3_fight_checkpoint_session(fight);
         Doa3CheckpointImage *end=doa3_checkpoint_image_capture(session,window);
         if(!end){fprintf(stderr,"[ROLLBACK-WINDOW] refused before rewind: endpoint capture\n");finish(0);return;}
+        {   extern void doa3_fight_checkpoint_delta_report(Doa3FightCheckpoint *,const Doa3CheckpointImage *,
+                const Doa3CheckpointImage *,unsigned);
+            doa3_fight_checkpoint_delta_report(fight,start,end,window); }
         Doa3CheckpointComparison difference={0};
         Doa3NativeFrame native={&loop,tape,window};
         ULONGLONG verify_started=GetTickCount64();

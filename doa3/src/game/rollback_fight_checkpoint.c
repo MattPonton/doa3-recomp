@@ -374,6 +374,44 @@ static void diff_map(unsigned part,const unsigned char *a,const unsigned char *b
     }
     fflush(stderr);
 }
+/* rollback.16 diagnostic: how much guest RAM a recorded window changed,
+ * per 4 KB page and per 256-byte block (a delta snapshot's size), split
+ * into labelled render-only memory, fiber stacks and the rest. */
+void doa3_fight_checkpoint_delta_report(Doa3FightCheckpoint *s,const Doa3CheckpointImage *a,
+    const Doa3CheckpointImage *b,unsigned frames)
+{
+    size_t na=0,nb=0;
+    const unsigned char *pa=doa3_checkpoint_image_part(s->session,a,DOA3_CP_RAM,&na);
+    const unsigned char *pb=doa3_checkpoint_image_part(s->session,b,DOA3_CP_RAM,&nb);
+    if(!pa || !pb || na!=nb || na<sizeof(FightCpu))return;
+    const size_t hdr=sizeof(FightCpu),ram=na-hdr;
+    size_t pages[3]={0},blocks[3]={0};
+    struct { uint32_t lo; size_t pages; } top[16];unsigned ntop=0;
+    for(size_t pg=0;pg<ram;pg+=4096){
+        size_t len=ram-pg<4096 ? ram-pg:4096;
+        if(!memcmp(pa+hdr+pg,pb+hdr+pg,len))continue;
+        uint32_t ga=(uint32_t)pg;int fib;uint32_t routine;
+        int cls=*diff_label(ga) ? 0:xbox_fiber_stack_of(ga,&fib,&routine) ? 1:2;
+        ++pages[cls];
+        for(size_t k=0;k<len;k+=256){
+            size_t l=len-k<256 ? len-k:256;
+            if(memcmp(pa+hdr+pg+k,pb+hdr+pg+k,l))++blocks[cls];
+        }
+        if(cls==2){   /* group the rest by 1 MB to show where it lives */
+            uint32_t mb=ga&0xFFF00000u;unsigned t;
+            for(t=0;t<ntop && top[t].lo!=mb;++t){}
+            if(t==ntop && ntop<16){top[ntop].lo=mb;top[ntop].pages=0;++ntop;}
+            if(t<ntop)++top[t].pages;
+        }
+    }
+    fprintf(stderr,"[ROLLBACK-DELTA] %u frames changed %zu pages (%zu KB) in 4 KB pages, %zu KB in 256-byte blocks: "
+        "render-only %zu pages, fiber stacks %zu pages, other %zu pages (%zu KB in blocks)\n",
+        frames,pages[0]+pages[1]+pages[2],(pages[0]+pages[1]+pages[2])*4,(blocks[0]+blocks[1]+blocks[2])/4,
+        pages[0],pages[1],pages[2],blocks[2]/4);
+    fprintf(stderr,"[ROLLBACK-DELTA]   other pages by MB:");
+    for(unsigned t=0;t<ntop;++t)fprintf(stderr," %08X:%zu",top[t].lo,top[t].pages);
+    fprintf(stderr,"\n");
+}
 void doa3_fight_checkpoint_diff_map_enable(void)
 {
     extern void (*g_doa3_checkpoint_diff_hook)(unsigned,const unsigned char *,const unsigned char *,size_t);

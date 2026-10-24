@@ -89,4 +89,7 @@ typedef struct {
  * 1 exact match, 0 mismatch, -1 invalid image/context or capture failure.
  * Resources must supply equal(). Comparison is published only on 0 or 1. */
 int doa3_checkpoint_image_matches(Doa3CheckpointSession *,const Doa3CheckpointImage *,Doa3CheckpointComparison *);
+/* rollback.16 diagnostic: one part's bytes inside a kept image. */
+const unsigned char *doa3_checkpoint_image_part(const Doa3CheckpointSession *s,const Doa3CheckpointImage *image,
+    unsigned part,size_t *bytes);
 #endif

@@ -4753,3 +4753,19 @@ Now:
   park) is accepted by the logic-only check.
 - The skip list above is the logic-only default (DOA3_ROLLBACK_SKIP_FNS
   replaces it).
+
+## 0.2.6-rollback.16 - measuring what a delta snapshot would hold
+
+Matt's LOGICONLY run of .15: five of six trials logic matched; trial 3
+differed only at 0x5AA224 (0x005A91D8 vs 0x00D017B0, field +0x7C of the
+2D manager block 0x5AA1A8; writer not yet found). Fiber 7's r_sehebp
+difference is now named and accepted.
+
+Next is delta snapshots instead of copying the whole 128 MB guest space
+each way (~8 ms capture, ~10 ms restore). Before choosing how to track
+writes (the base view is a file mapping with 29 64 MB mirror views, so
+GetWriteWatch is not available; page protection would also have to cover
+the mirrors and the bridges that hand guest buffers to Win32), measure
+the delta: [ROLLBACK-DELTA] compares each window's start and end images
+per 4 KB page and per 256-byte block, split into labelled render-only
+memory, fiber stacks and the rest, with the rest grouped by MB.
