@@ -4403,3 +4403,20 @@ for his OFFRT_N 8; doa3.1 raised OFFRT_N to 16, so the inventory wrote 36
 entries into a 20-entry stack array. Limit now 36, fbcopy/prevframe at
 2 + OFFRT_N*2, and a compile-time check ties the two. The two fixture
 generators in tests/rollback look for '#define OFFRT_N 16'.
+
+## 0.2.6-rollback.3 - the I3DL2 reverb in the audio checkpoint
+
+Matt's first probe run after .2: trial 1 (four frames) restored, replayed
+in 33.3 ms (Jay's last runs: 45-51 ms) and every domain matched -- RAM/CPU,
+heap, fibers, clock, files, completions, interrupts, GPU frontend, input
+and the renderer -- except audio (mask 100), first byte 0x80440 of the
+APU image: s_apu_stage, the mixed output being staged for XAudio2. The
+audio gate then refused to reopen (by design a mismatch leaves output
+gated), so the music stopped.
+
+Cause: doa3.1's I3DL2 reverb (apu_dsp.c, 0.0.18x) keeps delay lines,
+filters, the listener parameters and a version counter on the host,
+outside both the guest registers and Jay's command image, so a rewound
+replay mixed the reverb tail from the future. apu_dsp_rollback_export /
+_import now carry that state after the command image
+(mcpx_apu_processing_size grows by it).

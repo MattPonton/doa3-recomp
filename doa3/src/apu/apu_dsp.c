@@ -146,6 +146,30 @@ static struct {
     float ap[RV_AP][1024]; int ap_pos[RV_AP]; int ap_len[RV_AP];
 } rv;
 
+/* doa3.1-rollback: the reverb is host-side DSP state (delay lines,
+ * filters, the listener parameters and their version counter). The APU
+ * rollback checkpoint carries it after its own command image; without it a
+ * rewound replay mixed the reverb from the future (stage mismatch). Called
+ * with the APU pinned. */
+size_t apu_dsp_rollback_size(void) { return sizeof rv + sizeof s_rv_params + sizeof(LONG); }
+void apu_dsp_rollback_export(void *out)
+{
+    unsigned char *p = (unsigned char *)out;
+    LONG v = InterlockedCompareExchange(&s_rv_version, 0, 0);
+    memcpy(p, &rv, sizeof rv); p += sizeof rv;
+    memcpy(p, &s_rv_params, sizeof s_rv_params); p += sizeof s_rv_params;
+    memcpy(p, &v, sizeof v);
+}
+void apu_dsp_rollback_import(const void *in)
+{
+    const unsigned char *p = (const unsigned char *)in;
+    LONG v;
+    memcpy(&rv, p, sizeof rv); p += sizeof rv;
+    memcpy(&s_rv_params, p, sizeof s_rv_params); p += sizeof s_rv_params;
+    memcpy(&v, p, sizeof v);
+    InterlockedExchange(&s_rv_version, v);
+}
+
 static float rv_mb(int32_t mb) { return mb <= -10000 ? 0.0f : powf(10.0f, (float)mb / 2000.0f); }
 
 /* One-pole low-pass y += (1-a)(x-y) whose gain at f is g (0 < g <= 1). */

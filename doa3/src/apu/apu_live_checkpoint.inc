@@ -1,6 +1,9 @@
 /* Included by apu_core.c; all live backend identity and ownership stays private. */
 #include "apu_live_checkpoint.h"
 #include <limits.h>
+size_t apu_dsp_rollback_size(void);           /* apu_dsp.c: the reverb (doa3.1) */
+void apu_dsp_rollback_export(void *out);
+void apu_dsp_rollback_import(const void *in);
 extern int xbox_fiber_is_primary(void);
 typedef struct ApuProcessingImage {
     uint32_t magic,version,bytes,reserved;
@@ -35,7 +38,7 @@ static int apu_processing_ready(void)
         (DWORD)s_apu_det_owner==owner && xbox_fiber_is_primary() && !d->exiting &&
         !d->rollback_frame_active && !d->rollback_det_pending && apu_live_supported(d);
 }
-size_t mcpx_apu_processing_size(void) { return sizeof(ApuProcessingImage)+apu_rollback_size(); }
+size_t mcpx_apu_processing_size(void) { return sizeof(ApuProcessingImage)+apu_rollback_size()+apu_dsp_rollback_size(); }
 int mcpx_apu_processing_capture(void *out,size_t bytes)
 {
     if(!out || bytes!=mcpx_apu_processing_size() || !apu_processing_ready())return 0;
@@ -49,7 +52,9 @@ int mcpx_apu_processing_capture(void *out,size_t bytes)
     memcpy(s->pcm,d->monitor.frame_buf,sizeof(s->pcm));memcpy(s->stage,s_apu_stage,sizeof(s->stage));
     ApuRollbackClock clock={s_apu_det_xgs0,s_apu_det_chip,s_apu_det_debt,
         InterlockedCompareExchange(&g_apu_irq_pending,0,0)!=0};
-    return apu_rollback_export(d,&clock,s->command,apu_rollback_size());
+    if(!apu_rollback_export(d,&clock,s->command,apu_rollback_size()))return 0;
+    apu_dsp_rollback_export(s->command+apu_rollback_size());
+    return 1;
 }
 int mcpx_apu_processing_validate(const void *saved,size_t bytes)
 {
@@ -70,6 +75,7 @@ int mcpx_apu_processing_restore(const void *saved,size_t bytes)
     if(!s_apu_replay_active || !mcpx_apu_processing_validate(saved,bytes))return 0;
     const ApuProcessingImage *s=saved;MCPXAPUState *d=g_state;ApuRollbackClock clock;
     if(!apu_rollback_import(d,&clock,s->command,apu_rollback_size()))return 0;
+    apu_dsp_rollback_import(s->command+apu_rollback_size());
     s_apu_det_xgs0=clock.base;s_apu_det_chip=clock.chip;s_apu_det_debt=clock.debt;
     InterlockedExchange(&g_apu_irq_pending,(LONG)clock.irq_pending);
     d->ep_frame_div=(int)s->phase;d->pause_requested=s->pause!=0;s_apu_fill=(int)s->fill;
