@@ -3910,3 +3910,12 @@ With the carousel switch off, Character Select still shows at most
 nine buttons. The costumes past that are reachable with "Costume list
 scrolls past nine" or picked by "Random includes costumes from
 storage".
+
+## 0.1.21 - storage costumes: at most 99 per character
+
+Matt: cap a single character at 99 storage costumes (was 64 in 0.1.20).
+Storage costumes are now 0x40-0xA2. Nothing reads the costume byte as
+signed: the uses are equality tests, and the pair-table readers
+(0x840D0, 0x86060) test it with an unsigned < 0x40. The working list
+takes the first 99 distinct numbers a character's files use; the
+2048-file total is unchanged.

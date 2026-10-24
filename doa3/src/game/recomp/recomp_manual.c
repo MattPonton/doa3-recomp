@@ -1022,13 +1022,14 @@ void sub_0006DF00(void)
  * [group*7 + n] by 0x840D0 and 0x86060, file names via 0x85C40.
  * The scan and those readers now use the variables below. They start at the
  * original addresses and limits, and doa3_tdata_alloc() (start of the scan)
- * moves them to larger tables in guest memory: 2048 files and 64 costumes per
- * character (costumes 0x40-0x7F). If the allocation fails the originals
- * stay. */
+ * moves them to larger tables in guest memory: 2048 files and 99 costumes per
+ * character (0.1.21; costumes 0x40-0xA2 -- no code reads the costume byte as
+ * signed, the readers test it with an unsigned < 0x40). If the allocation
+ * fails the originals stay. */
 uint32_t g_tdata_names = 0x5B2140u, g_tdata_pairs = 0x5B1E58u, g_tdata_tmp = 0x5B3148u;
 uint32_t g_tdata_cap = 7, g_tdata_max_files = 0x100, g_tdata_pair_dwords = 0x85;
 #define TDATA_GROUPS    19u
-#define TDATA_CAP       64u
+#define TDATA_CAP       99u   /* Matt: at most 99 per character (costumes 0x40-0xA2) */
 #define TDATA_MAX_FILES 2048u
 void doa3_tdata_alloc(void)
 {
