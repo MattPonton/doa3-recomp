@@ -4046,3 +4046,15 @@ DIP_SHARED_COSTUMES (SharedCostumes, off by default):
   storage options) and returns 0, ignoring the press, when the other
   side confirmed that exact costume + option on that character.
   Otherwise 0xD10 as before.
+
+## 0.1.29 - same costume, different option: the right side's picks
+
+Matt (0.1.28): P2 could confirm the very costume + option P1 had
+confirmed. The duplicate test read the other side's pick list using the
+record's +0x1A bit, but 0xCC760 files picks at side*5 + member with
+side = 0xCCEF0(record) & 1, which depends on the mode. The test was
+looking at the wrong side's list. Both the highlight rule and the
+confirm test now call the game's 0xCCEF0 (guest registers saved and
+restored around it). A refused confirm is logged as [SHARED] (first
+16). The only other confirm caller, 0xCB370, handles a Random
+character pick, not the costume press.

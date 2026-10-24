@@ -1341,6 +1341,20 @@ static uint32_t costume_slot_ids(uint32_t ch, uint32_t slot, uint8_t ids[8])
     }
     return n;
 }
+/* The side index of a cursor record as the game files its picks (0.1.29):
+ * 0xCC760 stores them at side*5 + member with side = 0xCCEF0(record) & 1,
+ * which follows the mode, not just the record's +0x1A. Call the game's own
+ * 0xCCEF0, keeping the guest registers as they were. */
+static uint32_t record_side(uint32_t rec)
+{
+    uint32_t sv_eax = eax, sv_ebx = ebx, sv_ecx = ecx, sv_edx = edx, sv_esi = esi, sv_edi = edi, sv_esp = esp, r;
+    eax = rec;
+    PUSH32(esp, 0);
+    sub_000CCEF0();
+    r = eax & 1;
+    eax = sv_eax; ebx = sv_ebx; ecx = sv_ecx; edx = sv_edx; esi = sv_esi; edi = sv_edi; esp = sv_esp;
+    return r;
+}
 static int costume_taken_by_other_side(uint32_t side, uint32_t ch, uint32_t id)
 {
     uint32_t other = (side & 1) ^ 1, m;
@@ -1357,7 +1371,7 @@ void sub_000CCC70(void)   /* al = slot, edi = cursor record -> eax nonzero = blo
     uint32_t slot = eax & 0xFF, rec = edi;
     sub_000CCC70_gen();
     if (eax && dip_get(DIP_SHARED_COSTUMES)) {
-        uint32_t ch = MEM8(rec + 0x14), side = MEM8(rec + 0x1A), n, i, free = 0;
+        uint32_t ch = MEM8(rec + 0x14), side = record_side(rec), n, i, free = 0;
         uint8_t ids[8];
         n = costume_slot_ids(ch, slot, ids);
         for (i = 0; i < n; i++) if (!costume_taken_by_other_side(side, ch, ids[i])) free++;
@@ -1395,7 +1409,15 @@ uint32_t doa3_costume_confirm_mask(uint32_t rec, uint32_t port)
         count = have < max ? have : max;
         if (slot >= count) id = (int)(0x40 + (slot - count));
     }
-    if (id >= 0 && costume_taken_by_other_side(MEM8(rec + 0x1A), ch, (uint32_t)id)) return 0;
+    if (id >= 0 && costume_taken_by_other_side(record_side(rec), ch, (uint32_t)id)) {
+        static int s_log;
+        if (s_log < 16) {
+            s_log++;
+            fprintf(stderr, "[SHARED] confirm refused: character %02X costume %02X is the other side's pick\n", ch, id);
+            fflush(stderr);
+        }
+        return 0;
+    }
     return 0xD10u;
 }
 
