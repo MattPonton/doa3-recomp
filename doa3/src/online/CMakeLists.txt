@@ -48,17 +48,61 @@ if(MSVC)
 endif()
 
 # ── the port's online code ────────────────────────────────────────────
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+set(ROLLBACK_LOOP_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/rollback_loop.generated.c")
+add_custom_command(OUTPUT "${ROLLBACK_LOOP_SOURCE}"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_loop.py" "${ROLLBACK_LOOP_SOURCE}"
+    DEPENDS "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_loop.py"
+        "${CMAKE_SOURCE_DIR}/src/game/recomp/gen/recomp_0002.c" VERBATIM)
 add_library(doa3_online STATIC
+    rollback.c
+    rollback_checkpoint.c
+    ../game/rollback_trial.c
+    ../game/rollback_fight_checkpoint.c
+    ${ROLLBACK_LOOP_SOURCE}
+    "${CMAKE_CURRENT_BINARY_DIR}/rollback_loop_input.generated.c"
+    "${CMAKE_CURRENT_BINARY_DIR}/rollback_loop_time.generated.c"
+    "${CMAKE_CURRENT_BINARY_DIR}/rollback_audio_service.generated.c"
+    ../nv2a/nv2a_frontend.c
+    rollback_nested.c
     netplay_session.c
     xbox_det.c
     netplay.c
     net_upnp.c
     join_code.c
 )
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/rollback_loop_input.generated.c"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_loop_input.py"
+        "${CMAKE_CURRENT_BINARY_DIR}/rollback_loop_input.generated.c"
+    DEPENDS "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_loop_input.py"
+        "${CMAKE_SOURCE_DIR}/src/game/recomp/gen/recomp_0002.c"
+        "${CMAKE_SOURCE_DIR}/src/game/recomp/recomp_manual.c" VERBATIM)
+
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/rollback_loop_time.generated.c"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_loop_time.py"
+        "${CMAKE_CURRENT_BINARY_DIR}/rollback_loop_time.generated.c"
+    DEPENDS "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_loop_time.py"
+        "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_loop_input.py"
+        "${CMAKE_SOURCE_DIR}/src/game/recomp/gen/recomp_0002.c"
+        "${CMAKE_SOURCE_DIR}/src/game/recomp/gen/recomp_0006.c"
+        "${CMAKE_SOURCE_DIR}/src/game/recomp/recomp_manual.c" VERBATIM)
+
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/rollback_audio_service.generated.c"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_audio_service.py"
+        "${CMAKE_CURRENT_BINARY_DIR}/rollback_audio_service.generated.c"
+    DEPENDS "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_audio_service.py"
+        "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_audio_sync.py"
+        "${CMAKE_SOURCE_DIR}/src/kernel/kernel_bridge.c"
+        "${CMAKE_SOURCE_DIR}/src/kernel/kernel_hal.c"
+        "${CMAKE_SOURCE_DIR}/src/kernel/kernel_rtl.c"
+        "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_loop_input.py"
+        "${CMAKE_SOURCE_DIR}/src/game/rollback_audio_service.inc"
+        "${CMAKE_SOURCE_DIR}/src/game/recomp/gen/recomp_0010.c" VERBATIM)
 
 target_include_directories(doa3_online
     PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}
     PRIVATE ${CMAKE_SOURCE_DIR}/src
+            ${CMAKE_SOURCE_DIR}/src/game/recomp/gen
             ${CMAKE_SOURCE_DIR}/src/kernel
 )
 

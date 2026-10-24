@@ -25,6 +25,7 @@
 #include <windows.h>
 #include "online/netplay_session.h"
 #include "online/netplay.h"
+#include "online/xbox_det.h"
 #include "input/xinput_xbox.h"
 #include "../free_camera.h"
 #include "../combat_debug.h"
@@ -36,6 +37,13 @@
 
 #include "apu/apu_irq.h"
 #include "../../perf_capture.h"
+#include "../online_menu.h"
+#include "nv2a/nv2a_submission.h"
+#include "nv2a/nv2a_pgraph_d3d11.h"
+#include "nv2a/nv2a_targets.h"
+#include "nv2a/nv2a_queue.h"
+#include "kernel/kernel_replay.h"
+#include "../rollback_native_frame.h"
 
 extern uint32_t xbox_HeapAlloc(uint32_t size, uint32_t alignment);
 extern void xbox_fiber_yield(void);
@@ -43,6 +51,126 @@ extern int  xbox_fiber_active(void);
 extern void xbox_fiber_wake(uint32_t event_va);
 
 #if defined(DOA3_XBE_ID_JAPAN)
+#include "../rollback_guest_render.inc"
+/* The caller D6300 still runs D5110 to refresh mapped menu inputs. Only
+ * native carousel navigation/Back are suspended while Online owns them. */
+extern unsigned g_doa3_frames_presented;
+extern int doa3_ui_visible(void);
+void sub_000D6360_gen(void);
+void sub_000D6810_gen(void);
+void sub_000D5F40_gen(void);
+/* Allocate a separate descriptor table: the original has exactly ten slots
+ * followed immediately by function pointers. Keep native mode IDs intact. */
+unsigned g_online_menu_descriptors = 0x29CB20;
+void sub_000CDCB0_gen(void);
+void sub_000CDCB0(void)
+{
+    if (g_online_menu_descriptors == 0x29CB20) {
+        unsigned table = xbox_HeapAlloc(11*12, 16);
+        if (table) {
+            for (unsigned i=0; i<10*12; ++i) MEM8(table+i)=MEM8(0x29CB20+i);
+            MEM32(table+120)=ONLINE_MENU_MODE;
+            MEM16(table+124)=ONLINE_MENU_LABEL;
+            MEM16(table+126)=ONLINE_MENU_ICON;
+            MEM32(table+128)=0;
+            g_online_menu_descriptors=table;
+        }
+    }
+    sub_000CDCB0_gen();
+    if (g_online_menu_descriptors != 0x29CB20) {
+        unsigned count=MEM8(0x29CB1C);
+        MEM8(0x9B76A4+count)=10;
+        MEM8(0x29CB1C)=count+1;
+    }
+}
+void sub_000CE070_gen(void);
+void sub_000CE070(void)
+{
+    online_menu_draw_begin(g_doa3_frames_presented);
+    sub_000CE070_gen();
+}
+void sub_0006DF00_gen(void);
+/* Rollback branch merge: the Online carousel's sprites. Called first by the
+ * one sub_0006DF00 override (the costume list relabel is the other user);
+ * returns 1 when it drew the sprite itself. */
+static int doa3_online_sprite(void)
+{
+    unsigned id=MEM32(eax);
+    if (id==ONLINE_MENU_ICON || id==ONLINE_MENU_LABEL) {
+        if(id==ONLINE_MENU_LABEL && !online_menu_label_pixels()) {
+            unsigned texture=MEM32(0x5A75A0+112*8), palette=MEM32(0x5A75A0+112*8+4);
+            if(texture>=0x1000 && texture<0x08000000-20 &&
+               palette>=0x1000 && palette<0x08000000-12 &&
+               (MEM32(texture+12)&0x0FF0FF00)==0x08800B00) {
+                unsigned pixels=MEM32(texture+4), colors=MEM32(palette+4);
+                if(pixels>=0x1000 && pixels<=0x08000000-65536 &&
+                   colors>=0x1000 && colors<=0x08000000-1024)
+                    online_menu_build_label((const unsigned char *)XBOX_PTR(pixels),
+                                            (const unsigned char *)XBOX_PTR(colors));
+            }
+        }
+        unsigned packed=MEM32(eax+4), bounds=0x3049B8+(id==ONLINE_MENU_ICON ? 829 : 693)*12;
+        OnlineMenuSprite sprite;
+        sprite.x=(int32_t)(packed<<20)>>20;
+        sprite.y=(int32_t)(packed<<8)>>20;
+        sprite.x += SMEM16(0x5B12E8)-SMEM16(0x5B12EC);
+        sprite.y += SMEM16(0x5B12EA)-SMEM16(0x5B12EE);
+        sprite.w=(MEM16(bounds+4)-MEM16(bounds))*MEMF(0x5B12D8);
+        sprite.h=(MEM16(bounds+6)-MEM16(bounds+2))*MEMF(0x5B12DC);
+        /* Native label sprites are center-anchored; icons are top-left.
+         * Convert the guest's 720-wide canvas to the host view's 640 units. */
+        if (MEM8(0x5B12CD)==1) sprite.x -= (MEM16(bounds+4)-MEM16(bounds))*.5f;
+        float canvas_scale=640.f/(MEM16(0x596A88) ? MEM16(0x596A88) : 720);
+        sprite.x *= canvas_scale;
+        sprite.w *= canvas_scale;
+        sprite.alpha=MEMF(0x5B12F4);
+        sprite.label=id==ONLINE_MENU_LABEL;
+        online_menu_draw_sprite(sprite);
+        esp+=4;
+        return 1;
+    }
+    return 0;
+}
+void sub_000CE530_gen(void);
+void sub_000CE530(void)
+{
+    if (MEM32(MEM32(esp+4)+0x1D8)==ONLINE_MENU_MODE) esp+=4;
+    else sub_000CE530_gen();
+}
+void sub_000D5F40(void) { online_menu_reset(); sub_000D5F40_gen(); }
+void sub_000D6360(void)
+{
+    unsigned buttons = 0;
+    int ready = MEM16(edi + 0xFA) == 0 && MEM16(edi + 0xFC) == 1 &&
+                MEM8(edi + 0x228) == 0;
+    for (unsigned port = 0; port < 4; ++port)
+        if (MEM32(0x73C8C8) & (1u << port)) buttons |= MEM16(0x9B7C0E + port*8);
+    int blocked=online_menu_tick(g_doa3_frames_presented, ready, buttons, doa3_ui_visible());
+    int sound=online_menu_take_sound();
+    if(sound) {
+        /* D6428/D653B/D6A55 use A5610 with ESI=0 for scroll/confirm/back.
+         * Run on the native update thread, preserving its register model. */
+        uint32_t regs[]={eax,ecx,edx,ebx,esi,edi,esp,g_seh_ebp};
+        double fp[8];
+        int top=g_fp_top;
+        uint16_t cw=g_x87_cw;
+        memcpy(fp,g_fp_stack,sizeof(fp));
+        eax=(uint32_t)sound; esi=0;
+        PUSH32(esp,0); sub_000A5610();
+        eax=regs[0]; ecx=regs[1]; edx=regs[2]; ebx=regs[3];
+        esi=regs[4]; edi=regs[5]; esp=regs[6]; g_seh_ebp=regs[7];
+        memcpy(g_fp_stack,fp,sizeof(fp)); g_fp_top=top; g_x87_cw=cw;
+    }
+    if (blocked)
+        esp += 4;
+    else sub_000D6360_gen();
+}
+void sub_000D6810(void)
+{
+    if (online_menu_blocks_native()) esp += 4;
+    else sub_000D6810_gen();
+}
+
 /* The input fiber decodes both players, runs commands, then yields. Keep the
  * virtual dummy input confined to that interval, including command commit. */
 void sub_00011980_gen(void);
@@ -75,6 +203,40 @@ void sub_00016840(void)
 }
 void sub_00012B60(void) { sub_00012B60_gen(); training_input_end(); }
 void sub_001894B0(void) { training_reset(); sub_001894B0_gen(); }
+
+/* The shared XAPI fiber entry calls these bodies indirectly. Enter explicit
+ * continuations here so the original wrapper and guest call frame are retained. */
+extern int xbox_fiber_run_restorable_task(uint32_t routine);
+void sub_00087420_gen(void);
+void sub_00087420(void) { if (!xbox_fiber_run_restorable_task(0x87420)) sub_00087420_gen(); }
+void sub_00072070_gen(void);
+void sub_00072070(void) { if (!xbox_fiber_run_restorable_task(0x72070)) sub_00072070_gen(); }
+void sub_00054110_gen(void);
+void sub_000BE4A0_gen(void);
+void sub_00054110(void) { if (!xbox_fiber_run_restorable_task(0x54110)) sub_00054110_gen(); }
+void sub_000BE4A0(void) { if (!xbox_fiber_run_restorable_task(0xBE4A0)) sub_000BE4A0_gen(); }
+void sub_00011110_gen(void);
+void sub_000B4720_gen(void);
+void sub_000A00D0_gen(void);
+void sub_00098DB0_gen(void);
+void sub_0007F470_gen(void);
+void sub_000235B0_gen(void);
+void sub_000BB500_gen(void);
+void sub_00011110(void) { if (!xbox_fiber_run_restorable_task(0x11110)) sub_00011110_gen(); }
+void sub_000B4720(void) { if (!xbox_fiber_run_restorable_task(0xB4720)) sub_000B4720_gen(); }
+void sub_000A00D0(void) { if (!xbox_fiber_run_restorable_task(0xA00D0)) sub_000A00D0_gen(); }
+void sub_00098DB0(void) { if (!xbox_fiber_run_restorable_task(0x98DB0)) sub_00098DB0_gen(); }
+void sub_0007F470(void) { if (!xbox_fiber_run_restorable_task(0x7F470)) sub_0007F470_gen(); }
+void sub_000235B0(void) { if (!xbox_fiber_run_restorable_task(0x235B0)) sub_000235B0_gen(); }
+void sub_000BB500(void) { if (!xbox_fiber_run_restorable_task(0xBB500)) sub_000BB500_gen(); }
+void sub_001C60AB_gen(void);
+void sub_001C60AB(void) { if (!xbox_fiber_run_restorable_task(0x1C60AB)) sub_001C60AB_gen(); }
+void sub_000E8030_gen(void);
+void sub_00049790_gen(void);
+void sub_000691F0_gen(void);
+void sub_000E8030(void) { if (!xbox_fiber_run_restorable_task(0xE8030)) sub_000E8030_gen(); }
+void sub_00049790(void) { if (!xbox_fiber_run_restorable_task(0x49790)) sub_00049790_gen(); }
+void sub_000691F0(void) { if (!xbox_fiber_run_restorable_task(0x691F0)) sub_000691F0_gen(); }
 
 /* Observe the actual collision pass after its existing game logic completes.
  * The helper never touches guest registers, x87 state, or guest memory. */
@@ -214,13 +376,13 @@ void doa3_apu_deliver_irq(void)
     extern recomp_func_t recomp_lookup(uint32_t xbox_va);
     extern recomp_func_t recomp_lookup_manual(uint32_t xbox_va);
     static unsigned s_isr_calls = 0, s_dpc_calls = 0;
-    static int s_delivering = 0;
+    extern int xbox_kernel_interrupt_begin(void);
+    extern void xbox_kernel_interrupt_end(void);
     uint32_t obj, routine, ctx, dpc, a1, a2;
     int i;
     extern unsigned char xbox_current_irql(void);
     extern unsigned char xbox_set_irql(unsigned char irql);
     unsigned char irql0;
-    if (s_delivering) return;   /* an interrupt does not preempt its own service routine or DPC */
     /* Raised IRQL masks the APU interrupt and DPCs, as on the Xbox's one CPU:
      * leave the interrupt pending until the code that raised it lowers it. */
     {   extern unsigned g_doa3_frames_presented;
@@ -235,8 +397,8 @@ void doa3_apu_deliver_irq(void)
         }
         s_masked = 0;
     }
-    if (!mcpx_apu_take_irq()) return;
-    s_delivering = 1;
+    if (!xbox_kernel_interrupt_begin()) return;
+    if (!mcpx_apu_take_irq()) { xbox_kernel_interrupt_end(); return; }
     irql0 = xbox_set_irql(0x0B);    /* the APU's DIRQL (HalGetInterruptVector) */
     for (i = 0; xbox_kernel_get_isr(i, &obj, &routine, &ctx); i++) {
         recomp_func_t fn;
@@ -279,23 +441,14 @@ void doa3_apu_deliver_irq(void)
         }
     }
     xbox_set_irql(irql0);
-    s_delivering = 0;
+    xbox_kernel_interrupt_end();
 }
 
 volatile int g_doa3_post_movie = 0;
 
 uint64_t doa3_guest_rdtsc(void)
 {
-    static LARGE_INTEGER s_f, s_0;
-    LARGE_INTEGER n;
-    if (!s_f.QuadPart) { QueryPerformanceFrequency(&s_f); QueryPerformanceCounter(&s_0); }
-    QueryPerformanceCounter(&n);
-    /* 733,333,333 Hz, as XAPI's QueryPerformanceFrequency (0x18B755) reports */
-    {
-        uint64_t d = (uint64_t)(n.QuadPart - s_0.QuadPart);
-        return (d / (uint64_t)s_f.QuadPart) * 733333333ull +
-               (d % (uint64_t)s_f.QuadPart) * 733333333ull / (uint64_t)s_f.QuadPart;
-    }
+    return xbox_det_rdtsc();
 }
 
 /* ── Call profile of the probed functions (gen/recomp_probes.c) ──────
@@ -378,7 +531,9 @@ void doa3_fn_profile_tick(void)
 
 volatile int g_doa3_in_pump = 0;
 
-uint32_t g_doa3_offrt_offs[64]; int g_doa3_offrt_n;   /* every texture surface seen */
+Nv2aTargetsState g_doa3_targets;
+int doa3_targets_capture(Nv2aTargetsState *out)
+{ if (!out) return 0; *out=g_doa3_targets; return 1; }
 static unsigned g_doa3_aa_shot;   /* frame to screenshot with its method trace (multisampled screens) */
 
 uint32_t g_flg_a, g_flg_b;
@@ -524,40 +679,20 @@ uint32_t doa3_aa_resolve_source(void)
  * translator sends those to an offscreen host target and later draws that
  * sample them read it. 3.0's equivalent hook is sub_001B1350. */
 void sub_001DC8E0_gen(void);
+static uint32_t targets_read(void *opaque,uint32_t address)
+{ (void)opaque; return MEM32(address); }
 void sub_001DC8E0(void)
 {
-    uint32_t arg = MEM32(esp + 4), dev = D3D31_DEV();
+    uint32_t arg=MEM32(esp+4), dev=D3D31_DEV();
     sub_001DC8E0_gen();
-    if (!arg && dev) arg = MEM32(dev + 0x2070);
-    if (dev) {
-        /* The device's own buffers are never offscreen targets, even when
-         * their memory once held one (mode changes free and reallocate):
-         * drop their current offsets from the list. */
-        int b, k;
-        for (b = 0; b < 3; b++) {
-            uint32_t fs = MEM32(dev + 0x207C + 4u * (uint32_t)b), fd;
-            if (fs < 0x1000 || fs >= 0x08000000u) continue;
-            fd = MEM32(fs + 4) & 0x03FFFFFFu;
-            for (k = 0; k < g_doa3_offrt_n; k++)
-                if (g_doa3_offrt_offs[k] == fd) {
-                    g_doa3_offrt_offs[k] = g_doa3_offrt_offs[--g_doa3_offrt_n];
-                    k--;
-                }
-        }
-    }
-    if (dev && arg >= 0x1000 && arg < 0x08000000u &&
-        arg != MEM32(dev + 0x207C) && arg != MEM32(dev + 0x2080) && arg != MEM32(dev + 0x2084)) {
-        uint32_t data = MEM32(arg + 4) & 0x03FFFFFFu;
-        int k, seen = 0;
-        for (k = 0; k < g_doa3_offrt_n; k++) if (g_doa3_offrt_offs[k] == data) seen = 1;
-        if (!seen && data && g_doa3_offrt_n < 64) {
-            uint32_t sz = MEM32(arg + 0x10);
-            g_doa3_offrt_offs[g_doa3_offrt_n++] = data;
-            fprintf(stderr, "[RTT] offscreen target #%d: surface %08X data %08X size %ux%u format %08X\n",
-                    g_doa3_offrt_n, arg, data, (sz & 0xFFFu) + 1, ((sz >> 12) & 0xFFFu) + 1, MEM32(arg + 0xC));
-        }
+    uint32_t added=nv2a_targets_update(&g_doa3_targets,dev,arg,targets_read,NULL);
+    if (added) {
+        uint32_t sz=MEM32(added+0x10), data=MEM32(added+4)&0x03FFFFFFu;
+        fprintf(stderr,"[RTT] offscreen target #%u: surface %08X data %08X size %ux%u format %08X\n",
+                g_doa3_offrt_n,added,data,(sz&0xFFFu)+1,((sz>>12)&0xFFFu)+1,MEM32(added+0xC));
     }
 }
+
 #else
 int doa3_guest_display_size(unsigned *w, unsigned *h) { (void)w; (void)h; return 0; }
 uint32_t doa3_aa_resolve_source(void) { return 0; }
@@ -608,15 +743,16 @@ extern unsigned g_doa3_frames_presented;
 #define XPP_AGG_LO     0x0073C8D0u
 #define XPP_AGG_HI     0x0073C99Cu
 
-static uint32_t s_xpp_prev_mask;   /* XGetDeviceChanges baseline */
+#include "../rollback_input.h"
+#include "../rollback_input_tape.h"
 
 void sub_0021157D(void)   /* XGetDevices(type) -> connected mask, stdcall ret 4 */
 {
     extern DWORD xbox_InputHostMask(void);
-    uint32_t mask = netplay_filter_pad_mask(xbox_InputHostMask());
+    uint32_t mask = netplay_filter_pad_mask(doa3_input_mask());
     static int s_n;
-    s_xpp_prev_mask = mask;       /* resets the change baseline, as XAPI does */
-    if (s_n++ < 4) { fprintf(stderr, "[XPP] XGetDevices -> %X\n", mask); fflush(stderr); }
+    doa3_xpp_set_mask(mask);       /* resets the change baseline, as XAPI does */
+    if (!doa3_input_replay_active() && s_n++ < 4) { fprintf(stderr, "[XPP] XGetDevices -> %X\n", mask); fflush(stderr); }
     eax = mask;
     esp += 8;
 }
@@ -625,20 +761,20 @@ void sub_0021159F(void)   /* XGetDeviceChanges(type, &ins, &rem), stdcall ret 12
 {
     extern DWORD xbox_InputHostMask(void);
     uint32_t p_ins = MEM32(esp + 8), p_rem = MEM32(esp + 12);
-    uint32_t cur = netplay_filter_pad_mask(xbox_InputHostMask());
+    uint32_t cur = netplay_filter_pad_mask(doa3_input_mask());
     /* Reopen configured local ports so the game refreshes controller type.
      * Network-owned ports retain their forced presence. */
-    cur &= ~(xbox_InputTakeReconfiguredMask() & ~netplay_forced_pads());
-    uint32_t ins = cur & ~s_xpp_prev_mask, rem = s_xpp_prev_mask & ~cur;
+    cur &= ~(doa3_input_reconfigured() & ~netplay_forced_pads());
+    uint32_t ins=0,rem=0;
+    doa3_xpp_device_changes(cur,&ins,&rem);
     {   uint32_t forced = netplay_forced_pads(), p;
         for (p = 0; p < 4; p++)
             if ((forced & (1u << p)) && MEM32(XPP_PAD_BASE + XPP_PAD_STRIDE * p + 0x78u) == 0)
                 ins |= 1u << p;
     }
-    s_xpp_prev_mask = cur;
     if (p_ins) MEM32(p_ins) = ins;     /* both words, every call */
     if (p_rem) MEM32(p_rem) = rem;
-    if (ins | rem) { fprintf(stderr, "[XPP] device changes: +%X -%X\n", ins, rem); fflush(stderr); }
+    if (!doa3_input_replay_active() && (ins | rem)) { fprintf(stderr, "[XPP] device changes: +%X -%X\n", ins, rem); fflush(stderr); }
     eax = (ins | rem) ? 1u : 0u;
     esp += 16;
 }
@@ -663,15 +799,15 @@ void doa3_netplay_force_pads(uint32_t mask)
     MEM32(XPP_OPEN_MASK) = mask;
     MEM32(XPP_INSERTED) = 0;
     MEM32(XPP_REMOVED) = 0;
-    s_xpp_prev_mask = mask;
+    doa3_xpp_set_mask(mask);
 }
 
 void sub_00211898(void)   /* XInputClose(handle), stdcall ret 4 */
 {
     XBOX_VIBRATION off = { 0, 0 };
     uint32_t port = MEM32(esp + 4) - 0x0AD00001u;
-    if (port < XBOX_MAX_CONTROLLERS) xbox_InputSetState(port, &off);
-    fprintf(stderr, "[XPP] XInputClose(0x%08X)\n", MEM32(esp + 4));
+    if (port < XBOX_MAX_CONTROLLERS) doa3_input_rumble(port, &off);
+    if (!doa3_input_replay_active()) fprintf(stderr, "[XPP] XInputClose(0x%08X)\n", MEM32(esp + 4));
     eax = 0;
     esp += 8;
 }
@@ -679,8 +815,10 @@ void sub_00211898(void)   /* XInputClose(handle), stdcall ret 4 */
 void sub_00211823(void)   /* XInputOpen(type, port, slot, attrs) -> handle, ret 16 */
 {
     uint32_t port = MEM32(esp + 8);
-    fprintf(stderr, "[XPP] XInputOpen(port %u)\n", port);
-    fflush(stderr);
+    if (!doa3_input_replay_active()) {
+        fprintf(stderr, "[XPP] XInputOpen(port %u)\n", port);
+        fflush(stderr);
+    }
     eax = 0x0AD00001u + port;
     esp += 20;
 }
@@ -693,7 +831,7 @@ void sub_002118A4(void)   /* XInputGetCapabilities(handle, caps), ret 8 */
         int i;
         for (i = 0; i < 0x18; i += 4) MEM32(caps + i) = 0;
         MEM8(caps + 0x18) = 0;
-        MEM8(caps) = xbox_InputGuestSubtype((int)port);
+        MEM8(caps) = doa3_input_subtype((int)port);
     }
     eax = 0;
     esp += 12;
@@ -1052,6 +1190,7 @@ void sub_000D18A0(void)
 void sub_0006DF00_gen(void);
 void sub_0006DF00(void)
 {
+    if (doa3_online_sprite()) { if (g_fib_slice_due) xbox_fiber_timeslice(); return; }
     if (s_cc_in_draw && s_cc_cur >= 0 && (eax == 0x29BC04u || eax == 0x29BC0Cu)) {
         int off = s_cc_off[s_cc_cur];
         /* "COS." is drawn with the row (0-based) in edi; the digit after
@@ -1565,16 +1704,15 @@ static uint32_t xpp_port_of(uint32_t h)
 void sub_00211A96(void)   /* XInputGetState(handle, pState) -> 0, ret 8 */
 {
     uint32_t h = MEM32(esp + 4), st = MEM32(esp + 8), port = xpp_port_of(h);
-    static uint32_t s_packet[4] = { 0x1000, 0x1000, 0x1000, 0x1000 };
     uint16_t buttons = 0;
     uint8_t an[8] = {0};
     int16_t lx = 0, ly = 0, rx = 0, ry = 0;
     int i;
     {
         uint8_t raw[32] = {0};
-        if (xbox_InputGetState(port, (XBOX_INPUT_STATE *)raw) == 0) {
+        if (doa3_input_state(port, (XBOX_INPUT_STATE *)raw) == 0) {
             extern void doa3_perf_input_sample(unsigned port);
-            doa3_perf_input_sample(port);
+            if (!doa3_input_replay_active()) doa3_perf_input_sample(port);
             buttons = *(uint16_t *)(raw + 4);
             memcpy(an, raw + 6, 8);
             lx = *(int16_t *)(raw + 14); ly = *(int16_t *)(raw + 16);
@@ -1582,7 +1720,7 @@ void sub_00211A96(void)   /* XInputGetState(handle, pState) -> 0, ret 8 */
             buttons |= xpp_lstick_menu_bits(port, lx, ly);
         }
     }
-    {   static int s_log = 0, s_was = 0;
+    if (!doa3_input_replay_active()) { static int s_log = 0, s_was = 0;
         int now = (buttons != 0), ai;
         for (ai = 0; ai < 8; ai++) if (an[ai] >= 30) now = 1;
         if (now && !s_was && s_log < 24) {
@@ -1594,8 +1732,7 @@ void sub_00211A96(void)   /* XInputGetState(handle, pState) -> 0, ret 8 */
         s_was = now;
     }
     if (st) {
-        s_packet[port]++;
-        MEM32(st) = s_packet[port];   /* dwPacketNumber */
+        MEM32(st) = doa3_xpp_next_packet(port);   /* dwPacketNumber */
         MEM16(st + 4) = buttons;      /* wButtons */
         for (i = 0; i < 8; i++) MEM8(st + 6 + i) = an[i];
         MEM16(st + 14) = (uint16_t)lx; MEM16(st + 16) = (uint16_t)ly;
@@ -1612,8 +1749,8 @@ void sub_00211B07(void)   /* XInputSetState(handle, pFeedback), ret 8 */
     {
         static int trace = -1;
         static unsigned next_frame;
-        if (trace < 0) trace = getenv("DOA3_RUMBLE_TRACE") != NULL;
-        if (trace && port == 0 && g_doa3_frames_presented >= next_frame) {
+        if (!doa3_input_replay_active() && trace < 0) trace = getenv("DOA3_RUMBLE_TRACE") != NULL;
+        if (!doa3_input_replay_active() && trace && port == 0 && g_doa3_frames_presented >= next_frame) {
             next_frame = g_doa3_frames_presented + 300;
             fprintf(stderr, "[RUMBLE-GAME] frame=%u option=%u pending=%u/%u feedback=%u/%u timer=%u\n",
                     g_doa3_frames_presented, MEM8(0x59D0D6), MEM16(0x9B28B0), MEM16(0x9B28B2),
@@ -1621,7 +1758,7 @@ void sub_00211B07(void)   /* XInputSetState(handle, pFeedback), ret 8 */
             fflush(stderr);
         }
     }
-    eax = xbox_InputSetFeedback(port, fb ? (void *)&MEM8(fb) : NULL);
+    eax = doa3_input_feedback(port, fb ? (void *)&MEM8(fb) : NULL);
     esp += 12;
 }
 /* mp_UpdatePlayerJoinAndStartInput (0x88910, once per frame). START in the
@@ -1870,6 +2007,75 @@ static void pb4134_translate(uint32_t from, uint32_t to, int translate)
     }
 }
 uint32_t g_pb4134_ring_lo, g_pb4134_ring_hi;
+extern int doa3_rollback_tasks_enabled(void);
+static int rollback_tasks_on(void) { return doa3_rollback_tasks_enabled(); }
+
+/* ---- Rollback branch: his push-buffer walker state, kept in step ----------
+ * Production translation stays in pb4134_translate_span / the render thread.
+ * s_submission mirrors its cursor and flip so the rollback checkpoint code
+ * (doa3_gpu_frontend_*) captures and restores them; while the rollback tasks
+ * are on, kick-off runs synchronously through nv2a_submission_kick (method
+ * digest for the replay comparisons). */
+static Nv2aSubmissionState s_submission=NV2A_SUBMISSION_INITIAL;
+static uint32_t submission_read(void *opaque,uint32_t address)
+{ (void)opaque; return MEM32(address); }
+static void submission_write(void *opaque,uint32_t address,uint32_t value)
+{ (void)opaque; MEM32(address)=value; }
+static int submission_method(void *opaque,uint32_t sub,uint32_t method,uint32_t value)
+{
+    (void)opaque; pgraph_d3d11_method((int)sub,method,value); return 1;
+}
+static int submission_data_packet(void *opaque,uint32_t sub,uint32_t method,uint32_t address,uint32_t count)
+{
+    (void)opaque;
+    /* Only the walker's checked, non-incrementing RAM payload reaches here.
+     * No MMIO, command execution, or asynchronous guest writer is involved. */
+    return pgraph_d3d11_data_packet((int)sub,method,
+        (const uint32_t *)XBOX_PTR(address),count);
+}
+static void submission_control(void *opaque,unsigned kind,uint32_t address,uint32_t value)
+{
+    (void)opaque; ++s_pb_ctl[kind];
+    if(kind<3 && s_pb_ctl_logged<24) {
+        static const char *names[]={"jump","call","return"}; ++s_pb_ctl_logged;
+        fprintf(stderr,"[PB] %s at %08X -> %08X\n",names[kind],address,value);
+    }
+}
+static void submission_mirror(void)
+{
+    s_submission.parsed=s_pb4134_parsed; s_submission.flip=(uint32_t)s_pb4134_flip;
+}
+int doa3_submission_capture(Nv2aSubmissionState *out)
+{
+    if(!out) return 0;
+    submission_mirror();
+    *out=s_submission; return 1;
+}
+static const Nv2aSubmissionOps s_submission_ops={
+    submission_read,submission_write,submission_method,submission_control,NULL,0,submission_data_packet};
+
+int doa3_gpu_frontend_capture(void *out,size_t bytes)
+{
+    if(!out || !nv2a_rollback_queue_capture(out,bytes))return 0;
+    submission_mirror();
+    Nv2aQueueSnapshot *s=out;s->queue.submission=s_submission;s->queue.targets=g_doa3_targets;
+    return nv2a_rollback_queue_validate_live(out,bytes);
+}
+int doa3_gpu_frontend_validate(const void *in,size_t bytes)
+{
+    if(!nv2a_rollback_queue_validate_live(in,bytes))return 0;
+    const Nv2aQueueSnapshot *s=in;
+    return s->queue.submission.translate==s_submission.translate &&
+           s->queue.submission.tracing==s_submission.tracing;
+}
+int doa3_gpu_frontend_restore(const void *in,size_t bytes)
+{
+    if(!xbox_kernel_replay_owned() || !doa3_gpu_frontend_validate(in,bytes) ||
+       !nv2a_rollback_queue_restore(in,bytes))return 0;
+    const Nv2aQueueSnapshot *s=in;s_submission=s->queue.submission;g_doa3_targets=s->queue.targets;
+    s_pb4134_parsed=s_submission.parsed; s_pb4134_flip=(int)s_submission.flip;   /* the production walker's copy */
+    return 1;
+}
 
 /* ── Asynchronous GPU (0.0.195; default since 0.0.197, DOA3_ASYNC_GPU=0 off)
  * KickOff queues the span instead of translating it; a render
@@ -1979,6 +2185,10 @@ static int pb_async_wanted(void)
      * switched on). Ten seconds of frames keeps boot synchronous; a movie
      * owning the screen or netplay switches back. */
     (void)g_doa3_post_movie;
+    /* Rollback branch: the rollback tasks checkpoint and replay the renderer
+     * from the game thread, so translation stays at kick-off while on. */
+    {   extern int doa3_rollback_tasks_enabled(void);
+        if (doa3_rollback_tasks_enabled()) return 0; }
     return s_async_on && g_doa3_frames_presented > 600 && !doa3_movie_host_owns_screen() && !netplay_active();
 }
 
@@ -2025,6 +2235,9 @@ void sub_001E4AA0(void);
  * decoder/streaming threads run while the game thread waits for vblank. */
 static void d3d4134_pace(void)
 {
+    /* Controlled sessions schedule worker laps from the deterministic clock,
+     * never from how long the host took to render/present the frame. */
+    if (g_xbox_det_active) return;
     extern int xbox_fiber_workers_ready(void);
     extern int xbox_fiber_is_primary(void);
     extern void xbox_fiber_yield(void);
@@ -2289,11 +2502,19 @@ static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
         if (!s_prof_reg) { s_prof_reg = 1; doa3_prof_set_thread(); } }
     extern void pgraph_d3d11_flush(void);
     extern void doa3_present_frame(void);
-    static int s_frames;
     uint32_t sv_eax = eax, sv_ecx = ecx, sv_edx = edx, sv_ebx = ebx;
     uint32_t sv_esi = esi, sv_edi = edi, sv_esp = esp, sv_seh = g_seh_ebp;
     int perf_on = doa3_perf_begin() != 0;      /* [PERF-PHASE] lines only with diagnostics */
     LONGLONG entry = doa3_perf_now(), flushed, prepared, presented;
+    if (doa3_native_frame_active()) {         /* rollback replay: no present */
+        extern void d3d8_ReplayFrameComplete(void);
+        pgraph_d3d11_flush();
+        ++g_doa3_frames_presented;
+        doa3_native_frame_flip();
+        doa3_apu_deliver_irq();
+        d3d8_ReplayFrameComplete();
+        goto frame_callback;
+    }
     if (!async_frame) {
         pgraph_d3d11_flush();
         flushed = entry ? doa3_perf_now() : 0;
@@ -2361,8 +2582,9 @@ static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
     { extern void doa3_fn_profile_tick(void); doa3_fn_profile_tick(); }
     eax = sv_eax; ecx = sv_ecx; edx = sv_edx; ebx = sv_ebx;    /* the worker laps */
     esi = sv_esi; edi = sv_edi; esp = sv_esp; g_seh_ebp = sv_seh;
-    if (++s_frames <= 3 || (s_frames % 600) == 0)
-        fprintf(stderr, "[PB] frame %d presented\n", s_frames);
+frame_callback:
+    eax = sv_eax; ecx = sv_ecx; edx = sv_edx; ebx = sv_ebx;
+    esi = sv_esi; edi = sv_edi; esp = sv_esp; g_seh_ebp = sv_seh;
     ecx = dev + 0x2268;
     PUSH32(esp, 0);
     sub_001E4AA0();
@@ -2425,6 +2647,20 @@ void sub_001E27C0(void)
         it.cursor = cursor;
         if (flip) { it.flip = 1; it.frame = ++s_frames_submitted; async_flip_frame = it.frame; }
         pbq_push(&it);
+        goto kick_diag;
+    }
+    if (rollback_tasks_on()) {
+        /* rollback tasks on (always synchronous, see pb_async_wanted): the
+         * checkpointed walker, with its method digest while tracing */
+        int r;
+        extern int doa3_rollback_capture_is_armed(void);
+        s_submission.parsed = s_pb4134_parsed;
+        s_submission.translate = (uint32_t)s_on;
+        s_submission.tracing = (uint32_t)doa3_rollback_capture_is_armed();
+        r = nv2a_submission_kick(&s_submission, &s_submission_ops, dev);
+        (void)r;
+        s_pb4134_parsed = s_submission.parsed;
+        if (s_submission.flip) { s_submission.flip = 0; s_pb4134_flip = 1; }
         goto kick_diag;
     }
     if (cursor >= start && cursor <= end) {
@@ -2721,8 +2957,17 @@ void sub_001B7CB0(void) { crt4134_memmove(); }
  * run: CRI started its four threads and this one never let go). Yield every
  * lap, as 3.0 does. */
 extern void xbox_fiber_yield(void);
+extern int xbox_fiber_run_restorable_watchdog(void);
+extern int xbox_fiber_run_restorable_stream_worker(uint32_t routine);
+void sub_001926F0_gen(void);
+void sub_00192760_gen(void);
+void sub_001927D0_gen(void);
+void sub_001926F0(void) { if (!xbox_fiber_run_restorable_stream_worker(0x1926F0)) sub_001926F0_gen(); }
+void sub_00192760(void) { if (!xbox_fiber_run_restorable_stream_worker(0x192760)) sub_00192760_gen(); }
+void sub_001927D0(void) { if (!xbox_fiber_run_restorable_stream_worker(0x1927D0)) sub_001927D0_gen(); }
 void sub_001926B0(void)
 {
+    if (xbox_fiber_run_restorable_watchdog()) return;
     while (MEM32(0x0040C718u) == 0) {
         MEM32(0x0040C700u) = MEM32(0x0040C700u) + 1;
         xbox_fiber_yield();
@@ -2912,59 +3157,11 @@ void sub_001F5157(void)
     esp += 4;   /* ret */
 }
 
-/* DirectSound's DPC voice service (0x1F3FA0, ecx = the APU object): walks
- * three voice lists at +0x6C4/+0x6CC/+0x6D4 calling [obj->vtbl+0x14] on
- * obj = node-0x4C, then drains +0x6DC (obj = node-0x54). On 3.1, right after
- * mv_op.sfd, one node's object had a vtable whose slot 0x14 is AddRef
- * 0x1F1816 (a COM vtable, 0x218090/0x2180B4), so the "service" call read
- * a garbage `this` and wrote into host memory. Log every change to the lists
- * (frame, node, object, vtable, slot 0x14) so the bad node's arrival shows. */
+/* DirectSound's DPC voice service. The old list observer duplicated the
+ * guest traversal and logged changes before dispatching the actual service. */
 void sub_001F3FA0_gen(void);
 void sub_001F3FA0(void)
 {
-    enum { MAXN = 64 };
-    static uint32_t s_prev[4][MAXN]; static int s_prevn[4];
-    static int s_logs;
-    uint32_t apu = ecx, k;
-    if (apu >= 0x1000 && apu < 0x08000000u && s_logs < 200) {
-        for (k = 0; k < 4; k++) {
-            uint32_t head = apu + 0x6C4 + k * 8, node = MEM32(head), cur[MAXN];
-            int n = 0, i, j, changed = 0;
-            uint32_t off = (k < 3) ? 0x4C : 0x54;
-            while (node != head && node >= 0x1000 && node < 0x08000000u && n < MAXN) {
-                cur[n++] = node;
-                node = MEM32(node);
-            }
-            if (n != s_prevn[k]) changed = 1;
-            for (i = 0; i < n && !changed; i++) if (cur[i] != s_prev[k][i]) changed = 1;
-            if (changed || (node != head)) {
-                s_logs++;
-                fprintf(stderr, "[DSVOICE] frame %u list %u (head %08X)%s: %d nodes:", g_doa3_frames_presented,
-                        k, head, node != head ? " BROKEN" : "", n);
-                for (i = 0; i < n; i++) {
-                    uint32_t obj = cur[i] - off, vt = MEM32(obj);
-                    int seen = 0;
-                    for (j = 0; j < s_prevn[k]; j++) if (s_prev[k][j] == cur[i]) seen = 1;
-                    fprintf(stderr, " %s%08X(vt %08X s14 %08X)", seen ? "" : "+", cur[i], vt,
-                            (vt >= 0x1000 && vt < 0x08000000u) ? MEM32(vt + 0x14) : 0);
-                }
-                if (node != head) fprintf(stderr, " ->%08X", node);
-                fprintf(stderr, "\n");
-                for (i = 0; i < n; i++) {
-                    uint32_t obj = cur[i] - off, vt = MEM32(obj), w;
-                    if (vt >= 0x1000 && vt < 0x08000000u && MEM32(vt + 0x14) == 0x1F1816u) {
-                        fprintf(stderr, "[DSVOICE]   node %08X obj %08X looks like a COM object:", cur[i], obj);
-                        for (w = 0; w < 0x80; w += 4)
-                            fprintf(stderr, "%s%08X", (w % 32) ? " " : "\n[DSVOICE]     ", MEM32(obj + w));
-                        fprintf(stderr, "\n");
-                    }
-                }
-                fflush(stderr);
-            }
-            memcpy(s_prev[k], cur, n * sizeof(uint32_t));
-            s_prevn[k] = n;
-        }
-    }
     sub_001F3FA0_gen();
 }
 

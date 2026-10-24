@@ -4241,3 +4241,154 @@ seed already covers a human fighter), and the 0.2.4 [STAGGER-TRACE] /
 The colour switch is now "Random includes alternate costume colors from
 disc"; user-facing text (dip switch help, README, DEBUG.md) uses American
 spelling. The ini key RandomAltCostumes is unchanged.
+## Main-menu Online carousel (2026-10-13)
+
+Online is an additional native Mode Select carousel slot after Options; moving
+left from Story wraps to it. Its globe icon and ONLINE label follow the game's
+carousel positions, scaling and fades. Confirm opens Host / Join / Back;
+Host and Join are menu previews with no networking calls. Back/Escape returns
+to the same Online slot. Existing native modes keep their IDs and behavior.
+
+CDCB0 rebuilds the native visible-index map (including the unlock-dependent
+entry), then appends descriptor 10. A separate 132-byte guest heap table copies
+the original ten descriptors and adds mode 7, previously unused by this menu.
+The original table at 29CB20 has function pointers immediately after its ten
+entries, so it must never be extended in place. tools/recomp/online_carousel.py,
+invoked by apply_overrides for 3.1, redirects descriptor references after code
+regeneration and consumes Online confirm before the native game-mode launch.
+Allocation failure leaves the original carousel unchanged.
+
+CE070 starts the custom-sprite capture; 6DF00 intercepts only the two sentinel
+sprite IDs. The custom icon borrows Story's dimensions without sampling its
+atlas pixels. The view converts the native horizontal canvas and centered-label
+anchor to the host HUD canvas, including centered 16:9 placement on ultrawide
+screens. CE530 suppresses the native footer text for Online. D5F40 resets its
+frontend state; D6360/D6810 block carousel input while a preview owns focus.
+D6300 still refreshes mapped input through D5110. Closing input is consumed,
+so Back cannot also leave Mode Select. Escape settings retain input priority.
+
+The standalone tests/online_menu target covers navigation, both confirm/back
+bits, closing-input isolation, queued frontend actions, settings capture, native
+transitions and frame-counter wraparound. Live checks exercise left/right
+carousel wrapping, Host and Join, and returning to the selected Online slot.
+Test-only keyboard latching and post-UI screenshot capture are removed before
+the final build; no user controller mappings are changed.
+
+### Online menu visual alignment (2026-10-16, experimental branch)
+
+Replaced the centered popup with a full menu using DOA3-style monochrome
+scanlines, an angled black heading band, italic serif choices, silver selection
+bars and the information strip. The carousel globe has charcoal edging, a
+muted silver orbit and clearance above its label. The footer follows the
+native left-aligned italic treatment and selected sprite fade. Only the custom
+Online artwork changes; native main-menu sprites and pixel offsets are intact.
+
+Text and shapes share the native canvas transform, including horizontal text
+stretching. All five aspect settings preserve the existing presentation rules;
+ultrawide controls stay centered within 16:9 while the background fills the game
+area. Fonts use Windows Times/Arial variants with ImGui fallback; they are an
+approximation of the original bitmap lettering. Host/Join remain previews,
+with no networking changes. Existing Online navigation tests pass, and actual
+view-source previews were rendered with D3D11 WARP at all five aspect settings.
+
+Custom Online artwork now rasterizes into a 720x480 menu layer before linear
+upscaling, matching the guest menu canvas instead of drawing sharp vectors and
+text at the output resolution. Ultrawide backgrounds add native-resolution
+columns around the same centered 720-pixel HUD. This includes the carousel
+icon, its label, information text and Host/Join preview artwork. Transparent
+carousel fades use premultiplied-alpha compositing to avoid dark fringes or
+double attenuation. The render target is reused until the aspect changes and
+released at UI shutdown; allocation failure falls back to direct drawing.
+Escape settings stay at output resolution, and native game assets/offsets are
+unchanged.
+
+### Online menu native lettering, controls and audio
+
+The carousel label now assembles ONLINE from the resident 3.1 menu atlas
+(texture slot 112, loadfile.afs entry 35). It retains the original 24-pixel label
+height, serif strokes and charcoal outline instead of using a Windows font.
+Each glyph's connected ink and nearest outline are isolated before assembly,
+excluding neighboring italic serifs that previously left stray pixels between
+letters. Native-size and enlarged previews contain six clean ink components.
+The assembled lettering uses a 235/255 silver tint to bring its average ink
+brightness closer to the native labels. A separate soft black shadow sits one
+native pixel right and two down, scaling and fading with the captured sprite;
+it does not restore any of the removed neighboring-letter fragments.
+The six letters are composed once from the user's swizzled 256x256 P8 texture
+and palette; no game artwork is shipped in the repository. Bounds and format
+are checked before reading guest memory. The immutable host texture follows
+the captured carousel placement, scaling and fade and is released at shutdown.
+
+Online pages accept mapped keyboard/controller navigation and Escape Back.
+There are no mouse hit targets, hover highlights or mouse capture in this
+window. Only the top heading says ONLINE; the duplicate section/icon labels
+were removed. Host and Join remain non-networking previews.
+
+Native update hook D6360 consumes one sound event per actual selection/page
+change and calls A5610 with ESI=0, as the original menu does: 0x23 for scrolling
+(D6428), 0x24 for confirmation (D653B), 0x29 for returning (D6A55). Guest integer
+and x87 state are preserved around the call. Idle/blocked input emits no cue,
+confirming Back uses the back sound, and native carousel cues are not doubled.
+Navigation tests cover these events and one-time consumption. D3D11 previews
+cover all five aspect settings, transparent carousel fades and ignored mouse
+clicks with the production view code.
+
+### Opt-in rollback guest model rendering experiment
+
+`17D900`, `17DF00` and `52046` now have 3.1-only manual wrappers in
+`rollback_guest_render.inc`. Normal execution delegates to the original
+generated bodies. A bounded intermediate replay experiment can bypass their
+model command construction and rendered vertex deformation; the final replay
+frame always delegates normally. Return-slot sizes are 4/8/4 bytes. The
+override list and stack-probe exclusions agree, and generation rejects changed
+guest bodies or missing/duplicate wrappers. See `ROLLBACK.md` for the precise
+scope, unchanged exact checkpoint checks and pending live verification. This
+is not enabled for normal gameplay or network sessions.
+
+The first live whole-model skip failed verification. The current wrappers
+for `17D900` and `17DF00` therefore delegate unconditionally: material setup,
+command-buffer bookkeeping and deferred submissions must remain intact.
+Only `52046` remains eligible for the intermediate-frame skip experiment.
+Generation and driver tests enforce that restriction; no checkpoint
+comparison has been relaxed to accommodate the earlier mismatch.
+
+## 0.2.6-rollback.1 - branch doa3.1-rollback: doa3.1 0.2.6 + Jay's rollback
+
+Branch for testing the merge of codex/experimental-rollback (Jay, based on
+0.0.122) with doa3.1 0.2.6, and for later rollback work. doa3.1 is
+unchanged. Online carousel prototype kept for now (to be removed once
+rollback works; online belongs in the Escape menu).
+
+Resolution, by file:
+- Push-buffer kick-off (recomp_manual.c): doa3.1's walker, method batching
+  and asynchronous render thread stay the production path. Jay's
+  Nv2aSubmissionState is kept in step (submission_mirror before captures,
+  restored into s_pb4134_parsed/flip). With DOA3_ROLLBACK_TASKS=1 the
+  render thread is never used (pb_async_wanted) and kick-off goes through
+  nv2a_submission_kick, so the replay comparisons keep their method digest.
+  Frame end: rollback native frames (no present) before both paths;
+  doa3_frame_monitor dropped (removed in doa3.1 0.1.3).
+- d3d8_device.c: doa3.1's NV2A ring (raw constants, bind epochs) for
+  d3d8_DrawNv2aFF, plus Jay's replay_skip_draw; his immutable-mesh API
+  (geometry cache) drawn through the per-draw constant path, invalidating
+  the ring's IA bookkeeping. d3d8_ReplayFrameComplete kept.
+- nv2a_pgraph_d3d11.c: Jay's split (Nv2aPgraphDrawState g_pg + g_pg_host)
+  with doa3.1's 4096-slot cache, once-per-frame fingerprint (now his XXH3
+  nv_tex_signature), mip-level fix, diagnostics and texdump. Ported into
+  doa3.1's texture upload: his exact source copies, source-shape identity
+  and uploaded==2 revalidation after a restore (fast paths need
+  uploaded == 1). Both his data_packet/geometry inputs and doa3.1's
+  attribute reader and [BADZFUNC] kept.
+- sub_0006DF00: one override; the Online carousel sprite (doa3_online_sprite)
+  first, then the costume list relabel.
+- apu: g_apu_irq_pending lives in apu_irq.c (extern in apu_core.c for his
+  checkpoint); the XA2 meter kept.
+- xbe_layout.h also defines DOA3_XBE_ID_3_1 (his code's name for JAPAN).
+- Build-time generators: rollback_tasks.py treats the SaveGame override
+  (0x20C80) as part of the game-flow graph (its continuation skips the
+  streamer-mode guard); rollback_loop_input.py re-reviewed for doa3.1's
+  XInputGetState (0x211A96) digest.
+Checked here: all C sources compile (clang, Windows headers), the five
+generators run, the localized gen compiles, and every symbol links except
+the C++ UI (not built here). Not run: MSVC build, his tests/rollback suite,
+any live test.

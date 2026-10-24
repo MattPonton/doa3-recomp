@@ -3,6 +3,7 @@
 
 add_library(d3d8_compat STATIC
     d3d8_device.c
+    d3d8_replay_images.c
     d3d8_presentation.c
     d3d8_resources.c
     d3d8_shaders.c

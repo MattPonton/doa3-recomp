@@ -39,7 +39,7 @@ for f in sorted(glob.glob('src/game/recomp/gen/*.c')):
             cur = int(m.group(1), 16); end = pend; has_ebp = False; body = []
             out.append(line); continue
         if cur is not None:
-            if 'uint32_t ebp;' in line: has_ebp = True
+            if re.search(r'\buint32_t ebp\s*[;=]', line): has_ebp = True
             if line == '}':
                 last = ''
                 for b in reversed(body):

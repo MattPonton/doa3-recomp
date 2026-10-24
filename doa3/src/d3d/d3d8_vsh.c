@@ -18,6 +18,7 @@
  */
 
 #include "d3d8_internal.h"
+#include "d3d8_pipeline_checkpoint.h"
 #include "d3d8_vsh.h"
 #include "d3d8_shader_cache.h"
 #include "../perf_capture.h"
@@ -209,6 +210,30 @@ static int g_vsh_slot_count = 0;
 /* Constant registers (192 float4) */
 static NV2AVSConstants g_vsh_constants;
 static BOOL g_vsh_constants_dirty = TRUE;
+void d3d8_vsh_capture_private(D3D8VshImage *s)
+{
+    memcpy(s->slots,g_vsh_slots,sizeof(g_vsh_slots));
+    s->constants=g_vsh_constants;s->count=g_vsh_slot_count;
+}
+int d3d8_vsh_validate_private(const D3D8VshImage *s)
+{
+    int i,count=0;
+    if(!s) return 0;
+    for(i=0;i<NV2A_VS_MAX_SLOTS;i++) {
+        if(s->slots[i].in_use!=0 && s->slots[i].in_use!=1) return 0;
+        if(s->slots[i].in_use) {
+            if(s->slots[i].length<=0 || s->slots[i].length>NV2A_VS_MAX_INSTRUCTIONS) return 0;
+            ++count;
+        }
+    }
+    return count==s->count;
+}
+void d3d8_vsh_restore_private(const D3D8VshImage *s)
+{
+    memcpy(g_vsh_slots,s->slots,sizeof(g_vsh_slots));
+    g_vsh_constants=s->constants;g_vsh_slot_count=s->count;
+    g_vsh_constants_dirty=TRUE;
+}
 
 /* D3D11 constant buffer for VS constants */
 static ID3D11Buffer *g_vsh_cb = NULL;

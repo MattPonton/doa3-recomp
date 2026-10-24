@@ -192,7 +192,7 @@ typedef struct {
  * both pads and the digest the recording saw, so a replay can say exactly
  * where it stopped matching. */
 #define RP_MAGIC   "DOA3REP1"
-#define RP_VERSION 2u
+#define RP_VERSION 3u
 typedef struct {
     np_pad   in[2];
     uint64_t digest;
@@ -522,6 +522,7 @@ static void write_replay(void)
     fwrite(&s_params.bases.tick_ms, 4, 1, f);
     fwrite(&s_params.bases.qpc, 8, 1, f);
     fwrite(&s_params.bases.filetime, 8, 1, f);
+    fwrite(&s_params.bases.rdtsc, 8, 1, f);
     fwrite(&s_params.xgscnt, 8, 1, f);
     fwrite(s_params.save, 1, SAVE_LEN, f);
     fwrite(s_params.joiner_layout, 1, 10, f);
@@ -569,6 +570,7 @@ static const char *load_replay(const char *path, np_replay *r)
     RD(&r->params.bases.tick_ms, 4);
     RD(&r->params.bases.qpc, 8);
     RD(&r->params.bases.filetime, 8);
+    RD(&r->params.bases.rdtsc, 8);
     RD(&r->params.xgscnt, 8);
     RD(r->params.save, SAVE_LEN);
     RD(r->params.joiner_layout, 10);
@@ -994,8 +996,8 @@ void netplay_local_layout(uint8_t layout[10], uint8_t *laysel)
 /* Blob layout: magic, seed, clock bases, APU counter, save image, port-1
  * layout, then the fight-state regions. Little-endian, packed by hand so
  * the two machines agree whatever their compilers pad. */
-#define BLOB_MAGIC "DOA3PRM1"
-#define BLOB_HEAD  (8 + 4 + 4 + 8 + 8 + 8 + SAVE_LEN + 10 + 1 + 4)
+#define BLOB_MAGIC "DOA3PRM2"
+#define BLOB_HEAD  (8 + 4 + 4 + 8 + 8 + 8 + 8 + SAVE_LEN + 10 + 1 + 4)
 
 static void put32(uint8_t *d, uint32_t v) { memcpy(d, &v, 4); }
 static void put64(uint8_t *d, uint64_t v) { memcpy(d, &v, 8); }
@@ -1019,6 +1021,7 @@ int netplay_params_capture(const uint8_t **blob, uint32_t *len,
     put32(d, s_params.bases.tick_ms);         d += 4;
     put64(d, s_params.bases.qpc);             d += 8;
     put64(d, s_params.bases.filetime);        d += 8;
+    put64(d, s_params.bases.rdtsc);           d += 8;
     put64(d, s_params.xgscnt);                d += 8;
     memcpy(d, s_params.save, SAVE_LEN);       d += SAVE_LEN;
     memcpy(d, s_params.joiner_layout, 10);    d += 10;
@@ -1057,6 +1060,7 @@ int netplay_params_load(const uint8_t *blob, uint32_t len)
     s_params.bases.tick_ms = get32(s);        s += 4;
     s_params.bases.qpc = get64(s);            s += 8;
     s_params.bases.filetime = get64(s);       s += 8;
+    s_params.bases.rdtsc = get64(s);          s += 8;
     s_params.xgscnt = get64(s);               s += 8;
     memcpy(s_params.save, s, SAVE_LEN);       s += SAVE_LEN;
     memcpy(s_params.joiner_layout, s, 10);    s += 10;

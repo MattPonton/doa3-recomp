@@ -17,6 +17,7 @@
 
 #include "d3d8_internal.h"
 #include "d3d8_presentation.h"
+#include "d3d8_replay_images.h"
 #include "d3d8_nv2aff.h"
 #include "d3d8_srv_bindings.h"
 static D3D8SrvBindings g_srv_bindings;
@@ -727,6 +728,9 @@ static void d3d8_apply_target_size_change(void)
 }
 
 static void d3d8_keep_prev_frame(void);
+/* Finish the guest-visible framebuffer history without a window present,
+ * message pump, screenshot request or host overlay during local replay. */
+void d3d8_ReplayFrameComplete(void) { d3d8_keep_prev_frame(); }
 static void d3d8_sync_target_flag(ID3D11RenderTargetView *rtv);
 /* Show `src` (the guest frame, or with the asynchronous GPU thread one of
  * its finished-frame copies) in the window, with the overlay. `async`: the
@@ -1277,6 +1281,9 @@ static void d3d8_keep_prev_frame(void)
     g_prevframe_valid = 1;
 }
 
+#include "d3d8_render_checkpoint.inc"
+#include "d3d8_pipeline_checkpoint.inc"
+
 static HRESULT __stdcall dev_Clear(IDirect3DDevice8 *self, DWORD Count, const D3DRECT *pRects, DWORD Flags, D3DCOLOR Color, float Z, DWORD Stencil)
 {
     (void)self; (void)Count; (void)pRects; (void)Stencil;
@@ -1602,6 +1609,29 @@ static UINT up_ring_upload(const void *data, UINT size)
     return offset;
 }
 
+static int g_replay_suppress_draws;
+static uint64_t g_replay_skipped_draws;
+int d3d8_replay_suppress_draws(int suppress)
+{
+    int old=g_replay_suppress_draws;
+    g_replay_suppress_draws=suppress!=0;return old;
+}
+uint64_t d3d8_replay_skipped_draws(void){return g_replay_skipped_draws;}
+static int replay_skip_draw(int nv2aff)
+{
+    if(!g_replay_suppress_draws)return 0;
+    /* Preparation consumes dirty logical combiner/VS state. Preserve that
+     * transition so only GPU image contents differ at the checkpoint.
+     * Guest vertex processing and texture/target routing still run normally. */
+    if(nv2aff)d3d8_shaders_prepare_pixel();
+    else if(!d3d8_vsh_prepare_draw(g_device_state.vertex_shader))
+        d3d8_shaders_prepare_draw(g_device_state.vertex_shader);
+    d3d8_combiners_prepare_draw();
+    d3d8_states_apply();
+    ++g_replay_skipped_draws;
+    return 1;
+}
+
 static HRESULT __stdcall dev_DrawPrimitive(IDirect3DDevice8 *self, D3DPRIMITIVETYPE PrimitiveType, UINT StartVertex, UINT PrimitiveCount)
 {
     (void)self;
@@ -1611,6 +1641,8 @@ static HRESULT __stdcall dev_DrawPrimitive(IDirect3DDevice8 *self, D3DPRIMITIVET
 
     topology = map_primitive_type(PrimitiveType, PrimitiveCount, &vertex_count);
     if (vertex_count == 0) return E_INVALIDARG;
+
+    if (replay_skip_draw(0)) return S_OK;
 
     /* Prepare pipeline: shaders, input layout, constant buffers, render states */
     /* Vertex shader: try programmable VS first, fall back to FVF fixed-function */
@@ -1633,6 +1665,8 @@ static HRESULT __stdcall dev_DrawIndexedPrimitive(IDirect3DDevice8 *self, D3DPRI
 
     topology = map_primitive_type(PrimitiveType, PrimitiveCount, &index_count);
     if (index_count == 0) return E_INVALIDARG;
+
+    if (replay_skip_draw(0)) return S_OK;
 
     /* Vertex shader: try programmable VS first, fall back to FVF fixed-function */
     if (!d3d8_vsh_prepare_draw(g_device_state.vertex_shader))
@@ -1658,6 +1692,8 @@ static HRESULT __stdcall dev_DrawPrimitiveUP(IDirect3DDevice8 *self, D3DPRIMITIV
 
     topology = map_primitive_type(PrimitiveType, PrimitiveCount, &vertex_count);
     if (vertex_count == 0) return E_INVALIDARG;
+
+    if (replay_skip_draw(0)) return S_OK;
 
     /* Convert triangle fans and quad lists to triangle lists */
     if (PrimitiveType == D3DPT_TRIANGLEFAN || PrimitiveType == D3DPT_QUADLIST) {
@@ -1715,6 +1751,8 @@ static HRESULT __stdcall dev_DrawIndexedPrimitiveUP(IDirect3DDevice8 *self, D3DP
 
     topology = map_primitive_type(PrimitiveType, PrimitiveCount, &index_count);
     if (index_count == 0) return E_INVALIDARG;
+
+    if (replay_skip_draw(0)) return S_OK;
 
     idx_bytes = (IndexDataFormat == D3DFMT_INDEX32) ? 4 : 2;
     ib_fmt = (IndexDataFormat == D3DFMT_INDEX32) ? DXGI_FORMAT_R32_UINT : DXGI_FORMAT_R16_UINT;
@@ -2382,6 +2420,7 @@ long d3d8_DrawNv2aFF(const Nv2aFFVertex *verts, unsigned nverts,
     int raw;
     if (!verts || !idx || !nverts || !nidx) return E_INVALIDARG;
     g_d3d_draw_count++; if (g_off_active) g_d3d_draw_off++;
+    if (replay_skip_draw(1)) return S_OK;   /* rollback: intermediate replay frame */
 
     if (g_nv2aff_raw < 0 && !g_nv2aff_ring && !nv2aff_ring_create()) return E_OUTOFMEMORY;
     raw = g_nv2aff_raw == 1;
@@ -2436,6 +2475,63 @@ long d3d8_DrawNv2aFF(const Nv2aFFVertex *verts, unsigned nverts,
         ID3D11DeviceContext_IASetIndexBuffer(g_device_state.d3d11_context, ib->d3d11_buffer,
             (ib->format == D3DFMT_INDEX32) ? DXGI_FORMAT_R32_UINT : DXGI_FORMAT_R16_UINT, 0);
         g_nv2aff_ia_ring = NULL;
+    }
+    return S_OK;
+}
+
+/* Rollback branch: cached immutable meshes for the geometry cache. Drawn
+ * through the per-draw constant path (not the raw-constant ring), with the
+ * ring's input-assembler bookkeeping invalidated afterwards. */
+struct Nv2aFFMesh {
+    ID3D11Buffer *vertices, *indices;
+    ID3D11Device *owner; /* buffers hold the device reference */
+    unsigned nidx;
+};
+void d3d8_Nv2aFF_MeshDestroy(Nv2aFFMesh *mesh)
+{
+    if(!mesh)return;
+    if(mesh->vertices)ID3D11Buffer_Release(mesh->vertices);
+    if(mesh->indices)ID3D11Buffer_Release(mesh->indices);
+    free(mesh);
+}
+Nv2aFFMesh *d3d8_Nv2aFF_MeshCreate(const Nv2aFFVertex *verts,unsigned nv,const uint16_t *idx,unsigned ni)
+{
+    if(!verts || !idx || !nv || !ni || nv>65535 || ni>1048576 || !g_device_state.d3d11_device)return NULL;
+    Nv2aFFMesh *mesh=calloc(1,sizeof(*mesh));if(!mesh)return NULL;
+    D3D11_BUFFER_DESC d={0};D3D11_SUBRESOURCE_DATA data={0};
+    d.Usage=D3D11_USAGE_IMMUTABLE;d.BindFlags=D3D11_BIND_VERTEX_BUFFER;
+    d.ByteWidth=nv*sizeof(*verts);data.pSysMem=verts;
+    if(FAILED(ID3D11Device_CreateBuffer(g_device_state.d3d11_device,&d,&data,&mesh->vertices)))goto fail;
+    d.BindFlags=D3D11_BIND_INDEX_BUFFER;d.ByteWidth=ni*2;data.pSysMem=idx;
+    if(FAILED(ID3D11Device_CreateBuffer(g_device_state.d3d11_device,&d,&data,&mesh->indices)))goto fail;
+    mesh->owner=g_device_state.d3d11_device;mesh->nidx=ni;return mesh;
+fail:
+    d3d8_Nv2aFF_MeshDestroy(mesh);return NULL;
+}
+long d3d8_DrawNv2aFFMesh(Nv2aFFMesh *mesh,int topology,const Nv2aFFConstants *cb)
+{
+    UINT stride=sizeof(Nv2aFFVertex), zero=0;
+    if(!mesh || mesh->owner!=g_device_state.d3d11_device)return E_INVALIDARG;
+    g_d3d_draw_count++;if(g_off_active)g_d3d_draw_off++;
+    if(replay_skip_draw(1))return S_OK;
+    if (!d3d8_combiners_prepare_draw())
+        d3d8_shaders_prepare_draw(D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
+    d3d8_states_apply();
+    if (!d3d8_Nv2aFF_Bind(cb)) return E_FAIL;
+    ID3D11DeviceContext_IASetVertexBuffers(g_device_state.d3d11_context, 0, 1, &mesh->vertices, &stride, &zero);
+    ID3D11DeviceContext_IASetIndexBuffer(g_device_state.d3d11_context, mesh->indices, DXGI_FORMAT_R16_UINT, 0);
+    ID3D11DeviceContext_IASetPrimitiveTopology(g_device_state.d3d11_context, (D3D11_PRIMITIVE_TOPOLOGY)topology);
+    g_nv2aff_ia_ring = NULL;   /* the ring is no longer bound */
+    ID3D11DeviceContext_DrawIndexed(g_device_state.d3d11_context, mesh->nidx, 0, 0);
+    if (g_cur_vb) {
+        D3D8VertexBuffer *vb = (D3D8VertexBuffer *)g_cur_vb;
+        UINT restore_offset = 0;
+        ID3D11DeviceContext_IASetVertexBuffers(g_device_state.d3d11_context, 0, 1, &vb->d3d11_buffer, &g_cur_vb_stride, &restore_offset);
+    }
+    if (g_cur_ib) {
+        D3D8IndexBuffer *ib = (D3D8IndexBuffer *)g_cur_ib;
+        ID3D11DeviceContext_IASetIndexBuffer(g_device_state.d3d11_context, ib->d3d11_buffer,
+            (ib->format == D3DFMT_INDEX32) ? DXGI_FORMAT_R32_UINT : DXGI_FORMAT_R16_UINT, 0);
     }
     return S_OK;
 }

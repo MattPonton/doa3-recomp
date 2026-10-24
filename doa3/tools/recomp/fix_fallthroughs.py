@@ -141,7 +141,7 @@ for f in glob.glob('src/game/recomp/gen/*.c'):
             out.append(line); i+=1
             continue
         if cur is not None:
-            if 'uint32_t ebp;' in line: has_ebp=True
+            if re.search(r'\buint32_t ebp\s*[;=]', line): has_ebp=True
             if line=='}':
                 # decide fall-through
                 last=''

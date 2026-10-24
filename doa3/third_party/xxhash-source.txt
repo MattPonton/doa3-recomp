@@ -1,0 +1,7 @@
+xxHash 0.8.3
+Source: https://github.com/Cyan4973/xxHash/blob/v0.8.3/xxhash.h
+Downloaded from: https://raw.githubusercontent.com/Cyan4973/xxHash/v0.8.3/xxhash.h
+License: BSD 2-Clause, retained in xxhash.h.
+SHA256: 17973c0dc49d9854ca26caa191f0e12f7a424b68858d9a78de3860d959d85e4b
+Used inline by the local rollback checkpoint integrity checksum and small
+guest-texture cache fingerprints (full source coverage on every lookup).

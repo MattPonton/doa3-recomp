@@ -9,6 +9,7 @@
  */
 
 #include "nv2a_state.h"
+#include "nv2a_pfifo_registers.h"
 #include "nv2a_pgraph_d3d11.h"
 
 /* ============================================================
@@ -604,55 +605,10 @@ void pgraph_method(NV2AState *d, uint32_t subchannel,
 uint64_t pfifo_read(void *opaque, hwaddr addr, unsigned int size)
 {
     NV2AState *d = (NV2AState *)opaque;
-
-    uint64_t r = 0;
-    switch (addr) {
-    case NV_PFIFO_INTR_0:
-        r = d->pfifo.pending_interrupts;
-        break;
-    case NV_PFIFO_INTR_EN_0:
-        r = d->pfifo.enabled_interrupts;
-        break;
-
-    /* The pusher is never busy in this port.
-     *
-     * There is no GPU consuming the push buffer asynchronously: the KickOff
-     * override translates everything written so far to D3D11 synchronously, so
-     * by the time the driver asks, CACHE1 has already drained. The Xbox D3D8
-     * FIFO-idle routine (sub_001BAF60) polls exactly these four registers and
-     * spins at 0x001BB060 until CACHE1_STATUS reports LOW_MARK; with the old
-     * stub answering 0 to every read, that loop never exited and boot hung
-     * before the frame buffer was ever created.
-     *
-     * The busy/pending bits below are read-only status on hardware, so
-     * reporting them clear is the truthful answer for a drained FIFO rather
-     * than a value the driver wrote. */
-    case NV_PFIFO_CACHE1_STATUS:
-        r = NV_PFIFO_CACHE1_STATUS_LOW_MARK;         /* cache empty */
-        break;
-    case NV_PFIFO_CACHE1_DMA_PUSH:
-        /* Neither mid-method (STATE) nor actively pushing (STATUS). */
-        r = d->pfifo.regs[addr] & ~(uint32_t)(NV_PFIFO_CACHE1_DMA_PUSH_STATE |
-                                              NV_PFIFO_CACHE1_DMA_PUSH_STATUS);
-        break;
-    case NV_PFIFO_RUNOUT_STATUS:
-        /* The runout ring is always empty: nothing is ever deferred. */
-        r = NV_PFIFO_RUNOUT_STATUS_LOW_MARK;
-        break;
-    case NV_PFIFO_CACHE1_PULL0:
-        r = d->pfifo.regs[addr] & ~(uint32_t)NV_PFIFO_CACHE1_PULL0_BUSY;
-        break;
-    case NV_PFIFO_CACHES:
-        r = d->pfifo.regs[addr] & ~(uint32_t)NV_PFIFO_CACHES_DMA_SUSPEND;
-        break;
-    case NV_PFIFO_CACHE1_DMA_GET:
-        r = d->pfifo.regs[NV_PFIFO_CACHE1_DMA_PUT];  /* GET == PUT: consumed */
-        break;
-
-    default:
-        r = d->pfifo.regs[addr];
-        break;
-    }
+    /* The synchronous KickOff translator already consumed the submitted work.
+     * Preserve the port's existing idle/status behavior in the shared model. */
+    uint32_t r = nv2a_pfifo_register_read(d->pfifo.regs,
+        d->pfifo.pending_interrupts,d->pfifo.enabled_interrupts,(uint32_t)addr);
 
     nv2a_reg_log_read(NV_PFIFO, addr, size, r);
     return r;
@@ -664,19 +620,9 @@ void pfifo_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 
     nv2a_reg_log_write(NV_PFIFO, addr, size, val);
 
-    switch (addr) {
-    case NV_PFIFO_INTR_0:
-        d->pfifo.pending_interrupts &= ~val;
+    if(nv2a_pfifo_register_write(d->pfifo.regs,&d->pfifo.pending_interrupts,
+                                &d->pfifo.enabled_interrupts,(uint32_t)addr,(uint32_t)val))
         nv2a_update_irq(d);
-        break;
-    case NV_PFIFO_INTR_EN_0:
-        d->pfifo.enabled_interrupts = val;
-        nv2a_update_irq(d);
-        break;
-    default:
-        d->pfifo.regs[addr] = val;
-        break;
-    }
 }
 
 /* ============================================================
@@ -714,31 +660,53 @@ void nv2a_stub_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
  * returned 0 for every read, so that spin never exited.
  * ============================================================ */
 
-static uint32_t g_user_regs[32][2];   /* [channel] = { DMA_PUT, DMA_GET } */
+#include "nv2a_queue.h"
+#include "../kernel/xbox_fiber.h"
+#include "../kernel/kernel_replay.h"
+#include "../online/xbox_det.h"
+static Nv2aQueueState g_user_queue;
 
-/* NOT WIRED IN: enabling this alone breaks boot (see notes). */
-/* NOT WIRED IN -- see the note above. */
+int nv2a_rollback_queue_capture(void *out, size_t bytes)
+{
+    /* Export real register state only. Never read the guest MMIO aperture.
+     * No locks, renderer handles or native pointers enter this payload. */
+    if(!g_nv2a || !nv2a_queue_export(&g_user_queue,out,bytes)) return 0;
+    unsigned char *data=(unsigned char *)out;
+    memcpy(data+offsetof(Nv2aQueueSnapshot,queue.pfifo_pending),
+           &g_nv2a->pfifo.pending_interrupts,sizeof(uint32_t));
+    memcpy(data+offsetof(Nv2aQueueSnapshot,queue.pfifo_enabled),
+           &g_nv2a->pfifo.enabled_interrupts,sizeof(uint32_t));
+    memcpy(data+offsetof(Nv2aQueueSnapshot,queue.pfifo_regs),
+           g_nv2a->pfifo.regs,sizeof(g_nv2a->pfifo.regs));
+    return 1;
+}
+
+int nv2a_rollback_queue_validate_live(const void *in,size_t bytes)
+{
+    if(!g_nv2a || !g_xbox_det_active || !xbox_fiber_is_primary() || !nv2a_queue_validate(in,bytes))return 0;
+    const Nv2aQueueSnapshot *s=in;
+    return s->queue.pfifo_pending==g_nv2a->pfifo.pending_interrupts &&
+           s->queue.pfifo_enabled==g_nv2a->pfifo.enabled_interrupts;
+}
+int nv2a_rollback_queue_restore(const void *in,size_t bytes)
+{
+    if(!xbox_kernel_replay_owned() || !nv2a_rollback_queue_validate_live(in,bytes))return 0;
+    const Nv2aQueueSnapshot *s=in;
+    /* No interrupt-producing register writes or host GPU commands. */
+    memcpy(g_user_queue.regs,s->queue.regs,sizeof(g_user_queue.regs));
+    memcpy(g_nv2a->pfifo.regs,s->queue.pfifo_regs,sizeof(g_nv2a->pfifo.regs));
+    return 1;
+}
 static uint64_t nv2a_user_read(void *opaque, hwaddr addr, unsigned int size)
 {
-    unsigned ch  = (unsigned)((addr >> 16) & 31);
-    unsigned reg = (unsigned)(addr & 0xFFFF);
     (void)opaque; (void)size;
-    if (reg == 0x40) return g_user_regs[ch][0];
-    if (reg == 0x44) return g_user_regs[ch][1];
-    return 0;
+    return nv2a_queue_read(&g_user_queue,(uint32_t)addr);
 }
 
 static void nv2a_user_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
-    unsigned ch  = (unsigned)((addr >> 16) & 31);
-    unsigned reg = (unsigned)(addr & 0xFFFF);
     (void)opaque; (void)size;
-    if (reg == 0x40) {
-        g_user_regs[ch][0] = (uint32_t)val;
-        g_user_regs[ch][1] = (uint32_t)val;   /* consumed immediately */
-    } else if (reg == 0x44) {
-        g_user_regs[ch][1] = (uint32_t)val;
-    }
+    nv2a_queue_write(&g_user_queue,(uint32_t)addr,(uint32_t)val);
 }
 
 /* ============================================================

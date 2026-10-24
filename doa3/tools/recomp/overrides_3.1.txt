@@ -1,6 +1,14 @@
 # Guest functions replaced by hand-written code in src/game/recomp/recomp_manual.c
 # (tools.recomp.apply_overrides renames the generated body to sub_X_gen).
+0x00011110  Opt-in explicit input-task continuation for rollback research
+0x000B4720  Opt-in explicit fight-task continuation for rollback research
+0x000A00D0  Opt-in explicit fight-task continuation for rollback research
+0x00098DB0  Opt-in explicit fight-task continuation for rollback research
+0x0007F470  Opt-in explicit collision-task continuation for rollback research
 0x00011980  Training recording: provide dummy input before native command decoding
+0x000D6360  Mode Select: Online entry and menu-only Host/Join navigation
+0x000D6810  Mode Select: consume Back while the Online submenu owns navigation
+0x000D5F40  Mode Select: reset session-only Online menu state on entry
 0x00012B60  Training recording: restore input routing before the input fiber yields
 0x001894B0  Sparring initialization: clear session-only input recordings
 0x00029E30  Camera activation: optional host free camera through native view/projection setup
@@ -54,3 +62,22 @@
 0x000CD110  confirm button -> costume option: storage options past the disc ones
 0x000CD900  costume id -> costume slot + option: storage options
 0x000CCC70  Character Select costume-taken check: same costume, different option (dip switch)
+0x000CDCB0  # Online native carousel
+0x000CE070  # Online native carousel
+0x000CE530  # Online native carousel
+0x000235B0  # Opt-in restorable camera task
+0x000BB500  # Opt-in restorable rumble-request task
+0x00054110  # Opt-in restorable per-frame state task
+0x000BE4A0  # Opt-in restorable match-state task
+0x00072070  # Opt-in restorable match flow with nested continuations
+0x001C60AB  # Opt-in restorable player status/history task
+0x00087420  # Opt-in restorable main game flow with nested waits
+0x000E8030  # Opt-in restorable stage/display-state task
+0x00049790  # Opt-in restorable per-player display task
+0x000691F0  # Opt-in restorable scene/display-state task
+0x001926F0  # Opt-in CRI vsync worker outer continuation
+0x00192760  # Opt-in CRI playback worker outer continuation
+0x001927D0  # Opt-in CRI file worker self-suspend continuation
+0x0017D900  # Model material/geometry command builder: retained during replay
+0x0017DF00  # Alpha model material/geometry command builder: retained during replay
+0x00052046  # Intermediate replay only: rendered vertex deformation

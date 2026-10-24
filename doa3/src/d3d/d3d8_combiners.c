@@ -33,6 +33,7 @@
  */
 
 #include "d3d8_internal.h"
+#include "d3d8_pipeline_checkpoint.h"
 #include "d3d8_combiners.h"
 #include "d3d8_shader_cache.h"
 #include "../perf_capture.h"
@@ -1025,6 +1026,17 @@ void d3d8_combiners_mark_dirty(void)
  * post-combiner fog blend is switched off. */
 static NV2ACombinerState g_direct_state;
 static BOOL g_direct_on = FALSE;
+void d3d8_combiners_capture_private(D3D8CombinerImage *s)
+{
+    s->token=g_ps_token;s->dirty=g_dirty;s->direct_on=g_direct_on;
+    s->state=g_combiner_state;s->direct=g_direct_state;
+}
+void d3d8_combiners_restore_private(const D3D8CombinerImage *s)
+{
+    g_ps_token=s->token;g_dirty=s->dirty;g_direct_on=s->direct_on;
+    g_combiner_state=s->state;g_direct_state=s->direct;
+    /* prepare_draw always binds the chosen shader and uploads its constants. */
+}
 void d3d8_combiners_set_direct(const NV2ACombinerState *st)
 {
     if (st) { memcpy(&g_direct_state, st, sizeof g_direct_state); g_direct_on = TRUE; }

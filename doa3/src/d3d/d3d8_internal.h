@@ -145,6 +145,7 @@ void    d3d8_shaders_shutdown(void);
 
 /* Bind shaders + input layout for the given FVF, upload transform CBs */
 void    d3d8_shaders_prepare_draw(DWORD fvf);
+void    d3d8_shaders_prepare_pixel(void);
 
 /* ================================================================
  * NV2A Register Combiner pixel shaders (d3d8_combiners.c)

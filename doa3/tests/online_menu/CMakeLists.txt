@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.20)
+project(online_menu_test C)
+enable_testing()
+add_executable(online_menu_test online_menu_test.c ../../src/game/online_menu.c)
+target_include_directories(online_menu_test PRIVATE ../../src/game)
+add_test(NAME online_menu COMMAND online_menu_test)

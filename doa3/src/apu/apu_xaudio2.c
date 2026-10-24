@@ -123,6 +123,7 @@ int xa2_is_active(void)
 {
     return g_xa2_initialized;
 }
+int xa2_movie_is_active(void) { return g_xa2_movie_source!=NULL; }
 
 /* DOA3 DIAG (automatic diagnostic captures only): the last 30 s of the mix
  * as submitted, kept in memory and written as Diagnostics\apu_mix_*.wav by

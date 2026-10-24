@@ -7,6 +7,7 @@
 #define DOA3_XBE_REGION         "JAPAN"   /* shown to the player */
 #define DOA3_XBE_MD5            "4d1a10a16b8ad2065ad9dee65e951f08"
 #define DOA3_XBE_ID_JAPAN 1  /* for #ifdef on release-bound code */
+#define DOA3_XBE_ID_3_1 1  /* rollback branch: the same release under its earlier name */
 #define DOA3_TITLE_ID           0x54430001u
 #define DOA3_XBE_FILE_SIZE      4218880u
 #define DOA3_XBE_FNV64          0x8219CF3EC3C08681ull  /* FNV-1a 64, as xiso_extract.c checks it */

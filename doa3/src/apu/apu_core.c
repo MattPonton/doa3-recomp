@@ -20,8 +20,10 @@
  */
 
 #include "apu_state.h"
+#include "apu_chip.h"
 #include "apu.h"
 #include "apu_irq.h"
+extern volatile LONG g_apu_irq_pending;   /* apu_irq.c; read/restored by the rollback checkpoint */
 #include "apu_xaudio2.h"
 #include "../game/audio_settings.h"
 #include "fpconv.h"
@@ -68,19 +70,12 @@ void mcpx_debug_end_frame(void) {}
  * forever after the first idle voice, and no frame was ever mixed again. */
 static void update_irq(MCPXAPUState *d)
 {
-    if (d->regs[NV_PAPU_FECTL] & NV_PAPU_FECTL_FEMETHMODE_TRAPPED) {
-        qatomic_or(&d->regs[NV_PAPU_ISTS], NV_PAPU_ISTS_FETINTSTS);
-    }
-    if ((d->regs[NV_PAPU_IEN] & NV_PAPU_ISTS_GINTSTS) &&
-        ((d->regs[NV_PAPU_ISTS] & ~NV_PAPU_ISTS_GINTSTS) &
-         d->regs[NV_PAPU_IEN])) {
-        qatomic_or(&d->regs[NV_PAPU_ISTS], NV_PAPU_ISTS_GINTSTS);
+    if (apu_chip_update_irq(d)) {
         /* In standalone mode we don't raise a PCI IRQ; the game's kernel
          * stub will poll ISTS directly or we'll signal via a flag. */
         pci_irq_assert(PCI_DEVICE(d));
         mcpx_apu_raise_irq();
     } else {
-        qatomic_and(&d->regs[NV_PAPU_ISTS], ~NV_PAPU_ISTS_GINTSTS);
         pci_irq_deassert(PCI_DEVICE(d));
     }
 }
@@ -196,6 +191,12 @@ typedef struct {
 } WaveOutState;
 
 static WaveOutState g_waveout = { 0 };
+/* Logical staging belongs to a processing checkpoint; submitted XA2 buffers
+ * remain owned by the physical device and are never rewound. */
+static int16_t s_apu_stage[1024][2];
+static int s_apu_fill;
+static int s_apu_replay_active,s_apu_replay_fault,s_apu_replay_buffer_size;
+static int apu_live_supported(MCPXAPUState *d);
 
 void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp)
 {
@@ -257,6 +258,11 @@ void mcpx_apu_monitor_finalize(MCPXAPUState *d)
 
 void mcpx_apu_monitor_frame(MCPXAPUState *d)
 {
+    if(s_apu_replay_active && (s_apu_replay_fault || !apu_live_supported(d) ||
+       xa2_get_buffer_size()!=s_apu_replay_buffer_size)) {
+        s_apu_replay_fault=1;
+        memset(d->monitor.frame_buf,0,sizeof(d->monitor.frame_buf));return;
+    }
     if ((d->ep_frame_div + 1) % 8) {
         return;
     }
@@ -271,8 +277,6 @@ void mcpx_apu_monitor_frame(MCPXAPUState *d)
      * mixer voices are layered on top and 256-sample periods are staged
      * until one 1024-sample buffer is complete. */
     if (xa2_is_active()) {
-        static int16_t s_stage[1024][2];   /* matches XA2_BUF_SAMPLES max */
-        static int s_fill = 0;
         int buf_size = xa2_get_buffer_size();
         if (buf_size > 1024) buf_size = 1024;
 
@@ -289,25 +293,27 @@ void mcpx_apu_monitor_frame(MCPXAPUState *d)
                         g_test_tone.phase -= 2.0 * M_PI;
                 }
             }
-            mixer_render(d->monitor.frame_buf, MIXER_FRAME_SAMPLES);
+            if (!s_apu_replay_active) mixer_render(d->monitor.frame_buf, MIXER_FRAME_SAMPLES);
         }
 
         {
             int take = MIXER_FRAME_SAMPLES;
-            if (s_fill + take > buf_size) take = buf_size - s_fill;
-            memcpy(s_stage + s_fill, d->monitor.frame_buf, take * 2 * sizeof(int16_t));
-            s_fill += take;
+            if (s_apu_fill + take > buf_size) take = buf_size - s_apu_fill;
+            memcpy(s_apu_stage + s_apu_fill, d->monitor.frame_buf, take * 2 * sizeof(int16_t));
+            s_apu_fill += take;
         }
-        if (s_fill >= buf_size) {
+        if (s_apu_fill >= buf_size) {
             /* Pace on the consumer: XA2 drains exactly 48 kHz, so waiting for a
              * free slot keeps the emulated chip in real time without dropping
              * (drops and dry queues both clicked). Bounded so a dead device
              * cannot wedge the APU thread. */
-            extern int xa2_queued(void);
-            int spins = 0;
-            while (xa2_queued() >= 6 && spins < 200) { qemu_mutex_unlock(&d->lock); Sleep(1); qemu_mutex_lock(&d->lock); spins++; }
-            xa2_submit_samples((const int16_t *)s_stage, buf_size);
-            s_fill = 0;
+            if (!s_apu_replay_active) {
+                extern int xa2_queued(void);
+                int spins = 0;
+                while (xa2_queued() >= 6 && spins < 200) { qemu_mutex_unlock(&d->lock); Sleep(1); qemu_mutex_lock(&d->lock); spins++; }
+                xa2_submit_samples((const int16_t *)s_apu_stage, buf_size);
+            }
+            s_apu_fill = 0;
         }
         /* a DSP that stops writing (paused/idle) must yield silence, not a
          * repeat of the last period */
@@ -475,6 +481,46 @@ static int s_apu_det_debt;
 static uint64_t s_apu_det_xgs0;      /* XGSCNT (100 ns units) at session start */
 static uint64_t s_apu_det_chip;      /* chip frames stepped this session */
 static uint64_t s_apu_xgs_offset;    /* keeps the host counter monotonic after a session */
+static volatile LONG s_apu_det_owner;
+static volatile LONG s_apu_pin_owner;
+static uint64_t s_apu_det_epoch;
+
+#include "apu_rollback.h"
+int mcpx_apu_rollback_acquire(void)
+{
+    MCPXAPUState *d=g_state;
+    DWORD owner=GetCurrentThreadId();
+    if (!d || !TryEnterCriticalSection(&d->lock.cs)) return 0;
+    if (!g_apu_det || (DWORD)s_apu_det_owner!=owner || s_apu_pin_owner ||
+        d->rollback_frame_active || d->rollback_det_pending || d->exiting) {
+        qemu_mutex_unlock(&d->lock); return 0;
+    }
+    InterlockedExchange(&s_apu_pin_owner,(LONG)owner);
+    return 1;
+}
+int mcpx_apu_rollback_release(void)
+{
+    MCPXAPUState *d=g_state;
+    if (!d || (DWORD)InterlockedCompareExchange(&s_apu_pin_owner,0,0)!=GetCurrentThreadId()) return 0;
+    InterlockedExchange(&s_apu_pin_owner,0);
+    qemu_mutex_unlock(&d->lock);
+    return 1;
+}
+int mcpx_apu_rollback_capture(void *buffer,size_t bytes)
+{
+    MCPXAPUState *d=g_state;
+    if(!d || !g_apu_det) return 0;
+    qemu_mutex_lock(&d->lock);
+    ApuRollbackClock clock={s_apu_det_xgs0,s_apu_det_chip,s_apu_det_debt,
+        InterlockedCompareExchange(&g_apu_irq_pending,0,0)!=0};
+    int ok=g_apu_det && (DWORD)s_apu_det_owner==GetCurrentThreadId() &&
+        !d->rollback_frame_active && !d->rollback_det_pending &&
+        apu_rollback_export(d,&clock,buffer,bytes);
+    qemu_mutex_unlock(&d->lock);
+    return ok;
+}
+
+#include "apu_live_checkpoint.inc"
 
 /* The sample counter as the guest sees it outside a session. */
 uint64_t mcpx_apu_xgscnt_now(void)
@@ -490,9 +536,8 @@ uint64_t mcpx_apu_det_xgscnt(void)
 
 static void apu_frame_body(MCPXAPUState *d)
 {
-    int xcntmode = GET_MASK(qatomic_read(&d->regs[NV_PAPU_SECTL]),
-                            NV_PAPU_SECTL_XCNTMODE);
-    uint32_t fectl = qatomic_read(&d->regs[NV_PAPU_FECTL]);
+    assert(!d->rollback_frame_active);
+    d->rollback_frame_active=true;
     /* FEMETHMODE is a field, not a set of flags: FREE_RUNNING 0x00,
      * HALTED 0x80, TRAPPED 0xE0. Only HALTED stops the chip. Testing
      * TRAPPED as a mask also matched HALTED, and more importantly it
@@ -500,9 +545,7 @@ static void apu_frame_body(MCPXAPUState *d)
      * was outstanding, which from the title screen on was forever: that
      * was the silence. A trapped front end stops accepting new methods,
      * it does not stop mixing the voices already in the lists. */
-    bool apu_active = (xcntmode != NV_PAPU_SECTL_XCNTMODE_OFF) &&
-                      ((fectl & NV_PAPU_FECTL_FEMETHMODE) !=
-                       NV_PAPU_FECTL_FEMETHMODE_HALTED);
+    bool apu_active = apu_chip_running(d);
 
     if (apu_active && !g_test_tone.active) {
         /* Full pipeline: VP voices → DSP → monitor → waveOut */
@@ -518,6 +561,8 @@ static void apu_frame_body(MCPXAPUState *d)
         d->set_irq = false;
         update_irq(d);
     }
+    d->rollback_frame_active=false;
+    if (d->rollback_det_pending) qemu_cond_broadcast(&d->cond);
 }
 
 static void apu_det_run(MCPXAPUState *d, int n)
@@ -534,11 +579,22 @@ void mcpx_apu_det_begin(uint64_t xgscnt_base)
 {
     MCPXAPUState *d = g_state;
     if (!d) return;
-    qemu_mutex_lock(&d->lock);      /* the thread is between frames once we hold it */
+    qemu_mutex_lock(&d->lock);
+    if (g_apu_det || d->rollback_det_pending || d->exiting || s_apu_det_epoch==UINT64_MAX) {
+        qemu_mutex_unlock(&d->lock); return;
+    }
+    /* The monitor releases this lock while its device queue drains. Keep
+     * the worker from starting another frame, and let the current frame
+     * completely unwind before changing clock ownership. */
+    d->rollback_det_pending=true;
+    while (d->rollback_frame_active) qemu_cond_wait(&d->cond,&d->lock);
     s_apu_det_xgs0 = xgscnt_base;
     s_apu_det_chip = 0;
     g_apu_det = 1;
     s_apu_det_debt = 0;
+    ++s_apu_det_epoch;
+    InterlockedExchange(&s_apu_det_owner,(LONG)GetCurrentThreadId());
+    d->rollback_det_pending=false;
     qemu_mutex_unlock(&d->lock);
 }
 
@@ -546,12 +602,15 @@ void mcpx_apu_det_end(void)
 {
     MCPXAPUState *d = g_state;
     if (!d) return;
+    if ((DWORD)InterlockedCompareExchange(&s_apu_det_owner,0,0)!=GetCurrentThreadId() ||
+        InterlockedCompareExchange(&s_apu_pin_owner,0,0) || s_apu_replay_active) return;
     qemu_mutex_lock(&d->lock);
     {
         uint64_t det = mcpx_apu_det_xgscnt(), real = mcpx_apu_xgscnt_now();
         if (det > real) s_apu_xgs_offset += det - real;
     }
     g_apu_det = 0;
+    InterlockedExchange(&s_apu_det_owner,0);
     d->next_frame_time_us = 0;      /* resume on the wall clock without catching up */
     qemu_cond_broadcast(&d->cond);
     qemu_mutex_unlock(&d->lock);
@@ -563,6 +622,8 @@ void mcpx_apu_det_frame(void)
     MCPXAPUState *d = g_state;
     int n = 25;
     if (!d || !g_apu_det) return;
+    if ((DWORD)InterlockedCompareExchange(&s_apu_det_owner,0,0)!=GetCurrentThreadId() ||
+        InterlockedCompareExchange(&s_apu_pin_owner,0,0)) return;
     if (s_apu_det_debt >= n) { s_apu_det_debt -= n; return; }
     n -= s_apu_det_debt;
     s_apu_det_debt = 0;
@@ -576,6 +637,8 @@ void mcpx_apu_det_step(void)
 {
     MCPXAPUState *d = g_state;
     if (!d || !g_apu_det) return;
+    if ((DWORD)InterlockedCompareExchange(&s_apu_det_owner,0,0)!=GetCurrentThreadId() ||
+        InterlockedCompareExchange(&s_apu_pin_owner,0,0)) return;
     qemu_mutex_lock(&d->lock);
     apu_det_run(d, 1);
     qemu_mutex_unlock(&d->lock);
@@ -610,7 +673,7 @@ static void *mcpx_apu_frame_thread(void *arg)
     qemu_mutex_lock(&d->lock);
 
     while (!qatomic_read(&d->exiting)) {
-        if (g_apu_det) {
+        if (g_apu_det || d->rollback_det_pending) {
             /* a netplay session steps the chip from the game thread */
             qemu_cond_timedwait(&d->cond, &d->lock, 5);
             continue;
@@ -627,7 +690,7 @@ static void *mcpx_apu_frame_thread(void *arg)
          * need continuous frame delivery regardless of APU register state.
          * The VP/DSP pipeline (se_frame) only runs when registers allow it. */
         throttle(d);
-        if (g_apu_det) continue;    /* a session started during the wait */
+        if (g_apu_det || d->rollback_det_pending) continue; /* ownership requested during the wait */
         apu_frame_body(d);
     }
 
