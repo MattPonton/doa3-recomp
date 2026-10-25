@@ -4911,3 +4911,17 @@ Removed (restoring doa3.1's code wherever it was patched):
   sub_0006DF00;
 - the overlay hooks in doa3_ui.cpp, the shadow test's sprite guard and
   rollback_shadow.py's descriptor check.
+
+## 0.2.6-rollback.22 - how different are two launches at fight start?
+
+Matt's smoke test of .21 (carousel removed): boots, menus and Sparring as
+before.
+
+Netcode, step 1 is lockstep, which needs both machines in byte-identical
+game state when a match starts. 3.0's session copied ~60 hand-found
+memory blocks from host to joiner. For 3.1 the plan is whole-RAM page
+reconciliation instead (the joiner fetches every page whose hash differs
+from the host's), which only works if the differing set is small.
+DOA3_RAM_DUMP=1 writes the whole guest RAM once, at the first eligible
+solo-Sparring boundary, to doa3_ram_dump_<seconds>.bin: two launches
+reaching the same fight show how many pages differ and what they are.

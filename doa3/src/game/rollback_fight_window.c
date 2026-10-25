@@ -1,6 +1,7 @@
 /* One real native dispatcher-to-dispatcher interval, then a rewind/return
  * check; the separate replay opt-in also re-executes the recorded interval. */
 #include "kernel/xbox_ram_delta.h"
+#include "kernel/xbox_memory_layout.h"
 #include "rollback_fight_checkpoint.h"
 #include "rollback_input_tape.h"
 #include "rollback_native_frame.h"
@@ -235,7 +236,23 @@ static void sync_boundary(void){
     if(!sync_auditing || !doa3_input_tape_record(sync_tape,id+1)){sync_stop("input/audit restart refused");return;}
     xbox_det_frame();mcpx_apu_det_frame();
 }
+/* rollback.22 diagnostic, DOA3_RAM_DUMP=1: the whole guest RAM, once, at
+ * the first eligible solo-Sparring boundary (the fight's first frame),
+ * written to doa3_ram_dump_<seconds since boot>.bin next to the exe. Two
+ * runs show how far two launches' fight-start states differ. */
+static void ram_dump_check(void){
+    static int on=-1,done;
+    if(on<0){const char *v=getenv("DOA3_RAM_DUMP");on=v && *v=='1';}
+    if(!on || done || !eligible())return;
+    done=1;
+    char name[64];snprintf(name,sizeof name,"doa3_ram_dump_%llu.bin",(unsigned long long)(GetTickCount64()/1000));
+    FILE *f=fopen(name,"wb");
+    if(!f){fprintf(stderr,"[RAM-DUMP] could not create %s\n",name);return;}
+    size_t n=fwrite(xbox_GetMemoryBase(),1,xbox_GetMemorySize(),f);fclose(f);
+    fprintf(stderr,"[RAM-DUMP] frame %u: wrote %s (%zu bytes)\n",g_doa3_frames_presented,name,n);fflush(stderr);
+}
 void doa3_fight_window_probe_boundary(void){
+    ram_dump_check();
     if(sync_mode<0){
         const char *v=getenv("DOA3_ROLLBACK_SYNC_TEST");
         sync_mode=v && *v && strcmp(v,"0") && doa3_rollback_tasks_enabled();
