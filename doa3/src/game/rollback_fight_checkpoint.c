@@ -657,6 +657,7 @@ int doa3_fight_lean_begin(Doa3FightCheckpoint *s)
     lean_save_ms_sum=0;lean_save_n=lean_save_refused=0;
     return xbox_ram_delta_begin();
 }
+static double lean_part_ms[DOA3_CP_PARTS],lean_delta_ms;
 static int lean_capture(Doa3FightCheckpoint *s,unsigned char *out)
 {
     if(!acquire_patient(s))return 0;
@@ -664,7 +665,9 @@ static int lean_capture(Doa3FightCheckpoint *s,unsigned char *out)
     for(unsigned i=0;i<DOA3_CP_PARTS && ok;++i){
         if(LEAN_SKIP(i))continue;
         if(i==DOA3_CP_RAM){FightCpu cpu;cpu_capture(&cpu,s->loop);memcpy(out+lean_off[i],&cpu,sizeof cpu);continue;}
+        double t=now_ms();
         ok=capture_part(&s->bindings[i],out+lean_off[i],lean_size[i])>0;
+        lean_part_ms[i]+=now_ms()-t;
     }
     release(s);
     return ok;
@@ -674,6 +677,7 @@ int doa3_fight_lean_save(Doa3FightCheckpoint *s,int new_boundary)
 {
     double t=now_ms();
     if(new_boundary && !xbox_ram_delta_boundary())return 0;
+    lean_delta_ms+=now_ms()-t;
     unsigned long long seq=xbox_ram_delta_seq();
     LeanSlot *slot=&lean[seq%LEAN_RING];
     slot->seq=seq;slot->valid=lean_capture(s,slot->buf);
@@ -832,6 +836,12 @@ fatal:
 }
 void doa3_fight_lean_stats(double *save_ms,unsigned *saves,unsigned *refused)
 {
+    if(lean_save_n){
+        fprintf(stderr,"[ROLLBACK-SYNC]   save cost per boundary, ms: RAM delta %.3f",lean_delta_ms/lean_save_n);
+        for(unsigned i=0;i<DOA3_CP_PARTS;++i)if(!LEAN_SKIP(i) && i!=DOA3_CP_RAM)fprintf(stderr,", %s %.3f",part_names[i],lean_part_ms[i]/lean_save_n);
+        fprintf(stderr,"\n");
+    }
+    memset(lean_part_ms,0,sizeof lean_part_ms);lean_delta_ms=0;
     *save_ms=lean_save_n ? lean_save_ms_sum/lean_save_n:0;*saves=lean_save_n;*refused=lean_save_refused;
     lean_save_ms_sum=0;lean_save_n=lean_save_refused=0;
 }

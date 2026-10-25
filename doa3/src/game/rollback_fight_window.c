@@ -113,6 +113,7 @@ int doa3_fight_lean_rollback(Doa3FightCheckpoint *,unsigned,int (*)(void *),void
 void doa3_fight_lean_stats(double *,unsigned *,unsigned *);
 void doa3_fight_lean_end(void);
 #define SYNC_RING 16u
+int g_doa3_pace_det;   /* rollback.20: pace controlled-clock frames to 60 Hz (sync test) */
 static int sync_mode=-1,sync_state,sync_auditing;
 static unsigned sync_compare=30,sync_compares;   /* compare every n-th rollback (0 = never) */
 static double sync_frame_ms_sum;static LONGLONG sync_last_qpc;
@@ -246,6 +247,7 @@ void doa3_fight_window_probe_boundary(void){
             v=getenv("DOA3_ROLLBACK_SYNC_EVERY");if(v && atoi(v)>0)sync_every=(unsigned)atoi(v);
             v=getenv("DOA3_ROLLBACK_SYNC_COMPARE");if(v && *v)sync_compare=(unsigned)atoi(v);
             g_doa3_logic_only=1;g_doa3_skip_map=1;
+            {extern int g_doa3_pace_det;g_doa3_pace_det=1;}
             enabled=0;   /* the window test does not run alongside */
         }
     }

@@ -60,7 +60,10 @@ static void fn_diag_init(void){
          * the renderer's other command builders, the 2D draw-list flush and
          * the D3D draw call. DOA3_ROLLBACK_SKIP_FNS replaces it ("0" = none). */
         extern int g_doa3_logic_only;
-        if(!e && g_doa3_logic_only)e="17EA20,17ECF0,17F0C0,17F1A0,17F400,17F6A0,180730,180510,12FC74,1DF690";
+        /* rollback.20: 180510 (2D draw-list flush) left out of the list: it
+         * also advances the 2D manager's list state (0x5AA1EC / 0x5AA224);
+         * its drawing child 180730 stays skipped. */
+        if(!e && g_doa3_logic_only)e="17EA20,17ECF0,17F0C0,17F1A0,17F400,17F6A0,180730,12FC74,1DF690";
     }
     while(e && *e && skip_fn_count<32){
         char *end;unsigned long v=strtoul(e,&end,16);

@@ -4861,3 +4861,28 @@ Fixes:
   are compared; the others stay all hidden and uncompared;
 - the 300-frame summary adds the average frame time and the number of
   compared rollbacks.
+
+## 0.2.6-rollback.20 - sync test: logic holds; pacing and the 2D list
+
+Matt's SYNCTEST runs of .19, no crash:
+- depth 2, every frame: ~300 rollbacks per 300 frames, restore 0.65-0.70
+  ms, resimulation 5.4-5.9 ms with its two saves, ~14.7-15.3 ms a frame;
+  "felt like 1.5-2x speed, input responsive, no hitches".
+- depth 4, every frame: resimulation 10.0-11.0 ms, ~19.1-20.1 ms a frame;
+  "felt like half speed, choppy".
+- Saves ~0.93-1.03 ms each, none refused; no frame unadmitted for replay.
+- Compared rollbacks (every 30th, last frame rendered): the only
+  differences in either run were the 2D manager's list fields 0x5AA224
+  (0x005A91D8 / 0x005A91E8 / 0x00D017B0) and once 0x5AA1EC (7 vs 6).
+  Every fighter, game-flow and heap byte matched on every compare.
+Why:
+- d3d4134_pace returns at once on the controlled clock (Jay's sessions run
+  unpaced), so the sync test ran as fast as each frame allowed: depth 2
+  faster than 60 Hz, depth 4 slower.
+- 180510, the 2D draw-list flush in the default skip list, also advances
+  that list state (its parity flips with the number of hidden frames).
+Now:
+- g_doa3_pace_det (set by the sync test): controlled-clock flips are held
+  to 60 Hz of wall time, without worker laps while waiting.
+- 180510 is out of the default skip list; its drawing child 180730 stays.
+- The 300-frame summary adds the save cost per boundary by part.

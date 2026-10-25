@@ -2237,8 +2237,13 @@ void sub_001E4AA0(void);
 static void d3d4134_pace(void)
 {
     /* Controlled sessions schedule worker laps from the deterministic clock,
-     * never from how long the host took to render/present the frame. */
-    if (g_xbox_det_active) return;
+     * never from how long the host took to render/present the frame.
+     * rollback.20: the sync test still holds each flip to 60 Hz of wall
+     * time (no worker laps while waiting); other controlled sessions run
+     * unpaced as before. */
+    extern int g_doa3_pace_det;
+    int det = g_xbox_det_active;
+    if (det && !g_doa3_pace_det) return;
     extern int xbox_fiber_workers_ready(void);
     extern int xbox_fiber_is_primary(void);
     extern void xbox_fiber_yield(void);
@@ -2270,8 +2275,8 @@ static void d3d4134_pace(void)
         if (rem <= 0) break;
         extern int xbox_fiber_is_coroutine(void);
         extern void xbox_fiber_vblank_tick(void);
-        xbox_fiber_vblank_tick();
-        if (rem * 1000 > s_qpf && (xbox_fiber_is_primary() || xbox_fiber_is_coroutine()) &&
+        if (!det) xbox_fiber_vblank_tick();
+        if (!det && rem * 1000 > s_qpf && (xbox_fiber_is_primary() || xbox_fiber_is_coroutine()) &&
             doa3_workers_may_run() && xbox_fiber_workers_ready()) {
             LONGLONG worker_begin = doa3_perf_now();
             xbox_fiber_yield();             /* a worker lap while we wait */
