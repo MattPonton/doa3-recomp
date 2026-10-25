@@ -118,6 +118,7 @@ BOOL xbox_IsXboxAddress(uintptr_t address);
  * Returns NULL if memory layout is not initialized.
  */
 void *xbox_GetMemoryBase(void);
+int xbox_GetMirrorView(int m, void **base, size_t *bytes); /* rollback.17 */
 size_t xbox_GetMemorySize(void);   /* size of one view (mirrors repeat at this stride) */
 
 /**

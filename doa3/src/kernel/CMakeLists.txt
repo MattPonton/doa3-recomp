@@ -28,6 +28,7 @@ set(KERNEL_SOURCES
     kernel_apc.c
     kernel_stream.c
     xbox_fiber.c
+    xbox_ram_delta.c
     xbox_heap.c
     xbox_memory_layout.c
 )

@@ -1,5 +1,6 @@
 /* One real native dispatcher-to-dispatcher interval, then a rewind/return
  * check; the separate replay opt-in also re-executes the recorded interval. */
+#include "kernel/xbox_ram_delta.h"
 #include "rollback_fight_checkpoint.h"
 #include "rollback_input_tape.h"
 #include "rollback_native_frame.h"
@@ -29,6 +30,7 @@ static int texture_ab,packet_ab,geometry_ab,render_ab,prep_ab,guest_ab;
  * replay when only render bookkeeping differs. Every trial runs. */
 int g_doa3_logic_only,g_doa3_logic_only_arm;
 static unsigned logic_results[7];
+static int delta_test,delta_test_on;   /* rollback.17, DOA3_ROLLBACK_DELTA_TEST=1 */
 static void logic_only_tasks(unsigned t)
 {
     /* rollback.14: every task runs; DOA3_ROLLBACK_SKIP_TASKS=addr,... (hex)
@@ -78,6 +80,7 @@ static void fatal(const char *stage){
     fflush(stderr);abort();
 }
 static void finish(int success){
+    if(delta_test_on){xbox_ram_delta_end();delta_test_on=0;}
     if(auditing){XboxKernelReplayAudit audit;if(!xbox_kernel_replay_audit_end(&audit))fatal("kernel audit cleanup");auditing=0;}
     if(tape && (!doa3_input_tape_abort(tape) || !doa3_input_tape_destroy(tape)))fatal("input cleanup");
     tape=NULL;
@@ -113,6 +116,7 @@ void doa3_fight_window_probe_boundary(void){
         render_ab=replay && armed("DOA3_ROLLBACK_RENDER_AB_TEST");
         prep_ab=replay && armed("DOA3_ROLLBACK_PREP_AB_TEST");
         guest_ab=replay && armed("DOA3_ROLLBACK_GUEST_RENDER_AB_TEST");
+        delta_test=replay && armed("DOA3_ROLLBACK_DELTA_TEST");
         {   /* doa3.1-rollback diagnostics: mismatch map; whole-render skip map */
             extern int g_doa3_skip_map;
             extern void doa3_fight_checkpoint_diff_map_enable(void);
@@ -169,6 +173,7 @@ void doa3_fight_window_probe_boundary(void){
             fprintf(stderr,"[ROLLBACK-WINDOW] refused before rewind: interval/input eligibility\n");finish(0);return;
         }
         loop.intervals=completed;
+        if(delta_test_on){extern void doa3_fight_checkpoint_delta_boundary(unsigned);doa3_fight_checkpoint_delta_boundary(completed);}
         if(completed<window){
             if(!doa3_input_tape_record(tape,completed+1)){finish(0);return;}
             xbox_det_frame();mcpx_apu_det_frame();return;
@@ -198,6 +203,11 @@ void doa3_fight_window_probe_boundary(void){
         {   extern void doa3_fight_checkpoint_delta_report(Doa3FightCheckpoint *,const Doa3CheckpointImage *,
                 const Doa3CheckpointImage *,unsigned);
             doa3_fight_checkpoint_delta_report(fight,start,end,window); }
+        if(delta_test_on){
+            extern int doa3_fight_checkpoint_delta_verify(Doa3FightCheckpoint *,const Doa3CheckpointImage *,
+                const Doa3CheckpointImage *,unsigned);
+            doa3_fight_checkpoint_delta_verify(fight,start,end,window);delta_test_on=0;
+        }
         Doa3CheckpointComparison difference={0};
         Doa3NativeFrame native={&loop,tape,window};
         ULONGLONG verify_started=GetTickCount64();
@@ -305,6 +315,10 @@ capture_start:
     }
     if(replay && !(auditing=xbox_kernel_replay_audit_begin())){
         fprintf(stderr,"[ROLLBACK-REPLAY] refused before advance: kernel audit ownership\n");finish(0);return;
+    }
+    {   /* rollback.17 delta snapshot test */
+        extern int doa3_fight_checkpoint_delta_begin(void);
+        if(delta_test && !doa3_fight_checkpoint_delta_begin())delta_test_on=0; else delta_test_on=delta_test;
     }
     recording=1;presented=g_doa3_frames_presented;
     fprintf(stderr,"[ROLLBACK-WINDOW] start captured; recording %u native intervals\n",window);

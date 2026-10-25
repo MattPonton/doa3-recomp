@@ -52,6 +52,7 @@ static HANDLE g_mapping_handle = NULL;
 
 /* Mirror view pointers for cleanup */
 static void *g_mirror_views[XBOX_NUM_MIRRORS] = {0};
+static size_t g_mirror_sizes[XBOX_NUM_MIRRORS];   /* rollback.17: bytes mapped per mirror view */
 
 /* Separate allocation for Xbox kernel address space (0x80010000+).
  * Some RenderWare code reads the kernel PE header to detect features. */
@@ -503,6 +504,7 @@ BOOL xbox_MemoryLayoutInit(const void *xbe_data, size_t xbe_size)
                 (LPVOID)mirror_base
             );
             if (g_mirror_views[m]) {
+                g_mirror_sizes[m] = g_memory_size;
                 mirrors_ok++;
             } else {
                 /* A full-size view can fail simply because the address
@@ -530,6 +532,7 @@ BOOL xbox_MemoryLayoutInit(const void *xbe_data, size_t xbe_size)
                         avail, (LPVOID)mirror_base);
                 }
                 if (g_mirror_views[m]) {
+                    g_mirror_sizes[m] = avail;
                     mirrors_partial++;
                     fprintf(stderr, "  Mirror %d: partial at %p (%llu of %llu MB; "
                                     "full view gave error %lu)\n",
@@ -584,6 +587,14 @@ BOOL xbox_IsXboxAddress(uintptr_t address)
 {
     return (address >= XBOX_BASE_ADDRESS &&
             address < XBOX_BASE_ADDRESS + g_memory_size);
+}
+
+/* rollback.17: mirror view m (0-based) and how many bytes of it are mapped. */
+int xbox_GetMirrorView(int m, void **base, size_t *bytes)
+{
+    if (m < 0 || m >= XBOX_NUM_MIRRORS || !g_mirror_views[m]) return 0;
+    *base = g_mirror_views[m]; *bytes = g_mirror_sizes[m];
+    return 1;
 }
 
 void *xbox_GetMemoryBase(void)

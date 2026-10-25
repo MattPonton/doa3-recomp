@@ -28,6 +28,7 @@
 #include "kernel.h"
 #include "xbox_memory_layout.h"
 #include "xbox_fiber.h"
+#include "xbox_ram_delta.h"
 #include "xbox_det.h"
 #include "kernel_apc.h"
 #include "kernel_interrupt.h"
@@ -1887,6 +1888,10 @@ static void bridge_NtReadFile(void)
         g_eax = 0xC000000Du; /* STATUS_INVALID_PARAMETER */
         return;
     }
+    /* rollback.17: ReadFile writes the buffer from kernel mode, which fails
+     * the call on a read-only page instead of faulting. */
+    xbox_ram_delta_prepare_write(buffer_va, length);
+    xbox_ram_delta_prepare_write(iostatus, 8);
 
     if (offset_va) {
         uint32_t lo = BRIDGE_MEM32(offset_va);

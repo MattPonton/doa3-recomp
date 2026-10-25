@@ -412,6 +412,65 @@ void doa3_fight_checkpoint_delta_report(Doa3FightCheckpoint *s,const Doa3Checkpo
     for(unsigned t=0;t<ntop;++t)fprintf(stderr," %08X:%zu",top[t].lo,top[t].pages);
     fprintf(stderr,"\n");
 }
+/* rollback.17, DOA3_ROLLBACK_DELTA_TEST=1: page-protection delta snapshots
+ * run alongside the full checkpoint. Start tracking at the window's start
+ * boundary (render arenas and the push-buffer ring untracked). */
+#include "kernel/xbox_ram_delta.h"
+int doa3_fight_checkpoint_delta_begin(void)
+{
+    uint32_t dev=g_doa3_pb_dev;
+    if(dev && dev<0x08000000u)xbox_ram_delta_untrack(MEM32(dev+0x24),MEM32(dev+0x28)+4);
+    xbox_ram_delta_untrack(0xA538F0u,0xC58A94u);
+    LARGE_INTEGER f,t0,t1;QueryPerformanceFrequency(&f);QueryPerformanceCounter(&t0);
+    int ok=xbox_ram_delta_begin();
+    QueryPerformanceCounter(&t1);
+    fprintf(stderr,"[ROLLBACK-DELTA] tracking %s (protect %.2f ms)\n",ok ? "started":"FAILED",
+        1000.0*(double)(t1.QuadPart-t0.QuadPart)/(double)f.QuadPart);
+    return ok;
+}
+void doa3_fight_checkpoint_delta_boundary(unsigned interval)
+{
+    XboxRamDeltaStats st;
+    int ok=xbox_ram_delta_boundary();
+    xbox_ram_delta_stats(&st);
+    fprintf(stderr,"[ROLLBACK-DELTA] boundary %u: %.3f ms, copied %u hot pages (%u KB), cooled %u, first writes %u (+%u through mirrors), "
+        "records %u, pool %u of %u pages%s\n",interval,st.boundary_ms,st.copied,st.copied*4,st.cooled,st.faults,st.mirror_faults,
+        st.records,st.pool_used,st.pool_pages,ok ? "":" OVERFLOW");
+}
+/* At the endpoint: rewind `back` records with the deltas alone, compare
+ * every tracked page with the full start image, then put the endpoint's
+ * RAM back from the full end image and stop tracking. */
+int doa3_fight_checkpoint_delta_verify(Doa3FightCheckpoint *s,const Doa3CheckpointImage *start,
+    const Doa3CheckpointImage *end,unsigned back)
+{
+    size_t na=0,nb=0;
+    const unsigned char *pa=doa3_checkpoint_image_part(s->session,start,DOA3_CP_RAM,&na);
+    const unsigned char *pb=doa3_checkpoint_image_part(s->session,end,DOA3_CP_RAM,&nb);
+    const size_t hdr=sizeof(FightCpu);
+    unsigned char *ram=(unsigned char *)xbox_GetMemoryBase();
+    int result=0;
+    if(!pa || !pb || na!=nb || na-hdr!=xbox_GetMemorySize()){xbox_ram_delta_end();return 0;}
+    LARGE_INTEGER f,t0,t1;QueryPerformanceFrequency(&f);QueryPerformanceCounter(&t0);
+    int restored=xbox_ram_delta_restore(back);
+    QueryPerformanceCounter(&t1);
+    double ms=1000.0*(double)(t1.QuadPart-t0.QuadPart)/(double)f.QuadPart;
+    size_t bad=0,untracked_diff=0;uint32_t first=0;
+    if(restored){
+        for(size_t pg=0;pg+4096<=na-hdr;pg+=4096){
+            if(!memcmp(ram+pg,pa+hdr+pg,4096))continue;
+            if(!xbox_ram_delta_tracked((uint32_t)pg)){++untracked_diff;continue;}
+            if(!bad)first=(uint32_t)pg;
+            ++bad;
+        }
+        result=!bad;
+    }
+    fprintf(stderr,"[ROLLBACK-DELTA] rewind %u boundaries from the deltas: %s in %.3f ms; tracked pages differing from the full start image: %zu%s (first %08X); untracked pages differing: %zu\n",
+        back,restored ? "restored":"REFUSED",ms,bad,bad ? " -- MISMATCH":"",first,untracked_diff);
+    xbox_ram_delta_end();
+    memcpy(ram,pb+hdr,na-hdr);   /* back to the endpoint exactly */
+    if(memcmp(ram,pb+hdr,na-hdr))fprintf(stderr,"[ROLLBACK-DELTA] endpoint RAM copy-back failed\n");
+    return result;
+}
 void doa3_fight_checkpoint_diff_map_enable(void)
 {
     extern void (*g_doa3_checkpoint_diff_hook)(unsigned,const unsigned char *,const unsigned char *,size_t);

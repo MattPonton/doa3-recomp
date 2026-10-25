@@ -4769,3 +4769,40 @@ the mirrors and the bridges that hand guest buffers to Win32), measure
 the delta: [ROLLBACK-DELTA] compares each window's start and end images
 per 4 KB page and per 256-byte block, split into labelled render-only
 memory, fiber stacks and the rest, with the rest grouped by MB.
+
+## 0.2.6-rollback.17 - delta snapshots, first implementation
+
+Matt's PROBE run of .16 (six of six matched): a window changes about the
+same set of pages whatever its length -- 4 frames 528-547 pages, 8 frames
+539-579 (~2.2 MB): render-only ~263 (push-buffer ring and render arenas),
+fiber stacks ~10, the rest 256-304 pages (~1.1 MB; ~520-700 KB counted in
+256-byte blocks), spread over 0x4xxxxx-0x5xxxxx (tables), 0xAxxxxx, 0xCxxxxx
+and the fighters' heap blocks (0x1Bxxxxx-0x27xxxxx). So the game rewrites
+a fixed working set every frame; a per-frame delta is ~1 MB, not 128.
+
+xbox_ram_delta.c (kernel library), page protection with an adaptive hot
+set:
+- begin: every tracked page read-only in the base view and all mapped
+  mirror views. Untracked (never saved or restored): the push-buffer ring
+  and the render arenas 0xA538F0..0xC58A94.
+- first write to a page (vectored handler, any thread, any view): its
+  bytes are kept as a pre-image -- its contents at the open record's
+  boundary -- and the page becomes writable in that view only (a per-page
+  mask of writable views). The page is now hot.
+- boundary: record k = copies of all hot pages (state at boundary k);
+  pre-images taken after it join record k. A hot page whose copy has not
+  changed for 16 boundaries is made read-only again in every view.
+- restore t: record t's copies, then the first pre-image after t of every
+  other page (records t..newest, oldest first); later records are freed,
+  their first pre-images move into record t so a second rewind to t works.
+- 16 records, a 64 MB page pool; overflow refuses the restore.
+- NtReadFile calls xbox_ram_delta_prepare_write for its buffer and IO
+  status first: ReadFile writes from kernel mode and fails on a read-only
+  page instead of faulting.
+
+DOA3_ROLLBACK_DELTA_TEST=1 (with the combat replay probe): tracking runs
+through each recorded window; each boundary logs its cost, copies, first
+writes (base and mirror views), cooled pages and pool use. At the endpoint
+the deltas alone rewind to the start, every tracked page is compared with
+Jay's full start image, the endpoint RAM is copied back from the full end
+image, tracking stops, and Jay's verification runs as before.
