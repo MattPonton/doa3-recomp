@@ -237,14 +237,16 @@ static void sync_boundary(void){
     xbox_det_frame();mcpx_apu_det_frame();
 }
 /* rollback.22 diagnostic, DOA3_RAM_DUMP=1: the whole guest RAM, once, at
- * the first eligible solo-Sparring boundary (the fight's first frame),
+ * the first boundary in a fight scene (any mode, Versus included),
  * written to doa3_ram_dump_<seconds since boot>.bin next to the exe. Two
  * runs show how far two launches' fight-start states differ. */
 static void ram_dump_check(void){
     static int on=-1,done;
     if(on<0){const char *v=getenv("DOA3_RAM_DUMP");on=v && *v=='1';}
-    if(!on || done || !eligible())return;
+    /* rollback.23: any fight (scene 7), Versus included, not only Sparring */
+    if(!on || done || MEM8(0x5A2858)!=7)return;
     done=1;
+    fprintf(stderr,"[RAM-DUMP] fight scene reached: game mode byte 0x596A37=%u, 0x596AA5=%u\n",MEM8(0x596A37),MEM8(0x596AA5));
     char name[64];snprintf(name,sizeof name,"doa3_ram_dump_%llu.bin",(unsigned long long)(GetTickCount64()/1000));
     FILE *f=fopen(name,"wb");
     if(!f){fprintf(stderr,"[RAM-DUMP] could not create %s\n",name);return;}

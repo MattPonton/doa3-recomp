@@ -4925,3 +4925,10 @@ from the host's), which only works if the differing set is small.
 DOA3_RAM_DUMP=1 writes the whole guest RAM once, at the first eligible
 solo-Sparring boundary, to doa3_ram_dump_<seconds>.bin: two launches
 reaching the same fight show how many pages differ and what they are.
+
+## 0.2.6-rollback.23 - RAM dump in any fight
+
+Matt: Sparring is a training mode (one player and a dummy), not a battle;
+the netplay target is Versus. DOA3_RAM_DUMP now fires at the first
+boundary of any fight scene (0x5A2858 == 7) and logs the game mode bytes
+0x596A37 / 0x596AA5 (to learn Versus's value).
