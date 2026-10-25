@@ -1,4 +1,5 @@
 # Guest functions replaced by hand-written code in src/game/recomp/recomp_manual.c
+# (DirectSound: src/game/recomp/recomp_dsound.c)
 # (tools.recomp.apply_overrides renames the generated body to sub_X_gen).
 0x00011980  Training recording: provide dummy input before native command decoding
 0x00012B60  Training recording: restore input routing before the input fiber yields
@@ -15,7 +16,6 @@
 0x0018C9D3  XAPI SwitchToFiber
 0x0019A330  CRI message sink: log the text
 0x000A5C60  DSOUND effects-image download -> success (3.0: 0x9F640); its failure skipped the CRI setup
-0x001F2A27  IDirectSound_SetI3DL2Listener: room reverb parameters to the host reverb (apu_dsp.c)
 0x001B73D0  CRT memmove -> native (jump-table tail the lifter cannot follow)
 0x001B7CB0  CRT memmove (second copy) -> native
 0x001926B0  CRI idle/watchdog thread: yield each lap (3.0: 0x16A530)
@@ -23,8 +23,6 @@
 0x0019DC30  ADX stereo decoder: argument trace (writes past guest RAM)
 0x0019EA30  Sofdec frame copy + CSC: show the converted movie frame
 0x0019A380  CRI formatted-error sink: logged
-0x001F3FA0  DSOUND DPC voice service: check the voice lists before walking them
-0x001F5157  DSOUND voice retire wait: deliver the APU interrupt while spinning (3.0: doa3_apu_wait_retire)
 0x0021157D  XAPI XGetDevices -> host pads
 0x0021159F  XAPI XGetDeviceChanges -> host pad changes
 0x00211823  XAPI XInputOpen -> fake handle
@@ -54,3 +52,31 @@
 0x000CD110  confirm button -> costume option: storage options past the disc ones
 0x000CD900  costume id -> costume slot + option: storage options
 0x000CCC70  Character Select costume-taken check: same costume, different option (dip switch)
+0x001F2E65  DirectSoundCreate -> high-level DirectSound on OpenAL Soft (recomp_dsound.c, src/audio/dsound_hle.c)
+0x001F1F01  DirectSoundDoWork (no-op: the voices run on the mixer thread)
+0x001F13C5  DirectSoundUseFullHRTF (no-op)
+0x001F2CAB  IDirectSound_CreateSoundBuffer
+0x001F1D46  IDirectSound_GetSpeakerConfig -> stereo
+0x001F1D62  IDirectSound_DownloadEffectsImage -> success (no GP DSP)
+0x001F2A27  IDirectSound_SetI3DL2Listener -> EAX reverb on the I3DL2 send
+0x001F29BD  IDirectSound_SetPosition (listener)
+0x001F29F2  IDirectSound_SetVelocity (listener)
+0x001F23CC  IDirectSound_CommitDeferredSettings
+0x001F13AF  IDirectSoundBuffer_Release
+0x001F2A47  IDirectSoundBuffer_SetBufferData
+0x001F1E59  IDirectSoundBuffer_SetLoopRegion
+0x001F1DF9  IDirectSoundBuffer_Play
+0x001F1E1D  IDirectSoundBuffer_Stop
+0x001F1E35  IDirectSoundBuffer_StopEx
+0x001F1E79  IDirectSoundBuffer_GetStatus
+0x001F1E95  IDirectSoundBuffer_GetCurrentPosition
+0x001F1EB5  IDirectSoundBuffer_SetCurrentPosition
+0x001F1ED1  IDirectSoundBuffer_Lock (pointers into the buffer's guest memory)
+0x001F1D89  IDirectSoundBuffer_SetVolume
+0x001F1DA5  IDirectSoundBuffer_SetHeadroom
+0x001F23E4  IDirectSoundBuffer_SetFrequency
+0x001F1DC1  IDirectSoundBuffer_SetMixBins
+0x001F1DDD  IDirectSoundBuffer_SetMixBinVolumes
+0x001F2400  IDirectSoundBuffer_SetMinDistance
+0x001F2424  IDirectSoundBuffer_SetPosition
+0x001F2459  IDirectSoundBuffer_SetVelocity

@@ -80,6 +80,7 @@ set(GAME_SOURCES
     dip_switches.c           # quality-of-life toggles, default off (General tab)
     xiso_extract.c           # first-run install of the game files from a disc image
     recomp/recomp_manual.c
+    recomp/recomp_dsound.c   # DirectSound entry points -> src/audio/dsound_hle.c
     burnout_compat_stubs.c   # inert stubs for burnout-only symbols the nv2a srcs need
     ${NV2A_SOURCES}
     ${RECOMP_GEN_SOURCES}
@@ -93,7 +94,6 @@ target_link_libraries(doa3 PRIVATE
     d3d8_compat
     dsound_compat
     input_compat
-    apu_emu
     doa3_ui
     doa3_online
 )
@@ -140,7 +140,7 @@ if(MSVC)
     set_property(TARGET doa3 PROPERTY MSVC_RUNTIME_CHECKS "")
     # Generated/recompiled code is mechanical: silence its warnings, and allow
     # the huge translation units (/bigobj).
-    set_source_files_properties(${RECOMP_GEN_SOURCES} recomp/recomp_manual.c
+    set_source_files_properties(${RECOMP_GEN_SOURCES} recomp/recomp_manual.c recomp/recomp_dsound.c
         PROPERTIES COMPILE_FLAGS "/w /bigobj")
     # NV2A emulation (from xemu) — silence its warnings too.
     set_source_files_properties(${NV2A_SOURCES} PROPERTIES COMPILE_FLAGS "/w")

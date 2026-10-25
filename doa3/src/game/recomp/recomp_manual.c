@@ -34,7 +34,6 @@
 #include "../dip_switches.h"
 #include "../game_audio.h"
 
-#include "apu/apu_irq.h"
 #include "../../perf_capture.h"
 
 extern uint32_t xbox_HeapAlloc(uint32_t size, uint32_t alignment);
@@ -203,61 +202,24 @@ void recomp_itail_fail_log(uint32_t va)
     }
 }
 
-void doa3_apu_deliver_irq(void)
+/* Run the DPCs guest code queued with KeInsertQueueDpc (kernel_bridge.c),
+ * once per frame from the present, at DISPATCH_LEVEL as on the Xbox. Raised
+ * IRQL masks them: they wait until the code that raised it lowers it. (The
+ * APU interrupt that used to come through here went with the APU: DirectSound
+ * is high level now, recomp_dsound.c.) */
+void doa3_deliver_dpcs(void)
 {
-    typedef struct MCPXAPUState MCPXAPUState;
-    extern MCPXAPUState *g_apu_state;
-    extern uint64_t mcpx_apu_mmio_read(MCPXAPUState *, uint64_t, unsigned int);
-    extern int mcpx_apu_take_irq(void);
-    extern int xbox_kernel_get_isr(int, uint32_t *, uint32_t *, uint32_t *);
     extern int xbox_kernel_pop_dpc(uint32_t *, uint32_t *, uint32_t *);
     extern recomp_func_t recomp_lookup(uint32_t xbox_va);
     extern recomp_func_t recomp_lookup_manual(uint32_t xbox_va);
-    static unsigned s_isr_calls = 0, s_dpc_calls = 0;
-    static int s_delivering = 0;
-    uint32_t obj, routine, ctx, dpc, a1, a2;
-    int i;
     extern unsigned char xbox_current_irql(void);
     extern unsigned char xbox_set_irql(unsigned char irql);
+    static int s_delivering = 0;
+    uint32_t dpc, a1, a2;
     unsigned char irql0;
-    if (s_delivering) return;   /* an interrupt does not preempt its own service routine or DPC */
-    /* Raised IRQL masks the APU interrupt and DPCs, as on the Xbox's one CPU:
-     * leave the interrupt pending until the code that raised it lowers it. */
-    {   extern unsigned g_doa3_frames_presented;
-        static unsigned s_masked, s_warned;
-        if (xbox_current_irql() >= 2) {
-            if (++s_masked == 120 && s_warned++ < 4) {
-                fprintf(stderr, "[IRQL] APU interrupt masked for 120 presents: IRQL %u left raised (frame %u)\n",
-                        xbox_current_irql(), g_doa3_frames_presented);
-                fflush(stderr);
-            }
-            return;
-        }
-        s_masked = 0;
-    }
-    if (!mcpx_apu_take_irq()) return;
+    if (s_delivering || xbox_current_irql() >= 2) return;
     s_delivering = 1;
-    irql0 = xbox_set_irql(0x0B);    /* the APU's DIRQL (HalGetInterruptVector) */
-    for (i = 0; xbox_kernel_get_isr(i, &obj, &routine, &ctx); i++) {
-        recomp_func_t fn;
-        if (routine < DOA3_SEC_DSOUND_VA || routine >= DOA3_SEC_DSOUND_END) continue;  /* was 3.0's 0x001C0000..0x001E0000 */
-        fn = recomp_lookup_manual(routine);
-        if (!fn) fn = recomp_lookup(routine);
-        if (!fn) continue;
-        {
-            uint32_t saved_esp = esp;
-            PUSH32(esp, ctx);
-            PUSH32(esp, obj);
-            PUSH32(esp, 0);           /* dummy return address */
-            fn();
-            esp = saved_esp;
-        }
-        s_isr_calls++;
-        if (s_isr_calls <= 5 || (s_isr_calls % 500) == 0) {
-            
-        }
-    }
-    xbox_set_irql(2);               /* DPCs run at DISPATCH_LEVEL */
+    irql0 = xbox_set_irql(2);
     while (xbox_kernel_pop_dpc(&dpc, &a1, &a2)) {
         uint32_t droutine = MEM32(dpc + 12), dctx = MEM32(dpc + 16);
         recomp_func_t fn = recomp_lookup_manual(droutine);
@@ -272,10 +234,6 @@ void doa3_apu_deliver_irq(void)
             PUSH32(esp, 0);
             fn();
             esp = saved_esp;
-        }
-        s_dpc_calls++;
-        if (s_dpc_calls <= 5 || (s_dpc_calls % 500) == 0) {
-            
         }
     }
     xbox_set_irql(irql0);
@@ -2670,35 +2628,6 @@ void sub_001C7920(void)
  * file name), ret 0. */
 void sub_000A5C60(void) { eax = 0; esp += 4; }
 
-/* IDirectSound_SetI3DL2Listener(pDS, pParams, dwApply), stdcall 12 (0.0.170).
- * The room reverb runs on the console's GP DSP, which is not emulated; hand
- * the parameters to the host reverb (apu_dsp.c). The game takes them from a
- * table at 0x2D3EB8 (the standard I3DL2 presets, then its own rooms from
- * 0x2D4338), index in 0x7FE2F0; 0x2D4308 (index 23) is "no reverb". */
-void sub_001F2A27_gen(void);
-void sub_001F2A27(void)
-{
-    extern void apu_reverb_set_i3dl2(const uint32_t raw[12]);
-    uint32_t p = MEM32(esp + 8);
-    if (p >= 0x10000u && p < 0x08000000u - 48u) {
-        static unsigned s_logged;
-        uint32_t raw[12];
-        int i;
-        for (i = 0; i < 12; i++) raw[i] = MEM32(p + 4u * (uint32_t)i);
-        apu_reverb_set_i3dl2(raw);
-        if (s_logged < 200) {
-            float f[12];
-            s_logged++;
-            memcpy(f, raw, sizeof f);
-            fprintf(stderr, "[I3DL2] params %08X (table index %d): room %d roomHF %d decay %.3f hfratio %.3f "
-                    "reflections %d delay %.3f reverb %d delay %.3f diffusion %.0f density %.0f hf %.0f\n",
-                    p, (p >= 0x2D3EB8u && (p - 0x2D3EB8u) % 0x30u == 0) ? (int)((p - 0x2D3EB8u) / 0x30u) : -1,
-                    (int)raw[0], (int)raw[1], f[3], f[4], (int)raw[5], f[6], (int)raw[7], f[8], f[9], f[10], f[11]);
-        }
-    }
-    sub_001F2A27_gen();
-}
-
 /* CRT memcpy/memmove (0x1B73D0 and 0x1B7CB0, the same two copies 3.0 has at
  * 0x18DF40/0x18EE90): the trailing-byte dispatch is an intra-function jump
  * table the lifter cannot follow, so copies lost their tail bytes. Native
@@ -2839,133 +2768,6 @@ void sub_0019A330(void)
         fflush(stderr);
     }
     sub_0019A330_gen();
-}
-
-/* DirectSound's voice retire wait (0x1F5157, ecx = voice): if the voice
- * is active (+0x12 bit 0), spin until the APU interrupt's DPC has retired it
- * (+0x12 bit 0x8000 clear). On the Xbox the interrupt arrives during the
- * spin. Here nothing interrupts recompiled code, and fix_selfspins had
- * removed the loop, so a voice was destroyed while still linked into the
- * APU's active list (+0x6C4): its node stayed there with the destructed
- * object's base vtable 0x218090, the DPC then called slot 0x14 (AddRef) on
- * it every interrupt, and when its memory was reused the list looped onto
- * itself -- the crash at the end of mv_op.sfd. Deliver the interrupt from
- * inside the wait, as 3.0 does (doa3_apu_wait_retire), keeping the guest
- * registers. */
-void sub_001F5157(void)
-{
-    extern int mcpx_apu_poll_idle(void);
-    uint32_t v = ecx;
-    uint32_t r_eax = eax, r_ecx = ecx, r_edx = edx, r_ebx = ebx, r_esi = esi,
-             r_edi = edi, r_esp = esp, r_seh = g_seh_ebp;
-    DWORD t0 = GetTickCount(), tlog = 0;
-    static int s_n;
-    static int s_perf = -1;
-    LARGE_INTEGER perf_begin = {0}, perf_freq = {0};
-    LONGLONG sleep_ticks = 0, max_sleep_ticks = 0;
-    unsigned sleep_count = 0, idle_polls = 0;
-    if (s_perf < 0) s_perf = getenv("DOA3_PERF_CAPTURE") != NULL;
-    if ((MEM8(v + 0x12) & 1) && (MEM16(v + 0x12) & 0x8000)) {
-        if (s_perf) { QueryPerformanceFrequency(&perf_freq); QueryPerformanceCounter(&perf_begin); }
-        while (MEM16(v + 0x12) & 0x8000) {
-            idle_polls += mcpx_apu_poll_idle();
-            doa3_apu_deliver_irq();
-            eax = r_eax; ecx = r_ecx; edx = r_edx; ebx = r_ebx; esi = r_esi;
-            edi = r_edi; esp = r_esp; g_seh_ebp = r_seh;
-            if (!(MEM16(v + 0x12) & 0x8000)) break;
-            {   extern volatile int g_apu_det;
-                extern void mcpx_apu_det_step(void);
-                if (g_apu_det) { mcpx_apu_det_step(); continue; }
-            }
-            if (s_perf) {
-                LARGE_INTEGER before, after;
-                LONGLONG elapsed;
-                QueryPerformanceCounter(&before);
-                mcpx_apu_wait_irq(1);
-                QueryPerformanceCounter(&after);
-                elapsed = after.QuadPart - before.QuadPart;
-                sleep_ticks += elapsed;
-                if (elapsed > max_sleep_ticks) max_sleep_ticks = elapsed;
-                ++sleep_count;
-            } else mcpx_apu_wait_irq(1);
-            if (GetTickCount() - t0 > 1000 + tlog) {
-                tlog += 2000;
-                fprintf(stderr, "[DSRETIRE] voice %08X still not retired after %lu ms (flags %04X)\n",
-                        v, (unsigned long)(GetTickCount() - t0), MEM16(v + 0x12));
-                fflush(stderr);
-            }
-        }
-        if (s_n++ < 8) {
-            fprintf(stderr, "[DSRETIRE] voice %08X retired after %lu ms\n", v, (unsigned long)(GetTickCount() - t0));
-            fflush(stderr);
-        }
-        if (s_perf) {
-            LARGE_INTEGER end;
-            QueryPerformanceCounter(&end);
-            if (idle_polls || end.QuadPart - perf_begin.QuadPart > perf_freq.QuadPart / 500)
-                fprintf(stderr, "[PERF-RETIRE] frame %u voice %08X total %.3f ms waits %u wait %.3f ms max %.3f ms idle-polls %u\n",
-                    g_doa3_frames_presented, v,
-                    1000.0 * (end.QuadPart - perf_begin.QuadPart) / perf_freq.QuadPart, sleep_count,
-                    1000.0 * sleep_ticks / perf_freq.QuadPart, 1000.0 * max_sleep_ticks / perf_freq.QuadPart, idle_polls);
-        }
-    }
-    esp += 4;   /* ret */
-}
-
-/* DirectSound's DPC voice service (0x1F3FA0, ecx = the APU object): walks
- * three voice lists at +0x6C4/+0x6CC/+0x6D4 calling [obj->vtbl+0x14] on
- * obj = node-0x4C, then drains +0x6DC (obj = node-0x54). On 3.1, right after
- * mv_op.sfd, one node's object had a vtable whose slot 0x14 is AddRef
- * 0x1F1816 (a COM vtable, 0x218090/0x2180B4), so the "service" call read
- * a garbage `this` and wrote into host memory. Log every change to the lists
- * (frame, node, object, vtable, slot 0x14) so the bad node's arrival shows. */
-void sub_001F3FA0_gen(void);
-void sub_001F3FA0(void)
-{
-    enum { MAXN = 64 };
-    static uint32_t s_prev[4][MAXN]; static int s_prevn[4];
-    static int s_logs;
-    uint32_t apu = ecx, k;
-    if (apu >= 0x1000 && apu < 0x08000000u && s_logs < 200) {
-        for (k = 0; k < 4; k++) {
-            uint32_t head = apu + 0x6C4 + k * 8, node = MEM32(head), cur[MAXN];
-            int n = 0, i, j, changed = 0;
-            uint32_t off = (k < 3) ? 0x4C : 0x54;
-            while (node != head && node >= 0x1000 && node < 0x08000000u && n < MAXN) {
-                cur[n++] = node;
-                node = MEM32(node);
-            }
-            if (n != s_prevn[k]) changed = 1;
-            for (i = 0; i < n && !changed; i++) if (cur[i] != s_prev[k][i]) changed = 1;
-            if (changed || (node != head)) {
-                s_logs++;
-                fprintf(stderr, "[DSVOICE] frame %u list %u (head %08X)%s: %d nodes:", g_doa3_frames_presented,
-                        k, head, node != head ? " BROKEN" : "", n);
-                for (i = 0; i < n; i++) {
-                    uint32_t obj = cur[i] - off, vt = MEM32(obj);
-                    int seen = 0;
-                    for (j = 0; j < s_prevn[k]; j++) if (s_prev[k][j] == cur[i]) seen = 1;
-                    fprintf(stderr, " %s%08X(vt %08X s14 %08X)", seen ? "" : "+", cur[i], vt,
-                            (vt >= 0x1000 && vt < 0x08000000u) ? MEM32(vt + 0x14) : 0);
-                }
-                if (node != head) fprintf(stderr, " ->%08X", node);
-                fprintf(stderr, "\n");
-                for (i = 0; i < n; i++) {
-                    uint32_t obj = cur[i] - off, vt = MEM32(obj), w;
-                    if (vt >= 0x1000 && vt < 0x08000000u && MEM32(vt + 0x14) == 0x1F1816u) {
-                        fprintf(stderr, "[DSVOICE]   node %08X obj %08X looks like a COM object:", cur[i], obj);
-                        for (w = 0; w < 0x80; w += 4)
-                            fprintf(stderr, "%s%08X", (w % 32) ? " " : "\n[DSVOICE]     ", MEM32(obj + w));
-                        fprintf(stderr, "\n");
-                    }
-                }
-                fflush(stderr);
-            }
-            memcpy(s_prev[k], cur, n * sizeof(uint32_t));
-            s_prevn[k] = n;
-        }
-    }
-    sub_001F3FA0_gen();
 }
 
 /* The movie's ADX decode chain at the end of the movie. ADXT [0xC86480+0x3E00]

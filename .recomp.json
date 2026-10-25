@@ -9,7 +9,7 @@
   "status": "playable",
   "targets": ["Windows"],
   "toolchain": "xboxrecomp",
-  "approach": "Static recompilation of the XBE to C, with an NV2A-to-Direct3D 11 renderer and an XAudio2 APU",
+  "approach": "Static recompilation of the XBE to C, with an NV2A-to-Direct3D 11 renderer and high-level DirectSound on OpenAL Soft",
   "maintainers": [
     { "name": "MattPonton", "link": "https://github.com/MattPonton" },
     { "name": "Jay-Collins", "link": "https://github.com/Jay-Collins" }

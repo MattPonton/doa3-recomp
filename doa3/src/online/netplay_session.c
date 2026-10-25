@@ -18,6 +18,7 @@
 #include "kernel/kernel.h"
 #include "xbox_det.h"
 #include "xbe_layout.h"
+#include "audio/dsound_hle.h"   /* ds_det_*: buffer status per lockstep frame */
 
 /* Every guest address and function in this file is 3.0's (DOA3 NTSC-U).
  * On any other XBE, sessions refuse to start, so nothing here can write
@@ -29,10 +30,6 @@ void sub_000BB270(void);                       /* rebuilds the per-port button m
 #define NETPLAY_SUPPORTED 0
 #endif
 void doa3_netplay_force_pads(uint32_t mask);   /* recomp_manual.c */
-void mcpx_apu_det_begin(uint64_t xgscnt_base); /* apu_core.c: chip stepped per frame */
-uint64_t mcpx_apu_xgscnt_now(void);
-void mcpx_apu_det_end(void);
-void mcpx_apu_det_frame(void);
 
 #define GAME_MODE_VA   0x0047E723u
 #define GAME_MODE_VS   4
@@ -172,7 +169,7 @@ typedef struct {
     uint8_t        save[SAVE_LEN];
     uint8_t        joiner_layout[10];
     uint8_t        joiner_laysel;
-    uint64_t       xgscnt;        /* APU sample counter (100 ns units) at frame 0 */
+    uint64_t       xgscnt;        /* unused (was the APU sample counter); kept for the wire and replay formats */
     uint8_t       *sync;          /* concatenated k_sync bytes */
     uint32_t       sync_len;
 } np_params;
@@ -391,7 +388,7 @@ static void make_local_params(np_params *p, const uint8_t *joiner_layout, uint8_
     QueryPerformanceCounter(&q);
     p->seed = (uint32_t)q.QuadPart ^ (uint32_t)(q.QuadPart >> 32) ^ GetTickCount();
     xbox_det_current_bases(&p->bases);
-    p->xgscnt = mcpx_apu_xgscnt_now();
+    p->xgscnt = 0;
     guest_read(SAVE_VA, p->save, SAVE_LEN);
     if (joiner_layout) {
         memcpy(p->joiner_layout, joiner_layout, 10);
@@ -594,7 +591,7 @@ out:
 
 static void end_session(void)
 {
-    mcpx_apu_det_end();
+    ds_det_end();
     xbox_det_end();
     if (s_active_role == NP_ROLE_JOINER) {
         guest_write(SAVE_VA, s_save_backup, SAVE_LEN);
@@ -665,7 +662,7 @@ static void begin_session(void)
     s_last_scrst = MEM8(SCRST_VA);
     s_transitions = 0;
     xbox_det_begin(&s_params.bases);
-    mcpx_apu_det_begin(s_params.xgscnt);
+    ds_det_begin();
     s_state = NP_STATE_ACTIVE;
 }
 
@@ -883,7 +880,7 @@ frame:
         pad_to_guest(p, &zero, 0);
     }
     xbox_det_frame();
-    mcpx_apu_det_frame();
+    ds_det_frame();
     s_frame++;
 }
 

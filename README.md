@@ -2,7 +2,8 @@
 
 A native Windows port of the original Xbox **Dead or Alive 3**, made by
 translating the game's executable into C and running it on a purpose-built
-runtime (kernel, Direct3D 11 renderer, XAudio2 audio, input and networking).
+runtime (kernel, Direct3D 11 renderer, DirectSound on OpenAL Soft, input and
+networking).
 No emulator is involved.
 
 This fork targets the **JAPAN release** (Redump's name for the disc; title ID
@@ -199,6 +200,7 @@ replaces them. Pull requests are welcome.
 - Third-party libraries: [Dear ImGui](https://github.com/ocornut/imgui),
   [GekkoNet](https://github.com/HeatXD/GekkoNet),
   [miniupnpc](https://github.com/miniupnp/miniupnp),
+  [OpenAL Soft](https://github.com/kcat/openal-soft),
   [pl_mpeg](https://github.com/phoboslab/pl_mpeg) and
   [stb_image_write](https://github.com/nothings/stb).
 
@@ -217,4 +219,6 @@ The original source code in this repository is released under the
 [MIT License](LICENSE). Code derived from xemu keeps its original license,
 LGPL-2.1-or-later, as noted in those files' headers. Third-party libraries in
 `doa3/third_party` remain under their own licenses, included with each
-library.
+library. OpenAL Soft (LGPL-2.1) is linked statically into `DOA3.exe`; its
+complete source is in `doa3/third_party/openal-soft`, so the executable can
+be rebuilt against a modified copy.

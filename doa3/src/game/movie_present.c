@@ -23,7 +23,7 @@
 #include <math.h>
 #include <limits.h>
 
-#include "../apu/apu_xaudio2.h"
+#include "../audio/dsound_hle.h"
 #include "debug_capture.h"
 #include "video_settings.h"
 #include "recomp/gen/xbe_layout.h"   /* DOA3_XBE_ID_* */
@@ -169,10 +169,10 @@ void doa3_movie_arm(void)
     movie_decoder_stop();
     s_host_frame = NULL;
     /* Fresh voice: a movie that played to its end leaves its voice alive,
-     * and xa2_movie_start would reuse it with SamplesPlayed still counting
+     * and audio_movie_start would reuse it with its played count still running
      * from the previous movie -- the video clock started minutes ahead and
      * the next movie raced to catch up. */
-    xa2_movie_stop();
+    audio_movie_stop();
     free(s_host_audio); s_host_audio = NULL;
     s_host_audio_samples = s_host_audio_submitted = 0;
     s_host_audio_active = 0;
@@ -436,7 +436,7 @@ static void movie_queue_audio(void)
         uint32_t remaining = s_host_audio_samples - s_host_audio_submitted;
         int count = remaining > 2048 ? 2048 : (int)remaining;
         int end = s_host_audio_submitted + count == s_host_audio_samples;
-        if (!xa2_movie_submit(s_host_audio + (size_t)s_host_audio_submitted * 2,
+        if (!audio_movie_submit(s_host_audio + (size_t)s_host_audio_submitted * 2,
                               count, end))
             break;
         s_host_audio_submitted += count;
@@ -554,7 +554,7 @@ static const void *movie_host_frame(void)
         }
         QueryPerformanceFrequency(&s_host_frequency);
         QueryPerformanceCounter(&s_host_start);
-        if (s_prep.pcm_ok && xa2_movie_start()) {
+        if (s_prep.pcm_ok && audio_movie_start()) {
             s_host_audio = s_prep.pcm;
             s_host_audio_samples = s_prep.samples;
             s_prep.pcm = NULL;            /* owned by the presenter now */
@@ -576,7 +576,7 @@ static const void *movie_host_frame(void)
         movie_queue_audio();
         QueryPerformanceCounter(&now);
         if (s_host_audio_active) {
-            uint64_t played = xa2_movie_samples_played();
+            uint64_t played = audio_movie_samples_played();
             target = played >= s_host_audio_samples ? UINT_MAX :
                 (unsigned)(played * 30 / 48000);
         } else

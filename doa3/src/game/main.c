@@ -28,7 +28,8 @@ static void doa3_perf_shutdown(void);
 #include "../kernel/xbox_memory_layout.h"
 #include "../kernel/xbox_fiber.h"
 #include "../d3d/d3d8_xbox.h"
-#include "../audio/dsound_xbox.h"
+#include "../audio/dsound_hle.h"
+#include "../audio/oal_output.h"
 #include "recomp/gen/recomp_funcs.h"
 #include "recomp/recomp_dispatch.h"   /* recomp_lookup for the CRT initializers */
 #include "ui/doa3_ui.h"
@@ -54,7 +55,6 @@ static void doa3_perf_shutdown(void);
 static HWND          g_hwnd;
 static IDirect3D8   *g_d3d8;
 static IDirect3DDevice8 *g_d3d_device;
-static IDirectSound8 *g_dsound;   /* host DirectSound (mirrors burnout3) */
 
 static LRESULT CALLBACK doa3_wndproc(HWND h, UINT m, WPARAM w, LPARAM l)
 {
@@ -174,7 +174,7 @@ void doa3_pump_messages(void)
             fflush(stderr);
             netplay_shutdown();
             doa3_perf_shutdown();
-            { extern void apu_mix_dump(const char *tag); apu_mix_dump("exit"); }
+            audio_mix_dump("exit");
             ExitProcess(0);
         }
         TranslateMessage(&msg);
@@ -403,7 +403,7 @@ static void doa3_perf_frame(void)
 void doa3_present_frame(void)
 {
     InterlockedIncrement(&g_doa3_heartbeat);
-    { extern void doa3_apu_deliver_irq(void); doa3_apu_deliver_irq(); }
+    { extern void doa3_deliver_dpcs(void); doa3_deliver_dpcs(); }
     if (getenv("DOA3_NO_PRESENT")) return;   /* isolation: skip pump + present entirely */
     MSG msg;
     while (PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE)) {
@@ -415,7 +415,7 @@ void doa3_present_frame(void)
             fflush(stderr);
             netplay_shutdown();
             doa3_perf_shutdown();
-            { extern void apu_mix_dump(const char *tag); apu_mix_dump("exit"); }
+            audio_mix_dump("exit");
             ExitProcess(0);
         }
         TranslateMessage(&msg);
@@ -447,7 +447,7 @@ void doa3_present_async(int buf)
     extern void d3d8_Lock(void), d3d8_Unlock(void);
     extern long d3d8_AsyncPresent(int buf);
     InterlockedIncrement(&g_doa3_heartbeat);
-    { extern void doa3_apu_deliver_irq(void); doa3_apu_deliver_irq(); }
+    { extern void doa3_deliver_dpcs(void); doa3_deliver_dpcs(); }
     doa3_pump_messages();
     if (s_perf_enabled == 1) QueryPerformanceCounter(&s_perf_present);
     if (buf >= 0) {
@@ -1233,14 +1233,6 @@ static LONG WINAPI crash_veh(PEXCEPTION_POINTERS info)
                     return EXCEPTION_CONTINUE_EXECUTION;
                 /* decode failed -> fall through to zero page */
             }
-            /* MCPX APU MMIO registers: 0xFE800000-0xFE87FFFF (mirrors burnout3). The
-             * recompiled DirectSound driver pokes these to init/run the audio DSP. */
-            if (fault_xbox_va >= 0xFE800000u && fault_xbox_va < 0xFE880000u) {
-                extern bool apu_hook_handle_mmio(PCONTEXT ctx, uintptr_t fault_addr,
-                                                 uint32_t fault_xbox_va, int is_write);
-                if (apu_hook_handle_mmio(info->ContextRecord, fault, fault_xbox_va, is_write))
-                    return EXCEPTION_CONTINUE_EXECUTION;
-            }
             /* framebuffer / DMA / other GPU memory: back with a zero page */
             uintptr_t alloc_base = fault & ~(uintptr_t)0xFFFF;
             LPVOID p = VirtualAlloc((LPVOID)alloc_base, 0x10000,
@@ -1248,17 +1240,6 @@ static LONG WINAPI crash_veh(PEXCEPTION_POINTERS info)
             if (!p) p = VirtualAlloc((LPVOID)alloc_base, 0x10000, MEM_COMMIT, PAGE_READWRITE);
             if (p) {
                 memset(p, 0, 0x10000);
-                /* MCPX AC97 codec controller (0xFEC00000): the recompiled
-                 * DirectSound driver brings the codec up in CMcpxAPU::Initialize
-                 * (sub_001CE17A: release cold reset in the global control
-                 * register 0x12C, then poll global status 0x130 bit 8, primary
-                 * codec ready, sub_001CE1B8 / sub_001CE1A9) and reports
-                 * DSERR_NODRIVER when it never sets. There is no codec to
-                 * emulate here -- the APU mix is delivered by the host mixer --
-                 * so the page that backs the controller reports both codecs
-                 * ready. Only 0x12C, 0x130 and 0x17C are ever touched. */
-                if ((fault_xbox_va & 0xFFFF0000u) == 0xFEC00000u)
-                    *(volatile uint32_t *)((uintptr_t)p + 0x130) = 0x00000300u;
                 if (g_fault_logged < 60) {
                     fprintf(stderr, "  [NV2A] GPU mem page 0x%08X (%s)\n",
                             fault_xbox_va & 0xFFFF0000u, is_write ? "W" : "R");
@@ -1505,7 +1486,7 @@ static DWORD WINAPI diag_sampler(LPVOID p)
     (void)p;
     if (!getenv("DOA3_PROFILE")) return 0;
     while (!g_prof_frame_thread) Sleep(100);
-    /* The audio thread already runs the system timer at 1 ms (apu_core.c). */
+    /* The audio mixer thread already runs the system timer at 1 ms (dsound_hle.c). */
     next = GetTickCount64() + 10000;
     for (;;) {
         DWORD64 pcs[PROF_DEPTH];
@@ -1582,7 +1563,7 @@ static void doa3_atexit(void)
     doa3_perf_shutdown();
     extern void netplay_shutdown(void);
     xbox_InputStopRumble();
-    {   extern void apu_mix_dump(const char *tag); apu_mix_dump("exit"); }   /* diagnostics only */
+    audio_mix_dump("exit");   /* diagnostics only */
     fprintf(stderr, "[EXIT] process exiting via exit()/CRT (g_esp=0x%08X)\n", g_esp);
     fflush(stderr);
     netplay_shutdown();   /* tell the other player, close the router port */
@@ -1853,30 +1834,13 @@ int main(int argc, char **argv)
     /* Graphics: window + D3D8->D3D11 device (the NV2A translator renders here). */
     doa3_init_graphics();
 
-    /* Audio: MCPX APU emulation + host DirectSound (mirrors burnout3 main.c steps
-     * 5 + 10). DOA3's recompiled DirectSound init (DirectSoundCreate ->
-     * DownloadEffectsImage of dsstdfx.bin) talks to the APU via MMIO
-     * (0xFE800000-0xFE87FFFF, routed in the VEH) and to the host DirectSound
-     * backend; without these the game's audio init fails and its boot state
-     * machine never advances to load assets. */
-    {
-        typedef struct MCPXAPUState MCPXAPUState;
-        extern MCPXAPUState *mcpx_apu_init_standalone(uint8_t *ram_ptr);
-        extern MCPXAPUState *g_apu_state;
-        /* APU reads voice data from physical RAM, mapped at g_xbox_mem_offset+0. */
-        uint8_t *phys_ram = (uint8_t *)(uintptr_t)g_xbox_mem_offset;
-        g_apu_state = mcpx_apu_init_standalone(phys_ram);
-        fprintf(stderr, "  APU: %s\n", g_apu_state ? "MCPX APU emulation initialized"
-                                                    : "APU init FAILED");
-        fflush(stderr);
-    }
-    {
-        extern HRESULT xbox_DirectSoundCreate(void *pGuid, IDirectSound8 **ppDS, void *pUnkOuter);
-        HRESULT hr = xbox_DirectSoundCreate(NULL, &g_dsound, NULL);
-        fprintf(stderr, "  DirectSound: %s (hr=0x%08lX)\n",
-                SUCCEEDED(hr) ? "host DirectSound created" : "FAILED", (unsigned long)hr);
-        fflush(stderr);
-    }
+    /* Audio: the game's DirectSound calls are high level (recomp_dsound.c ->
+     * src/audio/dsound_hle.c) and play on OpenAL Soft; the MCPX APU is not
+     * emulated. Voices read their samples from guest memory, mapped at
+     * g_xbox_mem_offset + 0. */
+    fprintf(stderr, "  DirectSound: %s\n",
+            ds_init((uint8_t *)(uintptr_t)g_xbox_mem_offset) ? "OpenAL Soft ready" : "no sound");
+    fflush(stderr);
 
     /* Convert this (main) OS thread into the primary cooperative fiber before the
      * game runs, so DOA3's CRI worker threads can be spawned as fibers and run

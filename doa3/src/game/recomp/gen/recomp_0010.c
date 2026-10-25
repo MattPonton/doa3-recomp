@@ -14625,7 +14625,7 @@ loc_001F3F9C: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_001F3FA0_gen(void)
+void sub_001F3FA0(void)
 {
     uint32_t _fs0 = 0; /* flag operands kept for a later jcc */
     uint32_t ebp;
@@ -19944,7 +19944,7 @@ loc_001F5154: ;
  * CC: cdecl, 0 params, returns int_or_void
  * Frame: fpo_leaf
  */
-void sub_001F5157_gen(void)
+void sub_001F5157(void)
 {
     int _flags = 0; /* fallback flag var */
 

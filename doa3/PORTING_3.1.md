@@ -4241,3 +4241,76 @@ seed already covers a human fighter), and the 0.2.4 [STAGGER-TRACE] /
 The colour switch is now "Random includes alternate costume colors from
 disc"; user-facing text (dip switch help, README, DEBUG.md) uses American
 spelling. The ini key RandomAltCostumes is unchanged.
+
+## DirectSound high level on OpenAL Soft; MCPX APU emulation removed
+
+The recompiled DSOUND library (section DSOUND, 0x1F1260-0x20C6A4) no longer
+runs. It drove the MCPX APU, emulated from xemu's voice processor
+(src/apu), which is gone with its MMIO hook, interrupt, retire-wait and
+voice-list overrides (0x1F5157, 0x1F3FA0; their generated bodies are plain
+again), the APU aperture reservation and the AC97 codec page. The game's
+DirectSound calls are now host code on OpenAL Soft 1.25.2 (vendored in
+third_party/openal-soft, linked static; LGPL-2.1).
+
+The entry points are the DSOUND functions called from outside DSOUND: the
+game's sound module (0xA4740-0xA6450) and CRI's mwSnd driver
+(0x191D90-0x19A150). CRI's error strings name eleven of them
+("IDirectSoundBuffer_Play return error in mwSndPlay", ...); the rest follow
+from the COM adjustor (this-8 IDirectSound, this-0x1C IDirectSoundBuffer),
+the ret sizes and the bodies:
+
+| VA | function |
+| --- | --- |
+| 0x1F2E65 | DirectSoundCreate |
+| 0x1F1F01 / 0x1F13C5 | DirectSoundDoWork / DirectSoundUseFullHRTF (no-ops) |
+| 0x1F2CAB | IDirectSound_CreateSoundBuffer |
+| 0x1F1D46 | IDirectSound_GetSpeakerConfig (stereo; the movie player reads the AC3 bit) |
+| 0x1F1D62 | IDirectSound_DownloadEffectsImage (success) |
+| 0x1F2A27 | IDirectSound_SetI3DL2Listener |
+| 0x1F29BD / 0x1F29F2 / 0x1F23CC | listener SetPosition / SetVelocity / CommitDeferredSettings |
+| 0x1F13AF | IDirectSoundBuffer_Release |
+| 0x1F2A47 / 0x1F1E59 | SetBufferData / SetLoopRegion |
+| 0x1F1DF9 / 0x1F1E1D / 0x1F1E35 | Play / Stop / StopEx |
+| 0x1F1E79 / 0x1F1E95 / 0x1F1EB5 | GetStatus / GetCurrentPosition / SetCurrentPosition |
+| 0x1F1ED1 | Lock (Unlock, 0x1F13AA, is `xor eax,eax; ret 20` and stays) |
+| 0x1F1D89 / 0x1F1DA5 / 0x1F23E4 | SetVolume / SetHeadroom / SetFrequency |
+| 0x1F1DC1 / 0x1F1DDD | SetMixBins / SetMixBinVolumes |
+| 0x1F2400 / 0x1F2424 / 0x1F2459 | 3D SetMinDistance / SetPosition / SetVelocity |
+
+No DirectSound streams are created. The overrides are in
+recomp/recomp_dsound.c (listed in overrides_3.1.txt, probe wrappers
+removed); the engine is src/audio/dsound_hle.c:
+
+- Each buffer is an OpenAL source with a callback buffer that reads the
+  buffer's guest memory at the voice's own cursor (PCM 8/16, Xbox ADPCM:
+  36-byte IMA blocks per channel, 64 samples each), following the loop
+  region. Play cursors, Lock (pointers into that memory) and CRI's ring
+  buffer, rewritten while it plays, behave as on the hardware. Buffers
+  created with a size get guest memory from xbox_HeapAlloc.
+- Levels as DSOUND sets them: volume - headroom (mB), with the 600 mB
+  default headroom of 2D buffers (0 for 3D, mix-in and FX-in; 0x1F27C9).
+  Mixbin volumes become a 2x2 channel-to-side matrix for 2D voices; a 3D
+  (mono) voice plays at its loudest output bin through OpenAL's panning,
+  z negated (DirectSound is left-handed), inverse-distance clamped from
+  SetMinDistance. DSMIXBIN_I3DL2 (10) is the send to an EAX reverb, which is
+  I3DL2's model, so SetI3DL2Listener's twelve values map one to one (decay
+  as given: the 4x factor of 0.0.171 was fitted to the old host reverb).
+  LFE and the GP effect sends are not played. The 3D voices go through
+  OpenAL Soft's HRTF by default (2D voices play direct and skip it);
+  DOA3_HRTF=0 in the environment gives plain stereo panning.
+- The voices play on a loopback device; a mixer thread renders 512-sample
+  periods and queues them on the real device (src/audio/oal_output.c, the
+  former XAudio2 backend), keeping four queued (~43 ms). The master volume,
+  DOA3_WAVCAP, the clip/starvation meter and the last-30-s capture
+  (now Diagnostics\audio_mix_*.wav) still work on that final mix. Host
+  movie audio is a stream on the same loopback context; its clock subtracts
+  the output queue.
+- Online sessions: the chip was stepped 800 samples per lockstep frame so
+  driver work matched on both machines. Now only status and play cursor
+  are guest-visible, so ds_det_* advance a copy of them by 800 samples x
+  frequency / 48 kHz per frame and the game reads that copy; what is heard
+  still follows the device. The params' xgscnt field is kept (0) for the
+  wire and replay formats.
+
+Tests for the removed code (apu_idle, apu_irq, audio_mix) are removed;
+audio_capture builds from oal_output.c.
