@@ -4978,3 +4978,8 @@ lockstep from power-on, so they never diverge. Experiment:
 - DOA3_RAM_DUMP_FRAME=n: guest RAM written at frame n
   (doa3_ram_frame_<n>_<seconds>.bin).
 Two launches with no input should then be byte-identical at frame n.
+
+3.1's own GAME_MODE enum (Matt's Ghidra project; 0x5A2858), replacing
+the DOA2 list above: 0 attract, 1 menu, 2 story, 3 time attack, 4 versus,
+5 survival, 7 sparring single, 8 options, 9 tag battle, 10 team battle,
+11 sparring tag, 12 watch single, 13 watch tag, 20 theater.
