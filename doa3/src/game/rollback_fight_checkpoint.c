@@ -309,7 +309,7 @@ static void diff_map(unsigned part,const unsigned char *a,const unsigned char *b
         size_t odd=0;
         for(size_t k=0;k<n;++k)if(a[k]!=b[k]){
             int fiber=-1;const char *field=xbox_fiber_snapshot_field(k,&fiber);
-            if(!field || strcmp(field,"r_sehebp"))++odd;
+            if(!field || (strcmp(field,"r_sehebp") && strcmp(field,"r_fp_stack")))++odd;
             if(lines<600){++lines;fprintf(stderr,"[ROLLBACK-DIFFMAP]   fibers +%zX: fiber %d field %s\n",k,fiber,field ? field:"?");}
         }
         g_doa3_diff_fiber_unexplained=odd;
@@ -626,6 +626,17 @@ static unsigned char *cmp_parts;static uint32_t *cmp_page_list;static unsigned c
 static uint32_t lean_dev;
 static double lean_save_ms_sum;static unsigned lean_save_n,lean_save_refused;
 #define LEAN_SKIP(i) ((i)==DOA3_CP_GPU_FRONTEND)
+/* The clock / audio pins are try-locks a host thread can hold for a moment;
+ * inside a rollback transaction a refusal is never final, so retry. */
+static int acquire_patient(Doa3FightCheckpoint *s)
+{
+    for(unsigned attempt=0;attempt<200;++attempt){
+        if(acquire_impl(s,attempt==199))return 1;
+        if(!context(s) || s->held)return 0;
+        Sleep(attempt<20 ? 0:1);
+    }
+    return 0;
+}
 static double now_ms(void){LARGE_INTEGER c,f;QueryPerformanceCounter(&c);QueryPerformanceFrequency(&f);return 1000.0*(double)c.QuadPart/(double)f.QuadPart;}
 int doa3_fight_lean_begin(Doa3FightCheckpoint *s)
 {
@@ -648,7 +659,7 @@ int doa3_fight_lean_begin(Doa3FightCheckpoint *s)
 }
 static int lean_capture(Doa3FightCheckpoint *s,unsigned char *out)
 {
-    if(!acquire_impl(s,0))return 0;
+    if(!acquire_patient(s))return 0;
     int ok=1;
     for(unsigned i=0;i<DOA3_CP_PARTS && ok;++i){
         if(LEAN_SKIP(i))continue;
@@ -724,7 +735,9 @@ static size_t lean_compare(const unsigned char *now_parts,int report)
         if(i==DOA3_CP_FIBERS){
             for(size_t k=0;k<lean_size[i];++k)if(cmp_parts[lean_off[i]+k]!=now_parts[lean_off[i]+k]){
                 int fiber;const char *field=xbox_fiber_snapshot_field(k,&fiber);
-                if(field && !strcmp(field,"r_sehebp"))continue;
+                /* r_sehebp: inherited-frame global; r_fp_stack: x87 slots of a
+                 * parked task (the stack is empty across its yield call) */
+                if(field && (!strcmp(field,"r_sehebp") || !strcmp(field,"r_fp_stack")))continue;
                 ++odd;
                 if(report && lines<200){++lines;fprintf(stderr,"[ROLLBACK-SYNC]   fibers +%zX fiber %d %s\n",k,fiber,field ? field:"?");}
             }
@@ -787,25 +800,25 @@ int doa3_fight_lean_rollback(Doa3FightCheckpoint *s,unsigned back,int (*advance)
     if(!acquire_before_rewind(s)){return xbox_kernel_replay_end(1) ? 0:-1;}
     s->roundtrip_pinned=1;release(s);
     int gated=0,result=0;
-    if(!acquire(s))goto fatal;
+    if(!acquire_patient(s))goto fatal;
     gated=mcpx_apu_replay_begin();release(s);
     if(!gated){s->roundtrip_pinned=0;mcpx_apu_rollback_release();xbox_det_checkpoint_release();
         return xbox_kernel_replay_end(1) ? 0:-1;}
     double t0=now_ms();
-    if(!acquire(s))goto fatal;
+    if(!acquire_patient(s))goto fatal;
     int restored=lean_restore(s,target->buf,back);release(s);
     if(!restored)goto fatal;   /* partially restored: no safe way back */
     double t1=now_ms();
     s->roundtrip_pinned=0;mcpx_apu_rollback_release();xbox_det_checkpoint_release();
     result=advance(ctx);
     double t2=now_ms();
-    if(!acquire(s))goto fatal;
+    if(!acquire_patient(s))goto fatal;
     s->roundtrip_pinned=1;release(s);
     if(result && compare){
         size_t odd=lean_compare(lean[xbox_ram_delta_seq()%LEAN_RING].buf,1);
         if(unexplained)*unexplained=odd;
     }
-    if(!acquire(s))goto fatal;
+    if(!acquire_patient(s))goto fatal;
     int ended=mcpx_apu_replay_end(!result);release(s);if(!ended)goto fatal;
     if(!xbox_kernel_replay_end(!result))goto fatal;
     s->roundtrip_pinned=0;mcpx_apu_rollback_release();xbox_det_checkpoint_release();

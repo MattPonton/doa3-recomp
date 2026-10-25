@@ -125,7 +125,7 @@ int doa3_native_frame_run(void *context){
        !xbox_kernel_replay_owned() || !xbox_kernel_replay_healthy() ||
        !g_apu_det)return 0;
     uint64_t first=f->loop->intervals;
-    if((first!=0 && !f->all_hidden) || !doa3_input_tape_can_replay(f->tape,first+1,count) ||
+    if((first!=0 && !f->on_frame) || !doa3_input_tape_can_replay(f->tape,first+1,count) ||
        !xbox_kernel_replay_frame_budget(count) || !doa3_input_tape_replay(f->tape,first+1))return 0;
     if(!xbox_kernel_replay_fail_stop(1)){doa3_input_tape_abort(f->tape);return 0;}
     /* One total timer; no per-helper/task instrumentation or trace I/O. */

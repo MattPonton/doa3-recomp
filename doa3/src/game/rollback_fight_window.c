@@ -113,7 +113,9 @@ int doa3_fight_lean_rollback(Doa3FightCheckpoint *,unsigned,int (*)(void *),void
 void doa3_fight_lean_stats(double *,unsigned *,unsigned *);
 void doa3_fight_lean_end(void);
 #define SYNC_RING 16u
-static int sync_mode=-1,sync_state,sync_auditing,sync_compare=1;
+static int sync_mode=-1,sync_state,sync_auditing;
+static unsigned sync_compare=30,sync_compares;   /* compare every n-th rollback (0 = never) */
+static double sync_frame_ms_sum;static LONGLONG sync_last_qpc;
 static unsigned sync_depth,sync_every=1,sync_warm,sync_settle,sync_frames;
 static unsigned sync_rollbacks,sync_skipped,sync_mismatches,sync_unadmitted;
 static double sync_restore_sum,sync_replay_sum,sync_worst;
@@ -168,8 +170,9 @@ static void sync_boundary(void){
         if(!sync_tape || !sync_auditing || !doa3_input_tape_record(sync_tape,1)){sync_stop("input/audit start refused");return;}
         sync_frames=0;sync_rollbacks=sync_skipped=sync_mismatches=sync_unadmitted=0;
         sync_restore_sum=sync_replay_sum=sync_worst=0;sync_total_rollbacks=sync_total_mismatches=0;
-        fprintf(stderr,"[ROLLBACK-SYNC] running: rollback %u frame(s) every %u frame(s), logic-only resimulation, compare %s\n",
-            sync_depth,sync_every,sync_compare ? "on":"off");
+        fprintf(stderr,"[ROLLBACK-SYNC] running: rollback %u frame(s) every %u frame(s), logic-only resimulation; "
+            "every %u-th rollback renders its last frame and is compared with the native state\n",sync_depth,sync_every,sync_compare);
+        sync_compares=0;sync_frame_ms_sum=0;sync_last_qpc=0;
         xbox_det_frame();mcpx_apu_det_frame();return;
     }
     /* sync_state 2: one native frame (id loop.intervals+1) just ran. */
@@ -190,9 +193,13 @@ static void sync_boundary(void){
             doa3_input_tape_can_replay(sync_tape,id-sync_depth+1,sync_depth);
         for(unsigned k=0;ok && k<sync_depth;++k)ok=sync_frame_ok[(id-k)%SYNC_RING];
         if(ok){
-            Doa3NativeFrame nf={&loop,sync_tape,sync_depth,0,1,1,1,sync_on_frame,sync_fight};
+            /* A compared rollback renders its last frame like Jay's replay,
+             * so render output matches too; the others are all hidden. */
+            int compare=sync_compare && (sync_total_rollbacks%sync_compare)==0;
+            Doa3NativeFrame nf={&loop,sync_tape,sync_depth,0,1,1,!compare,sync_on_frame,sync_fight};
             size_t odd=0;double mr=0,mp=0;
-            int r=doa3_fight_lean_rollback(sync_fight,sync_depth,doa3_native_frame_run,&nf,sync_compare,&odd,&mr,&mp);
+            int r=doa3_fight_lean_rollback(sync_fight,sync_depth,doa3_native_frame_run,&nf,compare,&odd,&mr,&mp);
+            if(r>0 && compare)++sync_compares;
             if(r<0)fatal("sync rollback");
             if(r>0){
                 if(loop.intervals!=id)fatal("sync resimulation ended at the wrong interval");
@@ -203,13 +210,18 @@ static void sync_boundary(void){
             }else ++sync_skipped;
         }else ++sync_skipped;
     }
+    {   LARGE_INTEGER q,fq;QueryPerformanceCounter(&q);QueryPerformanceFrequency(&fq);
+        if(sync_last_qpc)sync_frame_ms_sum+=1000.0*(double)(q.QuadPart-sync_last_qpc)/(double)fq.QuadPart;
+        sync_last_qpc=q.QuadPart; }
     if(sync_frames%300==0){
         double save_ms;unsigned saves,refused;doa3_fight_lean_stats(&save_ms,&saves,&refused);
-        fprintf(stderr,"[ROLLBACK-SYNC] last 300 frames: %u rollbacks of %u frames (restore %.2f ms, resimulation %.2f ms average, worst %.2f ms), "
-            "%u skipped, %u frames not admitted for replay, %u with differences; saves %u (%.3f ms average, %u refused)\n",
-            sync_rollbacks,sync_depth,sync_rollbacks ? sync_restore_sum/sync_rollbacks:0,sync_rollbacks ? sync_replay_sum/sync_rollbacks:0,
-            sync_worst,sync_skipped,sync_unadmitted,sync_mismatches,saves,save_ms,refused);
-        sync_rollbacks=sync_skipped=sync_mismatches=sync_unadmitted=0;sync_restore_sum=sync_replay_sum=sync_worst=0;
+        fprintf(stderr,"[ROLLBACK-SYNC] last 300 frames (%.2f ms a frame): %u rollbacks of %u frames (restore %.2f ms, resimulation %.2f ms "
+            "including its saves, average; worst %.2f ms), %u skipped, %u frames not admitted for replay; %u compared, %u with differences; "
+            "saves %u (%.3f ms average, %u refused)\n",
+            sync_frame_ms_sum/300.0,sync_rollbacks,sync_depth,sync_rollbacks ? sync_restore_sum/sync_rollbacks:0,sync_rollbacks ? sync_replay_sum/sync_rollbacks:0,
+            sync_worst,sync_skipped,sync_unadmitted,sync_compares,sync_mismatches,saves,save_ms,refused);
+        sync_rollbacks=sync_skipped=sync_mismatches=sync_unadmitted=sync_compares=0;sync_restore_sum=sync_replay_sum=sync_worst=0;
+        sync_frame_ms_sum=0;
     }
     {   /* the tape holds 600 frames: start a new one well before it fills */
         Doa3InputTapeStats st={0};doa3_input_tape_stats(sync_tape,&st);
@@ -232,7 +244,7 @@ void doa3_fight_window_probe_boundary(void){
             if(sync_depth<1)sync_depth=1;
             if(sync_depth>DOA3_NATIVE_REPLAY_MAX_FRAMES-1)sync_depth=DOA3_NATIVE_REPLAY_MAX_FRAMES-1;
             v=getenv("DOA3_ROLLBACK_SYNC_EVERY");if(v && atoi(v)>0)sync_every=(unsigned)atoi(v);
-            v=getenv("DOA3_ROLLBACK_SYNC_COMPARE");if(v && *v=='0')sync_compare=0;
+            v=getenv("DOA3_ROLLBACK_SYNC_COMPARE");if(v && *v)sync_compare=(unsigned)atoi(v);
             g_doa3_logic_only=1;g_doa3_skip_map=1;
             enabled=0;   /* the window test does not run alongside */
         }

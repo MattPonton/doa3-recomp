@@ -4840,3 +4840,24 @@ DOA3_ROLLBACK_SYNC_COMPARE=0 to skip the comparison), solo Sparring:
   stamps, push-buffer pointers, dead stack, r_sehebp). Unexplained
   differences are logged per frame; a summary every 300 frames gives
   rollbacks, restore and resimulation times, skips and save cost.
+
+## 0.2.6-rollback.19 - sync test fixes
+
+Matt's SYNCTEST run of .18 (depth 4, every frame): ~600 rollbacks ran
+(resimulation ~8.6-9.4 ms for 4 frames including the per-frame saves; the
+game ran ~21 ms a frame, so it stuttered), then it stopped: after a
+resimulation the clock pin's try-lock was refused once and the
+transaction treated it as fatal. Every comparison differed by ~70 KB:
+- the parked tasks' saved x87 stacks (r_fp_stack of fibers 19 / 20): dead
+  slots, the stack is empty across a yield -- now accepted;
+- render output of the last frame (e.g. 0x587E6C.., matrices next to the
+  deformation scratch): the native frame drew it, the hidden resimulation
+  did not. Comparing a hidden last frame cannot match.
+Fixes:
+- every pin acquire inside a rollback transaction, and the per-frame save,
+  retries (200 tries, yielding) instead of failing on a held try-lock;
+- every n-th rollback (DOA3_ROLLBACK_SYNC_COMPARE=n, default 30, 0 = never)
+  renders its last resimulated frame, as Jay's replay does, and only those
+  are compared; the others stay all hidden and uncompared;
+- the 300-frame summary adds the average frame time and the number of
+  compared rollbacks.
