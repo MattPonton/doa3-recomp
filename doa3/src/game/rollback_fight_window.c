@@ -251,9 +251,13 @@ static void ram_dump_check(void){
             fprintf(stderr,"[RAM-DUMP] frame %u: mode 0x5A2858=%u, fight phase 0x596A37=%u, 0x596AA5=%u\n",
                 g_doa3_frames_presented,now&255,(now>>8)&255,now>>16);}
     }
-    /* rollback.24: the first frame with the fight phase running (0x596A37 == 1),
-     * whatever the mode (Sparring is 7; Versus logged above) */
-    if(done || MEM8(0x596A37)!=1)return;
+    /* rollback.25: Matt's runs of .24 show mode 0 menus/title (where the
+     * phase byte is already 1), 1 after the title, 4 Versus; in Versus the
+     * phase goes 5 (loading) -> 0 -> 1 when the fight starts. Dump at the
+     * first frame of a fight: mode 4 or 7, phase 1, after a phase 5. */
+    static int loaded;
+    if(MEM8(0x596A37)==5)loaded=1;
+    if(done || !loaded || MEM8(0x596A37)!=1 || (MEM8(0x5A2858)!=4 && MEM8(0x5A2858)!=7))return;
     done=1;
     char name[64];snprintf(name,sizeof name,"doa3_ram_dump_%llu.bin",(unsigned long long)(GetTickCount64()/1000));
     FILE *f=fopen(name,"wb");

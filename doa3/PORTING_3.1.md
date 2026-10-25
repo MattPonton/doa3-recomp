@@ -4939,3 +4939,11 @@ boundary of any fight scene (0x5A2858 == 7) and logs the game mode bytes
 another training mode), not "fight scene". The dump now fires at the
 first frame whose fight phase 0x596A37 is 1 in any mode, and every change
 of 0x5A2858 / 0x596A37 / 0x596AA5 is logged so Versus's values are known.
+
+## 0.2.6-rollback.25 - RAM dump at the Versus fight start
+
+Matt's runs of .24: mode 0x5A2858 = 0 from boot (the phase byte 0x596A37
+is already 1 there, so .24 dumped at the title), 1 after it, 4 in Versus;
+Versus loading is phase 5, then 0, then 1 when the fight starts (run 1:
+frames 2620 / 2672 / 2973; run 2, longer in the menus: 4086 / 4150 / 4451).
+The dump now waits for phase 1 in mode 4 (or 7) after a phase 5.
