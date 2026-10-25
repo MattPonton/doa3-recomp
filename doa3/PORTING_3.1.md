@@ -4932,3 +4932,10 @@ Matt: Sparring is a training mode (one player and a dummy), not a battle;
 the netplay target is Versus. DOA3_RAM_DUMP now fires at the first
 boundary of any fight scene (0x5A2858 == 7) and logs the game mode bytes
 0x596A37 / 0x596AA5 (to learn Versus's value).
+
+## 0.2.6-rollback.24 - RAM dump trigger
+
+.23 did not dump in Versus: 0x5A2858 is the game mode (7 Sparring, 11
+another training mode), not "fight scene". The dump now fires at the
+first frame whose fight phase 0x596A37 is 1 in any mode, and every change
+of 0x5A2858 / 0x596A37 / 0x596AA5 is logged so Versus's values are known.

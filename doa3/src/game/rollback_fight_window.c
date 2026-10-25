@@ -243,10 +243,18 @@ static void sync_boundary(void){
 static void ram_dump_check(void){
     static int on=-1,done;
     if(on<0){const char *v=getenv("DOA3_RAM_DUMP");on=v && *v=='1';}
-    /* rollback.23: any fight (scene 7), Versus included, not only Sparring */
-    if(!on || done || MEM8(0x5A2858)!=7)return;
+    if(!on)return;
+    {   /* rollback.24: log every change of the mode bytes, to learn Versus */
+        static unsigned last=0xFFFFFFFFu,lines;
+        unsigned now=MEM8(0x5A2858)|MEM8(0x596A37)<<8|MEM8(0x596AA5)<<16;
+        if(now!=last && lines<200){++lines;last=now;
+            fprintf(stderr,"[RAM-DUMP] frame %u: mode 0x5A2858=%u, fight phase 0x596A37=%u, 0x596AA5=%u\n",
+                g_doa3_frames_presented,now&255,(now>>8)&255,now>>16);}
+    }
+    /* rollback.24: the first frame with the fight phase running (0x596A37 == 1),
+     * whatever the mode (Sparring is 7; Versus logged above) */
+    if(done || MEM8(0x596A37)!=1)return;
     done=1;
-    fprintf(stderr,"[RAM-DUMP] fight scene reached: game mode byte 0x596A37=%u, 0x596AA5=%u\n",MEM8(0x596A37),MEM8(0x596AA5));
     char name[64];snprintf(name,sizeof name,"doa3_ram_dump_%llu.bin",(unsigned long long)(GetTickCount64()/1000));
     FILE *f=fopen(name,"wb");
     if(!f){fprintf(stderr,"[RAM-DUMP] could not create %s\n",name);return;}
