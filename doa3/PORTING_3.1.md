@@ -4886,3 +4886,28 @@ Now:
   to 60 Hz of wall time, without worker laps while waiting.
 - 180510 is out of the default skip list; its drawing child 180730 stays.
 - The 300-frame summary adds the save cost per boundary by part.
+
+## 0.2.6-rollback.21 - Online carousel prototype removed
+
+Matt's SYNCTEST runs of .20: depth 2 ran clean at 60 Hz; depth 4 slowed
+(~19 ms a frame: restore 0.7, resimulation ~6.2, saves 4 x ~0.95 -- RAM
+delta 0.35, heap 0.33, audio 0.15, files 0.11). Compares: fighter, flow
+and heap state matched throughout; the only difference left is 0x5AA224,
+the 2D sprite manager's node pointer (0x5A91A8.. node table), not fixed
+by keeping 180510.
+
+Direction (Matt): netcode next, reusing the connection layer (netplay.c,
+STUN / join codes / GekkoNet) and the Escape menu's Online tab; the Online
+carousel prototype goes. A sign-in lobby with challenges may come later.
+
+Removed (restoring doa3.1's code wherever it was patched):
+- src/game/online_menu.c/.h, src/ui/online_menu_view.cpp/.h,
+  tools/recomp/online_carousel.py, tests/online_menu,
+  tests/rollback_shadow/sprite_test.py;
+- the recomp_0003.c carousel patch (descriptor-table relocation, sprite
+  bounds, the Mode Select confirm hook), reversed exactly;
+- the overrides of 0xCDCB0 / 0xCE070 / 0xCE530 / 0xD5F40 / 0xD6360 /
+  0xD6810 (back to their stack-probe wrappers) and doa3_online_sprite in
+  sub_0006DF00;
+- the overlay hooks in doa3_ui.cpp, the shadow test's sprite guard and
+  rollback_shadow.py's descriptor check.

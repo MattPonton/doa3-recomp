@@ -17,7 +17,7 @@ faithful 1:1 port of that version. Changes to how the game plays are optional
 performance for low-end PCs.
 
 **Branch `doa3.1-rollback`: experimental rollback development.** This branch
-merges `doa3.1` with the rollback work and the Online carousel prototype. It
+merges `doa3.1` with the rollback work (the Online carousel prototype has been removed). It
 does **not** provide playable online rollback. See
 [rollback status and test results](doa3/ROLLBACK.md).
 

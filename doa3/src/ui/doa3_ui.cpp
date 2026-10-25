@@ -2,8 +2,6 @@
 #include "combat_overlay.h"
 #include "combat_world.h"
 #include "performance_overlay.h"
-#include "online_menu_view.h"
-#include "../game/online_menu.h"
 #include "../game/combat_debug.h"
 #include "../game/training_dummy.h"
 
@@ -1055,7 +1053,6 @@ extern "C" int doa3_ui_init(void)
     /* No imgui.ini: the overlay is one centred window, and writing a settings
      * file into the game's working directory is just clutter. */
     io.IniFilename = nullptr;
-    InitOnlineMenuFonts();
     /* Navigation and binding capture use the game's unified controller path. */
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
     ImGui::StyleColorsDark();
@@ -1067,7 +1064,6 @@ extern "C" int doa3_ui_init(void)
         return 0;
     }
 
-    InitOnlineMenuRenderer(dev, ctx);
     g_ready = true;
     return 1;
 }
@@ -1077,7 +1073,6 @@ extern "C" void doa3_ui_shutdown(void)
     combat_world_shutdown();
     if (!g_ready) return;
     g_ready = false;
-    ShutdownOnlineMenuRenderer();
     ImGui_ImplDX11_Shutdown();
     ImGui_ImplWin32_Shutdown();
     ImGui::DestroyContext();
@@ -1110,11 +1105,6 @@ extern "C" int doa3_ui_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
      * handled here rather than as a bindable key so the menu can always be
      * closed, whatever the mapping says. */
     if (msg == WM_KEYDOWN && wp == VK_ESCAPE && !(lp & (1 << 30))) {
-        OnlineMenuState online = online_menu_state(g_doa3_frames_presented);
-        if (!g_visible && online.visible && online.page != ONLINE_MENU_CAROUSEL) {
-            online_menu_queue(ONLINE_MENU_BACK);
-            return 1;
-        }
         if (g_visible && g_screenshot_listening) {
             g_screenshot_listening = false;
             SetStatus("Screenshot binding cancelled");
@@ -1145,7 +1135,7 @@ extern "C" int doa3_ui_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         }
     }
 
-    if (!g_ready || (!g_visible && !online_menu_state(g_doa3_frames_presented).visible)) return 0;
+    if (!g_ready || !g_visible) return 0;
 
     /* Grab the raw VK for a listening row before ImGui swallows it. */
     if (msg == WM_KEYDOWN && g_listening >= 0 && g_armed && wp != VK_ESCAPE)
@@ -1181,7 +1171,7 @@ extern "C" void doa3_ui_render(void)
     }
     /* Nothing to do on a normal frame unless the menu is open or online play
      * has something to say over the game. */
-    if (!g_visible && !online_menu_state(g_doa3_frames_presented).visible && !NetplayBannerPending() && !combat_debug_flags() && !PerformanceOverlayEnabled() && training.mode==TRAINING_IDLE) return;
+    if (!g_visible && !NetplayBannerPending() && !combat_debug_flags() && !PerformanceOverlayEnabled() && training.mode==TRAINING_IDLE) return;
     if (!g_ready && !doa3_ui_init()) return;
 
     ID3D11DeviceContext *ctx = d3d8_GetD3D11Context();
@@ -1217,7 +1207,6 @@ extern "C" void doa3_ui_render(void)
     DrawCombatDebugOverlay();
     DrawPerformanceOverlay();
     DrawTrainingBanner();
-    DrawOnlineMainMenu();
     if (g_visible) DrawMenu();
     DrawNetplayBanner();
 

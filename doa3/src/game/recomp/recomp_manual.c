@@ -37,7 +37,6 @@
 
 #include "apu/apu_irq.h"
 #include "../../perf_capture.h"
-#include "../online_menu.h"
 #include "nv2a/nv2a_submission.h"
 #include "nv2a/nv2a_pgraph_d3d11.h"
 #include "nv2a/nv2a_targets.h"
@@ -52,125 +51,6 @@ extern void xbox_fiber_wake(uint32_t event_va);
 
 #if defined(DOA3_XBE_ID_JAPAN)
 #include "../rollback_guest_render.inc"
-/* The caller D6300 still runs D5110 to refresh mapped menu inputs. Only
- * native carousel navigation/Back are suspended while Online owns them. */
-extern unsigned g_doa3_frames_presented;
-extern int doa3_ui_visible(void);
-void sub_000D6360_gen(void);
-void sub_000D6810_gen(void);
-void sub_000D5F40_gen(void);
-/* Allocate a separate descriptor table: the original has exactly ten slots
- * followed immediately by function pointers. Keep native mode IDs intact. */
-unsigned g_online_menu_descriptors = 0x29CB20;
-void sub_000CDCB0_gen(void);
-void sub_000CDCB0(void)
-{
-    if (g_online_menu_descriptors == 0x29CB20) {
-        unsigned table = xbox_HeapAlloc(11*12, 16);
-        if (table) {
-            for (unsigned i=0; i<10*12; ++i) MEM8(table+i)=MEM8(0x29CB20+i);
-            MEM32(table+120)=ONLINE_MENU_MODE;
-            MEM16(table+124)=ONLINE_MENU_LABEL;
-            MEM16(table+126)=ONLINE_MENU_ICON;
-            MEM32(table+128)=0;
-            g_online_menu_descriptors=table;
-        }
-    }
-    sub_000CDCB0_gen();
-    if (g_online_menu_descriptors != 0x29CB20) {
-        unsigned count=MEM8(0x29CB1C);
-        MEM8(0x9B76A4+count)=10;
-        MEM8(0x29CB1C)=count+1;
-    }
-}
-void sub_000CE070_gen(void);
-void sub_000CE070(void)
-{
-    online_menu_draw_begin(g_doa3_frames_presented);
-    sub_000CE070_gen();
-}
-void sub_0006DF00_gen(void);
-/* Rollback branch merge: the Online carousel's sprites. Called first by the
- * one sub_0006DF00 override (the costume list relabel is the other user);
- * returns 1 when it drew the sprite itself. */
-static int doa3_online_sprite(void)
-{
-    unsigned id=MEM32(eax);
-    if (id==ONLINE_MENU_ICON || id==ONLINE_MENU_LABEL) {
-        if(id==ONLINE_MENU_LABEL && !online_menu_label_pixels()) {
-            unsigned texture=MEM32(0x5A75A0+112*8), palette=MEM32(0x5A75A0+112*8+4);
-            if(texture>=0x1000 && texture<0x08000000-20 &&
-               palette>=0x1000 && palette<0x08000000-12 &&
-               (MEM32(texture+12)&0x0FF0FF00)==0x08800B00) {
-                unsigned pixels=MEM32(texture+4), colors=MEM32(palette+4);
-                if(pixels>=0x1000 && pixels<=0x08000000-65536 &&
-                   colors>=0x1000 && colors<=0x08000000-1024)
-                    online_menu_build_label((const unsigned char *)XBOX_PTR(pixels),
-                                            (const unsigned char *)XBOX_PTR(colors));
-            }
-        }
-        unsigned packed=MEM32(eax+4), bounds=0x3049B8+(id==ONLINE_MENU_ICON ? 829 : 693)*12;
-        OnlineMenuSprite sprite;
-        sprite.x=(int32_t)(packed<<20)>>20;
-        sprite.y=(int32_t)(packed<<8)>>20;
-        sprite.x += SMEM16(0x5B12E8)-SMEM16(0x5B12EC);
-        sprite.y += SMEM16(0x5B12EA)-SMEM16(0x5B12EE);
-        sprite.w=(MEM16(bounds+4)-MEM16(bounds))*MEMF(0x5B12D8);
-        sprite.h=(MEM16(bounds+6)-MEM16(bounds+2))*MEMF(0x5B12DC);
-        /* Native label sprites are center-anchored; icons are top-left.
-         * Convert the guest's 720-wide canvas to the host view's 640 units. */
-        if (MEM8(0x5B12CD)==1) sprite.x -= (MEM16(bounds+4)-MEM16(bounds))*.5f;
-        float canvas_scale=640.f/(MEM16(0x596A88) ? MEM16(0x596A88) : 720);
-        sprite.x *= canvas_scale;
-        sprite.w *= canvas_scale;
-        sprite.alpha=MEMF(0x5B12F4);
-        sprite.label=id==ONLINE_MENU_LABEL;
-        online_menu_draw_sprite(sprite);
-        esp+=4;
-        return 1;
-    }
-    return 0;
-}
-void sub_000CE530_gen(void);
-void sub_000CE530(void)
-{
-    if (MEM32(MEM32(esp+4)+0x1D8)==ONLINE_MENU_MODE) esp+=4;
-    else sub_000CE530_gen();
-}
-void sub_000D5F40(void) { online_menu_reset(); sub_000D5F40_gen(); }
-void sub_000D6360(void)
-{
-    unsigned buttons = 0;
-    int ready = MEM16(edi + 0xFA) == 0 && MEM16(edi + 0xFC) == 1 &&
-                MEM8(edi + 0x228) == 0;
-    for (unsigned port = 0; port < 4; ++port)
-        if (MEM32(0x73C8C8) & (1u << port)) buttons |= MEM16(0x9B7C0E + port*8);
-    int blocked=online_menu_tick(g_doa3_frames_presented, ready, buttons, doa3_ui_visible());
-    int sound=online_menu_take_sound();
-    if(sound) {
-        /* D6428/D653B/D6A55 use A5610 with ESI=0 for scroll/confirm/back.
-         * Run on the native update thread, preserving its register model. */
-        uint32_t regs[]={eax,ecx,edx,ebx,esi,edi,esp,g_seh_ebp};
-        double fp[8];
-        int top=g_fp_top;
-        uint16_t cw=g_x87_cw;
-        memcpy(fp,g_fp_stack,sizeof(fp));
-        eax=(uint32_t)sound; esi=0;
-        PUSH32(esp,0); sub_000A5610();
-        eax=regs[0]; ecx=regs[1]; edx=regs[2]; ebx=regs[3];
-        esi=regs[4]; edi=regs[5]; esp=regs[6]; g_seh_ebp=regs[7];
-        memcpy(g_fp_stack,fp,sizeof(fp)); g_fp_top=top; g_x87_cw=cw;
-    }
-    if (blocked)
-        esp += 4;
-    else sub_000D6360_gen();
-}
-void sub_000D6810(void)
-{
-    if (online_menu_blocks_native()) esp += 4;
-    else sub_000D6810_gen();
-}
-
 /* The input fiber decodes both players, runs commands, then yields. Keep the
  * virtual dummy input confined to that interval, including command commit. */
 void sub_00011980_gen(void);
@@ -1190,7 +1070,6 @@ void sub_000D18A0(void)
 void sub_0006DF00_gen(void);
 void sub_0006DF00(void)
 {
-    if (doa3_online_sprite()) { if (g_fib_slice_due) xbox_fiber_timeslice(); return; }
     if (s_cc_in_draw && s_cc_cur >= 0 && (eax == 0x29BC04u || eax == 0x29BC0Cu)) {
         int off = s_cc_off[s_cc_cur];
         /* "COS." is drawn with the row (0-based) in edi; the digit after

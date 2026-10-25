@@ -162,7 +162,6 @@ set(GAME_SOURCES
     free_camera.c
     combat_debug.c
     training_dummy.c
-    online_menu.c
     rollback_tasks.c
     rollback_workers.c
     rollback_capture.c

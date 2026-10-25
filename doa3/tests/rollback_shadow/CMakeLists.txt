@@ -131,5 +131,3 @@ add_test(NAME rollback_submission_profile COMMAND "${Python3_EXECUTABLE}"
 
 add_test(NAME rollback_targets_profile COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_CURRENT_SOURCE_DIR}/targets_test.py" "$<TARGET_FILE:rollback_chain_gpu_test>")
-add_test(NAME rollback_sprite_guard COMMAND "${Python3_EXECUTABLE}"
-    "${CMAKE_CURRENT_SOURCE_DIR}/sprite_test.py" "$<TARGET_FILE:rollback_chain_test>")

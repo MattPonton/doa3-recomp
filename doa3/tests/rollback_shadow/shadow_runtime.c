@@ -2,7 +2,6 @@
 #include "shadow_types.h"
 #include "shadow_apu.h"
 #include "shadow_gpu.h"
-#include "../../src/game/online_menu.h"
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -75,12 +74,6 @@ void rb_call(uint32_t va)
 {
     rb_budget(); va=normalize(va);
     call_trace[trace_count++%16]=va;
-    if(va==0x6DF00) {
-        uint32_t id=submission_read(NULL,g_eax);
-        if(id==ONLINE_MENU_ICON || id==ONLINE_MENU_LABEL)
-            rb_abort("online_sprite_requires_host_state",id);
-        rb_dispatch(va); return;
-    }
     if(va==0x1DC8E0) {
         if(!rb_submission_stream) rb_abort("render_target_requires_replay_profile",va);
         if(!gpu_bytes) rb_abort("render_target_requires_snapshot",va);

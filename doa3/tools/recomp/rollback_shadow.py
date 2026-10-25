@@ -152,13 +152,8 @@ def generate(gen, out):
             bodies[int(m[1],16)] = m[2]
     manual_source = (gen.parent / "recomp_manual.c").read_text()
     manual = {int(x,16) for x in re.findall(r"^void sub_([0-9A-F]{8})\(void\)", manual_source, re.M)}
-    # The carousel patch relocates descriptors using a host-owned base address.
-    # Do not invent that address or quietly execute the unpatched menu path.
-    host_menu = {va for va,body in bodies.items() if re.search(r"\bg_online_menu_descriptors\b",body)}
-    if host_menu & set(TASKS):
-        raise ValueError("task root now requires uncaptured Online menu state")
     # A frame yield is translated explicitly. All other yields must abort.
-    blocked = (manual - OBSERVERS - NATIVE_CAMERA - set(TASKS)) | host_menu | NATIVE_BOUNDARIES | {0x1C65D8,0x1C64B7,0x1C64C7}
+    blocked = (manual - OBSERVERS - NATIVE_CAMERA - set(TASKS)) | NATIVE_BOUNDARIES | {0x1C65D8,0x1C64B7,0x1C64C7}
     selected = set(TASKS) | INDIRECT_ROOTS
     pending = list(selected)
     while pending:

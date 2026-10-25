@@ -15,7 +15,7 @@ frontend checks. It stops safely and restores the original endpoint. The
 latest revision builds in Release and passes 40 targeted CTest entries; its
 live mismatch and timings are documented at the end of this file. Do not
 interpret the rejected optimization timings as validated rollback performance.
-The Online carousel remains a menu prototype. No new network listener, router
+The Online carousel prototype has been removed (doa3.1-rollback 0.2.6-rollback.21). No new network listener, router
 mapping, background connection or automatic diagnostic capture is enabled.
 
 ## Implemented
