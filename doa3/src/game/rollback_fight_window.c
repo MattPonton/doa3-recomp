@@ -99,7 +99,145 @@ static void finish(int success){
         else fprintf(stderr,"[ROLLBACK-COMBAT] sequence %s after %u trials\n",success ? "passed":"stopped",trial);
     }
 }
+/* ---- rollback.18: sync test (DOA3_ROLLBACK_SYNC_TEST=depth) ----------------
+ * GGPO-style: in solo Sparring, every frame (or every DOA3_ROLLBACK_SYNC_EVERY
+ * frames) the game is rolled back `depth` frames and resimulated with the
+ * recorded inputs, logic only (every resimulated frame hidden; the next
+ * native frame renders). The resimulated boundary is compared with the one
+ * the native frame reached, and play continues from the resimulated state.
+ * State is saved every frame: RAM by delta records, the rest by lean saves. */
+int doa3_fight_lean_begin(Doa3FightCheckpoint *);
+int doa3_fight_lean_save(Doa3FightCheckpoint *,int);
+int doa3_fight_lean_can_rollback(unsigned);
+int doa3_fight_lean_rollback(Doa3FightCheckpoint *,unsigned,int (*)(void *),void *,int,size_t *,double *,double *);
+void doa3_fight_lean_stats(double *,unsigned *,unsigned *);
+void doa3_fight_lean_end(void);
+#define SYNC_RING 16u
+static int sync_mode=-1,sync_state,sync_auditing,sync_compare=1;
+static unsigned sync_depth,sync_every=1,sync_warm,sync_settle,sync_frames;
+static unsigned sync_rollbacks,sync_skipped,sync_mismatches,sync_unadmitted;
+static double sync_restore_sum,sync_replay_sum,sync_worst;
+static unsigned long long sync_total_rollbacks,sync_total_mismatches;
+static unsigned char sync_frame_ok[SYNC_RING];   /* frame id % ring: kernel audit admitted it */
+static Doa3FightCheckpoint *sync_fight;
+static Doa3InputTape *sync_tape;
+static uint32_t sync_epoch;
+static void sync_on_frame(void *ctx,unsigned frame){(void)frame;doa3_fight_lean_save((Doa3FightCheckpoint *)ctx,1);}
+static void sync_stop(const char *why){
+    if(sync_auditing){XboxKernelReplayAudit a;xbox_kernel_replay_audit_end(&a);sync_auditing=0;}
+    if(sync_tape){doa3_input_tape_abort(sync_tape);doa3_input_tape_destroy(sync_tape);sync_tape=NULL;}
+    if(sync_state==2)doa3_fight_lean_end();
+    if(sync_fight && !doa3_fight_checkpoint_destroy(sync_fight))fatal("sync checkpoint cleanup");
+    sync_fight=NULL;
+    if(g_apu_det)mcpx_apu_det_end();
+    if(g_xbox_det_active)xbox_det_end();
+    fprintf(stderr,"[ROLLBACK-SYNC] stopped (%s) after %u frames: %llu rollbacks, %llu with differences\n",
+        why,sync_frames,sync_total_rollbacks,sync_total_mismatches);
+    fflush(stderr);
+    sync_state=0;sync_warm=0;
+}
+static void sync_boundary(void){
+    if(doa3_native_frame_active())return;   /* never inside a resimulation */
+    if(sync_state==0){
+        if(!eligible() || g_xbox_det_active || g_apu_det){sync_warm=0;return;}
+        if(++sync_warm<120)return;
+        xbox_det_bases bases;xbox_det_current_bases(&bases);xbox_det_begin(&bases);
+        sync_epoch=xbox_det_epoch();mcpx_apu_det_begin(mcpx_apu_xgscnt_now());
+        if(!g_apu_det){fprintf(stderr,"[ROLLBACK-SYNC] refused: audio clock ownership\n");xbox_det_end();sync_mode=0;return;}
+        sync_state=1;sync_settle=0;
+        fprintf(stderr,"[ROLLBACK-SYNC] settling workers into controlled-clock waits\n");
+        xbox_det_frame();mcpx_apu_det_frame();return;
+    }
+    if(!g_xbox_det_active || !g_apu_det || xbox_det_epoch()!=sync_epoch || !xbox_fiber_is_primary())fatal("sync clock ownership changed");
+    if(sync_state==1){
+        if(!eligible()){sync_stop("mode changed while settling");return;}
+        if(!xbox_fiber_converted_clock_ready()){
+            if(++sync_settle>=240){sync_stop("workers did not settle");sync_mode=0;return;}
+            xbox_det_frame();mcpx_apu_det_frame();return;
+        }
+        doa3_loop_init(&loop);
+        sync_fight=doa3_fight_checkpoint_create(&loop);
+        if(!sync_fight){sync_stop("checkpoint create refused");return;}
+        if(!doa3_fight_lean_begin(sync_fight)){sync_stop("delta tracking refused");return;}
+        sync_state=2;
+        loop.intervals=0;
+        if(!doa3_fight_lean_save(sync_fight,0)){sync_stop("first save refused");return;}
+        sync_tape=doa3_input_tape_create(DOA3_INPUT_TAPE_FRAMES);
+        memset(sync_frame_ok,0,sizeof sync_frame_ok);
+        sync_auditing=xbox_kernel_replay_audit_begin();
+        if(!sync_tape || !sync_auditing || !doa3_input_tape_record(sync_tape,1)){sync_stop("input/audit start refused");return;}
+        sync_frames=0;sync_rollbacks=sync_skipped=sync_mismatches=sync_unadmitted=0;
+        sync_restore_sum=sync_replay_sum=sync_worst=0;sync_total_rollbacks=sync_total_mismatches=0;
+        fprintf(stderr,"[ROLLBACK-SYNC] running: rollback %u frame(s) every %u frame(s), logic-only resimulation, compare %s\n",
+            sync_depth,sync_every,sync_compare ? "on":"off");
+        xbox_det_frame();mcpx_apu_det_frame();return;
+    }
+    /* sync_state 2: one native frame (id loop.intervals+1) just ran. */
+    if(!eligible()){sync_stop("left solo Sparring");return;}
+    uint64_t id=loop.intervals+1;
+    if(!doa3_input_tape_end(sync_tape)){sync_stop("input recording failed");return;}
+    {   XboxKernelReplayAudit a;
+        int ok=sync_auditing && xbox_kernel_replay_audit_end(&a);sync_auditing=0;
+        sync_frame_ok[id%SYNC_RING]=ok && !a.rejected && !a.invalid && a.accepted<=XBOX_REPLAY_KERNEL_CALL_LIMIT;
+        if(!sync_frame_ok[id%SYNC_RING])++sync_unadmitted;
+    }
+    loop.intervals=id;
+    memset(loop.locals,0,sizeof(loop.locals));
+    if(!doa3_fight_lean_save(sync_fight,1)){/* this boundary cannot be a rollback target */}
+    ++sync_frames;
+    if(sync_depth && sync_frames%sync_every==0){
+        int ok=doa3_fight_lean_can_rollback(sync_depth) && id>sync_depth &&
+            doa3_input_tape_can_replay(sync_tape,id-sync_depth+1,sync_depth);
+        for(unsigned k=0;ok && k<sync_depth;++k)ok=sync_frame_ok[(id-k)%SYNC_RING];
+        if(ok){
+            Doa3NativeFrame nf={&loop,sync_tape,sync_depth,0,1,1,1,sync_on_frame,sync_fight};
+            size_t odd=0;double mr=0,mp=0;
+            int r=doa3_fight_lean_rollback(sync_fight,sync_depth,doa3_native_frame_run,&nf,sync_compare,&odd,&mr,&mp);
+            if(r<0)fatal("sync rollback");
+            if(r>0){
+                if(loop.intervals!=id)fatal("sync resimulation ended at the wrong interval");
+                ++sync_rollbacks;++sync_total_rollbacks;sync_restore_sum+=mr;sync_replay_sum+=mp;
+                if(mr+mp>sync_worst)sync_worst=mr+mp;
+                if(odd){++sync_mismatches;++sync_total_mismatches;
+                    fprintf(stderr,"[ROLLBACK-SYNC] frame %llu: resimulated state differs from native (%zu unexplained bytes)\n",(unsigned long long)id,odd);}
+            }else ++sync_skipped;
+        }else ++sync_skipped;
+    }
+    if(sync_frames%300==0){
+        double save_ms;unsigned saves,refused;doa3_fight_lean_stats(&save_ms,&saves,&refused);
+        fprintf(stderr,"[ROLLBACK-SYNC] last 300 frames: %u rollbacks of %u frames (restore %.2f ms, resimulation %.2f ms average, worst %.2f ms), "
+            "%u skipped, %u frames not admitted for replay, %u with differences; saves %u (%.3f ms average, %u refused)\n",
+            sync_rollbacks,sync_depth,sync_rollbacks ? sync_restore_sum/sync_rollbacks:0,sync_rollbacks ? sync_replay_sum/sync_rollbacks:0,
+            sync_worst,sync_skipped,sync_unadmitted,sync_mismatches,saves,save_ms,refused);
+        sync_rollbacks=sync_skipped=sync_mismatches=sync_unadmitted=0;sync_restore_sum=sync_replay_sum=sync_worst=0;
+    }
+    {   /* the tape holds 600 frames: start a new one well before it fills */
+        Doa3InputTapeStats st={0};doa3_input_tape_stats(sync_tape,&st);
+        if(st.frames>=DOA3_INPUT_TAPE_FRAMES-8){
+            doa3_input_tape_destroy(sync_tape);sync_tape=doa3_input_tape_create(DOA3_INPUT_TAPE_FRAMES);
+            if(!sync_tape){sync_stop("input tape renewal failed");return;}
+        }
+    }
+    sync_auditing=xbox_kernel_replay_audit_begin();
+    if(!sync_auditing || !doa3_input_tape_record(sync_tape,id+1)){sync_stop("input/audit restart refused");return;}
+    xbox_det_frame();mcpx_apu_det_frame();
+}
 void doa3_fight_window_probe_boundary(void){
+    if(sync_mode<0){
+        const char *v=getenv("DOA3_ROLLBACK_SYNC_TEST");
+        sync_mode=v && *v && strcmp(v,"0") && doa3_rollback_tasks_enabled();
+        if(sync_mode){
+            extern int g_doa3_logic_only,g_doa3_skip_map;
+            sync_depth=(unsigned)atoi(v);
+            if(sync_depth<1)sync_depth=1;
+            if(sync_depth>DOA3_NATIVE_REPLAY_MAX_FRAMES-1)sync_depth=DOA3_NATIVE_REPLAY_MAX_FRAMES-1;
+            v=getenv("DOA3_ROLLBACK_SYNC_EVERY");if(v && atoi(v)>0)sync_every=(unsigned)atoi(v);
+            v=getenv("DOA3_ROLLBACK_SYNC_COMPARE");if(v && *v=='0')sync_compare=0;
+            g_doa3_logic_only=1;g_doa3_skip_map=1;
+            enabled=0;   /* the window test does not run alongside */
+        }
+    }
+    if(sync_mode){sync_boundary();return;}
     if(enabled<0){
         const char *v=getenv("DOA3_ROLLBACK_WINDOW_TEST");
         enabled=v && !strcmp(v,"1") && doa3_rollback_tasks_enabled();

@@ -4806,3 +4806,37 @@ writes (base and mirror views), cooled pages and pool use. At the endpoint
 the deltas alone rewind to the start, every tracked page is compared with
 Jay's full start image, the endpoint RAM is copied back from the full end
 image, tracking stops, and Jay's verification runs as before.
+
+## 0.2.6-rollback.18 - sync test
+
+Matt's DELTA run of .17: six of six trials; every delta rewind (4 and 8
+frames) matched the full start image on every tracked page. Boundary save
+0.1-0.6 ms (~290-340 hot pages, 1.1-1.4 MB), rewind 0.23-0.4 ms, the
+first frame takes ~300 first writes (half through mirror views), then
+almost none. Protecting everything at the start costs 11-18 ms once.
+
+DOA3_ROLLBACK_SYNC_TEST=depth (1..7; DOA3_ROLLBACK_SYNC_EVERY=n, default 1;
+DOA3_ROLLBACK_SYNC_COMPARE=0 to skip the comparison), solo Sparring:
+- Session: after 120 eligible frames the controlled clock starts, workers
+  settle, then the fight checkpoint (files pinned, heap) and delta tracking
+  begin; every native frame is recorded on an input tape and audited for
+  replayable kernel calls.
+- Every boundary: a lean save -- RAM delta record plus files, heap, fibers,
+  clock, completions, interrupts, audio, input and the CPU / loop header,
+  without hashing or validation copies.
+- Every n frames: roll back `depth` frames (Jay's pin / audio-gate /
+  kernel-guard transaction, lean restore) and resimulate them with the
+  recorded inputs, all hidden (logic only: the default skip list, model
+  builders and deformation); each resimulated boundary is saved again, and
+  play continues from the resimulated state, the next native frame
+  rendering it.
+- GPU side never rolls back: the GPU front end and the host renderer are
+  not saved; the push-buffer ring and render arenas are untracked, and the
+  D3D device block, the GPU reference counter (ring - 0x1000) and the D3D
+  fence 0x9B23A0 keep their current contents across a restore.
+- Compare: before the rollback the native boundary's lean parts and hot
+  RAM pages are kept; after resimulation every part and page is compared,
+  RAM differences classified as for the diff map (render memory, fence
+  stamps, push-buffer pointers, dead stack, r_sehebp). Unexplained
+  differences are logged per frame; a summary every 300 frames gives
+  rollbacks, restore and resimulation times, skips and save cost.

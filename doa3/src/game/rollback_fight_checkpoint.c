@@ -607,3 +607,223 @@ int doa3_fight_checkpoint_render_probe(Doa3FightCheckpoint *s,
     if(!advance)return 0;
     return visit(s,start,first,end,last,difference,advance,advance_context,1);
 }
+
+/* ---- rollback.18: lean per-frame saves and the sync test -----------------
+ * A lean save keeps every checkpoint part that is game state -- files,
+ * heap, fibers, clock, completions, interrupts, audio, input and the CPU /
+ * loop header -- with no hashing or validation copies. Guest RAM comes from
+ * the delta tracker (one record per boundary). The GPU side is render
+ * output and is never rolled back: the GPU front end and host renderer are
+ * not saved, and the push-buffer ring, render arenas, D3D device block,
+ * GPU reference counter and D3D fence keep their current contents across a
+ * restore, so guest D3D stays consistent with the GPU it drives. */
+#define LEAN_RING 16u
+#define CMP_MAX_PAGES 4096u
+typedef struct { int valid; unsigned long long seq; unsigned char *buf; } LeanSlot;
+static LeanSlot lean[LEAN_RING];
+static size_t lean_size[DOA3_CP_PARTS],lean_off[DOA3_CP_PARTS],lean_bytes;
+static unsigned char *cmp_parts;static uint32_t *cmp_page_list;static unsigned char *cmp_pages;static unsigned cmp_npages;
+static uint32_t lean_dev;
+static double lean_save_ms_sum;static unsigned lean_save_n,lean_save_refused;
+#define LEAN_SKIP(i) ((i)==DOA3_CP_GPU_FRONTEND)
+static double now_ms(void){LARGE_INTEGER c,f;QueryPerformanceCounter(&c);QueryPerformanceFrequency(&f);return 1000.0*(double)c.QuadPart/(double)f.QuadPart;}
+int doa3_fight_lean_begin(Doa3FightCheckpoint *s)
+{
+    size_t sizes[]={xbox_stream_file_checkpoint_size(),sizeof(FightCpu),
+        xbox_heap_checkpoint_size(),xbox_fiber_converted_snapshot_size(),sizeof(xbox_det_checkpoint),
+        xbox_stream_completion_snapshot_size(),sizeof(XboxInterruptSnapshot),sizeof(Nv2aQueueSnapshot),
+        mcpx_apu_processing_size(),sizeof(Doa3XppSnapshot)};
+    lean_bytes=0;
+    for(unsigned i=0;i<DOA3_CP_PARTS;++i){lean_size[i]=sizes[i];lean_off[i]=lean_bytes;lean_bytes+=(sizes[i]+15)&~(size_t)15;}
+    for(unsigned i=0;i<LEAN_RING;++i){free(lean[i].buf);lean[i].buf=malloc(lean_bytes);lean[i].valid=0;if(!lean[i].buf)return 0;}
+    free(cmp_parts);cmp_parts=malloc(lean_bytes);
+    if(!cmp_page_list)cmp_page_list=malloc(CMP_MAX_PAGES*sizeof(uint32_t));
+    if(!cmp_pages)cmp_pages=malloc((size_t)CMP_MAX_PAGES*4096u);
+    if(!cmp_parts || !cmp_page_list || !cmp_pages)return 0;
+    lean_dev=g_doa3_pb_dev;
+    if(lean_dev && lean_dev<0x08000000u)xbox_ram_delta_untrack(MEM32(lean_dev+0x24),MEM32(lean_dev+0x28)+4);
+    xbox_ram_delta_untrack(0xA538F0u,0xC58A94u);
+    lean_save_ms_sum=0;lean_save_n=lean_save_refused=0;
+    return xbox_ram_delta_begin();
+}
+static int lean_capture(Doa3FightCheckpoint *s,unsigned char *out)
+{
+    if(!acquire_impl(s,0))return 0;
+    int ok=1;
+    for(unsigned i=0;i<DOA3_CP_PARTS && ok;++i){
+        if(LEAN_SKIP(i))continue;
+        if(i==DOA3_CP_RAM){FightCpu cpu;cpu_capture(&cpu,s->loop);memcpy(out+lean_off[i],&cpu,sizeof cpu);continue;}
+        ok=capture_part(&s->bindings[i],out+lean_off[i],lean_size[i])>0;
+    }
+    release(s);
+    return ok;
+}
+/* new_boundary: close the RAM record first (every boundary after the first). */
+int doa3_fight_lean_save(Doa3FightCheckpoint *s,int new_boundary)
+{
+    double t=now_ms();
+    if(new_boundary && !xbox_ram_delta_boundary())return 0;
+    unsigned long long seq=xbox_ram_delta_seq();
+    LeanSlot *slot=&lean[seq%LEAN_RING];
+    slot->seq=seq;slot->valid=lean_capture(s,slot->buf);
+    if(!slot->valid)++lean_save_refused;
+    lean_save_ms_sum+=now_ms()-t;++lean_save_n;
+    return slot->valid;
+}
+int doa3_fight_lean_can_rollback(unsigned back)
+{
+    unsigned long long seq=xbox_ram_delta_seq();
+    if(!back || back>=xbox_ram_delta_records() || back>seq)return 0;
+    const LeanSlot *slot=&lean[(seq-back)%LEAN_RING];
+    return slot->valid && slot->seq==seq-back;
+}
+/* Byte ranges whose current contents survive a restore (GPU-side state). */
+static void preserve(int save,unsigned char *keep)
+{
+    struct { uint32_t va,bytes; } r[4];unsigned n=0;
+    uint32_t dev=lean_dev;
+    if(dev && dev<0x08000000u-0x2400u){r[n].va=dev;r[n].bytes=0x2400;++n;
+        uint32_t lo=MEM32(dev+0x24);if(lo>=0x1000u && lo<0x08000000u){r[n].va=lo-0x1000u;r[n].bytes=4;++n;}}
+    r[n].va=0x9B23A0u;r[n].bytes=4;++n;
+    size_t at=0;
+    for(unsigned i=0;i<n;++i){
+        unsigned char *ram=(unsigned char *)xbox_GetMemoryBase()+r[i].va;
+        if(save)memcpy(keep+at,ram,r[i].bytes);
+        else{xbox_ram_delta_prepare_write(r[i].va,r[i].bytes);memcpy(ram,keep+at,r[i].bytes);}
+        at+=r[i].bytes;
+    }
+}
+static int lean_restore(Doa3FightCheckpoint *s,const unsigned char *in,unsigned back)
+{
+    static unsigned char keep[0x2400+16];
+    for(unsigned i=0;i<DOA3_CP_PARTS;++i){
+        if(LEAN_SKIP(i))continue;
+        if(i==DOA3_CP_RAM){
+            preserve(1,keep);
+            if(!xbox_ram_delta_restore(back))return 0;
+            preserve(0,keep);
+            cpu_restore((const FightCpu *)(in+lean_off[i]),s->loop);
+            continue;
+        }
+        if(restore(&s->bindings[i],in+lean_off[i],lean_size[i])<=0){
+            fprintf(stderr,"[ROLLBACK-SYNC] restore refused: %s\n",part_names[i]);return 0;
+        }
+    }
+    return 1;
+}
+/* Compare the resimulated boundary with the native one saved just before
+ * the rollback: every game-state part, and every hot RAM page except the
+ * preserved GPU-side ranges, with RAM differences classified as for the
+ * diff map. Returns the number of unexplained differing bytes. */
+static size_t lean_compare(const unsigned char *now_parts,int report)
+{
+    static unsigned lines;
+    size_t odd=0;
+    for(unsigned i=0;i<DOA3_CP_PARTS;++i){
+        if(LEAN_SKIP(i) || i==DOA3_CP_RAM)continue;
+        if(i==DOA3_CP_FIBERS){
+            for(size_t k=0;k<lean_size[i];++k)if(cmp_parts[lean_off[i]+k]!=now_parts[lean_off[i]+k]){
+                int fiber;const char *field=xbox_fiber_snapshot_field(k,&fiber);
+                if(field && !strcmp(field,"r_sehebp"))continue;
+                ++odd;
+                if(report && lines<200){++lines;fprintf(stderr,"[ROLLBACK-SYNC]   fibers +%zX fiber %d %s\n",k,fiber,field ? field:"?");}
+            }
+            continue;
+        }
+        if(memcmp(cmp_parts+lean_off[i],now_parts+lean_off[i],lean_size[i])){
+            size_t d=0,first=SIZE_MAX;
+            for(size_t k=0;k<lean_size[i];++k)if(cmp_parts[lean_off[i]+k]!=now_parts[lean_off[i]+k]){++d;if(first==SIZE_MAX)first=k;}
+            odd+=d;
+            if(report && lines<200){++lines;fprintf(stderr,"[ROLLBACK-SYNC]   part %s: %zu bytes differ (first +%zX)\n",part_names[i],d,first);}
+        }
+    }
+    {   /* FightCpu header: registers and loop state */
+        const FightCpu *a=(const FightCpu *)(cmp_parts+lean_off[DOA3_CP_RAM]),*b=(const FightCpu *)(now_parts+lean_off[DOA3_CP_RAM]);
+        int regs_differ=0;
+        for(unsigned r=0;r<16;++r)if(r!=7 && a->regs[r]!=b->regs[r])regs_differ=1;   /* 7: g_seh_ebp */
+        if(regs_differ || a->loop.intervals!=b->loop.intervals){
+            ++odd;if(report && lines<200){++lines;fprintf(stderr,"[ROLLBACK-SYNC]   CPU/loop header differs\n");}
+        }
+    }
+    const unsigned char *ram=(const unsigned char *)xbox_GetMemoryBase();
+    uint32_t dev=lean_dev,lo=0,hi=0;
+    if(dev && dev<0x08000000u){lo=MEM32(dev+0x24);hi=MEM32(dev+0x28)+4;}
+    uint32_t cnow=lo>=0x1000u ? MEM32(lo-0x1000u):0,cold=0;
+    for(unsigned n=0;n<cmp_npages;++n)if(cmp_page_list[n]==(lo-0x1000u)/4096u)cold=*(const uint32_t *)(cmp_pages+(size_t)n*4096u+((lo-0x1000u)&4095u));
+    for(unsigned n=0;n<cmp_npages;++n){
+        uint32_t base=cmp_page_list[n]*4096u;
+        const unsigned char *a=cmp_pages+(size_t)n*4096u,*b=ram+base;
+        if(!memcmp(a,b,4096))continue;
+        for(unsigned k=0;k<4096;k+=4){
+            uint32_t va,vb;memcpy(&va,a+k,4);memcpy(&vb,b+k,4);
+            if(va==vb)continue;
+            uint32_t ga=base+k;
+            if(dev && ga>=dev && ga<dev+0x2400u)continue;           /* preserved */
+            if(ga==0x9B23A0u || (lo && ga==lo-0x1000u))continue;    /* preserved */
+            if(*diff_label(ga))continue;
+            if(cold && va<=cold && va+0x8000u>cold && vb<=cnow && vb+0x8000u>cnow)continue;   /* fence stamp */
+            if(lo && va>=lo && va<hi && vb>=lo && vb<hi)continue;   /* push-buffer pointer */
+            int fib;uint32_t routine;
+            if(xbox_fiber_stack_of(ga,&fib,&routine)==1)continue;  /* dead stack */
+            odd+=4;
+            if(report && lines<200){++lines;fprintf(stderr,"[ROLLBACK-SYNC]   RAM %08X native %08X resimulated %08X\n",ga,va,vb);}
+        }
+    }
+    return odd;
+}
+int doa3_fight_lean_rollback(Doa3FightCheckpoint *s,unsigned back,int (*advance)(void *),void *ctx,
+    int compare,size_t *unexplained,double *ms_restore,double *ms_replay)
+{
+    unsigned long long seq=xbox_ram_delta_seq();
+    if(!doa3_fight_lean_can_rollback(back) || s->held || s->roundtrip_pinned)return 0;
+    const LeanSlot *target=&lean[(seq-back)%LEAN_RING];
+    if(compare){
+        memcpy(cmp_parts,lean[seq%LEAN_RING].buf,lean_bytes);
+        cmp_npages=xbox_ram_delta_hot_pages(cmp_page_list,CMP_MAX_PAGES);
+        const unsigned char *ram=(const unsigned char *)xbox_GetMemoryBase();
+        for(unsigned n=0;n<cmp_npages;++n)memcpy(cmp_pages+(size_t)n*4096u,ram+(size_t)cmp_page_list[n]*4096u,4096);
+    }
+    if(!xbox_kernel_replay_begin())return 0;
+    if(!acquire_before_rewind(s)){return xbox_kernel_replay_end(1) ? 0:-1;}
+    s->roundtrip_pinned=1;release(s);
+    int gated=0,result=0;
+    if(!acquire(s))goto fatal;
+    gated=mcpx_apu_replay_begin();release(s);
+    if(!gated){s->roundtrip_pinned=0;mcpx_apu_rollback_release();xbox_det_checkpoint_release();
+        return xbox_kernel_replay_end(1) ? 0:-1;}
+    double t0=now_ms();
+    if(!acquire(s))goto fatal;
+    int restored=lean_restore(s,target->buf,back);release(s);
+    if(!restored)goto fatal;   /* partially restored: no safe way back */
+    double t1=now_ms();
+    s->roundtrip_pinned=0;mcpx_apu_rollback_release();xbox_det_checkpoint_release();
+    result=advance(ctx);
+    double t2=now_ms();
+    if(!acquire(s))goto fatal;
+    s->roundtrip_pinned=1;release(s);
+    if(result && compare){
+        size_t odd=lean_compare(lean[xbox_ram_delta_seq()%LEAN_RING].buf,1);
+        if(unexplained)*unexplained=odd;
+    }
+    if(!acquire(s))goto fatal;
+    int ended=mcpx_apu_replay_end(!result);release(s);if(!ended)goto fatal;
+    if(!xbox_kernel_replay_end(!result))goto fatal;
+    s->roundtrip_pinned=0;mcpx_apu_rollback_release();xbox_det_checkpoint_release();
+    if(ms_restore)*ms_restore=t1-t0;
+    if(ms_replay)*ms_replay=t2-t1;
+    if(!result){fprintf(stderr,"[ROLLBACK-SYNC] FATAL: resimulation did not complete after the state was restored\n");fflush(stderr);abort();}
+    return 1;
+fatal:
+    fprintf(stderr,"[ROLLBACK-SYNC] FATAL: rollback transaction failed (gate %d); state uncertain\n",gated);fflush(stderr);
+    abort();
+}
+void doa3_fight_lean_stats(double *save_ms,unsigned *saves,unsigned *refused)
+{
+    *save_ms=lean_save_n ? lean_save_ms_sum/lean_save_n:0;*saves=lean_save_n;*refused=lean_save_refused;
+    lean_save_ms_sum=0;lean_save_n=lean_save_refused=0;
+}
+void doa3_fight_lean_end(void)
+{
+    xbox_ram_delta_end();
+    for(unsigned i=0;i<LEAN_RING;++i)lean[i].valid=0;
+}

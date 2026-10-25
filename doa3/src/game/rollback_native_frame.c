@@ -123,9 +123,10 @@ int doa3_native_frame_run(void *context){
        (f->suppress_host_draws && (f->skip_intermediate_preparation || f->skip_intermediate_guest_render)) ||
        count>DOA3_NATIVE_REPLAY_MAX_FRAMES ||
        !xbox_kernel_replay_owned() || !xbox_kernel_replay_healthy() ||
-       !g_apu_det || !doa3_input_tape_can_replay(f->tape,1,count))return 0;
+       !g_apu_det)return 0;
     uint64_t first=f->loop->intervals;
-    if(first!=0 || !xbox_kernel_replay_frame_budget(count) || !doa3_input_tape_replay(f->tape,1))return 0;
+    if((first!=0 && !f->all_hidden) || !doa3_input_tape_can_replay(f->tape,first+1,count) ||
+       !xbox_kernel_replay_frame_budget(count) || !doa3_input_tape_replay(f->tape,first+1))return 0;
     if(!xbox_kernel_replay_fail_stop(1)){doa3_input_tape_abort(f->tape);return 0;}
     /* One total timer; no per-helper/task instrumentation or trace I/O. */
     int previous_draw_mode=d3d8_replay_suppress_draws(f->suppress_host_draws);
@@ -143,7 +144,7 @@ int doa3_native_frame_run(void *context){
     int result=0;
     int previous_hidden=0;
     for(unsigned frame=0;frame<count;++frame){
-      int hidden=frame+1<count && (!g_doa3_skip_head || frame<(unsigned)g_doa3_skip_head);
+      int hidden=f->all_hidden || (frame+1<count && (!g_doa3_skip_head || frame<(unsigned)g_doa3_skip_head));
       skip_guest_render=f->skip_intermediate_guest_render && hidden;
       hidden_now=hidden;
       fn_diag_init();
@@ -183,6 +184,13 @@ int doa3_native_frame_run(void *context){
       if(hidden)prof_hidden_ticks+=(unsigned long long)(ticks()-frame_started);
       g_fn_hidden_diag=0;fn_skip_now=0;
       if(!completed)goto done;
+      if(f->on_frame){
+          /* the boundary save must not see replay-time skipping */
+          int skip_was=skip_guest_render;skip_guest_render=0;hidden_now=0;
+          pgraph_d3d11_skip_preparation(0);
+          f->on_frame(f->on_frame_ctx,frame);
+          skip_guest_render=skip_was;
+      }
     }
     result=1;
 done:
@@ -199,6 +207,9 @@ done:
             g_doa3_skip_map ? "skipped":"preserved",(unsigned long long)guest_skipped,
             g_doa3_skip_head && (unsigned)g_doa3_skip_head<count ? (unsigned)g_doa3_skip_head:count-1,result);
     pgraph_d3d11_skip_preparation(previous_prep_mode);
+    /* Texture RAM may have changed under hidden frames and the restore:
+     * the next rendered frame validates every guest upload again. */
+    if(f->all_hidden)pgraph_d3d11_invalidate_guest_uploads();
     if(f->skip_intermediate_preparation || f->skip_intermediate_guest_render){
         pgraph_d3d11_preparation_stats(&prep_after[0],&prep_after[1],&prep_after[2]);
         fprintf(stderr,"[ROLLBACK-PREP-AB] skipped_batches=%llu indices=%llu inline_words=%llu final_frame_rendered=%d\n",

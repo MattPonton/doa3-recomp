@@ -97,6 +97,15 @@ void xbox_ram_delta_untrack(uint32_t lo, uint32_t hi)
     if (!s_active && s_nuntrack < 16 && hi > lo) { s_untrack[s_nuntrack].lo = lo; s_untrack[s_nuntrack].hi = hi; ++s_nuntrack; }
 }
 int xbox_ram_delta_active(void) { return s_active; }
+unsigned long long xbox_ram_delta_seq(void) { return s_seq; }
+unsigned xbox_ram_delta_records(void) { return s_active ? s_count : 0; }
+unsigned xbox_ram_delta_hot_pages(uint32_t *pages, unsigned max)
+{
+    unsigned n = 0;
+    if (!s_active) return 0;
+    for (unsigned p = 0; p < s_pages && n < max; ++p) if (s_hot[p]) pages[n++] = p;
+    return n;
+}
 int xbox_ram_delta_tracked(uint32_t va)
 {
     unsigned p = va / PAGE;

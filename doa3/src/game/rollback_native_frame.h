@@ -12,6 +12,11 @@ typedef struct { Doa3LoopState *loop;Doa3InputTape *tape;unsigned frames;
     int suppress_host_draws; /* diagnostic only, always recover original end */
     int skip_intermediate_preparation; /* render last frame normally */
     int skip_intermediate_guest_render; /* opt-in vertex deformation skip; commands/state retained */
+    /* rollback.18 sync test: every frame hidden (the next native frame
+     * renders), replay may start at any loop interval, and on_frame runs at
+     * each replayed boundary (to save the resimulated state). */
+    int all_hidden;
+    void (*on_frame)(void *ctx,unsigned frame);void *on_frame_ctx;
 } Doa3NativeFrame;
 int doa3_native_frame_run(void *context);
 int doa3_native_frame_active(void);

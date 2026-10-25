@@ -29,6 +29,10 @@ int  xbox_ram_delta_boundary(void);        /* close the record, open the next */
 int  xbox_ram_delta_restore(unsigned back);/* to the boundary `back` records ago */
 void xbox_ram_delta_end(void);             /* everything writable again */
 int  xbox_ram_delta_active(void);
+unsigned long long xbox_ram_delta_seq(void);   /* the open record's boundary number */
+unsigned xbox_ram_delta_records(void);         /* boundaries that can be restored, counting the open one */
+/* Hot pages: their numbers (up to max), for a comparison copy. */
+unsigned xbox_ram_delta_hot_pages(uint32_t *pages, unsigned max);
 void xbox_ram_delta_prepare_write(uint32_t va, uint32_t bytes);
 int  xbox_ram_delta_tracked(uint32_t va);  /* page is tracked (not untracked) */
 typedef struct {
