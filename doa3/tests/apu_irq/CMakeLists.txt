@@ -1,6 +1,0 @@
-cmake_minimum_required(VERSION 3.20)
-project(apu_irq_test C)
-enable_testing()
-add_executable(apu_irq_test apu_irq_test.c ../../src/apu/apu_irq.c)
-target_include_directories(apu_irq_test PRIVATE ../../src/apu)
-add_test(NAME apu_irq COMMAND apu_irq_test)

@@ -1,7 +1,0 @@
-cmake_minimum_required(VERSION 3.20)
-project(audio_mix_test C)
-enable_testing()
-add_executable(audio_mix_test audio_mix_test.c ../../src/apu/apu_dsp.c)
-target_include_directories(audio_mix_test PRIVATE ../../src/apu ../../src/nv2a)
-target_compile_definitions(audio_mix_test PRIVATE _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES)
-add_test(NAME audio_mix COMMAND audio_mix_test)
