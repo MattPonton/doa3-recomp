@@ -19,6 +19,35 @@ def patch_audio_wait(source):
     body=body.replace("{\n","{\n"+declaration,1).replace(label,label+"\n"+call.rstrip())
     return source[:match.start()]+body+source[match.end():]
 
+# rollback.29: the other two CRI voice waits have the same shape as 199E20 --
+# poll the DirectSound buffer status (1F1E79/1F1E95) until it stops or an
+# RDTSC deadline (0xC75620) passes. The APU only steps once per controlled
+# frame, so inside a frame the status never changes, and the frozen
+# timestamp never reaches the deadline; DOA3_DET_BOOT hung in 199B60 at the
+# end of the Team NINJA movie. Same fixed per-iteration progress.
+AUDIO_STOP_WAITS=(
+    (0x199B60,'2da51c833a3cbc067f418b0aa927aaf3d866084a75ca97d175650f49e6045864',("loc_00199BB4",)),
+    (0x199C20,'95127b5b25d1e665acd77220df24d297da838085cef7ae9d0cdba510c6f526d1',("loc_00199CB6","loc_00199D47")),
+)
+def patch_audio_stop_waits(source):
+    declaration="    extern int xbox_det_audio_wait_poll(void);\n"
+    call="    (void)xbox_det_audio_wait_poll();\n"
+    for va,want,labels in AUDIO_STOP_WAITS:
+        name=f"sub_{va:08X}"
+        match=re.search(rf"^void {name}(?:_gen)?\(void\)\n\{{.*?^\}}",source,re.M|re.S)
+        if not match:raise ValueError(f"missing CRI voice wait {va:X}")
+        body=match[0].replace(declaration,"").replace(call,"")
+        checked=re.sub(r'/\*.*?\*/|//[^\n]*','',body,flags=re.S).replace(name+'_gen',name)
+        digest=hashlib.sha256('\n'.join(x.strip() for x in checked.splitlines() if x.strip()).encode()).hexdigest()
+        if digest!=want:raise ValueError(f"CRI voice wait {va:X} changed; review status/deadline semantics")
+        for label in labels:
+            if body.count(label+": ;")!=1 or body.count("goto "+label+";")!=1:
+                raise ValueError(f"CRI voice wait {va:X} control flow changed")
+            body=body.replace(label+": ;",label+": ;\n"+call.rstrip())
+        body=body.replace("{\n","{\n"+declaration,1)
+        source=source[:match.start()]+body+source[match.end():]
+    return source
+
 # Execution order from dispatcher return to the next dispatcher call.
 PHASES = (0xA64BA,0xA64BF,0xA64C9,0xA6514,0xA6519,0xA651E,0xA6525,0xA652A,
           0xA6450,0xA6455,0xA645A,0xA645F,0xA6464,0xA6469,0xA6477,0xA6492,

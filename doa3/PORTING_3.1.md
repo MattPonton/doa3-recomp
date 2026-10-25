@@ -5013,3 +5013,20 @@ second unfinished poll of the same partition or file within one presented
 frame. A task that checks several files once each per frame never triggers
 it. The log line names the object, e.g. `[DET] file 00C7E5C0 wait: ...`
 (first eight only).
+
+### 0.2.6-rollback.29: the CRI voice waits at the end of a movie
+
+`DOA3_DET_BOOT` now reaches frame 1760: the Team NINJA logo plays, then the
+game hangs as mv_op.sfd should start. A game-task coroutine was spinning in
+sub_00199B60, called from the CRI server pump in the present path. That
+function waits for a DirectSound voice to stop: it polls the buffer status
+(1F1E79) until the voice stops or an RDTSC deadline (0xC75620) passes. The
+loop is the same as the reviewed 199E20 wait. On the controlled clock the APU
+only steps once per frame and the timestamp is frozen inside a frame, so
+neither the status nor the deadline can change.
+
+`rollback_boundaries.patch_audio_stop_waits` (run by apply_overrides) puts the
+same `xbox_det_audio_wait_poll()` at the head of the loop in 199B60 and at the
+heads of 199C20's two loops, which have the same shape. Each iteration adds a
+fixed 100 microseconds to that fiber's checkpointed boost. Status and
+deadline branches are untouched, and each body is pinned by digest.

@@ -52399,6 +52399,7 @@ loc_00199B54: ;
  */
 void sub_00199B60(void)
 {
+    extern int xbox_det_audio_wait_poll(void);
     uint32_t _fs0 = 0, _fs1 = 0, _fs2 = 0, _fs3 = 0, _fs4 = 0, _fs5 = 0, _fs6 = 0, _fs7 = 0, _fs8 = 0; /* flag operands kept for a later jcc */
     int _flags = 0; /* fallback flag var */
     int _cf = 0; /* carry flag */
@@ -52447,6 +52448,7 @@ loc_00199BAD: ;
     if (TEST_Z(MEM8(esp + 0x18), 1)) goto loc_00199BF9; /* je: equal / zero */
 
 loc_00199BB4: ;
+    (void)xbox_det_audio_wait_poll();
     eax = esp + 4;
     PUSH32(esp, eax);
     _fs3 = (uint32_t)(MEM8(esp + 0x18)); /* flag operand kept for a later jcc */
@@ -52510,6 +52512,7 @@ loc_00199C10: ;
  */
 void sub_00199C20_gen(void)
 {
+    extern int xbox_det_audio_wait_poll(void);
     uint32_t _fs0 = 0, _fs1 = 0, _fs2 = 0, _fs3 = 0, _fs4 = 0, _fs5 = 0, _fs6 = 0, _fs7 = 0, _fs8 = 0, _fs9 = 0, _fs10 = 0, _fs11 = 0, _fs12 = 0, _fs13 = 0, _fs14 = 0, _fs15 = 0, _fs16 = 0, _fs17 = 0, _fs18 = 0, _fs19 = 0, _fs20 = 0, _fs21 = 0; /* flag operands kept for a later jcc */
     uint32_t ebp = g_seh_ebp;
     int _flags = 0; /* fallback flag var */
@@ -52604,6 +52607,7 @@ loc_00199CB0: ;
     if (TEST_NZ(MEM8(esp + 0xC), LO8(ebx))) goto loc_00199CFA; /* jne: not equal / not zero */
 
 loc_00199CB6: ;
+    (void)xbox_det_audio_wait_poll();
     ecx = esp + 0x18;
     PUSH32(esp, ecx);
     _fs6 = (uint32_t)(MEM8(esp + 0xC)); /* flag operand kept for a later jcc */
@@ -52682,6 +52686,7 @@ loc_00199D43: ;
     if (TEST_NZ(eax, eax)) goto loc_00199D98; /* jne: not equal / not zero */
 
 loc_00199D47: ;
+    (void)xbox_det_audio_wait_poll();
     eax = MEM32(esp + 0x10);
     if (TEST_Z(eax, eax)) goto loc_00199DA5; /* je: equal / zero */
 
