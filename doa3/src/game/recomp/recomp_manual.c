@@ -2815,6 +2815,40 @@ void sub_001C7920(void)
     if (g_fib_slice_due) xbox_fiber_timeslice();
 }
 
+/* doa3.1-rollback.27: AFS partition status (0x190B00). The CRI setup
+ * (sub_001C79F0) waits for each partition's table with a bare
+ * `while (sub_00190B00(n) != 3);` -- no kernel call, no present. The file
+ * server fills the table between those polls when the host's 4 ms slice
+ * timer hands it a turn; on the controlled clock the slices and the
+ * workers' vblank come only from xbox_det_frame (one per presented frame),
+ * so the loop never ended (DOA3_DET_BOOT stalled at heartbeat 1).
+ *
+ * On hardware the vblank interrupt keeps coming while the game spins.
+ * Model that: a second unfinished poll from the game thread in the same
+ * presented frame is a busy-wait, and each such lap is one vblank of the
+ * controlled clock (time, slices, the workers' vblank). That is fixed per
+ * lap, so both machines take the same laps; a game task polling once a
+ * frame never reaches the second poll and is unchanged. */
+void sub_00190B00_gen(void);
+void sub_00190B00(void)
+{
+    extern void xbox_det_frame(void);
+    extern int xbox_fiber_is_primary(void);
+    static unsigned s_frame = ~0u, s_polls;
+    sub_00190B00_gen();
+    if (g_xbox_det_active && eax != 3u && xbox_fiber_is_primary()) {
+        if (s_frame != g_doa3_frames_presented) { s_frame = g_doa3_frames_presented; s_polls = 0; }
+        if (++s_polls >= 2) {
+            static unsigned s_logged;
+            if (s_logged++ < 4)
+                fprintf(stderr, "[DET] partition wait: controlled-clock vblank from a busy-wait lap (frame %u)\n",
+                        g_doa3_frames_presented);
+            xbox_det_frame();
+        }
+    }
+    if (g_fib_slice_due) xbox_fiber_timeslice();
+}
+
 /* DirectSound effects-image download (0xA5C60; 0x9F640 on 3.0). The audio
  * init sub_000A5DC0 runs DirectSoundCreate, then this (dsstdfx.bin into the
  * DSP), then the CRI middleware setup (sub_001C79F0: ADX threads, the AFS

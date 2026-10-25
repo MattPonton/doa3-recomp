@@ -4983,3 +4983,22 @@ Two launches with no input should then be byte-identical at frame n.
 the DOA2 list above: 0 attract, 1 menu, 2 story, 3 time attack, 4 versus,
 5 survival, 7 sparring single, 8 options, 9 tag battle, 10 team battle,
 11 sparring tag, 12 watch single, 13 watch tag, 20 theater.
+
+### 0.2.6-rollback.27: controlled clock from boot no longer stalls
+
+`DOA3_DET_BOOT` stalled at heartbeat 1, in the CRI setup (sub_001C79F0). It
+waits for each AFS partition's table with a bare
+`while (sub_00190B00(n) != 3);`, with no kernel call and no present. The file
+server only fills the table when the host's 4 ms slice timer gives it a turn.
+On the controlled clock, slices and the workers' vblank come only from
+`xbox_det_frame`, which runs once per presented frame. Fiber dump: the vblank
+workers were parked on 0xDE7FB1A0, and the file server was never scheduled.
+
+`sub_00190B00` is now an override (overrides_3.1.txt). Under the controlled
+clock, a game-thread poll that is still unfinished and is the second one
+within the same presented frame counts as a busy-wait lap, and each lap is one
+controlled-clock vblank (`xbox_det_frame`: time, slices, worker wake). This
+models the vblank interrupt that keeps arriving on hardware while the game
+spins. Laps are fixed per poll, so every machine gets the same count. A task
+that polls once a frame never reaches its second poll, so rollback sessions
+are unchanged. The log shows `[DET] partition wait: ...` (first four only).
