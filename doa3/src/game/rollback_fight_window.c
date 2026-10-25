@@ -114,7 +114,8 @@ int doa3_fight_lean_rollback(Doa3FightCheckpoint *,unsigned,int (*)(void *),void
 void doa3_fight_lean_stats(double *,unsigned *,unsigned *);
 void doa3_fight_lean_end(void);
 #define SYNC_RING 16u
-int g_doa3_pace_det;   /* rollback.20: pace controlled-clock frames to 60 Hz (sync test) */
+int g_doa3_pace_det;
+int g_doa3_det_boot;   /* rollback.26: controlled clock from boot (main.c) */   /* rollback.20: pace controlled-clock frames to 60 Hz (sync test) */
 static int sync_mode=-1,sync_state,sync_auditing;
 static unsigned sync_compare=30,sync_compares;   /* compare every n-th rollback (0 = never) */
 static double sync_frame_ms_sum;static LONGLONG sync_last_qpc;

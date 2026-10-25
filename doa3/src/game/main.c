@@ -11,6 +11,7 @@
  * pointer probes and reveal real blockers. D3D/audio/input come later.
  */
 
+#include "online/xbox_det.h"
 #include <windows.h>
 #include <dbt.h>
 #include <stdio.h>
@@ -1975,6 +1976,24 @@ int main(int argc, char **argv)
         fflush(stderr);
     }
 
+    {   /* rollback.26 experiment, DOA3_DET_BOOT=1: the controlled clock from
+         * the first guest instruction, with fixed bases (the same on every
+         * machine), advanced one frame per presented frame and paced to 60 Hz
+         * (recomp_manual.c). The question: do two launches stay byte-identical? */
+        const char *v = getenv("DOA3_DET_BOOT");
+        if (v && *v == '1') {
+            extern int g_doa3_det_boot, g_doa3_pace_det;
+            xbox_det_bases bases;
+            bases.tick_ms = 0x00010000u;
+            bases.qpc = 0;
+            bases.filetime = 126502272000000000ull;   /* 2001-11-15 00:00 UTC */
+            bases.rdtsc = 0;
+            xbox_det_begin(&bases);
+            g_doa3_det_boot = 1; g_doa3_pace_det = 1;
+            fprintf(stderr, "[DET-BOOT] controlled clock from boot (fixed bases)\n");
+            fflush(stderr);
+        }
+    }
     xbe_entry_point();
 
     fprintf(stderr, "\nxbe_entry_point returned (g_eax=0x%08X), fault-skips=%llu\n",

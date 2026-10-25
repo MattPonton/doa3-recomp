@@ -2400,6 +2400,38 @@ static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
         d3d8_ReplayFrameComplete();
         goto frame_callback;
     }
+    {   /* rollback.26, DOA3_DET_BOOT: one controlled-clock frame per
+         * presented frame; the APU steps on the controlled clock from the
+         * first frame that has a chip. DOA3_RAM_DUMP_FRAME=n dumps guest RAM
+         * at that frame (doa3_ram_frame_<n>.bin). */
+        extern int g_doa3_det_boot;
+        extern volatile int g_apu_det;
+        extern void mcpx_apu_det_begin(uint64_t);
+        extern void mcpx_apu_det_frame(void);
+        extern void xbox_det_frame(void);
+        extern void *mcpx_apu_state_ptr(void);
+        if (g_doa3_det_boot) {
+            static int s_dump_frame = -1;
+            if (!g_apu_det && mcpx_apu_state_ptr()) {
+                mcpx_apu_det_begin(0);
+                fprintf(stderr, "[DET-BOOT] frame %u: APU on the controlled clock%s\n",
+                        g_doa3_frames_presented, g_apu_det ? "" : " REFUSED");
+            }
+            xbox_det_frame();
+            if (g_apu_det) mcpx_apu_det_frame();
+            if (s_dump_frame < 0) { const char *e = getenv("DOA3_RAM_DUMP_FRAME"); s_dump_frame = e ? atoi(e) : 0; }
+            if (s_dump_frame > 0 && g_doa3_frames_presented + 1 == (unsigned)s_dump_frame) {
+                extern void *xbox_GetMemoryBase(void);
+                extern size_t xbox_GetMemorySize(void);
+                char name[64]; FILE *f;
+                snprintf(name, sizeof name, "doa3_ram_frame_%d_%u.bin", s_dump_frame, (unsigned)(GetTickCount64() / 1000));
+                f = fopen(name, "wb");
+                if (f) { fwrite(xbox_GetMemoryBase(), 1, xbox_GetMemorySize(), f); fclose(f); }
+                fprintf(stderr, "[DET-BOOT] frame %d: RAM written to %s\n", s_dump_frame, f ? name : "(failed)");
+                fflush(stderr);
+            }
+        }
+    }
     if (!async_frame) {
         pgraph_d3d11_flush();
         flushed = entry ? doa3_perf_now() : 0;

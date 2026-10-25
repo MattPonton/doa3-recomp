@@ -638,6 +638,7 @@ void mcpx_apu_det_end(void)
 }
 
 /* One lockstep frame of chip time. */
+void *mcpx_apu_state_ptr(void) { return g_state; }   /* rollback.26 */
 void mcpx_apu_det_frame(void)
 {
     MCPXAPUState *d = g_state;

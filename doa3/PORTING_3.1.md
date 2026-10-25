@@ -4947,3 +4947,34 @@ is already 1 there, so .24 dumped at the title), 1 after it, 4 in Versus;
 Versus loading is phase 5, then 0, then 1 when the fight starts (run 1:
 frames 2620 / 2672 / 2973; run 2, longer in the menus: 4086 / 4150 / 4451).
 The dump now waits for phase 1 in mode 4 (or 7) after a phase 5.
+
+## 0.2.6-rollback.26 - two launches at the Versus fight start; boot on the controlled clock
+
+Matt's two .25 runs reached the same Versus fight (same picks), run 2
+after a longer stay in the menus (fight start at frame 2356 vs 7633).
+Of 32768 RAM pages, 9312 are non-zero and 3805 differ (12.8 MB of
+differing bytes): the heap layout differs (333 pages of run 1 sit 2352
+pages = 9.4 MB later in run 2: something extra was allocated during the
+longer menu stay, and everything after it moved), so pointers differ all
+over the game's data; 0x030A4000..0x03278000 is zero in run 1 and in use
+in run 2; 0x01490000..0x01B72000 (7 MB) differs almost everywhere.
+Whole-RAM reconciliation at match start would mean sending ~15 MB plus
+heap bookkeeping, fiber, file, audio and GPU-side state that must agree
+with the moved memory -- a full cross-machine savestate.
+
+Matt also gave the state bytes: 0x596A37 match state (0 pre-fight intros,
+1 fighting, 2 K.O., 3 replay, 4 post-fight, 5 other / loading); 0x5A2858
+game mode (DOA2's list, matching what the logs show: 0 attract, 2 story,
+3 time attack, 4 versus, 5 survival, 7 sparring single, 9 tag battle,
+0x0A team battle, 0x0B sparring tag, 0x0C/0x0D watch, 0x0E/0x0F/0x11
+battle rec.).
+
+The alternative is the Fightcade model: both machines run the game in
+lockstep from power-on, so they never diverge. Experiment:
+- DOA3_DET_BOOT=1: xbox_det_begin with fixed bases before xbe_entry_point
+  (the same on every machine), one controlled-clock frame per presented
+  frame (d3d4134_frame_done), the APU on the controlled clock from the
+  first frame that has a chip, flips paced to 60 Hz.
+- DOA3_RAM_DUMP_FRAME=n: guest RAM written at frame n
+  (doa3_ram_frame_<n>_<seconds>.bin).
+Two launches with no input should then be byte-identical at frame n.
