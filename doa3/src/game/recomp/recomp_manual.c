@@ -2815,37 +2815,55 @@ void sub_001C7920(void)
     if (g_fib_slice_due) xbox_fiber_timeslice();
 }
 
-/* doa3.1-rollback.27: AFS partition status (0x190B00). The CRI setup
- * (sub_001C79F0) waits for each partition's table with a bare
- * `while (sub_00190B00(n) != 3);` -- no kernel call, no present. The file
- * server fills the table between those polls when the host's 4 ms slice
- * timer hands it a turn; on the controlled clock the slices and the
- * workers' vblank come only from xbox_det_frame (one per presented frame),
- * so the loop never ended (DOA3_DET_BOOT stalled at heartbeat 1).
+/* doa3.1-rollback.27/28: CRI status polls used as busy-waits.
+ * The CRI setup (sub_001C79F0) waits for each AFS partition's table with a
+ * bare `while (sub_00190B00(pt) != 3);`, and the audio init (sub_000A5D30)
+ * waits for a file with `while (sub_001907A0(adxf) != 3);` (ADXF_GetStat):
+ * no kernel call, no present. The file server makes progress between those
+ * polls when the host's 4 ms slice timer hands it a turn; on the controlled
+ * clock the slices and the workers' vblank come only from xbox_det_frame
+ * (one per presented frame), so the loops never ended (DOA3_DET_BOOT
+ * stalled at heartbeat 1).
  *
  * On hardware the vblank interrupt keeps coming while the game spins.
- * Model that: a second unfinished poll from the game thread in the same
- * presented frame is a busy-wait, and each such lap is one vblank of the
- * controlled clock (time, slices, the workers' vblank). That is fixed per
- * lap, so both machines take the same laps; a game task polling once a
- * frame never reaches the second poll and is unchanged. */
-void sub_00190B00_gen(void);
-void sub_00190B00(void)
+ * Model that: a second unfinished poll of the SAME object from the game
+ * thread within one presented frame is a busy-wait, and each such lap is one
+ * vblank of the controlled clock (time, slices, the workers' vblank). That
+ * is fixed per lap, so both machines take the same laps; a game task that
+ * checks a load once a frame (or checks several different files once each)
+ * never makes a second poll of one object and is unchanged. */
+static void det_busy_wait_lap(const char *what, uint32_t obj, unsigned *frame, uint32_t *last, unsigned *polls)
 {
     extern void xbox_det_frame(void);
     extern int xbox_fiber_is_primary(void);
-    static unsigned s_frame = ~0u, s_polls;
-    sub_00190B00_gen();
-    if (g_xbox_det_active && eax != 3u && xbox_fiber_is_primary()) {
-        if (s_frame != g_doa3_frames_presented) { s_frame = g_doa3_frames_presented; s_polls = 0; }
-        if (++s_polls >= 2) {
-            static unsigned s_logged;
-            if (s_logged++ < 4)
-                fprintf(stderr, "[DET] partition wait: controlled-clock vblank from a busy-wait lap (frame %u)\n",
-                        g_doa3_frames_presented);
-            xbox_det_frame();
-        }
+    if (!g_xbox_det_active || !xbox_fiber_is_primary()) return;
+    if (*frame != g_doa3_frames_presented || *last != obj) {
+        *frame = g_doa3_frames_presented; *last = obj; *polls = 0;
     }
+    if (++*polls >= 2) {
+        static unsigned s_logged;
+        if (s_logged++ < 8)
+            fprintf(stderr, "[DET] %s %08X wait: controlled-clock vblank from a busy-wait lap (frame %u)\n",
+                    what, obj, g_doa3_frames_presented);
+        xbox_det_frame();
+    }
+}
+void sub_00190B00_gen(void);
+void sub_00190B00(void)
+{
+    static unsigned s_frame = ~0u, s_polls; static uint32_t s_last;
+    uint32_t obj = MEM32(esp + 4);
+    sub_00190B00_gen();
+    if (eax != 3u) det_busy_wait_lap("partition", obj, &s_frame, &s_last, &s_polls);
+    if (g_fib_slice_due) xbox_fiber_timeslice();
+}
+void sub_001907A0_gen(void);
+void sub_001907A0(void)
+{
+    static unsigned s_frame = ~0u, s_polls; static uint32_t s_last;
+    uint32_t obj = MEM32(esp + 4);
+    sub_001907A0_gen();
+    if (eax != 3u) det_busy_wait_lap("file", obj, &s_frame, &s_last, &s_polls);
     if (g_fib_slice_due) xbox_fiber_timeslice();
 }
 

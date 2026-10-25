@@ -5002,3 +5002,14 @@ models the vblank interrupt that keeps arriving on hardware while the game
 spins. Laps are fixed per poll, so every machine gets the same count. A task
 that polls once a frame never reaches its second poll, so rollback sessions
 are unchanged. The log shows `[DET] partition wait: ...` (first four only).
+
+### 0.2.6-rollback.28: the second boot busy-wait
+
+With the partition wait fixed, `DOA3_DET_BOOT` got through the CRI setup and
+stalled in the audio init's `while (sub_001907A0(adxf) != 3);`
+(sub_000A5D30, ADXF_GetStat), which has the same shape. `sub_001907A0` is now
+an override with the same rule. The rule is keyed on the polled object: a
+second unfinished poll of the same partition or file within one presented
+frame. A task that checks several files once each per frame never triggers
+it. The log line names the object, e.g. `[DET] file 00C7E5C0 wait: ...`
+(first eight only).

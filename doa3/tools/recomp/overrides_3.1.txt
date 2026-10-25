@@ -76,3 +76,4 @@
 0x0017DF00  # Alpha model material/geometry command builder: retained during replay
 0x00052046  # Intermediate replay only: rendered vertex deformation
 0x00190B00  AFS partition status poll: a virtual vblank per busy-wait lap on the controlled clock
+0x001907A0  ADXF file status poll: a virtual vblank per busy-wait lap on the controlled clock
