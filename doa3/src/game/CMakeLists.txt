@@ -77,6 +77,7 @@ set(GAME_SOURCES
     combat_debug.c
     training_dummy.c
     log_settings.c           # log files on/off (Esc menu, doa3_settings.ini)
+    update_check.c           # check for updates at boot (General tab)
     dip_switches.c           # quality-of-life toggles, default off (General tab)
     xiso_extract.c           # first-run install of the game files from a disc image
     recomp/recomp_manual.c
@@ -105,6 +106,7 @@ target_link_libraries(doa3 PRIVATE
     gdi32
     d3d11
     dxgi
+    winhttp
 )
 
 # Include paths

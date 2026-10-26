@@ -4385,3 +4385,34 @@ Same behavior as 0.2.10. The skipped sleeps at 0x75098 / 0x7558A are now
 scope, which the rollback branch's task transform requires (the phase lives
 in its restorable task 0x72070). This keeps the two branches' hand edits
 identical.
+
+## 0.2.16 - Escape menu clean-up, menu size, check for updates; damage trace
+
+Matt, toward v1.0.0:
+- Tabs: General first, then Controls, Video, Audio, Sparring, Debug. The
+  Online tab is hidden: online play is not working on this version of the
+  game yet. The section code stays.
+- General: "Check for updates at boot" (above "Write log files";
+  [General] CheckUpdates=, on by default). update_check.c makes one
+  WinHTTP request to the GitHub releases API
+  (repos/MattPonton/doa3-recomp/releases/latest) on a background thread,
+  compares tag_name with this build's 0.<minor>.<update>, and logs
+  `[UPDATE]`. A newer release shows a 12-second notice over the game, and
+  the General tab gets "Open release page" (html_url in the browser) and
+  "Check now". Nothing is downloaded or installed. A 404 (no release
+  published yet) counts as up to date.
+- General: "Menu size", 100-250 % in 25 % steps ([General] MenuScale=).
+  The ImGui font is rebuilt at the new pixel size (sharp text, not a
+  stretched atlas) and every style size scaled from the base style, before
+  the next ImGui frame and never while the slider is held. The window is
+  resized to match.
+- Sparring and Debug tabs: the long explanations moved into "(?)" hover
+  tooltips (HelpMarker). The Sparring recording controls sit on one line,
+  and the Stagger Escape rows are compact.
+
+Lorelei cliff throw (Matt): a throw that sends the opponent over a cliff
+loses its damage when the opponent hits the cliff side during the fall;
+only the small cliff hit is taken. First a trace:
+`DOA3_DAMAGE_TRACE=1` logs `[DAMAGE]` whenever a fighter's health, move
+or move category changes in a fight (side record +0x20 / +0x2E / +0x33),
+for a normal throw and the cliff case to compare.

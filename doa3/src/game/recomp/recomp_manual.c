@@ -2387,8 +2387,34 @@ static void perf_5s(double interval, const double ph[7], double present, double 
     s_next = GetTickCount() + 5000;
 }
 
+/* 0.2.16: DOA3_DAMAGE_TRACE=1 -- for the Lorelei cliff-throw damage report:
+ * each presented frame in a fight, a line whenever a fighter's health, move
+ * or move category changes (side record 0x59CF58 + side * 0x68: +0x20
+ * health, +0x2E move, +0x33 category), with the phase. */
+static void damage_trace_frame(void)
+{
+    static int on = -1;
+    static uint32_t last[2];
+    static unsigned lines;
+    if (on < 0) { const char *e = getenv("DOA3_DAMAGE_TRACE"); on = e && *e == '1'; }
+    if (!on || lines >= 20000 || MEM8(0x596A37) > 2) return;
+    for (unsigned side = 0; side < 2; ++side) {
+        uint32_t p = 0x59CF58 + side * 0x68;
+        uint32_t now = (uint32_t)MEM16(p + 0x20) | (uint32_t)MEM16(p + 0x2E) << 16;
+        uint8_t cat = MEM8(p + 0x33);
+        static uint8_t last_cat[2];
+        if (now == last[side] && cat == last_cat[side]) continue;
+        ++lines;
+        fprintf(stderr, "[DAMAGE] frame %u side %u: health %u (%+d) move %04X category %u phase %u\n",
+                g_doa3_frames_presented, side + 1, now & 0xFFFF,
+                (int)(now & 0xFFFF) - (int)(last[side] & 0xFFFF), now >> 16, cat, MEM8(0x596A37));
+        last[side] = now; last_cat[side] = cat;
+    }
+}
+
 static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
 {
+    damage_trace_frame();
     {   extern void doa3_menu_offset_apply(void);
         doa3_menu_offset_apply();   /* 0.1.34: every frame, menus included */ }
     {   extern void doa3_prof_set_thread(void);

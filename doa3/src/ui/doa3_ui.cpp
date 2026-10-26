@@ -27,6 +27,10 @@ extern "C" const char *ds4_model_name(int slot);   /* input/ds4_device.c */
 #include "../d3d/d3d8_screenshot.h"
 #include "../game/log_settings.h"
 #include "../game/dip_switches.h"
+#include "../game/update_check.h"
+#include "../game/doa3_version.h"
+#include <shellapi.h>
+#define DOA3_VER_STR_UI DOA3_VER_STR
 #include "../online/netplay_session.h"
 #include "../online/netplay.h"
 #include "../online/net_upnp.h"
@@ -62,6 +66,44 @@ int  g_input_player = 0;
 char g_status[128] = { 0 };
 
 void SetStatus(const char *s) { _snprintf_s(g_status, sizeof(g_status), _TRUNCATE, "%s", s); }
+
+/* 0.2.16: a "(?)" after the previous item; its text shows on hover, so the
+ * long explanations no longer take up the tabs. */
+void HelpMarker(const char *text)
+{
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+        ImGui::BeginTooltip();
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30.0f);
+        ImGui::TextUnformatted(text);
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
+    }
+}
+
+/* 0.2.16: menu size (General tab), [General] MenuScale= percent. The font is
+ * rebuilt at the new size (sharp text) and every style size scaled, before
+ * the next ImGui frame. */
+int   g_menu_scale = 100;
+int   g_menu_scale_built = 0;
+bool  g_menu_resize = false;
+ImGuiStyle g_base_style;
+void ApplyMenuScale()
+{
+    if (g_menu_scale_built == g_menu_scale) return;
+    float s = g_menu_scale / 100.0f;
+    ImGuiIO &io = ImGui::GetIO();
+    io.Fonts->Clear();
+    ImFontConfig cfg;
+    cfg.SizePixels = 13.0f * s;
+    io.Fonts->AddFontDefault(&cfg);
+    ImGui_ImplDX11_InvalidateDeviceObjects();   /* the font atlas is rebuilt on the next NewFrame */
+    ImGui::GetStyle() = g_base_style;
+    ImGui::GetStyle().ScaleAllSizes(s);
+    g_menu_scale_built = g_menu_scale;
+    g_menu_resize = true;
+}
 
 /* Use the same assigned player-1 device as gameplay, including native PS4.
  * The Win32 backend's hardcoded XInput-slot-0 navigation is disabled.
@@ -478,11 +520,16 @@ void DrawGeneralSection()
     switch (ResetSaveRow()) {
     case 1:
         doa3_log_set_enabled(0);
+        update_check_set_enabled(1);
+        g_menu_scale = 100;
         dip_reset();
         SetStatus("General settings reset to defaults");
         break;
     case 2: {
         int ok = doa3_log_save();
+        ok = update_check_save() && ok;
+        {   char v[16]; _snprintf_s(v, sizeof v, _TRUNCATE, "%d", g_menu_scale);
+            ok = WritePrivateProfileStringA("General", "MenuScale", v, doa3_settings_ini_path()) && ok; }
         ok = dip_save() && ok;
         SetStatus(ok ? "Saved doa3_settings.ini"
                      : "Could not write doa3_settings.ini");
@@ -492,9 +539,37 @@ void DrawGeneralSection()
 
     ImGui::Separator();
 
+    bool upd = update_check_enabled() != 0;
+    if (ImGui::Checkbox("Check for updates at boot", &upd))
+        update_check_set_enabled(upd ? 1 : 0);
+    HelpMarker("At start-up, asks GitHub for the latest release of this port (one small request; "
+               "nothing is downloaded or installed). A newer release is announced over the game "
+               "and here.");
+    {
+        int st = update_check_state();
+        if (st == 1) ImGui::TextDisabled("Checking for updates...");
+        else if (st == 2) ImGui::TextDisabled("Up to date (version %s).", DOA3_VER_STR_UI);
+        else if (st == 4) ImGui::TextDisabled("Could not reach GitHub to check for updates.");
+        else if (st == 3) {
+            ImGui::Text("Version %s is available (you have %s).", update_check_latest(), DOA3_VER_STR_UI);
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Open release page"))
+                ShellExecuteA(NULL, "open", update_check_url(), NULL, NULL, SW_SHOWNORMAL);
+        }
+        if (st != 1) {
+            if (st) ImGui::SameLine();
+            if (ImGui::SmallButton("Check now")) update_check_now();
+        }
+    }
+
     bool on = doa3_log_enabled() != 0;
     if (ImGui::Checkbox("Write log files", &on))
         doa3_log_set_enabled(on ? 1 : 0);
+
+    ImGui::SetNextItemWidth(160.0f * g_menu_scale / 100.0f);
+    ImGui::SliderInt("Menu size", &g_menu_scale, 100, 250, "%d%%", ImGuiSliderFlags_AlwaysClamp);
+    if (ImGui::IsItemDeactivatedAfterEdit()) g_menu_scale = (g_menu_scale + 12) / 25 * 25;   /* 25 % steps */
+    HelpMarker("Size of this menu and its text. Applied when you let go of the slider; Save keeps it.");
 
     /* Dip switches: quality-of-life toggles for the game, all off by default
      * (off = the original game's behaviour). */
@@ -512,6 +587,33 @@ void DrawGeneralSection()
             ImGui::EndTooltip();
         }
     }
+}
+
+/* 0.2.16: a newer release: a notice at the top for 12 seconds, or until the
+ * menu is opened (the General tab has the details and the link). */
+ULONGLONG g_update_banner_until;
+bool UpdateBannerPending()
+{
+    if (update_check_state() != 3) return false;
+    if (!g_update_banner_until) g_update_banner_until = GetTickCount64() + 12000;
+    return !g_visible && GetTickCount64() < g_update_banner_until;
+}
+void DrawUpdateBanner()
+{
+    if (!UpdateBannerPending()) return;
+    char text[160];
+    _snprintf_s(text, sizeof text, _TRUNCATE, "Dead or Alive 3 recomp %s is available. Esc > General for the release page.",
+                update_check_latest());
+    const ImGuiViewport *vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(ImVec2(vp->WorkPos.x + vp->WorkSize.x * 0.5f, vp->WorkPos.y + 24.0f),
+                            ImGuiCond_Always, ImVec2(0.5f, 0.0f));
+    ImGui::SetNextWindowBgAlpha(0.75f);
+    if (ImGui::Begin("##update_banner", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
+                     ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+                     ImGuiWindowFlags_NoNav | ImGuiWindowFlags_AlwaysAutoResize))
+        ImGui::TextUnformatted(text);
+    ImGui::End();
 }
 
 /* ── Online section ───────────────────────────────────────────────────────*/
@@ -739,7 +841,7 @@ void DrawDebugSection()
             "Shows the first UV set: red = U, green = V, blue = checker squares.",
             "Shows distance along the view direction: black is near, white is far."
         };
-        ImGui::TextWrapped("%s", view_help[d3d8_debug_view_get()]);
+        HelpMarker(view_help[d3d8_debug_view_get()]);
         if (view == D3D8_DEBUG_DISTANCE) {
             float range = d3d8_debug_distance_get();
             if (ImGui::SliderFloat("Distance range", &range, 10, 100000, "%.0f", ImGuiSliderFlags_Logarithmic))
@@ -748,20 +850,17 @@ void DrawDebugSection()
         bool backfaces = d3d8_debug_backfaces_get() != 0;
         if (ImGui::Checkbox("Show backfaces", &backfaces)) d3d8_debug_backfaces_set(backfaces);
         if (ImGui::Button("Restore normal rendering")) d3d8_debug_views_reset();
-        ImGui::TextWrapped("Views apply to depth-tested geometry. Transparency and cutouts may appear solid. "
-                           "Backfaces can only reveal geometry submitted by the game. These options are temporary.");
+        HelpMarker("Views apply to depth-tested geometry. Transparency and cutouts may appear solid. "
+                   "Backfaces can only reveal geometry submitted by the game. These options are temporary.");
         if (d3d8_debug_view_error()[0]) ImGui::TextWrapped("%s", d3d8_debug_view_error());
     }
     if (ImGui::CollapsingHeader("Unlockables")) {
         bool unlock = debug_unlock_all_get() != 0;
         if (ImGui::Checkbox("Unlock all unlockables", &unlock))
             debug_unlock_all_set(unlock ? 1 : 0);
-        ImGui::TextWrapped("Unlocks characters, costumes and Theater movies. "
-                           "Re-enter character select or Theater to refresh the list.");
-        ImGui::Spacing();
-        ImGui::TextDisabled("Your earned unlocks and save data are preserved.");
-        ImGui::TextWrapped("Untick to use your normal unlocks. Choose Save to keep "
-                           "this setting for next time.");
+        HelpMarker("Unlocks characters, costumes and Theater movies; re-enter character select or Theater "
+                   "to refresh the list. Your earned unlocks and save data are preserved: untick to use your "
+                   "normal unlocks. Choose Save to keep this setting for next time.");
     }
     if (ImGui::CollapsingHeader("Diagnostics")) {
         bool cap = doa3_auto_capture_enabled() != 0;
@@ -771,26 +870,24 @@ void DrawDebugSection()
         if (ImGui::Checkbox("Automatic diagnostic captures", &cap))
             doa3_auto_capture_set(cap ? 1 : 0);
         if (env_forced) ImGui::EndDisabled();
-        ImGui::TextWrapped("Writes developer traces (mtrace_*.txt) and their screenshots (aa_*.bmp) "
-                           "to the Diagnostics folder next to the game while you play, for bug reports. "
-                           "Leave off for normal play. "
-                           "Choose Save to keep this setting for next time.");
+        HelpMarker("Writes developer traces (mtrace_*.txt) and their screenshots (aa_*.bmp) to the "
+                   "Diagnostics folder next to the game while you play, for bug reports. Leave off for "
+                   "normal play. Choose Save to keep this setting for next time.");
         if (env_forced)
             ImGui::TextDisabled("Set by the DOA3_AUTO_CAPTURE environment variable for this launch.");
         if (ImGui::Button("Trace the next frame")) {
             InterlockedExchange(&g_doa3_trace_request, 1);
             SetStatus("The next frame will be traced to the Diagnostics folder");
         }
-        ImGui::TextWrapped("Records the next frame's graphics commands (mtrace_manual_*.txt) and a "
-                           "screenshot (aa_*.bmp) in the Diagnostics folder. Use it while a visual bug "
-                           "is on screen; the game keeps running behind this menu.");
+        HelpMarker("Records the next frame's graphics commands (mtrace_manual_*.txt) and a screenshot "
+                   "(aa_*.bmp) in the Diagnostics folder. Use it while a visual bug is on screen; the game "
+                   "keeps running behind this menu.");
         if (ImGui::Button("Save the next frame's textures")) {
             InterlockedExchange(&g_doa3_texdump_request, 1);
             SetStatus("The next frame's textures will be saved to the Textures folder");
         }
-        ImGui::TextWrapped("Saves every texture drawn in the next frame as a .dds file in a Textures "
-                           "folder next to the game, named by its memory address and size. Files are "
-                           "kept between launches.");
+        HelpMarker("Saves every texture drawn in the next frame as a .dds file in a Textures folder next "
+                   "to the game, named by its memory address and size. Files are kept between launches.");
         if (ImGui::Button("Save a game memory snapshot")) {
             unsigned fr = doa3_save_ram_snapshot();
             char msg[96];
@@ -798,9 +895,9 @@ void DrawDebugSection()
             else strcpy_s(msg, "Could not write the snapshot");
             SetStatus(msg);
         }
-        ImGui::TextWrapped("Writes the game's 64 MB of memory to a Snapshots folder next to the game "
-                           "(kept between launches). Take two a second apart while a logic bug is "
-                           "showing and two once it is gone, for comparison.");
+        HelpMarker("Writes the game's 64 MB of memory to a Snapshots folder next to the game (kept between "
+                   "launches). Take two a second apart while a logic bug is showing and two once it is gone, "
+                   "for comparison.");
     }
     if (ImGui::CollapsingHeader("Camera controls")) {
         bool camera = free_camera_enabled() != 0;
@@ -812,13 +909,11 @@ void DrawDebugSection()
         if (ImGui::SliderFloat("Camera speed", &speed, 1.0f, 20.0f, "%.1f", ImGuiSliderFlags_AlwaysClamp))
             free_camera_set_speed(speed);
         if (ImGui::Button("Reset to game camera")) free_camera_reset();
-        ImGui::TextWrapped("Close this menu to fly. WASD: move; mouse: look; E/Q: up/down. "
-                           "Shift: fast; Ctrl: slow.");
-        ImGui::TextWrapped("Controller: left stick moves, right stick looks, RT/LT moves up/down. "
-                           "LB: fast; RB: slow.");
-        ImGui::TextWrapped("Esc releases the mouse. Untick Free camera to restore the game view. "
-                           "Fighter controls are blocked while flying; the fight keeps running. "
-                           "Camera mode is temporary and unavailable during online play.");
+        HelpMarker("Close this menu to fly. Keyboard: WASD move, mouse looks, E/Q up/down, Shift fast, "
+                   "Ctrl slow. Controller: left stick moves, right stick looks, RT/LT up/down, LB fast, "
+                   "RB slow. Esc releases the mouse. Untick Free camera to restore the game view. Fighter "
+                   "controls are blocked while flying; the fight keeps running. Camera mode is temporary "
+                   "and unavailable during online play.");
     }
     if (ImGui::CollapsingHeader("Screenshots and UI")) {
         ImGui::BeginDisabled(netplay_active() != 0);
@@ -828,11 +923,11 @@ void DrawDebugSection()
                 debug_hide_player_set(side, hide);
         }
         ImGui::EndDisabled();
-        ImGui::TextDisabled("Character visibility is session only. Gameplay and collision boxes stay active.");
+        HelpMarker("Character visibility is session only. Gameplay and collision boxes stay active.");
         bool hidden = debug_hide_ui_get() != 0;
         if (ImGui::Checkbox("Hide UI", &hidden)) debug_hide_ui_set(hidden);
-        ImGui::TextWrapped("Hides game screen overlays, including HUD and menus. Some fades may also disappear. "
-                           "Escape always opens these settings so you can restore the UI.");
+        HelpMarker("Hides game screen overlays, including HUD and menus. Some fades may also disappear. "
+                   "Escape always opens these settings so you can restore the UI.");
         PadBinding key = { PADSRC_KEY, debug_screenshot_key_get() };
         char name[80];
         pad_binding_label(key, name, sizeof(name));
@@ -848,8 +943,8 @@ void DrawDebugSection()
         }
         if (ImGui::Button("Take screenshot")) d3d8_screenshot_request();
         ImGui::TextWrapped("%s", d3d8_screenshot_status());
-        ImGui::TextWrapped("Captures the game at its render resolution without this settings menu. "
-                           "Use a key that is not assigned to fighter or camera controls. Hotkey changes save automatically.");
+        HelpMarker("Captures the game at its render resolution without this settings menu. Use a key that is "
+                   "not assigned to fighter or camera controls. Hotkey changes save automatically.");
     } else {
         g_screenshot_listening = false;
     }
@@ -868,17 +963,22 @@ void DrawTrainingSection()
     static bool loop=false;
     TrainingStatus status;
     training_status(&status);
-    ImGui::TextWrapped("Guard, counter-action and counter-hit settings are available in the game's Sparring pause menu.");
-    ImGui::Separator();
     if (!training_available()) {
         ImGui::TextDisabled("Available only in offline Sparring.");
         return;
     }
-    ImGui::TextUnformatted("Dummy input recording");
+    ImGui::SeparatorText("Dummy input recording");
+    HelpMarker("Record temporarily gives you control of the dummy; press Escape to finish recording "
+               "or stop playback. Each slot holds up to 10 seconds. Directions replay as recorded; "
+               "positions are not reset. Recordings last for the current Sparring session; recording "
+               "again replaces the selected slot. Guard, counter-action and counter-hit settings are in "
+               "the game's own Sparring pause menu.");
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 4.0f);
     ImGui::Combo("Slot", &slot, "1\0" "2\0" "3\0");
-    ImGui::Text("Recorded: %d / %d frames (%.1f seconds)", status.length[slot],
-        TRAINING_MAX_FRAMES, status.length[slot]/60.0f);
-    ImGui::Checkbox("Loop playback", &loop);
+    ImGui::SameLine();
+    ImGui::TextDisabled("%.1f / %.0f s", status.length[slot]/60.0f, TRAINING_MAX_FRAMES/60.0f);
+    ImGui::SameLine();
+    ImGui::Checkbox("Loop", &loop);
     bool ready=training_can_record()!=0;
     ImGui::BeginDisabled(!ready);
     if (ImGui::Button("Record dummy") && training_start(TRAINING_RECORD,slot,0)) {
@@ -895,10 +995,11 @@ void DrawTrainingSection()
     ImGui::EndDisabled();
     ImGui::SameLine();
     if (ImGui::Button("Clear slot")) training_clear(slot);
-    ImGui::TextWrapped("Record temporarily gives you control of the dummy. Press Escape to finish recording or stop playback. Each slot holds up to 10 seconds. Directions replay as recorded; positions are not reset.");
-    ImGui::TextWrapped("Recordings last for the current Sparring session. Recording again replaces the selected slot.");
-    if (!ready)
-        ImGui::TextWrapped("Enter a solo Sparring fight, close the game's pause menu, and turn off Exercise and free camera to record or play.");
+    if (!ready) {
+        ImGui::TextDisabled("Not available right now");
+        HelpMarker("Enter a solo Sparring fight, close the game's pause menu, and turn off Exercise "
+                   "and free camera to record or play.");
+    }
 
     /* Second controller drives the dummy (0.1.12). */
     ImGui::Spacing();
@@ -913,10 +1014,16 @@ void DrawTrainingSection()
         bool on = enabled != 0;
         if (ImGui::Checkbox(tag ? "Controller controls your tag partner###ctrl2" : "Controller controls the dummy###ctrl2", &on))
             training_control_set(on ? 1 : 0, port);
+        HelpMarker(tag ?
+            "Tag Sparring: the chosen controller plays your tag partner while it is on point, as when "
+            "two players share a team in Tag Battle; you play the other member. Ports follow Controls > "
+            "Player N. The partner goes back to your controller whenever that controller is unplugged." :
+            "Ports follow Controls > Player N. The dummy goes back to the CPU whenever that controller is "
+            "unplugged, and while a recording plays or records.");
         char preview[48];
         _snprintf_s(preview, sizeof preview, _TRUNCATE, "Player %d port%s", port + 1,
                     port == human ? " (yours)" : training_port_connected(port) ? "" : " (not connected)");
-        ImGui::SetNextItemWidth(220.0f);
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 15.0f);
         if (ImGui::BeginCombo("Second controller", preview)) {
             for (int p = 0; p < 4; ++p) {
                 char item[48];
@@ -934,19 +1041,15 @@ void DrawTrainingSection()
         else if (!training_port_connected(port)) ImGui::TextDisabled("%s: %s (no controller on that port)", who, cpu);
         else if (tag) ImGui::TextDisabled("Partner: your controller until the fight is running");
         else ImGui::TextDisabled("Dummy: CPU until the fight is running and this menu is closed");
-        if (tag)
-            ImGui::TextWrapped("Tag Sparring: the chosen controller plays your tag partner while it is on point, "
-                               "as when two players share a team in Tag Battle; you play the other member. "
-                               "Ports follow Controls > Player N. The partner goes back to your controller "
-                               "whenever that controller is unplugged.");
-        else
-            ImGui::TextWrapped("Ports follow Controls > Player N. The dummy goes back to the CPU whenever that "
-                               "controller is unplugged, and while a recording plays or records.");
     }
 
     /* Stagger Escape (0.1.12). */
     ImGui::Spacing();
     ImGui::SeparatorText("Stagger Escape");
+    HelpMarker("The critical-stun mash value: each input in a critical stun or guard break adds 3% (up to "
+               "100%) and every idle frame takes 1% (down to 0%); it sets how fast the stun animation "
+               "plays (0% = normal speed, 100% = double). Hold sets the value at the start of every frame, "
+               "and the game applies that frame's input on top.");
     {
         int human = HumanSide();
         for (int side = 0; side < 2; ++side) {
@@ -954,22 +1057,20 @@ void DrawTrainingSection()
             training_stagger_hold_get(side, &hold, &value);
             ImGui::PushID(side);
             /* Shown as a percentage: 1.00 (none) = 0 %, 2.00 (max) = 100 %. */
-            ImGui::Text("Fighter %d%s: %.0f%%", side + 1,
-                        side == human ? " (you)" : human >= 0 ? " (dummy)" : "",
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Fighter %d%s: %3.0f%%", side + 1,
+                        side == human ? " (you)  " : human >= 0 ? " (dummy)" : "",
                         (training_stagger_get(side) - 1.0f) * 100.0f);
+            ImGui::SameLine();
             bool h = hold != 0;
             if (ImGui::Checkbox("Hold", &h)) training_stagger_hold(side, h ? 1 : 0, value);
             ImGui::SameLine();
-            ImGui::SetNextItemWidth(200.0f);
+            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0f);
             float pct = (value - 1.0f) * 100.0f;
             if (ImGui::SliderFloat("##value", &pct, 0.0f, 100.0f, "%.0f%%"))
                 training_stagger_hold(side, hold, 1.0f + pct / 100.0f);
             ImGui::PopID();
         }
-        ImGui::TextWrapped("The critical-stun mash value: each input in a critical stun or guard break adds "
-                           "3% (up to 100%) and every idle frame takes 1% (down to 0%); it sets how fast "
-                           "the stun animation plays (0% = normal speed, 100% = double). Hold sets the value "
-                           "at the start of every frame, and the game applies that frame's input on top.");
     }
 }
 
@@ -993,14 +1094,18 @@ void DrawMenu()
     ImGui::SetNextWindowPos(ImVec2(vp->WorkPos.x + vp->WorkSize.x * 0.5f,
                                    vp->WorkPos.y + vp->WorkSize.y * 0.5f),
                             ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(560, 460), ImGuiCond_Appearing);
+    {   float s = g_menu_scale_built ? g_menu_scale_built / 100.0f : 1.0f;
+        ImGui::SetNextWindowSize(ImVec2(560 * s, 460 * s), g_menu_resize ? ImGuiCond_Always : ImGuiCond_Appearing);
+        g_menu_resize = false; }
 
     bool open = true;
     bool debug_visible = false;
     if (ImGui::Begin("Dead or Alive 3", &open, ImGuiWindowFlags_NoCollapse)) {
         if (ImGui::BeginTabBar("##tabs")) {
-            if (ImGui::BeginTabItem("Online")) {
-                DrawOnlineSection();
+            /* 0.2.16: General first; the Online tab is hidden until online
+             * play works on this version of the game. */
+            if (ImGui::BeginTabItem("General")) {
+                DrawGeneralSection();
                 ImGui::EndTabItem();
             }
             if (ImGui::BeginTabItem("Controls")) {
@@ -1015,21 +1120,17 @@ void DrawMenu()
                 DrawAudioSection();
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("General")) {
-                DrawGeneralSection();
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("Debug")) {
-                debug_visible = true;
-                DrawDebugSection();
-                ImGui::EndTabItem();
-            }
             ImGui::BeginDisabled(!training_available());
             if (ImGui::BeginTabItem("Sparring")) {
                 DrawTrainingSection();
                 ImGui::EndTabItem();
             }
             ImGui::EndDisabled();
+            if (ImGui::BeginTabItem("Debug")) {
+                debug_visible = true;
+                DrawDebugSection();
+                ImGui::EndTabItem();
+            }
 
             ImGui::EndTabBar();
         }
@@ -1065,6 +1166,9 @@ extern "C" int doa3_ui_init(void)
     /* Navigation and binding capture use the game's unified controller path. */
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
     ImGui::StyleColorsDark();
+    g_base_style = ImGui::GetStyle();
+    g_menu_scale = (int)GetPrivateProfileIntA("General", "MenuScale", 100, doa3_settings_ini_path());
+    if (g_menu_scale < 100 || g_menu_scale > 250) g_menu_scale = 100;
 
     if (!ImGui_ImplWin32_Init(hwnd)) { ImGui::DestroyContext(); return 0; }
     if (!ImGui_ImplDX11_Init(dev, ctx)) {
@@ -1180,7 +1284,8 @@ extern "C" void doa3_ui_render(void)
     }
     /* Nothing to do on a normal frame unless the menu is open or online play
      * has something to say over the game. */
-    if (!g_visible && !NetplayBannerPending() && !combat_debug_flags() && !PerformanceOverlayEnabled() && training.mode==TRAINING_IDLE) return;
+    if (!g_visible && !NetplayBannerPending() && !combat_debug_flags() && !PerformanceOverlayEnabled() && training.mode==TRAINING_IDLE &&
+        !UpdateBannerPending()) return;
     if (!g_ready && !doa3_ui_init()) return;
 
     ID3D11DeviceContext *ctx = d3d8_GetD3D11Context();
@@ -1208,6 +1313,7 @@ extern "C" void doa3_ui_render(void)
     ID3D11DepthStencilView *prev_dsv = nullptr;
     ctx->OMGetRenderTargets(1, &prev_rtv, &prev_dsv);
 
+    if (!ImGui::IsAnyItemActive()) ApplyMenuScale();   /* not while the slider is held */
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
     UpdateGamepadNavigation();
@@ -1216,6 +1322,7 @@ extern "C" void doa3_ui_render(void)
     DrawCombatDebugOverlay();
     DrawPerformanceOverlay();
     DrawTrainingBanner();
+    DrawUpdateBanner();
     if (g_visible) DrawMenu();
     DrawNetplayBanner();
 

@@ -1677,6 +1677,8 @@ int main(int argc, char **argv)
     /* stderr -> doa3_log.txt when logging is on in the Esc menu, NUL when
      * off (the default). See log_settings.h. */
     doa3_log_init();
+    {   extern void update_check_init(void);
+        update_check_init();   /* background; never blocks boot */ }
     fprintf(stderr, "[DOA3] DOA3.exe version %s (%s)\n", DOA3_VER_STR, DOA3_XBE_REGION);
 #ifdef DOA3_LOCAL_REGS
     fprintf(stderr, "[DOA3] recompiled code: guest registers in locals (tools/recomp/localize_regs.py)\n");

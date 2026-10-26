@@ -35,6 +35,8 @@ performance for low-end PCs.
   Sparring, your tag partner) to a second controller, and hold the Stagger
   Escape value
 - Screenshots (PNG) at render resolution, without the overlay
+- Check for updates at boot (General tab; announces a newer release, never
+  downloads anything) and an adjustable Escape-menu size
 
 ## Getting started
 
