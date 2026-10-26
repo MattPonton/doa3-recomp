@@ -4338,3 +4338,22 @@ frame, so it uses the hold decision recorded for that frame. The screen
 keeps the KO frame until the next round's Get Ready, as the replay skip
 does. `[ROUND] holding the KO frame ...` / `[ROUND] next round shown ...`
 bracket it in the log.
+
+## 0.2.12 - Tag Sparring: a second controller plays the tag partner
+
+Matt: the Training tab's dummy controller does nothing in Tag Sparring.
+Re-use it there for two humans on one team, as Tag Battle allows. Tag
+Battle's mechanism: the four ports 0x30E3F4.. are indexed side + 2 * team
+member (0x30E3F6/7 are the partners'). With the side's "two humans" flag
+0x596A40[side] set (and the tag flag 0xC59866), the input code (0x124B1,
+0x12631) reads the port of the member on point (side record +3:
+0x59CF5B / 0x59CFC3, 0/2 and 1/3, toggled on tag), and the HUD (0x5B29D)
+labels both members. In Tag Sparring (mode 11), during the input window
+only (training_input_begin/end, like the singles dummy hand-over), the
+player's side gets the flag and the chosen port in its partner slot.
+Both are put back afterwards. Same conditions as the singles option: on,
+fight running (phase 1/2), not the player's own port, controller
+connected. Recording and playback are unaffected (they drive the dummy).
+The UI section is now "Second controller", worded for the dummy or the
+partner depending on the mode. `[TRAINING] Tag Sparring: partner on ...`
+is logged when it takes effect.

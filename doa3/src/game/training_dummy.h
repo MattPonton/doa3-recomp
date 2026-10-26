@@ -28,6 +28,9 @@ void training_control_set(int enabled, int port);
 void training_control_get(int *enabled, int *port);
 /* 1 while the dummy is on the controller this frame, 0 on the CPU. */
 int training_control_active(void);
+/* 0.2.12: 1 in Tag Sparring, where the setting drives the player's tag
+ * partner instead of the dummy. */
+int training_control_partner(void);
 /* Guest port of the human player in the current Sparring fight, or -1. */
 int training_human_port(void);
 int training_port_connected(int port);

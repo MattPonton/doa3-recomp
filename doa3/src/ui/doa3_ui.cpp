@@ -902,19 +902,22 @@ void DrawTrainingSection()
 
     /* Second controller drives the dummy (0.1.12). */
     ImGui::Spacing();
-    ImGui::SeparatorText("Dummy control");
+    ImGui::SeparatorText("Second controller");
     {
         int enabled = 0, port = 1;
         training_control_get(&enabled, &port);
         int human = training_human_port();
+        bool tag = training_control_partner() != 0;
+        const char *who = tag ? "Partner" : "Dummy";
+        const char *cpu = tag ? "your controller" : "CPU";
         bool on = enabled != 0;
-        if (ImGui::Checkbox("Controller controls the dummy", &on))
+        if (ImGui::Checkbox(tag ? "Controller controls your tag partner###ctrl2" : "Controller controls the dummy###ctrl2", &on))
             training_control_set(on ? 1 : 0, port);
         char preview[48];
         _snprintf_s(preview, sizeof preview, _TRUNCATE, "Player %d port%s", port + 1,
                     port == human ? " (yours)" : training_port_connected(port) ? "" : " (not connected)");
         ImGui::SetNextItemWidth(220.0f);
-        if (ImGui::BeginCombo("Dummy controller", preview)) {
+        if (ImGui::BeginCombo("Second controller", preview)) {
             for (int p = 0; p < 4; ++p) {
                 char item[48];
                 _snprintf_s(item, sizeof item, _TRUNCATE, "Player %d port%s", p + 1,
@@ -925,13 +928,20 @@ void DrawTrainingSection()
             }
             ImGui::EndCombo();
         }
-        if (!enabled) ImGui::TextDisabled("Dummy: CPU");
-        else if (training_control_active()) ImGui::TextDisabled("Dummy: Player %d controller", port + 1);
-        else if (port == human) ImGui::TextDisabled("Dummy: CPU (that is your own port)");
-        else if (!training_port_connected(port)) ImGui::TextDisabled("Dummy: CPU (no controller on that port)");
+        if (!enabled) ImGui::TextDisabled("%s: %s", who, cpu);
+        else if (training_control_active()) ImGui::TextDisabled("%s: Player %d controller", who, port + 1);
+        else if (port == human) ImGui::TextDisabled("%s: %s (that is your own port)", who, cpu);
+        else if (!training_port_connected(port)) ImGui::TextDisabled("%s: %s (no controller on that port)", who, cpu);
+        else if (tag) ImGui::TextDisabled("Partner: your controller until the fight is running");
         else ImGui::TextDisabled("Dummy: CPU until the fight is running and this menu is closed");
-        ImGui::TextWrapped("Ports follow Controls > Player N. The dummy goes back to the CPU whenever that "
-                           "controller is unplugged, and while a recording plays or records.");
+        if (tag)
+            ImGui::TextWrapped("Tag Sparring: the chosen controller plays your tag partner while it is on point, "
+                               "as when two players share a team in Tag Battle; you play the other member. "
+                               "Ports follow Controls > Player N. The partner goes back to your controller "
+                               "whenever that controller is unplugged.");
+        else
+            ImGui::TextWrapped("Ports follow Controls > Player N. The dummy goes back to the CPU whenever that "
+                               "controller is unplugged, and while a recording plays or records.");
     }
 
     /* Stagger Escape (0.1.12). */
