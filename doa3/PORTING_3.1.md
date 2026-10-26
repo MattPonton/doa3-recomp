@@ -4241,3 +4241,31 @@ seed already covers a human fighter), and the 0.2.4 [STAGGER-TRACE] /
 The colour switch is now "Random includes alternate costume colors from
 disc"; user-facing text (dip switch help, README, DEBUG.md) uses American
 spelling. The ini key RandomAltCostumes is unchanged.
+
+## 0.2.7 - Random stage in Tag Battle; replay / winner pose on the final round only
+
+Random stage in Tag Battle: Matt reported that "Random is default stage
+option" did not apply on Tag Battle's Stage Select. That screen is always
+entered from the caller that passes the remembered stage (0xCADAC, after
+the four-fighter loop), and the hook kept a remembered stage. Until a
+stage has been chosen in the mode, though, that value is only the default
+the mode setup writes (0xD65A0 sets select state +0x1EA to 2, clamped to
+the list). 0xD65A0 is now an override that marks "no Stage Select since
+mode setup", and the first Stage Select after it opens on Random whichever
+caller it comes from. Later ones keep the stage that was played. The
+`[STAGE]` log lines (first 16 only) show the mode, the remembered flag,
+the fresh flag, and the cursor before and after.
+
+New dip switches, both off by default:
+- `ReplayFinalRoundOnly`, "Only show round's replay on final round".
+  When the KO phase ends (0x73F5D), a round that does not decide the
+  match takes the game's own no-replay path (B3950, phase 4 at 0x73F70),
+  the one Team Battle, Survival and draws already use.
+- `WinnerFinalRoundOnly`, "Only show round's winner on final round".
+  Phase 4's pose loop (0x75311..0x75584) counts ebp frames down and exits
+  to 0x7558A early when 0x7DC00 sees a skip press. A round that does not
+  decide the match now exits there before the loop's first frame.
+"Decides the match": a side's rounds won (side record +0x60, raised at
+the KO in 0x737F5..0x73857) has reached the rounds to win (0x588837).
+Both hooks are hand edits in gen/recomp_0001.c (three copies each) and
+log a `[ROUND]` line with the score and the decision.

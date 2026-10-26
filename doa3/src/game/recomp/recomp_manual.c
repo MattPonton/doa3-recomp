@@ -1360,6 +1360,42 @@ void doa3_ein_grid_restore(void)
     MEM8(EIN_CELL_CHAR) = 3;
 }
 
+/* 0.2.7: dip switches "Only show round's replay / winner on final round".
+ * Round flow (0x72F50, state 0x5B1424 = phase 0x596A37): 1 fight, 2 KO,
+ * 3 replay, 4 round result. The KO winner's round count is raised as the
+ * phase goes to 2 (0x737F5..0x73857: side records 0x59CF58 + side * 0x68,
+ * +0x60 = rounds won); rounds to win are 0x588837. The match is decided
+ * when a side has reached that count.
+ *  - Replay: when the KO phase ends (0x73F5D) the game already goes straight
+ *    to phase 4 without a replay in some cases (Team Battle, Survival,
+ *    draws, ...): call B3950, phase 4 (0x73F70). A round that does not
+ *    decide the match now takes that path.
+ *  - Winner: phase 4's pose loop (0x75311..0x75584) counts ebp frames down
+ *    and leaves to 0x7558A early when 0x7DC00 sees a skip press. A round
+ *    that does not decide the match now leaves before the loop's first
+ *    frame, the same exit. Hand edits in gen/recomp_0001.c call these. */
+static int round_decides_match(void)
+{
+    unsigned need = MEM8(0x588837), w0 = MEM8(0x59CFB8), w1 = MEM8(0x59D020);
+    return need == 0 || w0 >= need || w1 >= need;
+}
+int doa3_round_skip_replay(void)
+{
+    int skip = dip_get(DIP_REPLAY_FINAL_ONLY) && !round_decides_match();
+    fprintf(stderr, "[ROUND] KO ends: mode %u, rounds won %u-%u of %u -> %s\n", MEM8(0x5A2858),
+            MEM8(0x59CFB8), MEM8(0x59D020), MEM8(0x588837), skip ? "replay skipped" : "game decides");
+    fflush(stderr);
+    return skip;
+}
+int doa3_round_skip_winner(void)
+{
+    int skip = dip_get(DIP_WINNER_FINAL_ONLY) && !round_decides_match();
+    fprintf(stderr, "[ROUND] winner pose: mode %u, rounds won %u-%u of %u -> %s\n", MEM8(0x5A2858),
+            MEM8(0x59CFB8), MEM8(0x59D020), MEM8(0x588837), skip ? "skipped" : "shown");
+    fflush(stderr);
+    return skip;
+}
+
 /* DOA3 0.1.31: dip switch "Random is default stage option".
  * Stage Select init (0xD8470) takes the starting cursor as its argument;
  * every caller passes the constant 2 (Beach (Day)) except the one at
@@ -1367,18 +1403,44 @@ void doa3_ein_grid_restore(void)
  * g_stage_cursor_keep first. The cursor byte is 0x9B7BAA, indexing the
  * order list 0x9B76C4[0x29CA5A]; table entry 0x0E is Random, which the
  * init appends at the end of the list. Called after the list is built. */
+/* 0.2.7: Tag Battle's Stage Select is always entered from the caller that
+ * passes the remembered stage (0xCADAC, after the four-fighter loop), so
+ * the switch never applied there. The "remembered" stage is only the
+ * default the mode setup writes (0xD65A0 sets select state +0x1EA to 2,
+ * clamped to the list) until a stage has been chosen in that mode; the
+ * first Stage Select after a mode setup now opens on Random too, and later
+ * ones keep the stage that was played. */
 int g_stage_cursor_keep;
+static int s_stage_fresh;   /* no Stage Select since the last mode setup */
 uint8_t doa3_stage_initial_cursor(uint8_t cur)
 {
-    int keep = g_stage_cursor_keep;
+    int keep = g_stage_cursor_keep, fresh = s_stage_fresh;
     unsigned n, i;
+    uint8_t out = cur;
     g_stage_cursor_keep = 0;
-    if (keep || cur != 2 || !dip_get(DIP_RANDOM_STAGE_DEFAULT)) return cur;
+    s_stage_fresh = 0;
+    if (!dip_get(DIP_RANDOM_STAGE_DEFAULT)) return cur;
     n = MEM8(0x29CA5A);
     if (n > 32) n = 32;
-    for (i = 0; i < n; i++)
-        if (MEM8(0x9B76C4 + i) == 0x0E) return (uint8_t)i;
-    return cur;
+    if ((keep && fresh) || (!keep && cur == 2)) {
+        for (i = 0; i < n; i++)
+            if (MEM8(0x9B76C4 + i) == 0x0E) { out = (uint8_t)i; break; }
+    }
+    {   static unsigned s_logged;
+        if (s_logged++ < 16) {
+            fprintf(stderr, "[STAGE] select opens: mode %u, remembered %d, first since mode setup %d, cursor %u of %u -> %u\n",
+                    MEM8(0x5A2858), keep, fresh, cur, n, out);
+            fflush(stderr);
+        }
+    }
+    return out;
+}
+void sub_000D65A0_gen(void);
+void sub_000D65A0(void)
+{
+    sub_000D65A0_gen();
+    s_stage_fresh = 1;
+    if (g_fib_slice_due) xbox_fiber_timeslice();
 }
 
 /* Dip switch "Same costume, different option" (0.1.28).

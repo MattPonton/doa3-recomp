@@ -7,6 +7,8 @@
 #include "recomp_funcs.h"
 #include "debug_settings.h"
 #include <math.h>
+extern int doa3_round_skip_replay(void);
+extern int doa3_round_skip_winner(void);
 
 /**
  * sub_0004C570
@@ -107429,6 +107431,7 @@ loc_00073F5D: ;
     SET_LO8(eax, MEM8(0x5A2858));
     /* cmp LO8(eax), 0xA - flags set for next jcc */
     MEM32(0x5B1424) = 3;
+    if (doa3_round_skip_replay()) goto loc_00073F70; /* 0.2.7: replay on the final round only */
     if (CMP_NE(LO8(eax), 0xA)) goto loc_00073F84; /* jne: not equal / not zero */
 
 loc_00073F70: ;
@@ -109329,6 +109332,7 @@ loc_000752D5: ;
     MEM16(0x5B132C) = LO16(eax);
     MEM16(0x5B132E) = LO16(eax);
     if (TEST_Z(ebp, ebp)) goto loc_0007558A; /* je: equal / zero */
+    if (doa3_round_skip_winner()) goto loc_0007558A; /* 0.2.7: winner pose on the final round only */
 
 loc_00075311: ;
     PUSH32(esp, 1);
@@ -111697,6 +111701,7 @@ loc_00073F5D: ;
     SET_LO8(eax, MEM8(0x5A2858));
     /* cmp LO8(eax), 0xA - flags set for next jcc */
     MEM32(0x5B1424) = 3;
+    if (doa3_round_skip_replay()) goto loc_00073F70; /* 0.2.7: replay on the final round only */
     if (CMP_NE(LO8(eax), 0xA)) goto loc_00073F84; /* jne: not equal / not zero */
 
 loc_00073F70: ;
@@ -113597,6 +113602,7 @@ loc_000752D5: ;
     MEM16(0x5B132C) = LO16(eax);
     MEM16(0x5B132E) = LO16(eax);
     if (TEST_Z(ebp, ebp)) goto loc_0007558A; /* je: equal / zero */
+    if (doa3_round_skip_winner()) goto loc_0007558A; /* 0.2.7: winner pose on the final round only */
 
 loc_00075311: ;
     PUSH32(esp, 1);
@@ -115969,6 +115975,7 @@ loc_00073F5D: ;
     SET_LO8(eax, MEM8(0x5A2858));
     /* cmp LO8(eax), 0xA - flags set for next jcc */
     MEM32(0x5B1424) = 3;
+    if (doa3_round_skip_replay()) goto loc_00073F70; /* 0.2.7: replay on the final round only */
     if (CMP_NE(LO8(eax), 0xA)) goto loc_00073F84; /* jne: not equal / not zero */
 
 loc_00073F70: ;
@@ -117918,6 +117925,7 @@ loc_000752D5: ;
     MEM16(0x5B132C) = LO16(eax);
     MEM16(0x5B132E) = LO16(eax);
     if (TEST_Z(ebp, ebp)) goto loc_0007558A; /* je: equal / zero */
+    if (doa3_round_skip_winner()) goto loc_0007558A; /* 0.2.7: winner pose on the final round only */
 
 loc_00075311: ;
     PUSH32(esp, 1);

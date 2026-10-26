@@ -18,6 +18,8 @@ typedef enum {
     DIP_RANDOM_HDD_COSTUMES,/* random picks include costumes from storage (TDATA) */
     DIP_SHARED_COSTUMES,    /* both players may pick a costume, in different options */
     DIP_MENU_OFFSET,        /* 2D layer drawn without the extra pixel offset */
+    DIP_REPLAY_FINAL_ONLY,  /* the KO replay only after the match's last round */
+    DIP_WINNER_FINAL_ONLY,  /* the winner's pose only after the match's last round */
     DIP_COUNT
 } dip_switch;
 
