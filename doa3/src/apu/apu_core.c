@@ -317,6 +317,19 @@ void mcpx_apu_monitor_frame(MCPXAPUState *d)
                      * it. Waiting here for a free XA2 slot slept the game thread
                      * ~20 ms about every tenth frame (the [FIBER-TIME] spikes).
                      * Never wait; past twelve queued buffers drop this one. */
+                    /* rollback.35: an empty queue means the speaker already
+                     * ran dry (a slow host frame). Production only ever
+                     * matches playback here, so without a refill every
+                     * later hitch is heard as well: put two buffers of
+                     * silence (~43 ms) back as slack. Host output only;
+                     * the chip state is unchanged. The frame pacing then
+                     * holds the queue near that level (d3d4134_pace). */
+                    if (xa2_queued() == 0) {
+                        static int16_t s_silence[4096][2];
+                        int n = buf_size <= 4096 ? buf_size : 4096;
+                        xa2_submit_samples((const int16_t *)s_silence, n);
+                        xa2_submit_samples((const int16_t *)s_silence, n);
+                    }
                     if (xa2_queued() < 12) xa2_submit_samples((const int16_t *)s_apu_stage, buf_size);
                 } else {
                     while (xa2_queued() >= 6 && spins < 200) { qemu_mutex_unlock(&d->lock); Sleep(1); qemu_mutex_lock(&d->lock); spins++; }

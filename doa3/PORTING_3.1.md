@@ -5253,3 +5253,25 @@ obstacle. That refusal map is the to-do list for the netplay state, which
 has to be capturable wherever the players are when a session starts.
 Without DET_BOOT the Sparring-only test remains, now with no automatic
 save and DOA3_STATE_EVERY defaulting to 0.
+
+### 0.2.15-rollback.35: audio slack on the controlled clock
+
+Matt: audio stutters at Genra's KO and at a wall-hit KO on X Octagon (both
+slow-motion moments) with DOA3_STATE_TEST (clock from boot) and with
+SYNCTEST_2, never with plain DOA3.exe. The logs show XA2 starved and
+dropped buffers there. On the host clock the APU thread waits while 6
+buffers are queued, so playback has ~128 ms of slack. On the controlled
+clock the game frame makes the audio (25 chip frames, 800 samples per
+frame) and production only ever equals playback. Whatever the queue held
+when the session began is all the slack there is, and a slow frame (the
+KO effects) spends it: from then on every hitch is a gap. QPC-paced frames
+and the sound card's clock also drift apart.
+
+- apu_core.c (controlled clock): when the queue is found empty, two
+  buffers of silence (~43 ms) are queued before the new audio, restoring
+  slack after a gap instead of leaving it at zero.
+- d3d4134_pace (controlled clock): frames run 2 % slower above 4 queued
+  buffers and 2 % faster below 2, so the frame rate follows the sound
+  card's clock and the queue stays at 43-85 ms.
+Both are host output only; nothing guest-visible changes, so determinism
+and rollback are unaffected.

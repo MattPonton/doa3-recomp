@@ -2249,6 +2249,18 @@ static void d3d4134_pace(void)
             s_timer = CreateWaitableTimerExW(NULL, NULL, 0, TIMER_MODIFY_STATE | SYNCHRONIZE);
     }
     period = s_qpf / 60;
+    if (det) {
+        /* rollback.35: on the controlled clock the game frame also makes the
+         * audio (25 chip frames = 800 samples per frame), so the frame rate
+         * must follow the sound card's clock, not just QPC: the two drift
+         * apart, and the audio queue then drains (gaps) or fills (drops).
+         * Keep 2-4 output buffers (43-85 ms) queued by running frames 2 %
+         * slower or faster. Wall-clock only; no guest-visible effect. */
+        extern int xa2_queued(void);
+        int q = xa2_queued();
+        if (q > 4) period += period / 50;
+        else if (q >= 0 && q < 2) period -= period / 50;
+    }
     QueryPerformanceCounter(&now);
     if (!s_next) s_next = now.QuadPart;
     s_next += period;
