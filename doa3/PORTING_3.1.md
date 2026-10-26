@@ -5233,3 +5233,23 @@ track starts. To test arbitrary moments: while DOA3_STATE_TEST is running,
 F5 saves and F9 loads (window messages in doa3_ui.cpp, overlay open or
 not), the same requests as the Sparring tab's buttons. Set
 DOA3_STATE_EVERY=0 to load only on request.
+
+### 0.2.15-rollback.34: save states anywhere, only on F5
+
+Matt's rb33 run: 9 manual loads in one Sparring session and others across
+three sessions, all identical to the saved image (124-147 ms), some 1,300
+frames after the save. Requests: no automatic save or load, F9 does
+nothing until F5 has saved, and F5/F9 everywhere in the game, not just
+Sparring.
+
+With `DOA3_DET_BOOT=1` (now in DOA3_STATE_TEST.bat) the controlled clock
+runs from boot, so there is nothing to start or settle. Every frame-loop
+boundary (A64B0) is a candidate, and the checkpoint binding is created at
+the first F5. Where a part cannot be captured yet, the save is refused and
+play goes on. The log names the place (`[STATE] save refused here (frame,
+mode, phase)`) and the part (`[ROLLBACK-CHECKPOINT] capture refused: ...`).
+Tasks that are not restorable outside fights are the expected first
+obstacle. That refusal map is the to-do list for the netplay state, which
+has to be capturable wherever the players are when a session starts.
+Without DET_BOOT the Sparring-only test remains, now with no automatic
+save and DOA3_STATE_EVERY defaulting to 0.

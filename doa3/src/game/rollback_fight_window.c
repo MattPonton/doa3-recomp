@@ -250,7 +250,7 @@ static void sync_boundary(void){
 int g_doa3_state_request;              /* UI: 1 save, 2 load */
 int g_doa3_state_status;               /* UI: 0 off, 1 starting, 2 running (saved), 3 stopped */
 static int state_mode=-1,state_phase;
-static unsigned state_every=600,state_warm,state_settle,state_since,state_loads,state_bad;
+static unsigned state_every=0,state_warm,state_settle,state_since,state_loads,state_bad;
 static uint64_t state_saved_at;
 static uint32_t state_epoch;
 static Doa3FightCheckpoint *state_fight;
@@ -290,7 +290,40 @@ static void state_load(void){
     }
     state_since=0;
 }
+/* rollback.34: anywhere in the game. With DOA3_DET_BOOT=1 the controlled
+ * clock runs from boot (frame_done steps it once per presented frame), so
+ * there is nothing to start or settle: every frame-loop boundary is a
+ * candidate. The checkpoint binding is created at the first F5. A save is
+ * refused where a part cannot be captured yet (the log names the part:
+ * "[ROLLBACK-CHECKPOINT] capture refused: ..."), for example while a task
+ * that is not restorable is running; play goes on regardless. */
+static void state_boundary_anywhere(void){
+    if(!g_xbox_det_active || !g_apu_det || !xbox_fiber_is_primary())return;
+    if(g_doa3_state_status!=2){
+        g_doa3_state_status=2;
+        fprintf(stderr,"[STATE] save states available everywhere (controlled clock from boot): F5 saves, F9 loads\n");
+    }
+    if(state_fight){loop.intervals+=1;memset(loop.locals,0,sizeof(loop.locals));}
+    int req=g_doa3_state_request;g_doa3_state_request=0;
+    if(req==1){
+        if(!state_fight){
+            doa3_loop_init(&loop);
+            state_fight=doa3_fight_checkpoint_create(&loop);
+            if(!state_fight){
+                fprintf(stderr,"[STATE] save refused here (frame %u, mode %u, phase %u): checkpoint binding refused\n",
+                    g_doa3_frames_presented,MEM8(0x5A2858),MEM8(0x596A37));
+                return;
+            }
+        }
+        if(!state_save())fprintf(stderr,"[STATE] save refused here (frame %u, mode %u, phase %u)\n",
+            g_doa3_frames_presented,MEM8(0x5A2858),MEM8(0x596A37));
+    }else if(req==2){
+        if(!state_image)fprintf(stderr,"[STATE] F9: nothing saved yet\n");
+        else state_load();
+    }
+}
 static void state_boundary(void){
+    if(g_doa3_det_boot){state_boundary_anywhere();return;}
     if(state_phase==0){
         if(!eligible() || g_xbox_det_active || g_apu_det){state_warm=0;return;}
         if(++state_warm<120)return;
@@ -313,7 +346,7 @@ static void state_boundary(void){
         state_fight=doa3_fight_checkpoint_create(&loop);
         if(!state_fight){state_stop("checkpoint create refused");return;}
         state_phase=2;state_loads=state_bad=0;
-        if(!state_save()){state_stop("first save refused");return;}
+        /* rollback.34: nothing is saved until F5 / Save state. */
         g_doa3_state_status=2;
         fprintf(stderr,"[STATE] running: load every %u frames (0 = only on request)\n",state_every);
         xbox_det_frame();mcpx_apu_det_frame();return;
@@ -325,7 +358,7 @@ static void state_boundary(void){
     ++state_since;
     {   int req=g_doa3_state_request;g_doa3_state_request=0;
         if(req==1)state_save();
-        else if(req==2 || (state_every && state_since>=state_every))state_load();
+        else if((req==2 && state_image) || (state_every && state_since>=state_every))state_load();
     }
     xbox_det_frame();mcpx_apu_det_frame();
 }
