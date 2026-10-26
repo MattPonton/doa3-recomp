@@ -308,7 +308,7 @@ static void state_boundary_anywhere(void){
     if(req==1){
         if(!state_fight){
             doa3_loop_init(&loop);
-            state_fight=doa3_fight_checkpoint_create(&loop);
+            state_fight=doa3_fight_checkpoint_create_full(&loop);
             if(!state_fight){
                 fprintf(stderr,"[STATE] save refused here (frame %u, mode %u, phase %u): checkpoint binding refused\n",
                     g_doa3_frames_presented,MEM8(0x5A2858),MEM8(0x596A37));

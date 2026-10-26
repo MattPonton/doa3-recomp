@@ -43,6 +43,11 @@ size_t xbox_fiber_converted_snapshot_size(void);
 int xbox_fiber_converted_capture(void *out,size_t bytes);
 int xbox_fiber_converted_restore(const void *saved,size_t bytes);
 int xbox_fiber_converted_validate(const void *saved,size_t bytes); /* no mutation */
+/* rollback.37: full snapshot, same size: every slot; loading recreates the
+ * saved game tasks and deletes the others (save states / netplay state). */
+int xbox_fiber_full_capture(void *out,size_t bytes);
+int xbox_fiber_full_restore(const void *saved,size_t bytes);
+int xbox_fiber_full_validate(const void *saved,size_t bytes);
 int xbox_fiber_run_restorable_watchdog(void); /* DOA3_ROLLBACK_WORKERS=1 opt-in */
 int xbox_fiber_run_restorable_stream_worker(uint32_t routine); /* DOA3_ROLLBACK_STREAM_WORKERS=1 */
 /* Read-only handoff check: live vblank workers must be converted and parked

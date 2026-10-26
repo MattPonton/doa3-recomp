@@ -10,6 +10,8 @@
  * All retained images and trials must be retired before destroying it. */
 typedef struct Doa3FightCheckpoint Doa3FightCheckpoint;
 Doa3FightCheckpoint *doa3_fight_checkpoint_create(Doa3LoopState *);
+/* rollback.37: full save states (task set recreated on load). */
+Doa3FightCheckpoint *doa3_fight_checkpoint_create_full(Doa3LoopState *);
 Doa3CheckpointSession *doa3_fight_checkpoint_session(Doa3FightCheckpoint *);
 int doa3_fight_checkpoint_destroy(Doa3FightCheckpoint *);
 /* Restore-only smoke test: captures/restores the SAME parked state, with

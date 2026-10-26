@@ -851,6 +851,7 @@ void xbox_fiber_switch_direct(int idx)
     g_fib[me].state = FIB_RUNNING;
 }
 
+static void restorable_task_loop(Fiber *f, uint32_t routine);
 int xbox_fiber_run_restorable_task(uint32_t routine)
 {
     if (!g_active || !g_fib[g_cur].is_coroutine ||
@@ -860,6 +861,15 @@ int xbox_fiber_run_restorable_task(uint32_t routine)
     f->task_routine = routine;
     ++g_fib_topology;
     fprintf(stderr, "[ROLLBACK] task %08X uses an explicit continuation (fiber %d)\n", routine, g_cur);
+    restorable_task_loop(f, routine);
+    return 1;
+}
+
+/* The converted task's scheduler loop: one generated step per resume, park
+ * between steps. Never returns (these tasks are deleted from outside).
+ * rollback.37: shared with tasks recreated by a full state load. */
+static void restorable_task_loop(Fiber *f, uint32_t routine)
+{
     /* Enter through the actual task body, preserving the game's shared entry
      * wrapper. Every live body local is saved before parking here. */
     for (;;) {
@@ -1129,6 +1139,127 @@ int xbox_fiber_task_restore(const void *saved,size_t bytes) { return checkpoint_
 int xbox_fiber_converted_capture(void *out,size_t bytes) { return checkpoint_capture(out,bytes,1); }
 int xbox_fiber_converted_restore(const void *saved,size_t bytes) { return checkpoint_restore(saved,bytes,1,1); }
 int xbox_fiber_converted_validate(const void *saved,size_t bytes) { return checkpoint_restore(saved,bytes,1,0); }
+
+/* ---- rollback.37: full fiber snapshot (save states / the netplay state) ----
+ * The converted snapshot above restores the continuations of the SAME live
+ * tasks and refuses once tasks were created or deleted, or a task yielded
+ * from a nested native call since (topology / external epochs). A full
+ * snapshot records every slot. Loading it deletes the host fibers of every
+ * current game task and recreates each saved one, entering its scheduler loop
+ * at its saved continuation (its guest stack is in the restored RAM; the
+ * converted step keeps every live local in the task record, so no host
+ * stack is needed). The CRI workers live for the whole process and are
+ * restored in place, as before. Capture refuses while any live fiber is
+ * not restorable (a native game task or worker), naming it. */
+#define FULL_FIBER_SCHEMA (0x46000000u | DOA3_RB_TASK_SCHEMA)
+static void CALLBACK restored_task_trampoline(LPVOID p)
+{
+    Fiber *f = (Fiber *)p;
+    { ULONG guarantee = 64 * 1024; SetThreadStackGuarantee(&guarantee); }
+    restorable_task_loop(f, f->task_routine);
+}
+static int full_live(const Fiber *f) { return f->state != FIB_FREE && f->state != FIB_DONE; }
+int xbox_fiber_full_capture(void *out, size_t bytes)
+{
+    TaskSnapshot *saved = (TaskSnapshot *)out;
+    static unsigned s_logged;
+    if (!out || bytes != sizeof(*saved) || !g_active || g_cur != 0 ||
+        !g_xbox_det_active || g_direct_return != -1) return 0;
+    for (int i = 1; i < g_nfib; ++i) {
+        const Fiber *f = &g_fib[i];
+        if (!full_live(f)) continue;
+        if ((f->restorable_task || f->restorable_worker) && checkpoint_ready(f)) continue;
+        if (s_logged++ < 16)
+            fprintf(stderr, "[STATE] fiber %d (routine %08X, task %08X, %s%s) is not at a restorable point\n",
+                    i, f->start_routine, f->ctx1, f->is_coroutine ? "game task" : "thread",
+                    f->restorable_task ? ", converted but mid-step" : f->restorable_worker ? ", converted worker mid-step" : ", not converted");
+        return 0;
+    }
+    memset(saved, 0, sizeof(*saved));
+    saved->version = FULL_FIBER_SCHEMA;
+    saved->count = (uint32_t)g_nfib;
+    saved->workers = 1;
+    saved->worker_rr = g_worker_rr; saved->idle_yields = g_idle_yields;
+    saved->clock_epoch = xbox_det_epoch();
+    for (int i = 1; i < g_nfib; ++i) { saved->tasks[i] = g_fib[i]; saved->tasks[i].handle = NULL; }
+    return 1;
+}
+static int full_check(const TaskSnapshot *saved, size_t bytes)
+{
+    if (!saved || bytes != sizeof(*saved) || saved->version != FULL_FIBER_SCHEMA ||
+        saved->count < 1 || saved->count > MAX_FIBERS || saved->clock_epoch != xbox_det_epoch() ||
+        saved->worker_rr < 0 || saved->worker_rr >= (int)saved->count || !g_active || g_cur != 0) return 0;
+    int n = g_nfib > (int)saved->count ? g_nfib : (int)saved->count;
+    for (int i = 1; i < n; ++i) {
+        const Fiber *old = i < (int)saved->count ? &saved->tasks[i] : NULL, *now = &g_fib[i];
+        int old_live = old && full_live(old), now_live = i < g_nfib && full_live(now);
+        int old_thread = old_live && !old->is_coroutine, now_thread = now_live && !now->is_coroutine;
+        if (old_thread || now_thread) {
+            /* threads (the CRI workers) are never created or deleted here */
+            if (!old_thread || !now_thread || !old->restorable_worker || !now->restorable_worker ||
+                old->start_routine != now->start_routine || old->ctx1 != now->ctx1 ||
+                old->xhandle != now->xhandle || old->stack_top != now->stack_top ||
+                !checkpoint_ready(old) || !checkpoint_ready(now)) {
+                fprintf(stderr, "[STATE] fiber %d: thread set differs (saved %08X, now %08X)\n", i,
+                        old_live ? old->ctx1 : 0, now_live ? now->ctx1 : 0);
+                return 0;
+            }
+            continue;
+        }
+        if (old_live && (!old->restorable_task || !checkpoint_ready(old) ||
+                         !doa3_rollback_task_supported(old->task_routine))) return 0;
+    }
+    return 1;
+}
+int xbox_fiber_full_validate(const void *saved, size_t bytes) { return full_check((const TaskSnapshot *)saved, bytes); }
+int xbox_fiber_full_restore(const void *data, size_t bytes)
+{
+    const TaskSnapshot *saved = (const TaskSnapshot *)data;
+    if (!full_check(saved, bytes)) return 0;
+    int n = g_nfib > (int)saved->count ? g_nfib : (int)saved->count;
+    unsigned made = 0, removed = 0;
+    for (int i = 1; i < n; ++i) {
+        const Fiber *old = i < (int)saved->count ? &saved->tasks[i] : NULL;
+        Fiber *now = &g_fib[i];
+        int old_live = old && full_live(old);
+        if (old_live && !old->is_coroutine) {
+            /* worker thread: restore in place (same as the converted snapshot) */
+            now->task = old->task; now->worker = old->worker;
+            now->state = old->state; now->wait_event = old->wait_event;
+            now->r_eax = old->r_eax; now->r_ecx = old->r_ecx; now->r_edx = old->r_edx;
+            now->r_esp = old->r_esp; now->r_ebx = old->r_ebx; now->r_esi = old->r_esi;
+            now->r_edi = old->r_edi; now->r_sehebp = old->r_sehebp;
+            memcpy(now->r_fp_stack, old->r_fp_stack, sizeof(now->r_fp_stack));
+            now->r_fp_top = old->r_fp_top;
+            continue;
+        }
+        /* game-task slot: whatever runs there now goes */
+        if (i < g_nfib && now->is_coroutine && now->handle) {
+            DeleteFiber(now->handle); now->handle = NULL;
+            if (full_live(now)) ++removed;
+        }
+        if (old_live) {
+            *now = *old;
+            now->handle = CreateFiber(CORO_NATIVE_STK, restored_task_trampoline, now);
+            if (!now->handle) { fprintf(stderr, "[STATE] FATAL: CreateFiber failed while recreating task %d\n", i); fflush(stderr); abort(); }
+            now->task_in_step = 0; now->task_nested_yields = 0;
+            ++made;
+        } else if (old) {
+            /* a finished task keeps its slot until the game deletes it */
+            *now = *old; now->handle = NULL;
+        } else {
+            uint32_t keep = now->stack_top, size = now->stack_size;
+            memset(now, 0, sizeof(*now));
+            now->stack_top = keep; now->stack_size = size; now->state = FIB_FREE;
+        }
+    }
+    g_nfib = (int)saved->count;
+    for (int i = n - 1; i >= g_nfib; --i) if (full_live(&g_fib[i])) { g_nfib = i + 1; break; }
+    g_worker_rr = saved->worker_rr; g_idle_yields = saved->idle_yields;
+    ++g_fib_topology; ++g_external_epoch;   /* every older rollback checkpoint is now invalid */
+    fprintf(stderr, "[STATE] fibers: %u game tasks recreated, %u removed\n", made, removed);
+    return 1;
+}
 
 int xbox_fiber_count(void)
 {

@@ -5292,3 +5292,34 @@ fell behind the voices and music. It now uses the same catch-up wait when
 its key is the host vblank key. The controlled clock keeps
 XBOX_DET_VBLANK_KEY, one vblank per controlled frame, which the rb8 music
 fix depends on.
+
+### 0.2.15-rollback.37: full save states, step 1: the task set is rebuilt on load
+
+Matt (rb34): F5/F9 worked only within one fight, and F9 could not go back
+to an earlier match or screen. He also clarified the requirement: the
+netplay state must be a full save state, a fixed point that is loaded and
+then delta-recorded from, not a rollback checkpoint. The rb34 log showed
+why: the converted fiber snapshot restores the continuations of the same
+live tasks. It refused once tasks were created or deleted (topology
+230 -> 1007), and also within a fight once a task had yielded from a
+nested native call since the save (external epoch 2492 -> 3922...; the
+main flow 0x87420 does this).
+
+xbox_fiber_full_capture/validate/restore (same TaskSnapshot layout, schema
+0x46000002): every slot is recorded. On load every current game-task host
+fiber is deleted and every saved task is recreated in its own slot with a
+new host fiber (restored_task_trampoline). That fiber enters the converted
+scheduler loop (restorable_task_loop, factored out of
+xbox_fiber_run_restorable_task) at the saved continuation. Its guest stack
+is in the restored RAM, and the converted step keeps every live local in
+the task record, so no host stack is needed. The CRI worker threads exist
+for the whole process; they must match and are restored in place.
+Capture refuses while any live fiber is not at a restorable point: a game
+task that is not converted, or a converted one mid-step. The log names it
+as `[STATE] fiber N (routine, task, ...) is not at a restorable point`.
+Each load logs `[STATE] fibers: N game tasks recreated, M removed`.
+
+The save state test (clock from boot) now uses
+doa3_fight_checkpoint_create_full. The safety before-image is also a full
+capture, so a load is refused while the current screen has a task that is
+not converted. Step 2 (convert the remaining tasks) widens both.

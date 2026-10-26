@@ -24,7 +24,7 @@ typedef struct {
 typedef struct {struct Doa3FightCheckpoint *owner;unsigned id;} Binding;
 static const char *part_names[]={"files","RAM/CPU","heap","fibers","clock","completions","interrupts","GPU frontend","audio","input"};
 struct Doa3FightCheckpoint {
-    DWORD owner;uint32_t epoch;int held,files,roundtrip_pinned;
+    DWORD owner;uint32_t epoch;int held,files,roundtrip_pinned,full;
     void *ram;size_t ram_bytes;
     Doa3LoopState *loop;
     XboxHeapCheckpoint *heap;
@@ -94,7 +94,7 @@ static int capture_part(void *v,void *out,size_t n){
     case DOA3_CP_RAM:{FightCpu cpu;cpu_capture(&cpu,s->loop);memcpy(out,&cpu,sizeof cpu);memcpy((char *)out+sizeof cpu,s->ram,s->ram_bytes);return 1;}
     case DOA3_CP_FILES:return xbox_stream_file_checkpoint_capture(out,n);
     case DOA3_CP_HEAP:return xbox_heap_checkpoint_capture(s->heap,out,n);
-    case DOA3_CP_FIBERS:return xbox_fiber_converted_capture(out,n);
+    case DOA3_CP_FIBERS:return s->full ? xbox_fiber_full_capture(out,n):xbox_fiber_converted_capture(out,n);
     case DOA3_CP_CLOCK:return xbox_det_capture(out);
     case DOA3_CP_COMPLETIONS:return xbox_stream_completion_capture(out,n);
     case DOA3_CP_INTERRUPTS:return xbox_kernel_interrupt_capture(out,n);
@@ -116,7 +116,7 @@ static int validate_part(void *v,const void *in,size_t n){
         p->regs[15]<=UINT16_MAX && doa3_loop_valid(&p->loop);}
     case DOA3_CP_FILES:return xbox_stream_file_checkpoint_validate(in,n);
     case DOA3_CP_HEAP:return xbox_heap_checkpoint_validate(s->heap,in,n);
-    case DOA3_CP_FIBERS:return xbox_fiber_converted_validate(in,n);
+    case DOA3_CP_FIBERS:return s->full ? xbox_fiber_full_validate(in,n):xbox_fiber_converted_validate(in,n);
     case DOA3_CP_CLOCK:return xbox_det_validate(in);
     case DOA3_CP_COMPLETIONS:return xbox_stream_completion_validate(in,n);
     case DOA3_CP_INTERRUPTS:return xbox_kernel_interrupt_validate(in,n);
@@ -140,7 +140,7 @@ static int restore(void *v,const void *in,size_t n){
     case DOA3_CP_RAM:memcpy(s->ram,(const char *)in+sizeof(FightCpu),s->ram_bytes);cpu_restore(in,s->loop);return 1;
     case DOA3_CP_FILES:return xbox_stream_file_checkpoint_restore(in,n);
     case DOA3_CP_HEAP:return xbox_heap_checkpoint_restore(s->heap,in,n);
-    case DOA3_CP_FIBERS:return xbox_fiber_converted_restore(in,n);
+    case DOA3_CP_FIBERS:return s->full ? xbox_fiber_full_restore(in,n):xbox_fiber_converted_restore(in,n);
     case DOA3_CP_CLOCK:return xbox_det_restore(in);
     case DOA3_CP_COMPLETIONS:return xbox_stream_completion_restore(in,n);
     case DOA3_CP_INTERRUPTS:return xbox_kernel_interrupt_restore(in,n);
@@ -150,8 +150,15 @@ static int restore(void *v,const void *in,size_t n){
     default:return 0;
     }
 }
+static int g_create_full;
+/* rollback.37: full save states. Same parts, but the fibers part records every
+ * task slot and recreates the saved game tasks on load. */
+Doa3FightCheckpoint *doa3_fight_checkpoint_create_full(Doa3LoopState *loop){
+    g_create_full=1;Doa3FightCheckpoint *s=doa3_fight_checkpoint_create(loop);g_create_full=0;return s;
+}
 Doa3FightCheckpoint *doa3_fight_checkpoint_create(Doa3LoopState *loop){
     Doa3FightCheckpoint *s=calloc(1,sizeof(*s));if(!s)return NULL;
+    s->full=g_create_full;
     s->owner=GetCurrentThreadId();s->epoch=xbox_det_epoch();s->loop=loop;
     s->ram=xbox_GetMemoryBase();s->ram_bytes=xbox_GetMemorySize();
     if(s->ram_bytes!=128u*1024u*1024u || !context(s) || !doa3_loop_at_boundary(loop))goto fail;
