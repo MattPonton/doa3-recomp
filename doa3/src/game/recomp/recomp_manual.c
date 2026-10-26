@@ -1378,6 +1378,80 @@ void doa3_ein_grid_restore(void)
     MEM8(EIN_CELL_CHAR) = 3;
 }
 
+/* 0.2.7: dip switches "Only show round's replay / winner on final round".
+ * Round flow (0x72F50, state 0x5B1424 = phase 0x596A37): 1 fight, 2 KO,
+ * 3 replay, 4 round result. The KO winner's round count is raised as the
+ * phase goes to 2 (0x737F5..0x73857: side records 0x59CF58 + side * 0x68,
+ * +0x60 = rounds won); rounds to win are 0x588837. The match is decided
+ * when a side has reached that count.
+ *  - Replay: when the KO phase ends (0x73F5D) the game already goes straight
+ *    to phase 4 without a replay in some cases (Team Battle, Survival,
+ *    draws, ...): call B3950, phase 4 (0x73F70). A round that does not
+ *    decide the match now takes that path.
+ *  - Winner: phase 4's pose loop (0x75311..0x75584) counts ebp frames down
+ *    and leaves to 0x7558A early when 0x7DC00 sees a skip press. A round
+ *    that does not decide the match now leaves before the loop's first
+ *    frame, the same exit. Hand edits in gen/recomp_0001.c call these. */
+static int round_decides_match(void)
+{
+    unsigned need = MEM8(0x588837), w0 = MEM8(0x59CFB8), w1 = MEM8(0x59D020);
+    return need == 0 || w0 >= need || w1 >= need;
+}
+int doa3_round_skip_replay(void)
+{
+    int skip = dip_get(DIP_REPLAY_FINAL_ONLY) && !round_decides_match();
+    fprintf(stderr, "[ROUND] KO ends: mode %u, rounds won %u-%u of %u -> %s\n", MEM8(0x5A2858),
+            MEM8(0x59CFB8), MEM8(0x59D020), MEM8(0x588837), skip ? "replay skipped" : "game decides");
+    fflush(stderr);
+    return skip;
+}
+/* 0.2.9: skipping only the pose loop still showed the round result banner
+ * for a frame: phase 4 sets it up before the loop (0x7502E: banner id
+ * 0x588836 = 8/9/0xB, then the announcer call 0x1C7920 with 0x800A/B/6)
+ * and sleeps a frame (0x7509A). A skipped round now takes the game's own
+ * no-banner path there (0x7501E: phase 4, banner 0xFF, no call; used for
+ * Team Battle and a few special opponents) as well. */
+/* 0.2.11: and with the banner and both of phase 4's sleeps gone, one frame
+ * of the pose scene (the winner's camera, set up before the pose loop) was
+ * still presented: the one between the end of phase 4's task and the next
+ * round's setup. While a skipped round is in phase 4 (0x596A37 == 4) the
+ * frames are rendered as usual but not presented, so the screen keeps the
+ * KO frame until the next round's Get Ready, as with the replay skip. */
+int g_round_hold;
+static void round_hold_begin(int skip)
+{
+    if (skip && !g_round_hold) {
+        g_round_hold = 1;
+        fprintf(stderr, "[ROUND] holding the KO frame until the next round (frame %u)\n", g_doa3_frames_presented);
+        fflush(stderr);
+    }
+}
+/* Called once per frame before it is presented: 1 = do not present it. */
+static int round_hold_frame(void)
+{
+    if (!g_round_hold) return 0;
+    if (MEM8(0x596A37) == 4) return 1;
+    g_round_hold = 0;
+    fprintf(stderr, "[ROUND] next round shown (frame %u)\n", g_doa3_frames_presented);
+    fflush(stderr);
+    return 0;
+}
+int doa3_round_skip_winner_banner(void)
+{
+    int skip = dip_get(DIP_WINNER_FINAL_ONLY) && !round_decides_match();
+    round_hold_begin(skip);
+    fprintf(stderr, "[ROUND] round result: mode %u, rounds won %u-%u of %u -> %s\n", MEM8(0x5A2858),
+            MEM8(0x59CFB8), MEM8(0x59D020), MEM8(0x588837), skip ? "banner and winner pose skipped" : "shown");
+    fflush(stderr);
+    return skip;
+}
+int doa3_round_skip_winner(void)
+{
+    int skip = dip_get(DIP_WINNER_FINAL_ONLY) && !round_decides_match();
+    round_hold_begin(skip);
+    return skip;
+}
+
 /* DOA3 0.1.31: dip switch "Random is default stage option".
  * Stage Select init (0xD8470) takes the starting cursor as its argument;
  * every caller passes the constant 2 (Beach (Day)) except the one at
@@ -1385,7 +1459,18 @@ void doa3_ein_grid_restore(void)
  * g_stage_cursor_keep first. The cursor byte is 0x9B7BAA, indexing the
  * order list 0x9B76C4[0x29CA5A]; table entry 0x0E is Random, which the
  * init appends at the end of the list. Called after the list is built. */
+/* 0.2.9/0.2.10: Team Battle. The cursor the screen draws and confirms is
+ * the select state's +0x1EA (state 0x9B79C0, so +0x1EA is 0x9B7BAA, which
+ * D8470 sets from the cursor returned here; highlight 0xD2760: (+0x1EA -
+ * carousel first 0x9B78F4) * 0x71; confirm 0xD586D). In Team Battle the
+ * Stage Select is set up from inside the mode setup 0xD65A0, whose common
+ * tail (0xD6750) then writes +0x1EA = 2 again and +0x1F4 = that entry's
+ * stage: the carousel (stage list 0x29CA56: 5 Tag stages + Random) was
+ * centred on Random while the P1 highlight sat on Pancratium, one slot past
+ * the right edge. When the switch picked Random during a mode setup, the
+ * wrapper puts +0x1EA and +0x1F4 back on Random after that tail. */
 int g_stage_cursor_keep;
+static int s_setup_random = -1;   /* Random's index, if picked during 0xD65A0 */
 uint8_t doa3_stage_initial_cursor(uint8_t cur)
 {
     int keep = g_stage_cursor_keep;
@@ -1395,8 +1480,30 @@ uint8_t doa3_stage_initial_cursor(uint8_t cur)
     n = MEM8(0x29CA5A);
     if (n > 32) n = 32;
     for (i = 0; i < n; i++)
-        if (MEM8(0x9B76C4 + i) == 0x0E) return (uint8_t)i;
+        if (MEM8(0x9B76C4 + i) == 0x0E) {
+            s_setup_random = (int)i;
+            return (uint8_t)i;
+        }
     return cur;
+}
+void sub_000D65A0_gen(void);
+void sub_000D65A0(void)
+{
+    uint32_t st = MEM32(esp + 4);
+    s_setup_random = -1;
+    sub_000D65A0_gen();
+    if (s_setup_random >= 0 && st && MEM8(st + 0x1EA) != (uint8_t)s_setup_random) {
+        uint8_t i = (uint8_t)s_setup_random;
+        static unsigned s_logged;
+        if (s_logged++ < 8) {
+            fprintf(stderr, "[STAGE] mode setup reset the cursor to %u; back on Random (%u)\n", MEM8(st + 0x1EA), i);
+            fflush(stderr);
+        }
+        MEM8(st + 0x1EA) = i;
+        MEM32(st + 0x1F4) = MEM8((uint32_t)MEM8(0x9B76C4 + i) * 16u + 0x29C961);
+    }
+    s_setup_random = -1;
+    if (g_fib_slice_due) xbox_fiber_timeslice();
 }
 
 /* Dip switch "Same costume, different option" (0.1.28).
@@ -2462,12 +2569,19 @@ static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
         g_doa3_phase_ms[6] = s_frame_perf.presented ? s_frame_perf.workers * ms : -1.0;
         g_doa3_phase_kicks = s_frame_perf.kicks;
     }
-    if (!async_frame) doa3_present_frame();
-    else {
-        extern void doa3_present_async(int buf);
-        LONG f = (LONG)async_frame - 1;
-        doa3_present_async(s_buf_frame[f & 1] == f ? (int)(f & 1) : -1);
-        InterlockedExchange(&s_frames_presented, f);
+    {   /* 0.2.11: a skipped winner pose is rendered but not shown. The
+         * asynchronous path shows the previous frame, so its decision is the
+         * one recorded for that frame. */
+        static int s_hold[2];
+        int hold = round_hold_frame();
+        if (!async_frame) { if (!hold) doa3_present_frame(); }
+        else {
+            extern void doa3_present_async(int buf);
+            LONG f = (LONG)async_frame - 1;
+            s_hold[async_frame & 1] = hold;
+            if (!s_hold[f & 1]) doa3_present_async(s_buf_frame[f & 1] == f ? (int)(f & 1) : -1);
+            InterlockedExchange(&s_frames_presented, f);
+        }
     }
     presented = entry ? doa3_perf_now() : 0;
     if (entry) {

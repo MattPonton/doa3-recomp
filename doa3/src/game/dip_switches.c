@@ -38,6 +38,15 @@ static const struct { const char *key, *label, *help; } k_dip[DIP_COUNT] = {
       "offset again. A CRT's overscan hid it; on a modern screen a thin strip of the scene "
       "shows along the left and top edges. On: the sprite code's offset is cancelled so the "
       "2D layer lines up with the screen edges. Every 2D element moves together." },
+    { "ReplayFinalRoundOnly", "Only show round's replay on final round",
+      "The original game shows the KO replay after every round. On: rounds that do not end "
+      "the match go straight on without the replay, the way they already do after a draw; "
+      "the round that decides the match still shows it. Modes that never show a replay are "
+      "unchanged." },
+    { "WinnerFinalRoundOnly", "Only show round's winner on final round",
+      "The original game plays the round winner's pose after every round. On: rounds that do "
+      "not end the match skip the winner's pose, as if Start had been pressed to skip it; the "
+      "round that decides the match still plays it." },
 };
 
 static volatile LONG g_loaded;

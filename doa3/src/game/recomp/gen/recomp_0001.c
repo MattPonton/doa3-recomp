@@ -7,6 +7,9 @@
 #include "recomp_funcs.h"
 #include "debug_settings.h"
 #include <math.h>
+extern int doa3_round_skip_replay(void);
+extern int doa3_round_skip_winner(void);
+extern int doa3_round_skip_winner_banner(void);
 
 /**
  * sub_0004C570
@@ -107429,6 +107432,7 @@ loc_00073F5D: ;
     SET_LO8(eax, MEM8(0x5A2858));
     /* cmp LO8(eax), 0xA - flags set for next jcc */
     MEM32(0x5B1424) = 3;
+    if (doa3_round_skip_replay()) goto loc_00073F70; /* 0.2.7: replay on the final round only */
     if (CMP_NE(LO8(eax), 0xA)) goto loc_00073F84; /* jne: not equal / not zero */
 
 loc_00073F70: ;
@@ -109006,6 +109010,7 @@ loc_0007501E: ;
     goto loc_0007504E;
 
 loc_0007502E: ;
+    if (doa3_round_skip_winner_banner()) { SET_LO8(ebx, MEM8(0x596A74)); goto loc_0007501E; } /* 0.2.9: no result banner or call */
     SET_LO8(edx, MEM8(esp + 0x13));
     eax = MEM32(esp + 0x20);
     MEM8(0x596A37) = 4;
@@ -109045,6 +109050,7 @@ loc_00075084: ;
 
 loc_00075098: ;
     PUSH32(esp, 1);
+    if (doa3_round_skip_winner()) goto loc_0007509F; /* 0.2.10: no frame on a skipped round (the sleep stays at root scope for the rollback transform) */
     PUSH32(esp, 0); sub_001C65D8(); /* call 0x001C65D8 */
 
 loc_0007509F: ;
@@ -109329,6 +109335,7 @@ loc_000752D5: ;
     MEM16(0x5B132C) = LO16(eax);
     MEM16(0x5B132E) = LO16(eax);
     if (TEST_Z(ebp, ebp)) goto loc_0007558A; /* je: equal / zero */
+    if (doa3_round_skip_winner()) goto loc_0007558A; /* 0.2.7: winner pose on the final round only */
 
 loc_00075311: ;
     PUSH32(esp, 1);
@@ -109604,6 +109611,7 @@ loc_00075583: ;
 
 loc_0007558A: ;
     PUSH32(esp, 1);
+    if (doa3_round_skip_winner()) goto loc_00075591; /* 0.2.10: no frame on a skipped round (the sleep stays at root scope for the rollback transform) */
     PUSH32(esp, 0); sub_001C65D8(); /* call 0x001C65D8 */
 
 loc_00075591: ;
@@ -111697,6 +111705,7 @@ loc_00073F5D: ;
     SET_LO8(eax, MEM8(0x5A2858));
     /* cmp LO8(eax), 0xA - flags set for next jcc */
     MEM32(0x5B1424) = 3;
+    if (doa3_round_skip_replay()) goto loc_00073F70; /* 0.2.7: replay on the final round only */
     if (CMP_NE(LO8(eax), 0xA)) goto loc_00073F84; /* jne: not equal / not zero */
 
 loc_00073F70: ;
@@ -113274,6 +113283,7 @@ loc_0007501E: ;
     goto loc_0007504E;
 
 loc_0007502E: ;
+    if (doa3_round_skip_winner_banner()) { SET_LO8(ebx, MEM8(0x596A74)); goto loc_0007501E; } /* 0.2.9: no result banner or call */
     SET_LO8(edx, MEM8(esp + 0x13));
     eax = MEM32(esp + 0x20);
     MEM8(0x596A37) = 4;
@@ -113313,6 +113323,7 @@ loc_00075084: ;
 
 loc_00075098: ;
     PUSH32(esp, 1);
+    if (doa3_round_skip_winner()) goto loc_0007509F; /* 0.2.10: no frame on a skipped round (the sleep stays at root scope for the rollback transform) */
     PUSH32(esp, 0); sub_001C65D8(); /* call 0x001C65D8 */
 
 loc_0007509F: ;
@@ -113597,6 +113608,7 @@ loc_000752D5: ;
     MEM16(0x5B132C) = LO16(eax);
     MEM16(0x5B132E) = LO16(eax);
     if (TEST_Z(ebp, ebp)) goto loc_0007558A; /* je: equal / zero */
+    if (doa3_round_skip_winner()) goto loc_0007558A; /* 0.2.7: winner pose on the final round only */
 
 loc_00075311: ;
     PUSH32(esp, 1);
@@ -113872,6 +113884,7 @@ loc_00075583: ;
 
 loc_0007558A: ;
     PUSH32(esp, 1);
+    if (doa3_round_skip_winner()) goto loc_00075591; /* 0.2.10: no frame on a skipped round (the sleep stays at root scope for the rollback transform) */
     PUSH32(esp, 0); sub_001C65D8(); /* call 0x001C65D8 */
 
 loc_00075591: ;
@@ -115969,6 +115982,7 @@ loc_00073F5D: ;
     SET_LO8(eax, MEM8(0x5A2858));
     /* cmp LO8(eax), 0xA - flags set for next jcc */
     MEM32(0x5B1424) = 3;
+    if (doa3_round_skip_replay()) goto loc_00073F70; /* 0.2.7: replay on the final round only */
     if (CMP_NE(LO8(eax), 0xA)) goto loc_00073F84; /* jne: not equal / not zero */
 
 loc_00073F70: ;
@@ -117595,6 +117609,7 @@ loc_0007501E: ;
     goto loc_0007504E;
 
 loc_0007502E: ;
+    if (doa3_round_skip_winner_banner()) { SET_LO8(ebx, MEM8(0x596A74)); goto loc_0007501E; } /* 0.2.9: no result banner or call */
     SET_LO8(edx, MEM8(esp + 0x13));
     eax = MEM32(esp + 0x20);
     MEM8(0x596A37) = 4;
@@ -117634,6 +117649,7 @@ loc_00075084: ;
 
 loc_00075098: ;
     PUSH32(esp, 1);
+    if (doa3_round_skip_winner()) goto loc_0007509F; /* 0.2.10: no frame on a skipped round (the sleep stays at root scope for the rollback transform) */
     PUSH32(esp, 0); sub_001C65D8(); /* call 0x001C65D8 */
 
 loc_0007509F: ;
@@ -117918,6 +117934,7 @@ loc_000752D5: ;
     MEM16(0x5B132C) = LO16(eax);
     MEM16(0x5B132E) = LO16(eax);
     if (TEST_Z(ebp, ebp)) goto loc_0007558A; /* je: equal / zero */
+    if (doa3_round_skip_winner()) goto loc_0007558A; /* 0.2.7: winner pose on the final round only */
 
 loc_00075311: ;
     PUSH32(esp, 1);
@@ -118193,6 +118210,7 @@ loc_00075583: ;
 
 loc_0007558A: ;
     PUSH32(esp, 1);
+    if (doa3_round_skip_winner()) goto loc_00075591; /* 0.2.10: no frame on a skipped round (the sleep stays at root scope for the rollback transform) */
     PUSH32(esp, 0); sub_001C65D8(); /* call 0x001C65D8 */
 
 loc_00075591: ;

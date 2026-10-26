@@ -31,9 +31,24 @@ static unsigned char s_old_filter[16], s_filter[16], s_stick_extra[8];
 static int s_ctrl_enabled, s_ctrl_port = 1, s_ctrl_modified, s_ctrl_active;
 static unsigned s_ctrl_dummy;
 static unsigned char s_ctrl_old_port, s_ctrl_old_human;
+/* 0.2.12: in Tag Sparring the same setting drives the player's tag partner. */
+static int s_partner_modified;
+static unsigned s_partner_side;
+static unsigned char s_partner_old_port, s_partner_old_two;
 /* Held Stagger Escape values (0.1.12). */
 static int s_stagger_hold[2];
 static float s_stagger_value[2] = { 1.0f, 1.0f };
+
+/* 0.2.13: which Sparring is running. 0.2.12 tested 0x5A2858 == 11 and never
+ * saw Tag Sparring (Matt's log: mode bytes 0x5A2858/0x596A33 read 1/11 on
+ * its menus, singles fights 7/7). Any of the two mode bytes being 11, or
+ * Sparring with the tag flag 0xC59866 (what the input code itself checks). */
+static int tag_sparring(void)
+{
+    if (netplay_active()) return 0;
+    if (MEM8(0x5A2858)==11 || MEM8(0x596A33)==11) return 1;
+    return MEM8(0x5A2858)==7 && MEM8(0xC59866)!=0;
+}
 
 int training_available(void)
 {
@@ -57,6 +72,11 @@ int training_can_record(void)
 
 static void control_end(void)
 {
+    if (s_partner_modified) {
+        MEM8(0x30E3F6+s_partner_side)=s_partner_old_port;
+        MEM8(0x596A40+s_partner_side)=s_partner_old_two;
+        s_partner_modified=0;
+    }
     if (!s_ctrl_modified) return;
     MEM8(0x30E3F4+s_ctrl_dummy)=s_ctrl_old_port;
     MEM8(0x59CF58+s_ctrl_dummy*0x68)=s_ctrl_old_human;
@@ -171,6 +191,7 @@ void training_control_get(int *enabled, int *port)
 }
 
 int training_control_active(void) { return s_ctrl_active; }
+int training_control_partner(void) { return tag_sparring(); }
 
 float training_stagger_get(int side)
 {
@@ -209,9 +230,52 @@ static void stagger_apply(void)
  * window only (the game decodes its commands from that port's pad
  * aggregate, with that port's button bindings), then restored, the same
  * way recording hands the dummy to the player. */
+/* 0.2.12: Tag Sparring. Tag Battle already lets two humans share a team:
+ * the four ports 0x30E3F4.. are side + 2 * team member (0x30E3F6/7 are the
+ * partners'), and with the side's "two humans" flag 0x596A40[side] set (and
+ * the tag flag 0xC59866) the input code (0x124B1, 0x12631) reads the port of
+ * the member on point (side record +3, 0x59CF5B / 0x59CFC3), and the HUD
+ * labels both members. For the input window only, the player's side gets
+ * the flag and the chosen controller in its partner slot, then both are put
+ * back -- the same way the dummy is handed to a controller in singles. */
+static int partner_begin(void)
+{
+    int port=s_ctrl_port;
+    unsigned human, phase;
+    if (!tag_sparring()) return 0;             /* not Tag Sparring: singles rules */
+    human=MEM8(0xC58E47); phase=MEM8(0x596A37);
+    {   static unsigned s_logged_phase=99;
+        if (phase!=s_logged_phase) {
+            s_logged_phase=phase;
+            fprintf(stderr, "[SPARRING] tag: phase %u mode %u/%u tag %u human %u ports %u %u %u %u two %u %u member %u %u on %d port %d\n",
+                    phase, MEM8(0x5A2858), MEM8(0x596A33), MEM8(0xC59866), human,
+                    MEM8(0x30E3F4), MEM8(0x30E3F5), MEM8(0x30E3F6), MEM8(0x30E3F7),
+                    MEM8(0x596A40), MEM8(0x596A41), MEM8(0x59CF5B), MEM8(0x59CFC3), s_ctrl_enabled, port);
+            fflush(stderr);
+        }
+    }
+    if (!s_ctrl_enabled || human>=2 ||
+        (phase!=1 && phase!=2) || port==MEM8(0x30E3F4+human) || !training_port_connected(port)) {
+        s_ctrl_active=0; return 1;
+    }
+    s_partner_side=human;
+    s_partner_old_port=MEM8(0x30E3F6+human);
+    s_partner_old_two=MEM8(0x596A40+human);
+    MEM8(0x30E3F6+human)=(unsigned char)port;
+    MEM8(0x596A40+human)=1;
+    s_partner_modified=1;
+    if (!s_ctrl_active) {
+        fprintf(stderr, "[SPARRING] Tag Sparring: partner on the Player %d controller (side %u)\n", port+1, human);
+        fflush(stderr);
+    }
+    s_ctrl_active=1;
+    return 1;
+}
+
 static void control_begin(void)
 {
     int port=s_ctrl_port;
+    if (partner_begin()) return;
     /* The overlay being open does not matter (0.1.14): only recording
      * stops with it, since the recorder reads the player's own pad. */
     int want=s_ctrl_enabled && s_mode==TRAINING_IDLE && training_can_record() &&

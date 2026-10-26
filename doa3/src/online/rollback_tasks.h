@@ -23,4 +23,9 @@ int doa3_rollback_task_supported(uint32_t routine);
 int doa3_rollback_task_step(uint32_t routine, Doa3RollbackTask *task);
 int doa3_rollback_task_checkpoint_valid(uint32_t routine,const Doa3RollbackTask *task);
 void doa3_rollback_task_sleep(void);
+/* Hand-edit hooks the transformed task bodies call (recomp_manual.c, dip
+ * switches "Only show round's replay / winner on final round"). */
+int doa3_round_skip_replay(void);
+int doa3_round_skip_winner(void);
+int doa3_round_skip_winner_banner(void);
 #endif

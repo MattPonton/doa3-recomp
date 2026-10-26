@@ -5030,3 +5030,150 @@ same `xbox_det_audio_wait_poll()` at the head of the loop in 199B60 and at the
 heads of 199C20's two loops, which have the same shape. Each iteration adds a
 fixed 100 microseconds to that fiber's checkpointed boost. Status and
 deadline branches are untouched, and each body is pinned by digest.
+
+## 0.2.7 - Random stage in Tag Battle; replay / winner pose on the final round only
+
+Random stage in Tag Battle: Matt reported that "Random is default stage
+option" did not apply on Tag Battle's Stage Select. That screen is always
+entered from the caller that passes the remembered stage (0xCADAC, after
+the four-fighter loop), and the hook kept a remembered stage. Until a
+stage has been chosen in the mode, though, that value is only the default
+the mode setup writes (0xD65A0 sets select state +0x1EA to 2, clamped to
+the list). 0xD65A0 is now an override that marks "no Stage Select since
+mode setup", and the first Stage Select after it opens on Random whichever
+caller it comes from. Later ones keep the stage that was played. The
+`[STAGE]` log lines (first 16 only) show the mode, the remembered flag,
+the fresh flag, and the cursor before and after.
+
+New dip switches, both off by default:
+- `ReplayFinalRoundOnly`, "Only show round's replay on final round".
+  When the KO phase ends (0x73F5D), a round that does not decide the
+  match takes the game's own no-replay path (B3950, phase 4 at 0x73F70),
+  the one Team Battle, Survival and draws already use.
+- `WinnerFinalRoundOnly`, "Only show round's winner on final round".
+  Phase 4's pose loop (0x75311..0x75584) counts ebp frames down and exits
+  to 0x7558A early when 0x7DC00 sees a skip press. A round that does not
+  decide the match now exits there before the loop's first frame.
+"Decides the match": a side's rounds won (side record +0x60, raised at
+the KO in 0x737F5..0x73857) has reached the rounds to win (0x588837).
+Both hooks are hand edits in gen/recomp_0001.c (three copies each) and
+log a `[ROUND]` line with the score and the decision.
+
+## 0.2.8 - Tag Battle Random stage change withdrawn
+
+Matt could not reproduce the Tag Battle Random-stage report on 0.2.6, so
+the 0.2.7 change is removed until there are solid repro steps: the 0xD65A0
+override (probe and overrides list restored), the "first since mode setup"
+flag and the `[STAGE]` log. `doa3_stage_initial_cursor` is back to 0.2.6.
+Kept from 0.2.7 for reference: when the hook sees "remembered" (0xCADAC,
+select state +0x1EA), it keeps the cursor, and 0xD65A0 initializes +0x1EA
+to 2. The replay / winner pose dip switches are unchanged.
+
+## 0.2.9 - Random stage in Team Battle; no result banner on a skipped winner pose
+
+Matt's repro: Team Battle's Stage Select (its own list 0x29CA56: the five
+Tag stages + Random, six entries, so the five-wide carousel scrolls) with
+"Random is default stage option" on. The carousel came up centered on
+Random, but the P1 highlight sat one slot past the right edge and the name
+read PANCRATIUM. The cursor the screen draws and confirms is the select
+state's +0x1EA (highlight 0xD2760: (+0x1EA - carousel first 0x9B78F4) *
+0x71; confirm 0xD586D). The mode setup 0xD65A0 sets it to 2, and the
+switch had only moved the carousel's starting cursor (0x9B7BAA / D8060).
+0xD65A0 is an override again, this time remembering its state argument.
+When the switch moves the cursor, +0x1EA is moved with it if it still
+holds the cursor that was passed in. Logged once per Stage Select as
+`[STAGE] opens on Random: ...` (first eight).
+
+"Only show round's winner on final round": skipping only the pose loop
+left the round result banner up for one frame. Phase 4 sets the banner up
+before the loop (0x7502E: banner id 0x588836 = 8/9/0xB, announcer call
+0x1C7920 with 0x800A/0x800B/0x8006) and sleeps a frame (0x7509A). A
+skipped round now also takes the game's own no-banner path there (0x7501E:
+phase 4, banner 0xFF, no call), which Team Battle and a few special
+opponents already use. Hand edit in gen/recomp_0001.c (three copies);
+`[ROUND] round result: ...` logs the decision.
+
+## 0.2.10 - Team Battle Random stage, second try; no frames on a skipped winner
+
+Matt: 0.2.9 still showed both. The log: the select state is 0x9B79C0, so
++0x1EA *is* 0x9B7BAA (D8470 already set it), and the first Team Battle
+visit showed it moved to 5. Something wrote 2 back afterwards: in Team
+Battle the Stage Select is set up from inside the mode setup 0xD65A0, and
+its common tail (0xD6750) writes +0x1EA = 2 and +0x1F4 = that entry's stage
+id after D8470 returns. The 0xD65A0 wrapper now notes when the switch
+picked Random during the call. After the tail it puts +0x1EA back on
+Random, and +0x1F4 on Random's stage id (list entry * 16 + 0x29C961, as
+the tail computes it). Logged as `[STAGE] mode setup reset the cursor
+...`. The 0.2.9 "move +0x1EA if it still holds the passed cursor" code is
+gone.
+
+Winner pose: with the banner gone, the frame still seen was the pose scene
+itself. Phase 4 sleeps one frame before the pose loop (0x75098) and one
+after it (0x7558A). For a skipped round both sleeps are now left out, so
+the task runs straight on to the next round's setup. Hand edits in
+gen/recomp_0001.c (three copies each).
+
+## 0.2.11 - Skipped winner pose: hold the KO frame
+
+Matt: 0.2.10's Team Battle Random stage works in every mode. The winner
+switch still showed one frame of the pose scene (no WINNER text). The
+winner's camera and pose are set up in phase 4 before the pose loop, and
+the frame between the end of phase 4's task and the next round's setup is
+still presented. Rather than chase which of phase 4's calls sets them up,
+a skipped round is now held on screen: from the skip decision until 0x596A37
+leaves 4, frames are rendered as usual but not presented (d3d4134_frame_done
+skips doa3_present_frame). The asynchronous path presents the previous
+frame, so it uses the hold decision recorded for that frame. The screen
+keeps the KO frame until the next round's Get Ready, as the replay skip
+does. `[ROUND] holding the KO frame ...` / `[ROUND] next round shown ...`
+bracket it in the log.
+
+## 0.2.12 - Tag Sparring: a second controller plays the tag partner
+
+Matt: the Training tab's dummy controller does nothing in Tag Sparring.
+Re-use it there for two humans on one team, as Tag Battle allows. Tag
+Battle's mechanism: the four ports 0x30E3F4.. are indexed side + 2 * team
+member (0x30E3F6/7 are the partners'). With the side's "two humans" flag
+0x596A40[side] set (and the tag flag 0xC59866), the input code (0x124B1,
+0x12631) reads the port of the member on point (side record +3:
+0x59CF5B / 0x59CFC3, 0/2 and 1/3, toggled on tag), and the HUD (0x5B29D)
+labels both members. In Tag Sparring (mode 11), during the input window
+only (training_input_begin/end, like the singles dummy hand-over), the
+player's side gets the flag and the chosen port in its partner slot.
+Both are put back afterwards. Same conditions as the singles option: on,
+fight running (phase 1/2), not the player's own port, controller
+connected. Recording and playback are unaffected (they drive the dummy).
+The UI section is now "Second controller", worded for the dummy or the
+partner depending on the mode. `[TRAINING] Tag Sparring: partner on ...`
+is logged when it takes effect.
+
+## 0.2.13 - Tag Sparring detection
+
+Matt: 0.2.12 showed the singles wording in Tag Sparring and the partner
+stayed on Player 1. Its test was 0x5A2858 == 11. Matt's log shows the mode
+bytes 0x5A2858/0x596A33 as 1/11 on Tag Sparring's menus and 7/7 in a
+singles fight, so during the fight the byte is apparently not 11. Tag
+Sparring is now either mode byte being 11, or Sparring (0x5A2858 == 7) with
+the tag flag 0xC59866 that the input code itself checks. The partner
+override no longer requires training_available(). `[TRAINING] tag: ...`
+logs, at each phase change, the mode bytes, the tag flag, the human side,
+the four ports, the two-humans flags and the on-point members, for the
+next round if this is still not it.
+
+## 0.2.14 - "Training" is "Sparring"
+
+Matt: match the game's English name. The overlay tab, the README section
+and the log tag (`[SPARRING]`) now say Sparring. The README also gains the
+Tag Sparring partner control and the two final-round dip switches. Code
+names (training_dummy.c, training_*) and earlier notes keep "training".
+
+### 0.2.14-rollback.30: doa3.1 0.2.7-0.2.14 merged
+
+Merged doa3.1 (final-round replay / winner dip switches, Team Battle Random
+stage, Tag Sparring partner controller, "Training" renamed "Sparring") into
+the rollback branch. One adjustment: phase 4 (0x74A30) lives inside the
+restorable match-flow task 0x72070, and the rollback task transform needs
+its frame sleeps (sub_001C65D8) at root scope. 0.2.10's
+`if (!skip) { sleep }` became `if (skip) goto <the label after the
+sleep>`, with the same behavior. The hooks are declared in
+rollback_tasks.h for the transformed bodies.
