@@ -5209,3 +5209,17 @@ What this tests beyond the sync test: a jump of hundreds of frames, across
 streaming reads, sounds and allocations made after the save. Not yet
 covered: kernel objects (events, handles) created after the save. If loads
 go wrong, that is the likely place.
+
+### 0.2.15-rollback.32: the first load matched; close the audio gate at the new state
+
+Matt's first run: save at fight frame 0 (137 MB of checkpoint data plus
+the renderer). The first load, about 600 frames later, restored in 120 ms
+and matched the saved image exactly (compare=1, no differing part, the
+renderer equal too). It then stopped at "audio gate end".
+`mcpx_apu_replay_end` only closes the output gate once audio processing
+is back EXACTLY where the gate began. That is right for a rollback (the
+resimulation returns there) but never true for a load, which ends
+somewhere else on purpose. `mcpx_apu_replay_commit()` closes the gate at
+the current, restored and verified state, provided nothing faulted while
+it was gated. Device buffers already submitted play out (a few ms of the
+pre-load audio). A refused (compensated) load still uses end().

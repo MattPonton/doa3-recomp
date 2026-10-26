@@ -10,5 +10,5 @@
 #define DOA3_VER_MINOR  2
 #define DOA3_VER_UPDATE 15
 #define DOA3_VER_BUILD  0
-#define DOA3_VER_STR    "0.2.15-rollback.31"
+#define DOA3_VER_STR    "0.2.15-rollback.32"
 #endif

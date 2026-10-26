@@ -94,6 +94,17 @@ int mcpx_apu_replay_begin(void)
     s_apu_replay_anchor=anchor;s_apu_replay_scratch=scratch;
     s_apu_replay_buffer_size=xa2_get_buffer_size();s_apu_replay_fault=0;s_apu_replay_active=1;return 1;
 }
+/* rollback.32: a state load deliberately ends somewhere else. Close the
+ * gate accepting the current (restored, verified) processing state, as long
+ * as nothing faulted during the gate. Device buffers already submitted play
+ * out (a few ms of the old audio). */
+int mcpx_apu_replay_commit(void)
+{
+    if(!s_apu_replay_active || s_apu_replay_fault || !apu_processing_ready())return 0;
+    free(s_apu_replay_anchor);free(s_apu_replay_scratch);
+    s_apu_replay_anchor=s_apu_replay_scratch=NULL;
+    s_apu_replay_active=s_apu_replay_fault=s_apu_replay_buffer_size=0;return 1;
+}
 int mcpx_apu_replay_end(int cancel)
 {
     size_t bytes=mcpx_apu_processing_size();

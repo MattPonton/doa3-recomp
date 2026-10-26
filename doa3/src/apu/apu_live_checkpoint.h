@@ -26,4 +26,6 @@ int mcpx_apu_processing_restore(const void *,size_t);
  * This supports unchanged-input round-trip checks, not corrected-audio output. */
 int mcpx_apu_replay_begin(void);
 int mcpx_apu_replay_end(int cancel);
+/* rollback.32: close the gate at a DIFFERENT, restored state (state load). */
+int mcpx_apu_replay_commit(void);
 #endif
