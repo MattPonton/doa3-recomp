@@ -4357,3 +4357,16 @@ connected. Recording and playback are unaffected (they drive the dummy).
 The UI section is now "Second controller", worded for the dummy or the
 partner depending on the mode. `[TRAINING] Tag Sparring: partner on ...`
 is logged when it takes effect.
+
+## 0.2.13 - Tag Sparring detection
+
+Matt: 0.2.12 showed the singles wording in Tag Sparring and the partner
+stayed on Player 1. Its test was 0x5A2858 == 11. Matt's log shows the mode
+bytes 0x5A2858/0x596A33 as 1/11 on Tag Sparring's menus and 7/7 in a
+singles fight, so during the fight the byte is apparently not 11. Tag
+Sparring is now either mode byte being 11, or Sparring (0x5A2858 == 7) with
+the tag flag 0xC59866 that the input code itself checks. The partner
+override no longer requires training_available(). `[TRAINING] tag: ...`
+logs, at each phase change, the mode bytes, the tag flag, the human side,
+the four ports, the two-humans flags and the on-point members, for the
+next round if this is still not it.

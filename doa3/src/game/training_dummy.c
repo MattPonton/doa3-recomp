@@ -39,6 +39,17 @@ static unsigned char s_partner_old_port, s_partner_old_two;
 static int s_stagger_hold[2];
 static float s_stagger_value[2] = { 1.0f, 1.0f };
 
+/* 0.2.13: which Sparring is running. 0.2.12 tested 0x5A2858 == 11 and never
+ * saw Tag Sparring (Matt's log: mode bytes 0x5A2858/0x596A33 read 1/11 on
+ * its menus, singles fights 7/7). Any of the two mode bytes being 11, or
+ * Sparring with the tag flag 0xC59866 (what the input code itself checks). */
+static int tag_sparring(void)
+{
+    if (netplay_active()) return 0;
+    if (MEM8(0x5A2858)==11 || MEM8(0x596A33)==11) return 1;
+    return MEM8(0x5A2858)==7 && MEM8(0xC59866)!=0;
+}
+
 int training_available(void)
 {
 #if defined(DOA3_XBE_ID_JAPAN)
@@ -180,7 +191,7 @@ void training_control_get(int *enabled, int *port)
 }
 
 int training_control_active(void) { return s_ctrl_active; }
-int training_control_partner(void) { return training_available() && MEM8(0x5A2858)==11; }
+int training_control_partner(void) { return tag_sparring(); }
 
 float training_stagger_get(int side)
 {
@@ -231,10 +242,20 @@ static int partner_begin(void)
 {
     int port=s_ctrl_port;
     unsigned human, phase;
-    if (MEM8(0x5A2858)!=11) return 0;          /* not Tag Sparring: singles rules */
+    if (!tag_sparring()) return 0;             /* not Tag Sparring: singles rules */
     human=MEM8(0xC58E47); phase=MEM8(0x596A37);
-    if (!s_ctrl_enabled || !training_available() || !MEM8(0xC59866) || human>=2 ||
-        (phase!=1 && phase!=2) || port==training_human_port() || !training_port_connected(port)) {
+    {   static unsigned s_logged_phase=99;
+        if (phase!=s_logged_phase) {
+            s_logged_phase=phase;
+            fprintf(stderr, "[TRAINING] tag: phase %u mode %u/%u tag %u human %u ports %u %u %u %u two %u %u member %u %u on %d port %d\n",
+                    phase, MEM8(0x5A2858), MEM8(0x596A33), MEM8(0xC59866), human,
+                    MEM8(0x30E3F4), MEM8(0x30E3F5), MEM8(0x30E3F6), MEM8(0x30E3F7),
+                    MEM8(0x596A40), MEM8(0x596A41), MEM8(0x59CF5B), MEM8(0x59CFC3), s_ctrl_enabled, port);
+            fflush(stderr);
+        }
+    }
+    if (!s_ctrl_enabled || human>=2 ||
+        (phase!=1 && phase!=2) || port==MEM8(0x30E3F4+human) || !training_port_connected(port)) {
         s_ctrl_active=0; return 1;
     }
     s_partner_side=human;
