@@ -4279,3 +4279,27 @@ flag and the `[STAGE]` log. `doa3_stage_initial_cursor` is back to 0.2.6.
 Kept from 0.2.7 for reference: when the hook sees "remembered" (0xCADAC,
 select state +0x1EA), it keeps the cursor, and 0xD65A0 initializes +0x1EA
 to 2. The replay / winner pose dip switches are unchanged.
+
+## 0.2.9 - Random stage in Team Battle; no result banner on a skipped winner pose
+
+Matt's repro: Team Battle's Stage Select (its own list 0x29CA56: the five
+Tag stages + Random, six entries, so the five-wide carousel scrolls) with
+"Random is default stage option" on. The carousel came up centered on
+Random, but the P1 highlight sat one slot past the right edge and the name
+read PANCRATIUM. The cursor the screen draws and confirms is the select
+state's +0x1EA (highlight 0xD2760: (+0x1EA - carousel first 0x9B78F4) *
+0x71; confirm 0xD586D). The mode setup 0xD65A0 sets it to 2, and the
+switch had only moved the carousel's starting cursor (0x9B7BAA / D8060).
+0xD65A0 is an override again, this time remembering its state argument.
+When the switch moves the cursor, +0x1EA is moved with it if it still
+holds the cursor that was passed in. Logged once per Stage Select as
+`[STAGE] opens on Random: ...` (first eight).
+
+"Only show round's winner on final round": skipping only the pose loop
+left the round result banner up for one frame. Phase 4 sets the banner up
+before the loop (0x7502E: banner id 0x588836 = 8/9/0xB, announcer call
+0x1C7920 with 0x800A/0x800B/0x8006) and sleeps a frame (0x7509A). A
+skipped round now also takes the game's own no-banner path there (0x7501E:
+phase 4, banner 0xFF, no call), which Team Battle and a few special
+opponents already use. Hand edit in gen/recomp_0001.c (three copies);
+`[ROUND] round result: ...` logs the decision.

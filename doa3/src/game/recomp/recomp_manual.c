@@ -1387,13 +1387,23 @@ int doa3_round_skip_replay(void)
     fflush(stderr);
     return skip;
 }
-int doa3_round_skip_winner(void)
+/* 0.2.9: skipping only the pose loop still showed the round result banner
+ * for a frame: phase 4 sets it up before the loop (0x7502E: banner id
+ * 0x588836 = 8/9/0xB, then the announcer call 0x1C7920 with 0x800A/B/6)
+ * and sleeps a frame (0x7509A). A skipped round now takes the game's own
+ * no-banner path there (0x7501E: phase 4, banner 0xFF, no call; used for
+ * Team Battle and a few special opponents) as well. */
+int doa3_round_skip_winner_banner(void)
 {
     int skip = dip_get(DIP_WINNER_FINAL_ONLY) && !round_decides_match();
-    fprintf(stderr, "[ROUND] winner pose: mode %u, rounds won %u-%u of %u -> %s\n", MEM8(0x5A2858),
-            MEM8(0x59CFB8), MEM8(0x59D020), MEM8(0x588837), skip ? "skipped" : "shown");
+    fprintf(stderr, "[ROUND] round result: mode %u, rounds won %u-%u of %u -> %s\n", MEM8(0x5A2858),
+            MEM8(0x59CFB8), MEM8(0x59D020), MEM8(0x588837), skip ? "banner and winner pose skipped" : "shown");
     fflush(stderr);
     return skip;
+}
+int doa3_round_skip_winner(void)
+{
+    return dip_get(DIP_WINNER_FINAL_ONLY) && !round_decides_match();
 }
 
 /* DOA3 0.1.31: dip switch "Random is default stage option".
@@ -1403,7 +1413,17 @@ int doa3_round_skip_winner(void)
  * g_stage_cursor_keep first. The cursor byte is 0x9B7BAA, indexing the
  * order list 0x9B76C4[0x29CA5A]; table entry 0x0E is Random, which the
  * init appends at the end of the list. Called after the list is built. */
+/* 0.2.9: Team Battle. The cursor the screen draws and confirms is the
+ * select state's +0x1EA (highlight 0xD2760: (+0x1EA - carousel first) *
+ * 0x71; confirm 0xD586D), which the mode setup 0xD65A0 sets to 2. In the
+ * other modes it ends up on the cursor passed here; in Team Battle (stage
+ * list 0x29CA56: 5 Tag stages + Random, so the carousel scrolls) it stayed
+ * 2: the carousel was centred on Random while the P1 highlight sat on
+ * Pancratium, one slot past the right edge. When the switch moves the
+ * cursor, +0x1EA of the state 0xD65A0 last set up is moved with it if it
+ * still holds the cursor that was passed in. */
 int g_stage_cursor_keep;
+static uint32_t s_select_state;   /* 0xD65A0's state argument */
 uint8_t doa3_stage_initial_cursor(uint8_t cur)
 {
     int keep = g_stage_cursor_keep;
@@ -1413,8 +1433,27 @@ uint8_t doa3_stage_initial_cursor(uint8_t cur)
     n = MEM8(0x29CA5A);
     if (n > 32) n = 32;
     for (i = 0; i < n; i++)
-        if (MEM8(0x9B76C4 + i) == 0x0E) return (uint8_t)i;
+        if (MEM8(0x9B76C4 + i) == 0x0E) {
+            uint32_t st = s_select_state;
+            int moved = st && MEM8(st + 0x1EA) == cur;
+            if (moved) MEM8(st + 0x1EA) = (uint8_t)i;
+            {   static unsigned s_logged;
+                if (s_logged++ < 8) {
+                    fprintf(stderr, "[STAGE] opens on Random: list of %u, cursor %u -> %u, state %08X +0x1EA %u%s\n",
+                            n, cur, i, st, st ? MEM8(st + 0x1EA) : 0, moved ? " (moved)" : "");
+                    fflush(stderr);
+                }
+            }
+            return (uint8_t)i;
+        }
     return cur;
+}
+void sub_000D65A0_gen(void);
+void sub_000D65A0(void)
+{
+    s_select_state = MEM32(esp + 4);
+    sub_000D65A0_gen();
+    if (g_fib_slice_due) xbox_fiber_timeslice();
 }
 
 /* Dip switch "Same costume, different option" (0.1.28).

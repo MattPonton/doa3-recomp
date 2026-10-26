@@ -9,6 +9,7 @@
 #include <math.h>
 extern int doa3_round_skip_replay(void);
 extern int doa3_round_skip_winner(void);
+extern int doa3_round_skip_winner_banner(void);
 
 /**
  * sub_0004C570
@@ -109009,6 +109010,7 @@ loc_0007501E: ;
     goto loc_0007504E;
 
 loc_0007502E: ;
+    if (doa3_round_skip_winner_banner()) { SET_LO8(ebx, MEM8(0x596A74)); goto loc_0007501E; } /* 0.2.9: no result banner or call */
     SET_LO8(edx, MEM8(esp + 0x13));
     eax = MEM32(esp + 0x20);
     MEM8(0x596A37) = 4;
@@ -113279,6 +113281,7 @@ loc_0007501E: ;
     goto loc_0007504E;
 
 loc_0007502E: ;
+    if (doa3_round_skip_winner_banner()) { SET_LO8(ebx, MEM8(0x596A74)); goto loc_0007501E; } /* 0.2.9: no result banner or call */
     SET_LO8(edx, MEM8(esp + 0x13));
     eax = MEM32(esp + 0x20);
     MEM8(0x596A37) = 4;
@@ -117602,6 +117605,7 @@ loc_0007501E: ;
     goto loc_0007504E;
 
 loc_0007502E: ;
+    if (doa3_round_skip_winner_banner()) { SET_LO8(ebx, MEM8(0x596A74)); goto loc_0007501E; } /* 0.2.9: no result banner or call */
     SET_LO8(edx, MEM8(esp + 0x13));
     eax = MEM32(esp + 0x20);
     MEM8(0x596A37) = 4;
