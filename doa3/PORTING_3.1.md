@@ -5177,3 +5177,10 @@ its frame sleeps (sub_001C65D8) at root scope. 0.2.10's
 `if (!skip) { sleep }` became `if (skip) goto <the label after the
 sleep>`, with the same behavior. The hooks are declared in
 rollback_tasks.h for the transformed bodies.
+## 0.2.15 - phase 4 sleep skip as a goto
+
+Same behavior as 0.2.10. The skipped sleeps at 0x75098 / 0x7558A are now
+`if (skip) goto <the label after the sleep>`, leaving the sleep call at root
+scope, which the rollback branch's task transform requires (the phase lives
+in its restorable task 0x72070). This keeps the two branches' hand edits
+identical.
