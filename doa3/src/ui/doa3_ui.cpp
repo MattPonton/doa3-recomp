@@ -338,6 +338,7 @@ static void DrawPlayerControls()
 }
 
 extern "C" volatile LONG g_doa3_trace_request;   /* recomp_manual.c */
+extern "C" int g_doa3_state_request, g_doa3_state_status;   /* rollback_fight_window.c, DOA3_STATE_TEST */
 extern "C" volatile LONG g_doa3_texdump_request;  /* nv2a_pgraph_d3d11.c */
 
 void DrawControlsSection()
@@ -947,6 +948,17 @@ void DrawTrainingSection()
 
     /* Stagger Escape (0.1.12). */
     ImGui::Spacing();
+    if (g_doa3_state_status) {   /* rollback.31: save state test */
+        ImGui::SeparatorText("Save state (test)");
+        const char *st = g_doa3_state_status == 1 ? "starting" : g_doa3_state_status == 2 ? "running" : "stopped";
+        ImGui::Text("Save state test: %s", st);
+        ImGui::BeginDisabled(g_doa3_state_status != 2);
+        if (ImGui::Button("Save state")) g_doa3_state_request = 1;
+        ImGui::SameLine();
+        if (ImGui::Button("Load state")) g_doa3_state_request = 2;
+        ImGui::EndDisabled();
+        ImGui::Spacing();
+    }
     ImGui::SeparatorText("Stagger Escape");
     {
         int human = HumanSide();

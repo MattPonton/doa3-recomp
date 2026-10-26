@@ -588,6 +588,59 @@ fatal:
     fprintf(stderr,"[ROLLBACK-WINDOW] fatal stage=%s audio_gate=%d\n",stage,gated);fflush(stderr);
     return -1;
 }
+/* rollback.31: load a kept full image and STAY there (a save state, the
+ * first step toward the netplay state). Same transaction as visit(): kernel
+ * guard, physical pins, audio output gate, restore, independent comparison
+ * with the image; but no return to the current endpoint. A refused restore
+ * is compensated by the session (the current state is kept). 1 loaded and
+ * verified, 0 refused (still at the current state), -1 fatal. */
+int doa3_fight_checkpoint_load(Doa3FightCheckpoint *s,const Doa3CheckpointImage *image,uint64_t expect,
+    Doa3CheckpointComparison *difference)
+{
+    if(!context(s) || s->held || s->roundtrip_pinned || !image || !difference || doa3_checkpoint_poisoned(s->session)){
+        fprintf(stderr,"[STATE] load refused: context/arguments\n");return 0;
+    }
+    if(!xbox_kernel_replay_begin()){fprintf(stderr,"[STATE] load refused: kernel guard/clock pin\n");return 0;}
+    if(!acquire_before_rewind(s)){
+        fprintf(stderr,"[STATE] load refused: physical pins\n");
+        return xbox_kernel_replay_end(1) ? 0:-1;
+    }
+    s->roundtrip_pinned=1;release(s);
+    const char *stage="audio gate";
+    int result=0,gated=0;uint64_t frame=UINT64_MAX;
+    if(!acquire(s))goto done;
+    gated=mcpx_apu_replay_begin();release(s);if(!gated)goto done;
+    stage="restore";
+    double t=diagnostic_ms();
+    int restored=doa3_checkpoint_image_restore(s->session,image,&frame);
+    if(restored<0)goto fatal;
+    if(restored==1 && frame==expect){
+        int equal=doa3_checkpoint_image_matches(s->session,image,difference);
+        fprintf(stderr,"[STATE] loaded frame %llu in %.2f ms; compare with the saved image=%d mask=%03X renderer=%d\n",
+            (unsigned long long)frame,diagnostic_ms()-t,equal,difference->different_parts,difference->renderer_different);
+        for(unsigned i=0;i<DOA3_CP_PARTS;++i)if(difference->different_parts&(1u<<i)){
+            size_t off=difference->first_byte[i];
+            fprintf(stderr,"[STATE]   %s differs, first byte 0x%llX",part_names[i],(unsigned long long)off);
+            if(i==DOA3_CP_RAM && off>=sizeof(FightCpu))fprintf(stderr," (guest 0x%08llX)",(unsigned long long)(off-sizeof(FightCpu)));
+            fprintf(stderr,"\n");
+        }
+        if(equal<0)goto fatal;
+        result=1;   /* a mismatch is reported, but the state was restored */
+    }else fprintf(stderr,"[STATE] restore=%d frame=%llu (expected %llu): kept the current state\n",
+        restored,(unsigned long long)frame,(unsigned long long)expect);
+    stage="audio gate end";
+    if(!acquire(s))goto fatal;
+    {int ended=mcpx_apu_replay_end(!result);release(s);if(!ended)goto fatal;}
+    gated=0;
+done:
+    if(!result)fprintf(stderr,"[STATE] load refused at %s\n",stage);
+    if(!xbox_kernel_replay_end(!result))goto fatal;
+    s->roundtrip_pinned=0;mcpx_apu_rollback_release();xbox_det_checkpoint_release();
+    return result;
+fatal:
+    fprintf(stderr,"[STATE] FATAL at %s (audio gate %d); state uncertain\n",stage,gated);fflush(stderr);
+    return -1;
+}
 int doa3_fight_checkpoint_rewind_check(Doa3FightCheckpoint *s,
     const Doa3CheckpointImage *start,uint64_t first,
     const Doa3CheckpointImage *end,uint64_t last,Doa3CheckpointComparison *difference){

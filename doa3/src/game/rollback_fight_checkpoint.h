@@ -26,6 +26,10 @@ int doa3_fight_checkpoint_rewind_check(Doa3FightCheckpoint *,
     const Doa3CheckpointImage *start,uint64_t first,
     const Doa3CheckpointImage *end,uint64_t last,Doa3CheckpointComparison *);
 void doa3_fight_window_probe_boundary(void); /* one native interval, opt-in */
+/* rollback.31: load a kept image and stay there (save state). 1 loaded,
+ * 0 refused (current state kept), -1 fatal. */
+int doa3_fight_checkpoint_load(Doa3FightCheckpoint *,const Doa3CheckpointImage *,uint64_t expect,
+    Doa3CheckpointComparison *);
 /* Experimental synchronous native interval. The callback owns its execution
  * bounds/output suppression; physical pins are released only while it runs.
  * Always restore/verify end before returning, including after a matching replay.

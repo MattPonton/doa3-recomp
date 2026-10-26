@@ -5184,3 +5184,28 @@ Same behavior as 0.2.10. The skipped sleeps at 0x75098 / 0x7558A are now
 scope, which the rollback branch's task transform requires (the phase lives
 in its restorable task 0x72070). This keeps the two branches' hand edits
 identical.
+
+### 0.2.15-rollback.31: save state test (first step toward the netplay state)
+
+The netplay model (Matt, Flycast's netplay state) needs a full snapshot of
+a running game that can be loaded later, into a game that has moved on,
+and stays there. Step 1, inside one process: `DOA3_STATE_TEST=1`
+(DOA3_STATE_TEST.bat). In solo Sparring the controlled clock starts as for
+the sync test (warm-up 120 frames, workers settled), then a full image
+is saved: every checkpoint part (files, RAM/CPU, heap, fibers, clock,
+completions, interrupts, GPU frontend, audio, input) plus the renderer.
+Play goes on natively. Every DOA3_STATE_EVERY frames (default 600, 0 =
+only on request) the image is loaded again. The Sparring tab's "Save
+state (test)" buttons save or load on request, at the next frame boundary.
+
+`doa3_fight_checkpoint_load` (rollback_fight_checkpoint.c) is visit()
+without the return trip: kernel guard, physical pins, audio output gate,
+restore, then an independent comparison with the saved image. A refused
+restore is compensated (the current state is kept). Each load logs
+`[STATE] loaded frame ... compare ...` (1 = identical to the saved image;
+otherwise the differing parts) and `[STATE] load N: frame A -> B`.
+
+What this tests beyond the sync test: a jump of hundreds of frames, across
+streaming reads, sounds and allocations made after the save. Not yet
+covered: kernel objects (events, handles) created after the save. If loads
+go wrong, that is the likely place.

@@ -237,6 +237,99 @@ static void sync_boundary(void){
     if(!sync_auditing || !doa3_input_tape_record(sync_tape,id+1)){sync_stop("input/audit restart refused");return;}
     xbox_det_frame();mcpx_apu_det_frame();
 }
+/* ---- rollback.31: save state test (DOA3_STATE_TEST=1) ---------------------
+ * First step toward the netplay state: a full in-memory snapshot of a
+ * running fight that can be loaded later, staying there. In solo Sparring
+ * the controlled clock starts as for the sync test; then a full image
+ * (every checkpoint part plus the renderer) is saved, play continues
+ * natively, and every DOA3_STATE_EVERY frames (default 600, 0 = never) the
+ * image is loaded again: the fight jumps back to the saved moment and goes
+ * on from there. The Sparring tab's Save / Load buttons do the same on
+ * request. Each load is compared with the saved image (it must match
+ * exactly) and logged as [STATE]. */
+int g_doa3_state_request;              /* UI: 1 save, 2 load */
+int g_doa3_state_status;               /* UI: 0 off, 1 starting, 2 running (saved), 3 stopped */
+static int state_mode=-1,state_phase;
+static unsigned state_every=600,state_warm,state_settle,state_since,state_loads,state_bad;
+static uint64_t state_saved_at;
+static uint32_t state_epoch;
+static Doa3FightCheckpoint *state_fight;
+static Doa3CheckpointImage *state_image;
+static void state_stop(const char *why){
+    if(state_image && state_fight)doa3_checkpoint_image_discard(doa3_fight_checkpoint_session(state_fight),state_image);
+    state_image=NULL;
+    if(state_fight && !doa3_fight_checkpoint_destroy(state_fight))fatal("state checkpoint cleanup");
+    state_fight=NULL;
+    if(g_apu_det)mcpx_apu_det_end();
+    if(g_xbox_det_active)xbox_det_end();
+    {extern int g_doa3_pace_det;g_doa3_pace_det=0;}
+    fprintf(stderr,"[STATE] stopped (%s): %u loads, %u differed from the saved image\n",why,state_loads,state_bad);
+    state_phase=0;state_warm=0;g_doa3_state_status=3;
+}
+static int state_save(void){
+    Doa3CheckpointSession *session=doa3_fight_checkpoint_session(state_fight);
+    if(!session)return 0;
+    Doa3CheckpointImage *image=doa3_checkpoint_image_capture(session,loop.intervals);
+    if(!image){fprintf(stderr,"[STATE] save refused at frame %llu\n",(unsigned long long)loop.intervals);return 0;}
+    if(state_image)doa3_checkpoint_image_discard(session,state_image);
+    state_image=image;state_saved_at=loop.intervals;state_since=0;
+    fprintf(stderr,"[STATE] saved frame %llu (%zu bytes of checkpoint data plus the renderer)\n",
+        (unsigned long long)state_saved_at,doa3_checkpoint_size(session));
+    return 1;
+}
+static void state_load(void){
+    if(!state_image)return;
+    Doa3CheckpointComparison d={0};
+    uint64_t from=loop.intervals;
+    int r=doa3_fight_checkpoint_load(state_fight,state_image,state_saved_at,&d);
+    if(r<0)fatal("state load");
+    if(r>0){
+        ++state_loads;if(d.different_parts || d.renderer_different)++state_bad;
+        fprintf(stderr,"[STATE] load %u: frame %llu -> %llu%s\n",state_loads,(unsigned long long)from,
+            (unsigned long long)loop.intervals,(d.different_parts || d.renderer_different) ? " (DIFFERS from the saved image)":"");
+    }
+    state_since=0;
+}
+static void state_boundary(void){
+    if(state_phase==0){
+        if(!eligible() || g_xbox_det_active || g_apu_det){state_warm=0;return;}
+        if(++state_warm<120)return;
+        xbox_det_bases bases;xbox_det_current_bases(&bases);xbox_det_begin(&bases);
+        state_epoch=xbox_det_epoch();mcpx_apu_det_begin(mcpx_apu_xgscnt_now());
+        if(!g_apu_det){fprintf(stderr,"[STATE] refused: audio clock ownership\n");xbox_det_end();state_mode=0;return;}
+        {extern int g_doa3_pace_det;g_doa3_pace_det=1;}
+        state_phase=1;state_settle=0;g_doa3_state_status=1;
+        fprintf(stderr,"[STATE] controlled clock on; settling workers\n");
+        xbox_det_frame();mcpx_apu_det_frame();return;
+    }
+    if(!g_xbox_det_active || !g_apu_det || xbox_det_epoch()!=state_epoch || !xbox_fiber_is_primary())fatal("state clock ownership changed");
+    if(state_phase==1){
+        if(!eligible()){state_stop("mode changed while settling");return;}
+        if(!xbox_fiber_converted_clock_ready()){
+            if(++state_settle>=240){state_stop("workers did not settle");state_mode=0;return;}
+            xbox_det_frame();mcpx_apu_det_frame();return;
+        }
+        doa3_loop_init(&loop);
+        state_fight=doa3_fight_checkpoint_create(&loop);
+        if(!state_fight){state_stop("checkpoint create refused");return;}
+        state_phase=2;state_loads=state_bad=0;
+        if(!state_save()){state_stop("first save refused");return;}
+        g_doa3_state_status=2;
+        fprintf(stderr,"[STATE] running: load every %u frames (0 = only on request)\n",state_every);
+        xbox_det_frame();mcpx_apu_det_frame();return;
+    }
+    /* state_phase 2: one native frame just ran. */
+    if(!eligible() && !MEM8(0x596AA5)){state_stop("left solo Sparring");return;}
+    loop.intervals+=1;
+    memset(loop.locals,0,sizeof(loop.locals));
+    ++state_since;
+    {   int req=g_doa3_state_request;g_doa3_state_request=0;
+        if(req==1)state_save();
+        else if(req==2 || (state_every && state_since>=state_every))state_load();
+    }
+    xbox_det_frame();mcpx_apu_det_frame();
+}
+
 /* rollback.22 diagnostic, DOA3_RAM_DUMP=1: the whole guest RAM, once, at
  * the first boundary in a fight scene (any mode, Versus included),
  * written to doa3_ram_dump_<seconds since boot>.bin next to the exe. Two
@@ -268,6 +361,15 @@ static void ram_dump_check(void){
 }
 void doa3_fight_window_probe_boundary(void){
     ram_dump_check();
+    if(state_mode<0){
+        const char *v=getenv("DOA3_STATE_TEST");
+        state_mode=v && *v=='1' && doa3_rollback_tasks_enabled();
+        if(state_mode){
+            v=getenv("DOA3_STATE_EVERY");if(v && *v)state_every=(unsigned)atoi(v);
+            enabled=0;sync_mode=0;
+        }
+    }
+    if(state_mode){state_boundary();return;}
     if(sync_mode<0){
         const char *v=getenv("DOA3_ROLLBACK_SYNC_TEST");
         sync_mode=v && *v && strcmp(v,"0") && doa3_rollback_tasks_enabled();
