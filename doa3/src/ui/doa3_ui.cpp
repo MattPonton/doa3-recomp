@@ -957,6 +957,7 @@ void DrawTrainingSection()
         ImGui::SameLine();
         if (ImGui::Button("Load state")) g_doa3_state_request = 2;
         ImGui::EndDisabled();
+        ImGui::TextDisabled("Keyboard: F5 saves, F9 loads (also with this menu closed).");
         ImGui::Spacing();
     }
     ImGui::SeparatorText("Stagger Escape");
@@ -1147,6 +1148,12 @@ extern "C" int doa3_ui_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                 g_screenshot_listening = false;
                 SetStatus(debug_screenshot_key_save() ? "Screenshot key saved" : "Key changed; could not save settings");
             } else SetStatus("Choose a single key other than Escape or a modifier");
+            return 1;
+        }
+        /* rollback.33: save state test hotkeys, F5 save / F9 load, while the
+         * test is running (DOA3_STATE_TEST). */
+        if (msg == WM_KEYDOWN && g_doa3_state_status == 2 && (wp == VK_F5 || wp == VK_F9)) {
+            g_doa3_state_request = wp == VK_F5 ? 1 : 2;
             return 1;
         }
         if (!g_visible && (int)wp == debug_screenshot_key_get() &&

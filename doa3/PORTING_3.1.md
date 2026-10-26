@@ -5223,3 +5223,13 @@ somewhere else on purpose. `mcpx_apu_replay_commit()` closes the gate at
 the current, restored and verified state, provided nothing faulted while
 it was gated. Device buffers already submitted play out (a few ms of the
 pre-load audio). A refused (compensated) load still uses end().
+
+### 0.2.15-rollback.33: F5 / F9 for the save state test
+
+Matt's rb32 run: five loads, every one identical to the saved image
+(79-113 ms). The music sounded as if it restarted, which is expected: the
+automatic save is about two seconds into the fight, right after the fight
+track starts. To test arbitrary moments: while DOA3_STATE_TEST is running,
+F5 saves and F9 loads (window messages in doa3_ui.cpp, overlay open or
+not), the same requests as the Sparring tab's buttons. Set
+DOA3_STATE_EVERY=0 to load only on request.
