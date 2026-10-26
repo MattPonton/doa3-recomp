@@ -109050,7 +109050,8 @@ loc_00075084: ;
 
 loc_00075098: ;
     PUSH32(esp, 1);
-    if (!doa3_round_skip_winner()) { PUSH32(esp, 0); sub_001C65D8(); } /* call 0x001C65D8; 0.2.10: no frame on a skipped round */
+    if (doa3_round_skip_winner()) goto loc_0007509F; /* 0.2.10: no frame on a skipped round (the sleep stays at root scope for the rollback transform) */
+    PUSH32(esp, 0); sub_001C65D8(); /* call 0x001C65D8 */
 
 loc_0007509F: ;
     SET_LO8(edx, MEM8(esp + 0x18));
@@ -109610,7 +109611,8 @@ loc_00075583: ;
 
 loc_0007558A: ;
     PUSH32(esp, 1);
-    if (!doa3_round_skip_winner()) { PUSH32(esp, 0); sub_001C65D8(); } /* call 0x001C65D8; 0.2.10: no frame on a skipped round */
+    if (doa3_round_skip_winner()) goto loc_00075591; /* 0.2.10: no frame on a skipped round (the sleep stays at root scope for the rollback transform) */
+    PUSH32(esp, 0); sub_001C65D8(); /* call 0x001C65D8 */
 
 loc_00075591: ;
     eax = ZX8(MEM8(esp + 0x1B));
@@ -113321,7 +113323,8 @@ loc_00075084: ;
 
 loc_00075098: ;
     PUSH32(esp, 1);
-    if (!doa3_round_skip_winner()) { PUSH32(esp, 0); sub_001C65D8(); } /* call 0x001C65D8; 0.2.10: no frame on a skipped round */
+    if (doa3_round_skip_winner()) goto loc_0007509F; /* 0.2.10: no frame on a skipped round (the sleep stays at root scope for the rollback transform) */
+    PUSH32(esp, 0); sub_001C65D8(); /* call 0x001C65D8 */
 
 loc_0007509F: ;
     SET_LO8(edx, MEM8(esp + 0x18));
@@ -113881,7 +113884,8 @@ loc_00075583: ;
 
 loc_0007558A: ;
     PUSH32(esp, 1);
-    if (!doa3_round_skip_winner()) { PUSH32(esp, 0); sub_001C65D8(); } /* call 0x001C65D8; 0.2.10: no frame on a skipped round */
+    if (doa3_round_skip_winner()) goto loc_00075591; /* 0.2.10: no frame on a skipped round (the sleep stays at root scope for the rollback transform) */
+    PUSH32(esp, 0); sub_001C65D8(); /* call 0x001C65D8 */
 
 loc_00075591: ;
     eax = ZX8(MEM8(esp + 0x1B));
@@ -117645,7 +117649,8 @@ loc_00075084: ;
 
 loc_00075098: ;
     PUSH32(esp, 1);
-    if (!doa3_round_skip_winner()) { PUSH32(esp, 0); sub_001C65D8(); } /* call 0x001C65D8; 0.2.10: no frame on a skipped round */
+    if (doa3_round_skip_winner()) goto loc_0007509F; /* 0.2.10: no frame on a skipped round (the sleep stays at root scope for the rollback transform) */
+    PUSH32(esp, 0); sub_001C65D8(); /* call 0x001C65D8 */
 
 loc_0007509F: ;
     SET_LO8(edx, MEM8(esp + 0x18));
@@ -118205,7 +118210,8 @@ loc_00075583: ;
 
 loc_0007558A: ;
     PUSH32(esp, 1);
-    if (!doa3_round_skip_winner()) { PUSH32(esp, 0); sub_001C65D8(); } /* call 0x001C65D8; 0.2.10: no frame on a skipped round */
+    if (doa3_round_skip_winner()) goto loc_00075591; /* 0.2.10: no frame on a skipped round (the sleep stays at root scope for the rollback transform) */
+    PUSH32(esp, 0); sub_001C65D8(); /* call 0x001C65D8 */
 
 loc_00075591: ;
     eax = ZX8(MEM8(esp + 0x1B));

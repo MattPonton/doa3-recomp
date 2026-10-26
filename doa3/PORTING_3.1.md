@@ -4377,3 +4377,11 @@ Matt: match the game's English name. The overlay tab, the README section
 and the log tag (`[SPARRING]`) now say Sparring. The README also gains the
 Tag Sparring partner control and the two final-round dip switches. Code
 names (training_dummy.c, training_*) and earlier notes keep "training".
+
+## 0.2.15 - phase 4 sleep skip as a goto
+
+Same behavior as 0.2.10. The skipped sleeps at 0x75098 / 0x7558A are now
+`if (skip) goto <the label after the sleep>`, leaving the sleep call at root
+scope, which the rollback branch's task transform requires (the phase lives
+in its restorable task 0x72070). This keeps the two branches' hand edits
+identical.
