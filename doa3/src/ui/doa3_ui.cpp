@@ -1025,7 +1025,7 @@ void DrawMenu()
                 ImGui::EndTabItem();
             }
             ImGui::BeginDisabled(!training_available());
-            if (ImGui::BeginTabItem("Training")) {
+            if (ImGui::BeginTabItem("Sparring")) {
                 DrawTrainingSection();
                 ImGui::EndTabItem();
             }

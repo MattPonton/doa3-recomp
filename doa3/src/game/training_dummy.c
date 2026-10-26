@@ -247,7 +247,7 @@ static int partner_begin(void)
     {   static unsigned s_logged_phase=99;
         if (phase!=s_logged_phase) {
             s_logged_phase=phase;
-            fprintf(stderr, "[TRAINING] tag: phase %u mode %u/%u tag %u human %u ports %u %u %u %u two %u %u member %u %u on %d port %d\n",
+            fprintf(stderr, "[SPARRING] tag: phase %u mode %u/%u tag %u human %u ports %u %u %u %u two %u %u member %u %u on %d port %d\n",
                     phase, MEM8(0x5A2858), MEM8(0x596A33), MEM8(0xC59866), human,
                     MEM8(0x30E3F4), MEM8(0x30E3F5), MEM8(0x30E3F6), MEM8(0x30E3F7),
                     MEM8(0x596A40), MEM8(0x596A41), MEM8(0x59CF5B), MEM8(0x59CFC3), s_ctrl_enabled, port);
@@ -265,7 +265,7 @@ static int partner_begin(void)
     MEM8(0x596A40+human)=1;
     s_partner_modified=1;
     if (!s_ctrl_active) {
-        fprintf(stderr, "[TRAINING] Tag Sparring: partner on the Player %d controller (side %u)\n", port+1, human);
+        fprintf(stderr, "[SPARRING] Tag Sparring: partner on the Player %d controller (side %u)\n", port+1, human);
         fflush(stderr);
     }
     s_ctrl_active=1;

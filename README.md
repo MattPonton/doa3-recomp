@@ -29,9 +29,11 @@ performance for low-end PCs.
 - Streamer mode: mutes the licensed Aerosmith songs wherever they play
 - Dip Switches: optional fixes and quality-of-life changes (left stick in
   menus, Random on the stage select, Random picking alternate and storage
-  costumes, shared costumes, menu pixel offset)
-- Training: record and replay the Sparring dummy's inputs, control the dummy
-  with a second controller, and hold its Stagger Escape value
+  costumes, shared costumes, menu pixel offset, replay and winner pose only
+  on a match's final round)
+- Sparring: record and replay the dummy's inputs, give the dummy (or, in Tag
+  Sparring, your tag partner) to a second controller, and hold the Stagger
+  Escape value
 - Screenshots (PNG) at render resolution, without the overlay
 
 ## Getting started
@@ -120,8 +122,10 @@ effect immediately and are saved in the `[DipSwitches]` section of
 | Random includes costumes from storage | Random, and Survival and Time Attack opponents, can pick storage costumes and their options. Works on its own or together with the color switch. |
 | Allow players to select alternate options of the same costume | With both sides on the same character, a player can take a costume the other side has, in a different option (A, X, Y, L or a storage option). Only the exact costume and option the other side confirmed is refused, with the game's refusal sound. |
 | Correct offset of menu layout | The game draws its menus, frames and HUD one pixel right of and below the screen edge (hidden by a CRT's overscan). This lines the 2D layer up with the screen edges. |
+| Only show round's replay on final round | Rounds that do not decide the match go on without the KO replay; the deciding round still shows it. |
+| Only show round's winner on final round | Rounds that do not decide the match skip the winner's pose and result banner; the screen holds the KO frame until the next round's Get Ready. |
 
-### Training
+### Sparring
 
 Available in offline Sparring only. Three slots record up to ten seconds of
 dummy input each; play a slot once or on a loop. **Record dummy** temporarily
@@ -130,10 +134,12 @@ the recording or stops playback. Recordings last for the current Sparring
 session. Guard, counter-action and counter-hit settings stay in the game's own
 Sparring pause menu.
 
-**Dummy control** lets a second controller (any Player port other than
+**Second controller** lets another controller (any Player port other than
 yours) drive the dummy; it returns to the CPU when that controller is
 unplugged or while a recording plays or records. It works with the Escape
-menu open.
+menu open. In Tag Sparring it drives your tag partner instead, as when two
+players share a team in Tag Battle, so two people can practice tag combos
+together.
 
 **Stagger Escape** shows each fighter's critical-stun mash value as 0–100 %
 (how fast a critical stun or guard break plays out). **Hold** fixes the value

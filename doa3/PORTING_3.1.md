@@ -4370,3 +4370,10 @@ override no longer requires training_available(). `[TRAINING] tag: ...`
 logs, at each phase change, the mode bytes, the tag flag, the human side,
 the four ports, the two-humans flags and the on-point members, for the
 next round if this is still not it.
+
+## 0.2.14 - "Training" is "Sparring"
+
+Matt: match the game's English name. The overlay tab, the README section
+and the log tag (`[SPARRING]`) now say Sparring. The README also gains the
+Tag Sparring partner control and the two final-round dip switches. Code
+names (training_dummy.c, training_*) and earlier notes keep "training".
