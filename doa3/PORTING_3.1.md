@@ -5351,3 +5351,37 @@ extra chip steps for guest chip waits, CRI vsync-server / playback /
 file-worker ticks, and the XA2 queue. The suspicion is that slow motion
 waits several vblanks per presented frame. Hardware runs the CRI servers
 on every one of those; the controlled clock gives one per frame.
+
+### 0.2.15-rollback.39: files and render targets rebuilt on load; F10 audio dump
+
+Matt's rb38 run: loads worked across several matches. They were refused
+across movies (opening and ending cinematics), and never possible on Press
+Start, the main menu or character select. The log: 29 loads refused
+because the saved image did not validate. Files: the pinned file
+checkpoint refuses once any file was opened or closed, and movies open
+their .sfd. Renderer: the saved off-screen render targets no longer
+existed. Saves were refused at the menus by two game tasks that are not
+converted, bodies 0x523D0 (title/menu flow, task slot 1; it stays alive
+into Story) and 0x851A0. Converting those is next: 0x523D0 tail-jumps
+into 0x523F0, a loop split across functions with tail jumps and a jump
+table, which the single-yield tool cannot take as it is.
+
+Full save states now:
+- Files (xbox_stream_file_full_*): every guest file id the game was given
+  (ids are never reissued): path, open or closed, write access, and the
+  read position of each open file. Loading closes what the save did not
+  have open, reopens by path what it had (or what is open under a
+  different path), and seeks every file. `[STATE] files: N reopened by
+  path, M closed`. Directory search state is not kept.
+- Renderer (nv2a_renderer_checkpoint_resource_full): the saved GPU images
+  are restored when they still fit. Otherwise the logical register and
+  pipeline state is restored, every upload cache dropped, and the targets
+  are redrawn from the next frame. `[STATE] renderer: render targets
+  changed since the save; redrawn from the next frame`.
+- The pinned file session is no longer created for full save states.
+
+Audio: rb38's [KO-AUDIO] trace shows one vsync, playback and file tick
+every KO frame, no extra game vblank waits, and the XA2 queue at 2-4. Not
+the tick hypothesis, then. With DOA3_AUDIO_RING=1 the last 30 s of the
+mix are kept in memory, and F10 writes them to
+Diagnostics\apu_mix_f10_<n>.wav, to look at the stutter itself.

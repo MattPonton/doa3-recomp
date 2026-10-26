@@ -53,4 +53,10 @@ size_t xbox_stream_file_checkpoint_size(void);
 int xbox_stream_file_checkpoint_capture(void *out,size_t bytes);
 int xbox_stream_file_checkpoint_validate(const void *saved,size_t bytes);
 int xbox_stream_file_checkpoint_restore(const void *saved,size_t bytes);
+/* rollback.39: full snapshot of every guest file id (path, open, position);
+ * loading reopens by path and closes what the save did not have open. */
+size_t xbox_stream_file_full_size(void);
+int xbox_stream_file_full_capture(void *out,size_t bytes);
+int xbox_stream_file_full_validate(const void *saved,size_t bytes);
+int xbox_stream_file_full_restore(const void *saved,size_t bytes);
 #endif

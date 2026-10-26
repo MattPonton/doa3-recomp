@@ -92,7 +92,7 @@ static int capture_part(void *v,void *out,size_t n){
     Binding *b=v;Doa3FightCheckpoint *s=b->owner;if(!s->held)return 0;
     switch(b->id){
     case DOA3_CP_RAM:{FightCpu cpu;cpu_capture(&cpu,s->loop);memcpy(out,&cpu,sizeof cpu);memcpy((char *)out+sizeof cpu,s->ram,s->ram_bytes);return 1;}
-    case DOA3_CP_FILES:return xbox_stream_file_checkpoint_capture(out,n);
+    case DOA3_CP_FILES:return s->full ? xbox_stream_file_full_capture(out,n):xbox_stream_file_checkpoint_capture(out,n);
     case DOA3_CP_HEAP:return xbox_heap_checkpoint_capture(s->heap,out,n);
     case DOA3_CP_FIBERS:return s->full ? xbox_fiber_full_capture(out,n):xbox_fiber_converted_capture(out,n);
     case DOA3_CP_CLOCK:return xbox_det_capture(out);
@@ -114,7 +114,7 @@ static int validate_part(void *v,const void *in,size_t n){
     switch(b->id){
     case DOA3_CP_RAM:{const FightCpu *p=in;return n==sizeof(*p)+s->ram_bytes && p->schema==1 &&
         p->regs[15]<=UINT16_MAX && doa3_loop_valid(&p->loop);}
-    case DOA3_CP_FILES:return xbox_stream_file_checkpoint_validate(in,n);
+    case DOA3_CP_FILES:return s->full ? xbox_stream_file_full_validate(in,n):xbox_stream_file_checkpoint_validate(in,n);
     case DOA3_CP_HEAP:return xbox_heap_checkpoint_validate(s->heap,in,n);
     case DOA3_CP_FIBERS:return s->full ? xbox_fiber_full_validate(in,n):xbox_fiber_converted_validate(in,n);
     case DOA3_CP_CLOCK:return xbox_det_validate(in);
@@ -138,7 +138,7 @@ static int restore(void *v,const void *in,size_t n){
     Binding *b=v;Doa3FightCheckpoint *s=b->owner;if(!can_restore(v))return 0;
     switch(b->id){
     case DOA3_CP_RAM:memcpy(s->ram,(const char *)in+sizeof(FightCpu),s->ram_bytes);cpu_restore(in,s->loop);return 1;
-    case DOA3_CP_FILES:return xbox_stream_file_checkpoint_restore(in,n);
+    case DOA3_CP_FILES:return s->full ? xbox_stream_file_full_restore(in,n):xbox_stream_file_checkpoint_restore(in,n);
     case DOA3_CP_HEAP:return xbox_heap_checkpoint_restore(s->heap,in,n);
     case DOA3_CP_FIBERS:return s->full ? xbox_fiber_full_restore(in,n):xbox_fiber_converted_restore(in,n);
     case DOA3_CP_CLOCK:return xbox_det_restore(in);
@@ -163,17 +163,17 @@ Doa3FightCheckpoint *doa3_fight_checkpoint_create(Doa3LoopState *loop){
     s->ram=xbox_GetMemoryBase();s->ram_bytes=xbox_GetMemorySize();
     if(s->ram_bytes!=128u*1024u*1024u || !context(s) || !doa3_loop_at_boundary(loop))goto fail;
     s->heap=xbox_heap_checkpoint_create();if(!s->heap)goto fail;
-    if(!xbox_stream_file_checkpoint_begin())goto fail;s->files=1;
+    if(!s->full){if(!xbox_stream_file_checkpoint_begin())goto fail;s->files=1;}
     if(!acquire(s))goto fail;
     int renderer_ok=pgraph_d3d11_rollback_snapshot_source(&s->renderer);release(s);
     if(!renderer_ok)goto fail;
     Doa3CheckpointConfig c={0};c.context=s;c.acquire=acquire;c.release=release;c.epoch=epoch;
-    size_t sizes[]={xbox_stream_file_checkpoint_size(),sizeof(FightCpu)+s->ram_bytes,
+    size_t sizes[]={s->full ? xbox_stream_file_full_size():xbox_stream_file_checkpoint_size(),sizeof(FightCpu)+s->ram_bytes,
         xbox_heap_checkpoint_size(),xbox_fiber_converted_snapshot_size(),sizeof(xbox_det_checkpoint),
         xbox_stream_completion_snapshot_size(),sizeof(XboxInterruptSnapshot),sizeof(Nv2aQueueSnapshot),
         mcpx_apu_processing_size(),sizeof(Doa3XppSnapshot)};
     for(unsigned i=0;i<DOA3_CP_PARTS;++i){s->bindings[i]=(Binding){s,i};c.parts[i]=(Doa3CheckpointPart){&s->bindings[i],sizes[i],capture,validate,restore,can_restore};}
-    c.renderer=nv2a_renderer_checkpoint_resource(&s->renderer);
+    c.renderer=s->full ? nv2a_renderer_checkpoint_resource_full(&s->renderer):nv2a_renderer_checkpoint_resource(&s->renderer);
     s->session=doa3_checkpoint_create(&c);if(!s->session)goto fail;
     return s;
 fail:
@@ -185,7 +185,7 @@ Doa3CheckpointSession *doa3_fight_checkpoint_session(Doa3FightCheckpoint *s)
 int doa3_fight_checkpoint_destroy(Doa3FightCheckpoint *s){
     if(!s)return 1;
     if(!context(s) || s->held || s->roundtrip_pinned || !doa3_checkpoint_dispose(s->session))return 0;
-    xbox_stream_file_checkpoint_end();xbox_heap_checkpoint_destroy(s->heap);free(s);return 1;
+    if(s->files)xbox_stream_file_checkpoint_end();xbox_heap_checkpoint_destroy(s->heap);free(s);return 1;
 }
 int doa3_fight_checkpoint_roundtrip(Doa3LoopState *loop,Doa3CheckpointComparison *comparison){
     static Doa3FightCheckpoint *fatal_state;

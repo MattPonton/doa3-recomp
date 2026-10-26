@@ -106,6 +106,38 @@ Doa3CheckpointResource nv2a_renderer_checkpoint_resource(Nv2aRendererCheckpointS
         renderer_equal,renderer_equal_state};
     return part;
 }
+/* rollback.39: full save states. The saved GPU images (off-screen render
+ * targets) only fit while the same set exists; scenes and movies make
+ * others. A full load restores them when they still fit; otherwise it puts
+ * back the logical register and pipeline state (plain data), drops every
+ * upload cache, and lets the game redraw the targets from the next frame:
+ * at most one imperfect frame after loading. Never used for rollback. */
+static int validate_full(void *v,const void *saved)
+{
+    Nv2aRendererCheckpointSource *s=v;const RendererImage *image=saved;
+    return source_ready(s) && image && image->source==s && image->owner==GetCurrentThreadId() &&
+        !image->logical.draw.in_draw;
+}
+static int restore_full(void *v,const void *saved)
+{
+    Nv2aRendererCheckpointSource *s=v;const RendererImage *image=saved;
+    static unsigned s_told;
+    if(validate(v,saved)) return restore(v,saved);
+    if(!validate_full(v,saved)) return 0;
+    if(nv2a_pgraph_logical_validate(&image->logical) && d3d8_pipeline_validate(&image->pipeline)){
+        if(!d3d8_pipeline_restore(&image->pipeline)) return 0;
+        if(!nv2a_pgraph_logical_restore_private(&image->logical,s->draw,s->aux,s->model_view)) return -1;
+    }
+    s->invalidate_uploads(s->context);
+    if(s_told++<8)fprintf(stderr,"[STATE] renderer: render targets changed since the save; redrawn from the next frame\n");
+    return 1;
+}
+Doa3CheckpointResource nv2a_renderer_checkpoint_resource_full(Nv2aRendererCheckpointSource *source)
+{
+    Doa3CheckpointResource part={source,capture,validate_full,restore_full,destroy,
+        renderer_equal,renderer_equal_state};
+    return part;
+}
 int nv2a_renderer_checkpoint_equal(Nv2aRendererCheckpointSource *source,const void *first,const void *second)
 {
     const RendererImage *a=first,*b=second;

@@ -1797,6 +1797,110 @@ int xbox_stream_file_checkpoint_validate(const void *saved,size_t bytes)
     return stream_file_checkpoint_ready() &&
         xbox_stream_files_validate(s_stream_files,s_fh_epoch,saved,bytes);
 }
+/* ---- rollback.39: full file snapshot (save states / the netplay state) ----
+ * The pinned checkpoint above restores read positions of the SAME open files
+ * and refuses once any file was opened or closed (s_fh_epoch): a movie opens
+ * its .sfd, so no save taken before a movie loaded after it. A full snapshot
+ * records every guest file id the game has been given (ids are never
+ * reissued): path, open or closed, access, and the read position of each
+ * open one. Loading closes what the save did not have open, reopens by path
+ * what it had, and puts every position back. Directory search state is not
+ * kept (the game enumerates its folders at boot only). */
+#define FULL_FILES_MAX 512u
+typedef struct {
+    uint8_t live, write, mutable_, directory;
+    uint32_t reserved;
+    int64_t position;
+    WCHAR path[MAX_PATH];
+} FullFileEntry;
+typedef struct {
+    uint32_t version, next;
+    FullFileEntry e[FULL_FILES_MAX];
+} FullFileSnapshot;
+size_t xbox_stream_file_full_size(void) { return sizeof(FullFileSnapshot); }
+static int full_file_position(HANDLE h, int *directory, int64_t *pos)
+{
+    BY_HANDLE_FILE_INFORMATION info; LARGE_INTEGER zero, at; zero.QuadPart = 0;
+    if (!GetFileInformationByHandle(h, &info)) return 0;
+    *directory = (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+    if (*directory) { *pos = 0; return 1; }
+    if (!SetFilePointerEx(h, zero, &at, FILE_CURRENT) || at.QuadPart < 0) return 0;
+    *pos = at.QuadPart; return 1;
+}
+int xbox_stream_file_full_capture(void *out, size_t bytes)
+{
+    FullFileSnapshot *s = (FullFileSnapshot *)out;
+    static unsigned s_told;
+    if (!out || bytes != sizeof(*s) || !g_xbox_det_active || !xbox_fiber_is_primary() ||
+        s_apc_queue.delivering || s_apc_queue.tainted) return 0;
+    if (s_fh_untracked || s_fh_next > FULL_FILES_MAX) {
+        if (s_told++ < 4) fprintf(stderr, "[STATE] files: cannot save (%s, %u ids)\n",
+            s_fh_untracked ? (s_fh_untracked_reason ? s_fh_untracked_reason : "untracked handle") : "too many ids", s_fh_next);
+        return 0;
+    }
+    memset(s, 0, sizeof(*s));
+    s->version = 1; s->next = s_fh_next;
+    for (unsigned i = 0; i < s_fh_next; ++i) {
+        FullFileEntry *e = &s->e[i];
+        wcsncpy_s(e->path, MAX_PATH, s_fh_path[i], MAX_PATH - 1);
+        if (!s_fh[i]) continue;
+        int dir = 0;
+        if (!full_file_position(s_fh[i], &dir, &e->position)) return 0;
+        e->live = 1; e->directory = (uint8_t)dir;
+        e->write = s_fh_write[i]; e->mutable_ = s_fh_mutable[i];
+    }
+    return 1;
+}
+int xbox_stream_file_full_validate(const void *saved, size_t bytes)
+{
+    const FullFileSnapshot *s = (const FullFileSnapshot *)saved;
+    if (!saved || bytes != sizeof(*s) || s->version != 1 || s->next > FULL_FILES_MAX ||
+        !g_xbox_det_active || !xbox_fiber_is_primary() || s_apc_queue.delivering) return 0;
+    for (unsigned i = 0; i < s->next; ++i)
+        if (s->e[i].live && (!s->e[i].path[0] || s->e[i].position < 0)) return 0;
+    return 1;
+}
+int xbox_stream_file_full_restore(const void *saved, size_t bytes)
+{
+    const FullFileSnapshot *s = (const FullFileSnapshot *)saved;
+    unsigned n, reopened = 0, closed = 0;
+    if (!xbox_stream_file_full_validate(saved, bytes)) return 0;
+    stream_files_changed();                      /* drops any pinned session and search state */
+    n = s_fh_next > s->next ? s_fh_next : s->next;
+    if (n > XFH_MAX) n = XFH_MAX;
+    for (unsigned i = 0; i < n; ++i) {
+        const FullFileEntry *e = i < s->next ? &s->e[i] : NULL;
+        if (e && e->live) {
+            if (!s_fh[i] || _wcsicmp(s_fh_path[i], e->path) != 0) {
+                if (s_fh[i]) { stream_directory_handle_closed(s_fh[i]); CloseHandle(s_fh[i]); s_fh[i] = NULL; }
+                HANDLE h = CreateFileW(e->path, GENERIC_READ | (e->write ? GENERIC_WRITE : 0),
+                                       FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING,
+                                       e->directory ? FILE_FLAG_BACKUP_SEMANTICS : FILE_ATTRIBUTE_NORMAL, NULL);
+                if (h == INVALID_HANDLE_VALUE) {
+                    fprintf(stderr, "[STATE] files: could not reopen %ls (error %lu)\n", e->path, GetLastError());
+                    return 0;
+                }
+                s_fh[i] = h; ++reopened;
+            }
+            wcsncpy_s(s_fh_path[i], MAX_PATH, e->path, MAX_PATH - 1);
+            s_fh_write[i] = e->write; s_fh_mutable[i] = e->mutable_;
+            if (!e->directory) {
+                LARGE_INTEGER at; at.QuadPart = e->position;
+                if (!SetFilePointerEx(s_fh[i], at, NULL, FILE_BEGIN)) return 0;
+            }
+        } else {
+            if (s_fh[i]) { stream_directory_handle_closed(s_fh[i]); CloseHandle(s_fh[i]); s_fh[i] = NULL; ++closed; }
+            if (e) wcsncpy_s(s_fh_path[i], MAX_PATH, e->path, MAX_PATH - 1);
+            else s_fh_path[i][0] = 0;
+            s_fh_write[i] = s_fh_mutable[i] = 0;
+        }
+    }
+    s_fh_next = s->next;
+    if (reopened || closed)
+        fprintf(stderr, "[STATE] files: %u reopened by path, %u closed\n", reopened, closed);
+    return 1;
+}
+
 /* Diagnostic counters, not part of restored state. */
 unsigned g_rollback_apc_queued, g_rollback_apc_delivered;
 

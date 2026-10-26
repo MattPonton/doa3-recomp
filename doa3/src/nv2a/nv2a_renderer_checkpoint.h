@@ -17,6 +17,9 @@ typedef struct {
     void (*invalidate_uploads)(void *);
 } Nv2aRendererCheckpointSource;
 Doa3CheckpointResource nv2a_renderer_checkpoint_resource(Nv2aRendererCheckpointSource *source);
+/* rollback.39: full save states: restores the GPU images when they still fit,
+ * otherwise the logical state only and redraws the targets. */
+Doa3CheckpointResource nv2a_renderer_checkpoint_resource_full(Nv2aRendererCheckpointSource *source);
 /* Read-only diagnostic including exact GPU pixel comparison. Never restores. */
 int nv2a_renderer_checkpoint_equal(Nv2aRendererCheckpointSource *,const void *,const void *);
 /* Live owner-thread boundary binding for the opt-in capture audit only. */

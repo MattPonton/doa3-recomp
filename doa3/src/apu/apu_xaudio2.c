@@ -135,10 +135,18 @@ static unsigned s_ring_pos, s_ring_fill;
 static SRWLOCK s_ring_lock = SRWLOCK_INIT;
 static unsigned s_dropped;               /* batches discarded with the queue full */
 
-static void mix_ring_push(const int16_t *samples, int frames)
+/* rollback.39: DOA3_AUDIO_RING=1 keeps the ring without diagnostics, for the
+ * F10 dump (apu_mix_dump_now). */
+static int mix_ring_wanted(void)
 {
     extern int doa3_auto_capture_enabled(void);
-    if (!doa3_auto_capture_enabled() || frames <= 0) return;
+    static int s_env = -1;
+    if (s_env < 0) { const char *e = getenv("DOA3_AUDIO_RING"); s_env = e && *e == '1'; }
+    return s_env || doa3_auto_capture_enabled();
+}
+static void mix_ring_push(const int16_t *samples, int frames)
+{
+    if (!mix_ring_wanted() || frames <= 0) return;
     AcquireSRWLockExclusive(&s_ring_lock);
     if (!s_ring) s_ring = (int16_t *)calloc((size_t)MIX_RING_FRAMES * XA2_CHANNELS, sizeof(int16_t));
     if (s_ring) {
@@ -197,7 +205,17 @@ static DWORD WINAPI mix_dump_write(void *parameter)
     return 0;
 }
 
-void apu_mix_dump(const char *tag)
+static void apu_mix_dump_impl(const char *tag, int forced);
+void apu_mix_dump(const char *tag) { apu_mix_dump_impl(tag, 0); }
+/* rollback.39: F10 -- the last 30 s of the mix to Diagnostics\apu_mix_f10_<n>.wav. */
+void apu_mix_dump_now(void)
+{
+    static unsigned s_n;
+    char tag[32];
+    _snprintf_s(tag, sizeof tag, _TRUNCATE, "f10_%u", ++s_n);
+    apu_mix_dump_impl(tag, 1);
+}
+static void apu_mix_dump_impl(const char *tag, int forced)
 {
     extern int doa3_auto_capture_enabled(void);
     int exiting = strcmp(tag, "exit") == 0;
@@ -208,7 +226,8 @@ void apu_mix_dump(const char *tag)
         CloseHandle(s_dump_thread);
         s_dump_thread = NULL;
     }
-    if (!doa3_auto_capture_enabled() || s_dumps >= 8) return;
+    if (!forced && (!doa3_auto_capture_enabled() || s_dumps >= 8)) return;
+    if (forced && !s_ring) { fprintf(stderr, "[XA2] F10: no audio kept (set DOA3_AUDIO_RING=1)\n"); return; }
     dump = (MixDump *)malloc(sizeof *dump);
     if (!dump) return;
     _snprintf_s(dump->name, sizeof dump->name, _TRUNCATE, "apu_mix_%s.wav", tag);
