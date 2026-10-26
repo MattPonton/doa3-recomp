@@ -1413,17 +1413,18 @@ int doa3_round_skip_winner(void)
  * g_stage_cursor_keep first. The cursor byte is 0x9B7BAA, indexing the
  * order list 0x9B76C4[0x29CA5A]; table entry 0x0E is Random, which the
  * init appends at the end of the list. Called after the list is built. */
-/* 0.2.9: Team Battle. The cursor the screen draws and confirms is the
- * select state's +0x1EA (highlight 0xD2760: (+0x1EA - carousel first) *
- * 0x71; confirm 0xD586D), which the mode setup 0xD65A0 sets to 2. In the
- * other modes it ends up on the cursor passed here; in Team Battle (stage
- * list 0x29CA56: 5 Tag stages + Random, so the carousel scrolls) it stayed
- * 2: the carousel was centred on Random while the P1 highlight sat on
- * Pancratium, one slot past the right edge. When the switch moves the
- * cursor, +0x1EA of the state 0xD65A0 last set up is moved with it if it
- * still holds the cursor that was passed in. */
+/* 0.2.9/0.2.10: Team Battle. The cursor the screen draws and confirms is
+ * the select state's +0x1EA (state 0x9B79C0, so +0x1EA is 0x9B7BAA, which
+ * D8470 sets from the cursor returned here; highlight 0xD2760: (+0x1EA -
+ * carousel first 0x9B78F4) * 0x71; confirm 0xD586D). In Team Battle the
+ * Stage Select is set up from inside the mode setup 0xD65A0, whose common
+ * tail (0xD6750) then writes +0x1EA = 2 again and +0x1F4 = that entry's
+ * stage: the carousel (stage list 0x29CA56: 5 Tag stages + Random) was
+ * centred on Random while the P1 highlight sat on Pancratium, one slot past
+ * the right edge. When the switch picked Random during a mode setup, the
+ * wrapper puts +0x1EA and +0x1F4 back on Random after that tail. */
 int g_stage_cursor_keep;
-static uint32_t s_select_state;   /* 0xD65A0's state argument */
+static int s_setup_random = -1;   /* Random's index, if picked during 0xD65A0 */
 uint8_t doa3_stage_initial_cursor(uint8_t cur)
 {
     int keep = g_stage_cursor_keep;
@@ -1434,16 +1435,7 @@ uint8_t doa3_stage_initial_cursor(uint8_t cur)
     if (n > 32) n = 32;
     for (i = 0; i < n; i++)
         if (MEM8(0x9B76C4 + i) == 0x0E) {
-            uint32_t st = s_select_state;
-            int moved = st && MEM8(st + 0x1EA) == cur;
-            if (moved) MEM8(st + 0x1EA) = (uint8_t)i;
-            {   static unsigned s_logged;
-                if (s_logged++ < 8) {
-                    fprintf(stderr, "[STAGE] opens on Random: list of %u, cursor %u -> %u, state %08X +0x1EA %u%s\n",
-                            n, cur, i, st, st ? MEM8(st + 0x1EA) : 0, moved ? " (moved)" : "");
-                    fflush(stderr);
-                }
-            }
+            s_setup_random = (int)i;
             return (uint8_t)i;
         }
     return cur;
@@ -1451,8 +1443,20 @@ uint8_t doa3_stage_initial_cursor(uint8_t cur)
 void sub_000D65A0_gen(void);
 void sub_000D65A0(void)
 {
-    s_select_state = MEM32(esp + 4);
+    uint32_t st = MEM32(esp + 4);
+    s_setup_random = -1;
     sub_000D65A0_gen();
+    if (s_setup_random >= 0 && st && MEM8(st + 0x1EA) != (uint8_t)s_setup_random) {
+        uint8_t i = (uint8_t)s_setup_random;
+        static unsigned s_logged;
+        if (s_logged++ < 8) {
+            fprintf(stderr, "[STAGE] mode setup reset the cursor to %u; back on Random (%u)\n", MEM8(st + 0x1EA), i);
+            fflush(stderr);
+        }
+        MEM8(st + 0x1EA) = i;
+        MEM32(st + 0x1F4) = MEM8((uint32_t)MEM8(0x9B76C4 + i) * 16u + 0x29C961);
+    }
+    s_setup_random = -1;
     if (g_fib_slice_due) xbox_fiber_timeslice();
 }
 

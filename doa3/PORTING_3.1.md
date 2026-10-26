@@ -4303,3 +4303,23 @@ skipped round now also takes the game's own no-banner path there (0x7501E:
 phase 4, banner 0xFF, no call), which Team Battle and a few special
 opponents already use. Hand edit in gen/recomp_0001.c (three copies);
 `[ROUND] round result: ...` logs the decision.
+
+## 0.2.10 - Team Battle Random stage, second try; no frames on a skipped winner
+
+Matt: 0.2.9 still showed both. The log: the select state is 0x9B79C0, so
++0x1EA *is* 0x9B7BAA (D8470 already set it), and the first Team Battle
+visit showed it moved to 5. Something wrote 2 back afterwards: in Team
+Battle the Stage Select is set up from inside the mode setup 0xD65A0, and
+its common tail (0xD6750) writes +0x1EA = 2 and +0x1F4 = that entry's stage
+id after D8470 returns. The 0xD65A0 wrapper now notes when the switch
+picked Random during the call. After the tail it puts +0x1EA back on
+Random, and +0x1F4 on Random's stage id (list entry * 16 + 0x29C961, as
+the tail computes it). Logged as `[STAGE] mode setup reset the cursor
+...`. The 0.2.9 "move +0x1EA if it still holds the passed cursor" code is
+gone.
+
+Winner pose: with the banner gone, the frame still seen was the pose scene
+itself. Phase 4 sleeps one frame before the pose loop (0x75098) and one
+after it (0x7558A). For a skipped round both sleeps are now left out, so
+the task runs straight on to the next round's setup. Hand edits in
+gen/recomp_0001.c (three copies each).
