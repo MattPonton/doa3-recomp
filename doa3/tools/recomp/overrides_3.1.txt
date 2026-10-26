@@ -54,4 +54,3 @@
 0x000CD110  confirm button -> costume option: storage options past the disc ones
 0x000CD900  costume id -> costume slot + option: storage options
 0x000CCC70  Character Select costume-taken check: same costume, different option (dip switch)
-0x000D65A0  mode setup (select state): marks the remembered stage as not chosen yet, for the Random stage dip switch

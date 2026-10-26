@@ -4269,3 +4269,13 @@ New dip switches, both off by default:
 the KO in 0x737F5..0x73857) has reached the rounds to win (0x588837).
 Both hooks are hand edits in gen/recomp_0001.c (three copies each) and
 log a `[ROUND]` line with the score and the decision.
+
+## 0.2.8 - Tag Battle Random stage change withdrawn
+
+Matt could not reproduce the Tag Battle Random-stage report on 0.2.6, so
+the 0.2.7 change is removed until there are solid repro steps: the 0xD65A0
+override (probe and overrides list restored), the "first since mode setup"
+flag and the `[STAGE]` log. `doa3_stage_initial_cursor` is back to 0.2.6.
+Kept from 0.2.7 for reference: when the hook sees "remembered" (0xCADAC,
+select state +0x1EA), it keeps the cursor, and 0xD65A0 initializes +0x1EA
+to 2. The replay / winner pose dip switches are unchanged.

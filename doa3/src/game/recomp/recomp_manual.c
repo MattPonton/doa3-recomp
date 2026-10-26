@@ -1403,44 +1403,18 @@ int doa3_round_skip_winner(void)
  * g_stage_cursor_keep first. The cursor byte is 0x9B7BAA, indexing the
  * order list 0x9B76C4[0x29CA5A]; table entry 0x0E is Random, which the
  * init appends at the end of the list. Called after the list is built. */
-/* 0.2.7: Tag Battle's Stage Select is always entered from the caller that
- * passes the remembered stage (0xCADAC, after the four-fighter loop), so
- * the switch never applied there. The "remembered" stage is only the
- * default the mode setup writes (0xD65A0 sets select state +0x1EA to 2,
- * clamped to the list) until a stage has been chosen in that mode; the
- * first Stage Select after a mode setup now opens on Random too, and later
- * ones keep the stage that was played. */
 int g_stage_cursor_keep;
-static int s_stage_fresh;   /* no Stage Select since the last mode setup */
 uint8_t doa3_stage_initial_cursor(uint8_t cur)
 {
-    int keep = g_stage_cursor_keep, fresh = s_stage_fresh;
+    int keep = g_stage_cursor_keep;
     unsigned n, i;
-    uint8_t out = cur;
     g_stage_cursor_keep = 0;
-    s_stage_fresh = 0;
-    if (!dip_get(DIP_RANDOM_STAGE_DEFAULT)) return cur;
+    if (keep || cur != 2 || !dip_get(DIP_RANDOM_STAGE_DEFAULT)) return cur;
     n = MEM8(0x29CA5A);
     if (n > 32) n = 32;
-    if ((keep && fresh) || (!keep && cur == 2)) {
-        for (i = 0; i < n; i++)
-            if (MEM8(0x9B76C4 + i) == 0x0E) { out = (uint8_t)i; break; }
-    }
-    {   static unsigned s_logged;
-        if (s_logged++ < 16) {
-            fprintf(stderr, "[STAGE] select opens: mode %u, remembered %d, first since mode setup %d, cursor %u of %u -> %u\n",
-                    MEM8(0x5A2858), keep, fresh, cur, n, out);
-            fflush(stderr);
-        }
-    }
-    return out;
-}
-void sub_000D65A0_gen(void);
-void sub_000D65A0(void)
-{
-    sub_000D65A0_gen();
-    s_stage_fresh = 1;
-    if (g_fib_slice_due) xbox_fiber_timeslice();
+    for (i = 0; i < n; i++)
+        if (MEM8(0x9B76C4 + i) == 0x0E) return (uint8_t)i;
+    return cur;
 }
 
 /* Dip switch "Same costume, different option" (0.1.28).
