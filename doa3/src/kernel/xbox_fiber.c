@@ -907,7 +907,17 @@ int xbox_fiber_run_restorable_stream_worker(uint32_t routine)
         f->worker_in_step=f->worker_nested_yields=0;
         ++g_rollback_stream_worker_steps[routine==0x1927D0 ? 2 : routine==0x192760 ? 1 : 0];
         f->worker_parked=1;
-        if (f->worker.wait_key) xbox_fiber_block(f->worker.wait_key);
+        /* rollback.36: on the host clock the native worker wait counts the
+         * vblanks it missed and returns at once for each (up to
+         * VBL_CATCHUP_MAX), so CRI's vsync server ticks at 59.94 Hz of wall
+         * time however late the worker runs. The converted wait parked once
+         * per wake instead, and lost every vblank that passed while a heavy
+         * frame (Genra's KO, a wall-hit KO) kept it from running: ADX
+         * streaming fell behind and the voices and music stuttered (Matt,
+         * only with DOA3_ROLLBACK_STREAM_WORKERS=1). Use the same catch-up
+         * wait. The controlled clock keeps its one-vblank-per-frame key. */
+        if (f->worker.wait_key==XBOX_FIB_VBLANK_KEY) xbox_fiber_vblank_wait();
+        else if (f->worker.wait_key) xbox_fiber_block(f->worker.wait_key);
         else xbox_fiber_yield();
         f->worker_parked=0;
     }

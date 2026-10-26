@@ -5275,3 +5275,20 @@ and the sound card's clock also drift apart.
   card's clock and the queue stays at 43-85 ms.
 Both are host output only; nothing guest-visible changes, so determinism
 and rollback are unaffected.
+
+### 0.2.15-rollback.36: converted CRI workers catch up missed vblanks
+
+Matt isolated the KO stutter: plain DOA3.exe, DOA3_AUDIO_A (tasks) and B
+(+ workers) are clean; C (+ DOA3_ROLLBACK_STREAM_WORKERS=1) stutters at
+Genra's KO, with no sync test and the host clock. rb35's log shows no XA2
+starvation there, so the gap is in the stream content. The native worker
+wait (xbox_fiber_vblank_wait) counts the host vblanks a worker missed
+(g_vbl_seq vs g_vbl_seen) and returns at once for each, up to
+VBL_CATCHUP_MAX (6). So CRI's vsync server (0x1926F0) and playback worker
+(0x192760) tick at 59.94 Hz of wall time however late they run. The
+converted stream worker loop parked once per wake on XBOX_FIB_VBLANK_KEY
+and dropped every vblank that passed during a heavy frame, so ADX decode
+fell behind the voices and music. It now uses the same catch-up wait when
+its key is the host vblank key. The controlled clock keeps
+XBOX_DET_VBLANK_KEY, one vblank per controlled frame, which the rb8 music
+fix depends on.
