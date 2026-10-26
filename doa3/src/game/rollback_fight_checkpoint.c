@@ -635,12 +635,12 @@ int doa3_fight_checkpoint_load(Doa3FightCheckpoint *s,const Doa3CheckpointImage 
         result=1;   /* a mismatch is reported, but the state was restored */
     }else fprintf(stderr,"[STATE] restore=%d frame=%llu (expected %llu): kept the current state\n",
         restored,(unsigned long long)frame,(unsigned long long)expect);
-    stage="audio gate end";
+    if(!result)stage="restore";
     if(!acquire(s))goto fatal;
     /* rollback.32: a load ends at a different audio state than the gate
      * began with, by design: commit it (end() demands the same state). A
      * refused load was compensated back to the start: end() as usual. */
-    {int ended=result ? mcpx_apu_replay_commit():mcpx_apu_replay_end(1);release(s);if(!ended)goto fatal;}
+    {int ended=result ? mcpx_apu_replay_commit():mcpx_apu_replay_end(1);release(s);if(!ended){stage="audio gate end";goto fatal;}}
     gated=0;
 done:
     if(!result)fprintf(stderr,"[STATE] load refused at %s\n",stage);

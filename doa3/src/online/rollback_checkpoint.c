@@ -188,24 +188,37 @@ static int restore_locked(Doa3CheckpointSession *s,const void *saved,size_t byte
     uint64_t epoch=s->config.epoch(s->config.context);
     if(!epoch || h->magic!=UINT64_C(0x444F413343484B50) || h->version!=7 ||
        h->owner!=(uintptr_t)s || h->generation!=s->generation || h->epoch!=epoch ||
-       h->bytes!=bytes || h->hash!=digest(s->target,bytes)) goto done;
+       h->bytes!=bytes || h->hash!=digest(s->target,bytes)) {
+        fprintf(stderr,"[ROLLBACK-CHECKPOINT] restore refused: image header (epoch %llu/%llu generation %llu/%llu)\n",
+            (unsigned long long)h->epoch,(unsigned long long)epoch,(unsigned long long)h->generation,(unsigned long long)s->generation);
+        goto done;
+    }
     for(unsigned i=0;i<DOA3_CP_PARTS;++i) if(h->sizes[i]!=s->config.parts[i].bytes) goto done;
     t_hash=prof_ms();
     for(unsigned i=0;i<DOA3_CP_PARTS;++i) {
         Doa3CheckpointPart *p=&s->config.parts[i];
-        if(p->can_restore && p->can_restore(p->context)<=0) goto done;
+        if(p->can_restore && p->can_restore(p->context)<=0) {
+            fprintf(stderr,"[ROLLBACK-CHECKPOINT] restore refused: part %u not restorable now\n",i);goto done;}
     }
     /* No target state changes until every domain and the before-image pass. */
     if(!validate_parts(s,s->target) ||
-       (r->capture && (!renderer || r->validate(r->context,renderer)<=0))) goto done;
+       (r->capture && (!renderer || r->validate(r->context,renderer)<=0))) {
+        fprintf(stderr,"[ROLLBACK-CHECKPOINT] restore refused: saved image did not validate%s\n",
+            (r->capture && (!renderer || r->validate(r->context,renderer)<=0)) ? " (renderer)":"");
+        goto done;
+    }
     t_validate=prof_ms();
     if(!capture_parts(s,s->before) ||
-       !validate_parts(s,s->before) || epoch!=s->config.epoch(s->config.context)) goto done;
+       !validate_parts(s,s->before) || epoch!=s->config.epoch(s->config.context)) {
+        fprintf(stderr,"[ROLLBACK-CHECKPOINT] restore refused: the current state could not be captured first (safety copy)\n");
+        goto done;
+    }
     t_before=prof_ms();
     if(r->capture) {
         before_renderer=r->capture(r->context);
         if(!before_renderer || r->validate(r->context,before_renderer)<=0 ||
-           epoch!=s->config.epoch(s->config.context)) goto done;
+           epoch!=s->config.epoch(s->config.context)) {
+            fprintf(stderr,"[ROLLBACK-CHECKPOINT] restore refused: renderer safety copy\n");goto done;}
     }
     t_before_r=prof_ms();
     for(unsigned i=0;i<DOA3_CP_PARTS+(r->capture ? 1u : 0u);++i) {
@@ -219,6 +232,7 @@ static int restore_locked(Doa3CheckpointSession *s,const void *saved,size_t byte
         }
         int changed=epoch!=s->config.epoch(s->config.context);
         if(applied<=0 || changed) {
+            fprintf(stderr,"[ROLLBACK-CHECKPOINT] restore failed applying part %u (%s); compensating\n",i,changed ? "clock epoch changed":"refused");
             s->poisoned=applied<0 || changed;
             /* Compensate ALL domains in normal dependency order, including
              * the failed one: a restore may have changed RAM as a side effect

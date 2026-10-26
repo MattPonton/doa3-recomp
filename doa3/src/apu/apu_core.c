@@ -678,6 +678,7 @@ void mcpx_apu_det_step(void)
     apu_det_run(d, 1);
     qemu_mutex_unlock(&d->lock);
     s_apu_det_debt++;
+    { extern unsigned g_doa3_det_chip_steps; ++g_doa3_det_chip_steps; }   /* rollback.38 trace */
 }
 
 /* Called only by the guest's blocking voice-retirement wait. Service stopped

@@ -5323,3 +5323,31 @@ The save state test (clock from boot) now uses
 doa3_fight_checkpoint_create_full. The safety before-image is also a full
 capture, so a load is refused while the current screen has a task that is
 not converted. Step 2 (convert the remaining tasks) widens both.
+
+### 0.2.15-rollback.38: what still blocks save states; KO audio trace
+
+Matt's rb37 run (Story through Genra, then again from Press Start). Loads
+now rebuild the task set ("15 game tasks recreated, 15 removed") and
+every one matched its image, including across fights. Two kinds of
+refusal remain:
+1. `fiber 9 (routine 001C6690, task 0073C420) ... not converted` and
+   `fiber 10 (... task 0073C460)`: game tasks that are not converted, at
+   the title / Press Start and in some Story fights (task table 0x73C400,
+   32 bytes per task, slots 1 and 3). The refusal line now also gives the
+   task's body routine (task + 0xC, called by the shared entry 0x1C6690):
+   that is the to-do list for step 2.
+2. Silent refusals ("restore=0 ... kept the current state" with no part
+   named). restore_locked now logs every reason: image header (epoch /
+   generation), a part not restorable now, the saved image not validating
+   (renderer or a part), the safety copy of the current state, and a part
+   failing while applied.
+
+Audio: with the clock from boot, Genra's KO stutters again while XA2
+shows no starvation around it (only around F9 loads, which are 90-180 ms
+frames), so it is in the stream content again, this time on the
+controlled clock. `[KO-AUDIO]` logs every frame of the KO phase
+(0x596A37 == 2) on the controlled clock: the game thread's vblank waits,
+extra chip steps for guest chip waits, CRI vsync-server / playback /
+file-worker ticks, and the XA2 queue. The suspicion is that slow motion
+waits several vblanks per presented frame. Hardware runs the CRI servers
+on every one of those; the controlled clock gives one per frame.

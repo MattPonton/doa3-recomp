@@ -1170,8 +1170,10 @@ int xbox_fiber_full_capture(void *out, size_t bytes)
         if (!full_live(f)) continue;
         if ((f->restorable_task || f->restorable_worker) && checkpoint_ready(f)) continue;
         if (s_logged++ < 16)
-            fprintf(stderr, "[STATE] fiber %d (routine %08X, task %08X, %s%s) is not at a restorable point\n",
-                    i, f->start_routine, f->ctx1, f->is_coroutine ? "game task" : "thread",
+            fprintf(stderr, "[STATE] fiber %d (routine %08X, task %08X body %08X, %s%s) is not at a restorable point\n",
+                    i, f->start_routine, f->ctx1,
+                    (f->is_coroutine && f->ctx1 >= 0x10000u && f->ctx1 < 0x07FFFFF0u) ? FMEM32(f->ctx1 + 0xC) : 0u,
+                    f->is_coroutine ? "game task" : "thread",
                     f->restorable_task ? ", converted but mid-step" : f->restorable_worker ? ", converted worker mid-step" : ", not converted");
         return 0;
     }

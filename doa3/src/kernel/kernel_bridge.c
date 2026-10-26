@@ -931,7 +931,11 @@ static void bridge_KeWaitForSingleObject(void)
             xbox_fiber_block(XBOX_DET_VBLANK_KEY);
         else
 #endif
-        if (g_xbox_det_active && (xbox_fiber_is_primary() || xbox_fiber_is_coroutine())) xbox_fiber_run_workers_idle(1024);
+        if (g_xbox_det_active && (xbox_fiber_is_primary() || xbox_fiber_is_coroutine())) {
+            extern unsigned g_doa3_det_game_vblank_waits;   /* rollback.38 KO audio trace */
+            ++g_doa3_det_game_vblank_waits;
+            xbox_fiber_run_workers_idle(1024);
+        }
         else xbox_fiber_yield();
         BRIDGE_MEM32(obj + 4) = 0;
         /* Run the CRI server pump on each vblank wait: on hardware the ADXM

@@ -325,6 +325,7 @@ void doa3_apu_deliver_irq(void)
 }
 
 volatile int g_doa3_post_movie = 0;
+unsigned g_doa3_det_game_vblank_waits, g_doa3_det_chip_steps;   /* rollback.38 KO audio trace */
 
 uint64_t doa3_guest_rdtsc(void)
 {
@@ -2529,6 +2530,24 @@ static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
         extern void mcpx_apu_det_frame(void);
         extern void xbox_det_frame(void);
         extern void *mcpx_apu_state_ptr(void);
+        {   /* rollback.38: per-frame audio trace through KO/slow motion on the
+             * controlled clock (Genra's KO stutters only there): the game
+             * thread's vblank waits, extra chip steps for guest chip waits,
+             * CRI vsync-server ticks and the XA2 queue, every frame while the
+             * fight phase is 2 (KO), at most 900 lines. */
+            extern unsigned g_rollback_stream_worker_steps[3];
+            extern int xa2_queued(void);
+            static unsigned s_lines, s_w, s_s, s_t0, s_t1, s_t2;
+            if (g_xbox_det_active && MEM8(0x596A37) == 2 && s_lines < 900) {
+                ++s_lines;
+                fprintf(stderr, "[KO-AUDIO] frame %u: game vblank waits %u, chip steps %u, vsync ticks %u, playback ticks %u, file ticks %u, xa2 queue %d\n",
+                        g_doa3_frames_presented, g_doa3_det_game_vblank_waits - s_w, g_doa3_det_chip_steps - s_s,
+                        g_rollback_stream_worker_steps[0] - s_t0, g_rollback_stream_worker_steps[1] - s_t1,
+                        g_rollback_stream_worker_steps[2] - s_t2, xa2_queued());
+            }
+            s_w = g_doa3_det_game_vblank_waits; s_s = g_doa3_det_chip_steps;
+            s_t0 = g_rollback_stream_worker_steps[0]; s_t1 = g_rollback_stream_worker_steps[1]; s_t2 = g_rollback_stream_worker_steps[2];
+        }
         if (g_doa3_det_boot) {
             static int s_dump_frame = -1;
             if (!g_apu_det && mcpx_apu_state_ptr()) {
