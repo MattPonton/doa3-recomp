@@ -1393,9 +1393,35 @@ int doa3_round_skip_replay(void)
  * and sleeps a frame (0x7509A). A skipped round now takes the game's own
  * no-banner path there (0x7501E: phase 4, banner 0xFF, no call; used for
  * Team Battle and a few special opponents) as well. */
+/* 0.2.11: and with the banner and both of phase 4's sleeps gone, one frame
+ * of the pose scene (the winner's camera, set up before the pose loop) was
+ * still presented: the one between the end of phase 4's task and the next
+ * round's setup. While a skipped round is in phase 4 (0x596A37 == 4) the
+ * frames are rendered as usual but not presented, so the screen keeps the
+ * KO frame until the next round's Get Ready, as with the replay skip. */
+int g_round_hold;
+static void round_hold_begin(int skip)
+{
+    if (skip && !g_round_hold) {
+        g_round_hold = 1;
+        fprintf(stderr, "[ROUND] holding the KO frame until the next round (frame %u)\n", g_doa3_frames_presented);
+        fflush(stderr);
+    }
+}
+/* Called once per frame before it is presented: 1 = do not present it. */
+static int round_hold_frame(void)
+{
+    if (!g_round_hold) return 0;
+    if (MEM8(0x596A37) == 4) return 1;
+    g_round_hold = 0;
+    fprintf(stderr, "[ROUND] next round shown (frame %u)\n", g_doa3_frames_presented);
+    fflush(stderr);
+    return 0;
+}
 int doa3_round_skip_winner_banner(void)
 {
     int skip = dip_get(DIP_WINNER_FINAL_ONLY) && !round_decides_match();
+    round_hold_begin(skip);
     fprintf(stderr, "[ROUND] round result: mode %u, rounds won %u-%u of %u -> %s\n", MEM8(0x5A2858),
             MEM8(0x59CFB8), MEM8(0x59D020), MEM8(0x588837), skip ? "banner and winner pose skipped" : "shown");
     fflush(stderr);
@@ -1403,7 +1429,9 @@ int doa3_round_skip_winner_banner(void)
 }
 int doa3_round_skip_winner(void)
 {
-    return dip_get(DIP_WINNER_FINAL_ONLY) && !round_decides_match();
+    int skip = dip_get(DIP_WINNER_FINAL_ONLY) && !round_decides_match();
+    round_hold_begin(skip);
+    return skip;
 }
 
 /* DOA3 0.1.31: dip switch "Random is default stage option".
@@ -2402,12 +2430,19 @@ static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
         g_doa3_phase_ms[6] = s_frame_perf.presented ? s_frame_perf.workers * ms : -1.0;
         g_doa3_phase_kicks = s_frame_perf.kicks;
     }
-    if (!async_frame) doa3_present_frame();
-    else {
-        extern void doa3_present_async(int buf);
-        LONG f = (LONG)async_frame - 1;
-        doa3_present_async(s_buf_frame[f & 1] == f ? (int)(f & 1) : -1);
-        InterlockedExchange(&s_frames_presented, f);
+    {   /* 0.2.11: a skipped winner pose is rendered but not shown. The
+         * asynchronous path shows the previous frame, so its decision is the
+         * one recorded for that frame. */
+        static int s_hold[2];
+        int hold = round_hold_frame();
+        if (!async_frame) { if (!hold) doa3_present_frame(); }
+        else {
+            extern void doa3_present_async(int buf);
+            LONG f = (LONG)async_frame - 1;
+            s_hold[async_frame & 1] = hold;
+            if (!s_hold[f & 1]) doa3_present_async(s_buf_frame[f & 1] == f ? (int)(f & 1) : -1);
+            InterlockedExchange(&s_frames_presented, f);
+        }
     }
     presented = entry ? doa3_perf_now() : 0;
     if (entry) {

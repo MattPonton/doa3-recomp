@@ -4323,3 +4323,18 @@ itself. Phase 4 sleeps one frame before the pose loop (0x75098) and one
 after it (0x7558A). For a skipped round both sleeps are now left out, so
 the task runs straight on to the next round's setup. Hand edits in
 gen/recomp_0001.c (three copies each).
+
+## 0.2.11 - Skipped winner pose: hold the KO frame
+
+Matt: 0.2.10's Team Battle Random stage works in every mode. The winner
+switch still showed one frame of the pose scene (no WINNER text). The
+winner's camera and pose are set up in phase 4 before the pose loop, and
+the frame between the end of phase 4's task and the next round's setup is
+still presented. Rather than chase which of phase 4's calls sets them up,
+a skipped round is now held on screen: from the skip decision until 0x596A37
+leaves 4, frames are rendered as usual but not presented (d3d4134_frame_done
+skips doa3_present_frame). The asynchronous path presents the previous
+frame, so it uses the hold decision recorded for that frame. The screen
+keeps the KO frame until the next round's Get Ready, as the replay skip
+does. `[ROUND] holding the KO frame ...` / `[ROUND] next round shown ...`
+bracket it in the log.
