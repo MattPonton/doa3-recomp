@@ -19,28 +19,61 @@ jobs:
       - name: Derive version
         id: version
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          $text = Get-Content -Raw doa3/CMakeLists.txt
-          $m = [regex]::Match($text, 'project\(doa3_recomp\s+VERSION\s+([0-9]+\.[0-9]+)')
+          # The release is named after the build's own version (doa3_version.h),
+          # so the tag matches what DOA3.exe reports and what its update check
+          # compares against. A push that does not change the version publishes
+          # nothing (the release for that version already exists).
+          $text = Get-Content -Raw doa3/src/game/doa3_version.h
+          $m = [regex]::Match($text, '#define\s+DOA3_VER_STR\s+"([0-9]+\.[0-9]+\.[0-9]+)"')
           if (-not $m.Success) {
-              throw "Could not parse VERSION out of project(doa3_recomp ...) in doa3/CMakeLists.txt"
+              throw "Could not parse DOA3_VER_STR out of doa3/src/game/doa3_version.h"
           }
-          $tag = "v$($m.Groups[1].Value).$env:GITHUB_RUN_NUMBER"
+          $tag = "v$($m.Groups[1].Value)"
           Write-Host "version: $tag"
           "tag=$tag"                     | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
           "zip=DOA3-$tag-win64.zip"      | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+              Write-Host "Release $tag already exists; nothing to publish."
+              "exists=true"  | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          } else {
+              "exists=false" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+          $global:LASTEXITCODE = 0
+
+      - name: Release notes
+        if: steps.version.outputs.exists != 'true'
+        shell: pwsh
+        run: |
+          # The newest section of doa3/CHANGELOG.md (from its "## " heading to
+          # the next one) becomes the release text.
+          $lines = Get-Content doa3/CHANGELOG.md
+          $start = -1; $end = $lines.Count
+          for ($i = 0; $i -lt $lines.Count; $i++) {
+              if ($lines[$i] -match '^## ') {
+                  if ($start -lt 0) { $start = $i + 1 } else { $end = $i; break }
+              }
+          }
+          if ($start -lt 0) { throw "No '## ' section in doa3/CHANGELOG.md" }
+          $lines[$start..($end - 1)] | Out-File release_notes.md -Encoding utf8
 
       - name: Configure
+        if: steps.version.outputs.exists != 'true'
         shell: pwsh
         run: |
           cmake --version
           cmake -S doa3 -B doa3/build -A x64
 
       - name: Build
+        if: steps.version.outputs.exists != 'true'
         shell: pwsh
         run: cmake --build doa3/build --config Release --target doa3 -- /m
 
       - name: Stage and zip
+        if: steps.version.outputs.exists != 'true'
         shell: pwsh
         run: |
           $stage = "staging"
@@ -68,6 +101,7 @@ jobs:
                            -DestinationPath "${{ steps.version.outputs.zip }}" -Force
 
       - name: Publish release
+        if: steps.version.outputs.exists != 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -75,4 +109,4 @@ jobs:
           gh release create "${{ steps.version.outputs.tag }}" "${{ steps.version.outputs.zip }}" `
               --title "DOA3 ${{ steps.version.outputs.tag }}" `
               --target "$env:GITHUB_SHA" `
-              --generate-notes
+              --notes-file release_notes.md
