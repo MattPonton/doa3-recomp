@@ -8,13 +8,14 @@ No emulator is involved.
 This fork targets the **JAPAN release** (Redump's name for the disc; title ID
 TC-001, XBE certificate region Japan), whose balance the competitive community
 calls **v3.1**. The setup screen names the release of any other Dead or Alive 3
-disc it is given (USA, EUROPE, KOREA). The goal for v1.0 is a
-faithful 1:1 port of that version. Changes to how the game plays are optional
-**Dip Switches**, all off by default; a few small changes are always on (see
+disc it is given (USA, EUROPE, KOREA). Version 1.0 is a faithful 1:1 port of
+that version. Changes to how the game plays are optional **Dip Switches**, all
+off by default; a few small changes are always on (see
 [Changes to the game](#changes-to-the-game)).
 
-**Status:** every game mode is playable. Work continues on accuracy and on
-performance for low-end PCs.
+**Status:** v1.0.0 — every game mode is playable, with menus and HUD matched
+to hardware at 16:9, 21:9 and 32:9. Rollback netcode is the next goal; work
+also continues on performance for low-end PCs.
 
 ## Features
 
@@ -30,11 +31,11 @@ performance for low-end PCs.
 - Dip Switches: optional fixes and quality-of-life changes (left stick in
   menus, Random on the stage select, Random picking alternate and storage
   costumes, shared costumes, menu pixel offset, replay and winner pose only
-  on a match's final round)
-- Fix for the original game's damage on two-ledge falls at Lorelei (a throw's
-  damage lost, or the landing damage dealt twice); a dip switch, off by default
+  on a match's final round, and a fix for Lorelei's double-hit ledge falls)
+- The game's own gamma, brightness and contrast settings (Options > Video >
+  Regulator) work as on hardware
 - Sparring: record and replay the dummy's inputs, give the dummy (or, in Tag
-  Sparring, your tag partner) to a second controller, and hold the Stagger
+  Sparring, your tag partner) to a second controller, hold the Stagger
   Escape value, and a move info (frame data) display
 - Photo Mode: free camera, hide either fighter or the HUD, and screenshots
   (PNG) at render resolution, without the overlay
@@ -48,7 +49,7 @@ performance for low-end PCs.
 3. On first launch, choose your own disc image of Dead or Alive 3 (Japanese
    release) in `.xiso` or `.iso` format. The game files are copied into
    `HDD\D` next to `DOA3.exe` and save data is created; after that the game
-   starts normally.
+   starts normally (the window closes and reopens once while it restarts).
 
 Game files are **not** included and are never downloaded. You need your own
 legally obtained copy.
@@ -69,16 +70,37 @@ Files the port keeps next to `DOA3.exe`:
 
 ## Settings (Escape menu)
 
-Press **Escape** at any time to open the settings overlay. Most tabs have
-**Reset to defaults** and **Save** buttons; changes apply immediately, and
-**Save** keeps them for the next launch.
+Press **Escape** at any time to open the settings overlay. Its tabs are
+**General**, **Controls**, **Video**, **Audio**, **Photo Mode** and
+**Sparring**. Most tabs have **Reset to defaults** and **Save** buttons;
+changes apply immediately, and **Save** keeps them for the next launch.
+Hover over a **(?)** for an explanation of a setting.
 
-### Online
+### General
 
-**Experimental and untested on this version.** The Online tab comes from the
-original USA-based port and has not been tested with the Japanese release;
-expect it not to work yet. It lets you host a match and share **Your code**,
-or join with a friend's code, with an automatic or manual input delay.
+- **Check for updates at boot** (on by default): asks GitHub whether a newer
+  release exists and shows a short notice over the game if so, with a link to
+  the release page. Nothing is downloaded or installed. **Check now** checks
+  again.
+- **Write log files** writes `doa3_log.txt`, which is useful when reporting a
+  bug.
+
+**Dip Switches** change how the game itself behaves. Every switch is off by
+default, so with none set the game plays exactly as on an Xbox. They take
+effect immediately and are saved in the `[DipSwitches]` section of
+`doa3_settings.ini`.
+
+| Switch | When on |
+| --- | --- |
+| Menu navigation with Left Stick | The left stick moves menu cursors as well as the directional pad. Fights are unchanged. |
+| Random is default stage option | Stage Select opens on Random instead of Beach (Day), in every mode including Tag and Team Battle. A stage the game remembers (returning to Stage Select after a match) is kept. |
+| Random includes alternate costume colors from disc | Random on Character Select can pick a costume's alternate colors (X, Y, L), and Survival and Time Attack opponents get a random unlocked costume and color. Story mode is unchanged. |
+| Random includes costumes from storage | Random, and Survival and Time Attack opponents, can pick storage costumes and their options. Works on its own or together with the color switch. |
+| Allow players to select alternate options of the same costume | With both sides on the same character, a player can take a costume the other side has, in a different option (A, X, Y, L or a storage option). Only the exact costume and option the other side confirmed is refused, with the game's refusal sound. |
+| Correct offset of menu layout | The game draws its menus, frames and HUD one pixel right of and below the screen edge (hidden by a CRT's overscan). This lines the 2D layer up with the screen edges. |
+| Only show round's replay on final round | Rounds that do not decide the match go on without the KO replay; the deciding round still shows it. |
+| Only show round's winner on final round | Rounds that do not decide the match skip the winner's pose and result banner; the screen holds the KO frame until the next round's Get Ready. |
+| Fix ledge fall damage over double-hit ledges in Lorelei | On Lorelei a fighter knocked off a ledge can take a hit from the stage while falling and then the ground hit on landing. In the original game certain throws or holds lose their damage on the fall's first hit, or deal the landing damage on both hits. With the switch on, the throw's damage is added to the first hit's 5 damage and the landing damage is dealt once. |
 
 ### Controls
 
@@ -91,12 +113,17 @@ or join with a friend's code, with an automatic or manual input delay.
   The device list shows only connected controllers, numbered per model
   when more than one of a kind is connected.
   Right-click a binding to clear it. Player 1 defaults to Automatic; Players
-  2–4 default to None until assigned.
+  2–4 default to None until assigned. With **Keyboard** chosen, **Reset to
+  defaults** loads a keyboard layout: W / A / S / D for the directional pad,
+  Enter and Backspace for Start and Back, K / L over M / comma for X / Y over
+  A / B, semicolon for Black, J for White, N and period for the left and right
+  triggers.
 
 ### Video
 
 **Window type** (windowed / borderless fullscreen), **Aspect ratio** and
-**Internal resolution**.
+**Internal resolution**; **Menu size** scales this settings menu (100–250 %),
+and **Show performance overlay** shows frame rate and frame times.
 
 ### Audio
 
@@ -109,35 +136,29 @@ or join with a friend's code, with an automatic or manual input delay.
   wherever they play (opening, credits, sound test) and restores your music
   level afterwards. Your saved music volume is never changed.
 
-### General
+### Photo Mode
 
-**Write log files** writes `doa3_log.txt`, which is useful when reporting a
-bug.
-
-**Dip Switches** change how the game itself behaves. Every switch is off by
-default, so with none set the game plays exactly as on an Xbox. They take
-effect immediately and are saved in the `[DipSwitches]` section of
-`doa3_settings.ini`.
-
-| Switch | When on |
-| --- | --- |
-| Menu navigation with Left Stick | The left stick moves menu cursors as well as the directional pad. Fights are unchanged. |
-| Random is default stage option | Stage Select opens on Random instead of Beach (Day). A stage the game remembers (returning to Stage Select after a match) is kept. |
-| Random includes alternate costume colors from disc | Random on Character Select can pick a costume's alternate colors (X, Y, L), and Survival and Time Attack opponents get a random unlocked costume and color. Story mode is unchanged. |
-| Random includes costumes from storage | Random, and Survival and Time Attack opponents, can pick storage costumes and their options. Works on its own or together with the color switch. |
-| Allow players to select alternate options of the same costume | With both sides on the same character, a player can take a costume the other side has, in a different option (A, X, Y, L or a storage option). Only the exact costume and option the other side confirmed is refused, with the game's refusal sound. |
-| Correct offset of menu layout | The game draws its menus, frames and HUD one pixel right of and below the screen edge (hidden by a CRT's overscan). This lines the 2D layer up with the screen edges. |
-| Only show round's replay on final round | Rounds that do not decide the match go on without the KO replay; the deciding round still shows it. |
-| Only show round's winner on final round | Rounds that do not decide the match skip the winner's pose and result banner; the screen holds the KO frame until the next round's Get Ready. |
+- **Free camera**: move the camera freely while the fight keeps running (game
+  controls are paused while flying), with an adjustable speed; **Reset to game
+  camera** returns to the game's view.
+- **Hide Player 1 / Player 2 / UI**: hide either fighter or the game's HUD and
+  menus (Escape always opens this menu so you can bring them back).
+- **Screenshots**: a hotkey (F12 by default, reassignable) saves a PNG at the
+  render resolution, without this menu, to `Screenshots\`.
 
 ### Sparring
 
-Available in offline Sparring only. Three slots record up to ten seconds of
-dummy input each; play a slot once or on a loop. **Record dummy** temporarily
-gives you control of the dummy with your normal bindings; **Escape** finishes
-the recording or stops playback. Recordings last for the current Sparring
-session. Guard, counter-action and counter-hit settings stay in the game's own
-Sparring pause menu.
+Available in offline Sparring only (the tab is grayed out elsewhere).
+
+**Show Move Info** displays each attack's startup, active and recovery frames.
+
+**Dummy input recording**: three slots record up to ten seconds of dummy input
+each; play a slot once or on a loop. **Record dummy** temporarily gives you
+control of the dummy with your normal bindings; **Escape** finishes the
+recording or stops playback. Directions play back relative to the dummy's
+facing, so forward stays forward after the fighters switch sides. Recordings
+last for the current Sparring session. Guard, counter-action and counter-hit
+settings stay in the game's own Sparring pause menu.
 
 **Second controller** lets another controller (any Player port other than
 yours) drive the dummy; it returns to the CPU when that controller is
@@ -150,12 +171,14 @@ together.
 (how fast a critical stun or guard break plays out). **Hold** fixes the value
 at the start of every frame, for the human player or the dummy, CPU or not.
 
-### Debug
+### Debug (hidden)
 
-Developer and inspection tools: unlock-all, free camera, hitbox and
-frame-data overlays, render views, a performance overlay, hiding the HUD or
-fighters, and diagnostic captures. Some of these may change or be
-removed before v1.0. See [docs/DEBUG.md](docs/DEBUG.md).
+Developer and inspection tools: unlock-all, hitbox, hurtbox and stage-hazard
+overlays, render views and diagnostic captures. The tab is hidden; launch with
+the environment variable `DOA3_DEBUG=1`, or press **Ctrl+Shift+D** while the
+Escape menu is open, to show it. See [docs/DEBUG.md](docs/DEBUG.md).
+
+Online play from the original port is not available in this version.
 
 ## Changes to the game
 
@@ -184,7 +207,8 @@ The executable is written to `doa3/build/release/DOA3.exe`.
 
 Please open an issue with steps to reproduce. Turn on **General > Write log
 files** first and attach `doa3_log.txt`; for graphics or timing problems, also
-enable **Debug > Diagnostics > Automatic diagnostic captures** and attach the
+show the Debug tab (Ctrl+Shift+D with the Escape menu open), enable
+**Debug > Diagnostics > Automatic diagnostic captures** and attach the
 `Diagnostics` folder. Copy both before relaunching, since a new launch
 replaces them. Pull requests are welcome.
 
@@ -200,7 +224,7 @@ replaces them. Pull requests are welcome.
   translator comes.
 - [SkillerCMP/xemu-Cheats](https://github.com/SkillerCMP/xemu-Cheats) — the
   xemu build used as the debugging reference for this fork, running the game
-  side by side with the port to compare behaviour.
+  side by side with the port to compare behavior.
 - [Cxbx-Reloaded](https://github.com/Cxbx-Reloaded/Cxbx-Reloaded) — used as a
   debugging reference for the original port.
 - [xemu](https://github.com/xemu-project/xemu) — NV2A documentation and code

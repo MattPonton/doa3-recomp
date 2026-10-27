@@ -14,5 +14,5 @@
     { "name": "MattPonton", "link": "https://github.com/MattPonton" },
     { "name": "Jay-Collins", "link": "https://github.com/Jay-Collins" }
   ],
-  "notes": "Targets the Japanese release (TC-001, XBE certificate version 1), known in the community as v3.1. All modes playable; the goal is a 1:1 v1.0, then rollback netcode."
+  "notes": "Targets the Japanese release (TC-001, XBE certificate version 1), known in the community as v3.1. v1.0.0: all modes playable as a 1:1 port, with menus and HUD matched to hardware at 16:9, 21:9 and 32:9; rollback netcode is next."
 }
