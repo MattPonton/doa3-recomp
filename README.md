@@ -31,7 +31,7 @@ also continues on performance for low-end PCs.
 - Dip Switches: optional fixes and quality-of-life changes (left stick in
   menus, Random on the stage select, Random picking alternate and storage
   costumes, shared costumes, menu pixel offset, replay and winner pose only
-  on a match's final round, and a fix for Lorelei's double-hit ledge falls)
+  on a match's final round, and a fix for ledge fall damage on Lorelei)
 - The game's own gamma, brightness and contrast settings (Options > Video >
   Regulator) work as on hardware
 - Sparring: record and replay the dummy's inputs, give the dummy (or, in Tag
@@ -93,14 +93,14 @@ effect immediately and are saved in the `[DipSwitches]` section of
 | Switch | When on |
 | --- | --- |
 | Menu navigation with Left Stick | The left stick moves menu cursors as well as the directional pad. Fights are unchanged. |
-| Random is default stage option | Stage Select opens on Random instead of Beach (Day), in every mode including Tag and Team Battle. A stage the game remembers (returning to Stage Select after a match) is kept. |
-| Random includes alternate costume colors from disc | Random on Character Select can pick a costume's alternate colors (X, Y, L), and Survival and Time Attack opponents get a random unlocked costume and color. Story mode is unchanged. |
-| Random includes costumes from storage | Random, and Survival and Time Attack opponents, can pick storage costumes and their options. Works on its own or together with the color switch. |
-| Allow players to select alternate options of the same costume | With both sides on the same character, a player can take a costume the other side has, in a different option (A, X, Y, L or a storage option). Only the exact costume and option the other side confirmed is refused, with the game's refusal sound. |
+| Random is default stage option | Stage Select opens with the cursor on Random (every mode, Tag and Team Battle included). A stage the game remembers (returning to Stage Select after a match) is kept. |
+| Random includes alternate costume colors from disc | Random on Character Select can pick alternate colors and hairstyles, and Time Attack and Survival opponents can get them too. |
+| Random includes costumes from storage | Random can pick custom costumes from the TDATA folder, and Time Attack and Survival opponents can get them too. |
+| Allow players to select alternate options of the same costume | Both players can highlight the same costume as long as an alternate version of it is available. |
 | Correct offset of menu layout | The game draws its menus, frames and HUD one pixel right of and below the screen edge (hidden by a CRT's overscan). This lines the 2D layer up with the screen edges. |
-| Only show round's replay on final round | Rounds that do not decide the match go on without the KO replay; the deciding round still shows it. |
-| Only show round's winner on final round | Rounds that do not decide the match skip the winner's pose and result banner; the screen holds the KO frame until the next round's Get Ready. |
-| Fix ledge fall damage over double-hit ledges in Lorelei | On Lorelei a fighter knocked off a ledge can take a hit from the stage while falling and then the ground hit on landing. In the original game certain throws or holds lose their damage on the fall's first hit, or deal the landing damage on both hits. With the switch on, the throw's damage is added to the first hit's 5 damage and the landing damage is dealt once. |
+| Only show Replay on final round | Only the round that decides a match shows the replay after the round ends. |
+| Only show round's winner on final round | Only the round that decides a match shows the win pose after the round ends. |
+| Fix ledge fall damage on Lorelei | On Lorelei, a fighter knocked off a ledge by a throw or hold could take the wrong amount of damage from the fall. With the switch on, throws and holds do the intended damage. |
 
 ### Controls
 
