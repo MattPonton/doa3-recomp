@@ -432,6 +432,7 @@ void DrawVideoSection()
         video_set_aspect(VIDEO_ASPECT_16_9);
         video_set_scale(3);
         g_menu_scale = 100;
+        ResetPerformanceOverlay();
         SetStatus("Video settings reset to defaults");
         break;
     case 2: {
@@ -466,7 +467,11 @@ void DrawVideoSection()
     ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0f);
     ImGui::SliderInt("Menu size", &g_menu_scale, 100, 250, "%d%%", ImGuiSliderFlags_AlwaysClamp);
     if (ImGui::IsItemDeactivatedAfterEdit()) g_menu_scale = (g_menu_scale + 12) / 25 * 25;   /* 25 % steps */
-    ImGui::TextDisabled("Size of this menu and its text, in 25%% steps; applied when you let go of the slider.");
+    HelpMarker("Size of this menu and its text, in 25% steps; applied when you let go of the slider.");
+
+    ImGui::Spacing();
+    ImGui::SeparatorText("Performance");
+    DrawPerformanceDebugMenu();
 }
 
 /* Audio output settings. */
@@ -816,7 +821,6 @@ void DrawDebugSection()
         debug_unlock_all_set(0);
         doa3_auto_capture_set(0);
         combat_debug_set_flags(0);
-        ResetPerformanceOverlay();
         d3d8_debug_views_reset();
         SetStatus("Debug settings reset to defaults");
         break;
@@ -826,7 +830,7 @@ void DrawDebugSection()
         break;
     }
     ImGui::Separator();
-    DrawPerformanceDebugMenu();
+    DrawCombatDebugMenu();   /* hitboxes, hurtboxes, stage hazards */
     if (ImGui::CollapsingHeader("Vision modes")) {
         int view = d3d8_debug_view_get();
         if (ImGui::Combo("Render view", &view, "Normal\0Wireframe\0Vertex colors\0UV checker\0Distance\0"))
@@ -984,12 +988,11 @@ void DrawTrainingSection()
     static bool loop=false;
     TrainingStatus status;
     training_status(&status);
-    DrawCombatDebugMenu();   /* 0.2.17: Fight information (from Debug); any offline fight */
     if (!training_available()) {
-        ImGui::SeparatorText("Sparring");
-        ImGui::TextDisabled("Recording, the second controller and Stagger Escape are available only in offline Sparring.");
+        ImGui::TextDisabled("Available only in offline Sparring.");
         return;
     }
+    DrawMoveInfoToggle();   /* 0.2.18: frame data (was Debug > Fight information) */
     ImGui::SeparatorText("Dummy input recording");
     HelpMarker("Record temporarily gives you control of the dummy; press Escape to finish recording "
                "or stop playback. Each slot holds up to 10 seconds. Directions replay as recorded; "
@@ -1148,10 +1151,12 @@ void DrawMenu()
                 DrawPhotoModeSection();
                 ImGui::EndTabItem();
             }
+            ImGui::BeginDisabled(!training_available());
             if (ImGui::BeginTabItem("Sparring")) {
                 DrawTrainingSection();
                 ImGui::EndTabItem();
             }
+            ImGui::EndDisabled();
             /* 0.2.17: Debug is hidden unless DOA3_DEBUG=1 is set, or toggled
              * for this session with Ctrl+Shift+D while this menu is open. */
             if (g_debug_tab && ImGui::BeginTabItem("Debug")) {

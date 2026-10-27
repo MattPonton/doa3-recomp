@@ -70,13 +70,22 @@ void TickPerformanceOverlay()
     }
 }
 
+/* 0.2.18: one checkbox in the Video tab (was Debug > Performance). */
 void DrawPerformanceDebugMenu()
 {
-    if (!ImGui::CollapsingHeader("Performance")) return;
     if (ImGui::Checkbox("Show performance overlay", &enabled)) ClearHistory();
-    if (ImGui::Button("Reset performance history")) ClearHistory();
-    ImGui::TextWrapped("Shows presentation FPS and frame intervals over the latest 240 frames, including a frame-time graph, average, 99th percentile and worst frame. Timing includes frame pacing and presentation waits; it is not GPU render time or simulation FPS.");
-    ImGui::TextDisabled("Session only. No profiling files are written.");
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+        ImGui::BeginTooltip();
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30.0f);
+        ImGui::TextUnformatted("Presentation FPS and frame intervals over the latest 240 frames: a frame-time "
+                               "graph, average, 99th percentile and worst frame. Includes frame pacing and "
+                               "presentation waits; not GPU render time or simulation FPS. Session only; "
+                               "nothing is written to disk.");
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
+    }
 }
 
 void DrawPerformanceOverlay()

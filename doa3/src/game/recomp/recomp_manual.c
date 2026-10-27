@@ -2387,28 +2387,39 @@ static void perf_5s(double interval, const double ph[7], double present, double 
     s_next = GetTickCount() + 5000;
 }
 
-/* 0.2.16: DOA3_DAMAGE_TRACE=1 -- for the Lorelei cliff-throw damage report:
- * each presented frame in a fight, a line whenever a fighter's health, move
- * or move category changes (side record 0x59CF58 + side * 0x68: +0x20
- * health, +0x2E move, +0x33 category), with the phase. */
+/* 0.2.16: DOA3_DAMAGE_TRACE=1 -- for the Lorelei cliff-throw damage report.
+ * 0.2.18: one line per fighter whenever any of these change, each presented
+ * fight frame (side record 0x59CF58 + side * 0x68):
+ *   hp +0x20 health, sus +0x22 sustained, rev +0x26 revised, cmb +0x28
+ *   combo damage, mv +0x2E move, st +0x33 state (9 hurt, 10 thrown, 11 held),
+ *   acc 0x9B2858 accumulated throw/hold damage, fall 0x9B25BC fall type,
+ *   f48 0x9B2548, f30 0x9B2730, f68 0x9B2568, pend 0x5CB466 (pending throw
+ *   damage, written for the victim), sm 0x591F50 stage mode, c63 0xC59863,
+ *   243e 0x9B243E. */
 static void damage_trace_frame(void)
 {
     static int on = -1;
-    static uint32_t last[2];
+    static char last[2][192];
     static unsigned lines;
     if (on < 0) { const char *e = getenv("DOA3_DAMAGE_TRACE"); on = e && *e == '1'; }
-    if (!on || lines >= 20000 || MEM8(0x596A37) > 2) return;
+    if (!on || lines >= 40000 || MEM8(0x596A37) > 2) return;
     for (unsigned side = 0; side < 2; ++side) {
         uint32_t p = 0x59CF58 + side * 0x68;
-        uint32_t now = (uint32_t)MEM16(p + 0x20) | (uint32_t)MEM16(p + 0x2E) << 16;
-        uint8_t cat = MEM8(p + 0x33);
-        static uint8_t last_cat[2];
-        if (now == last[side] && cat == last_cat[side]) continue;
+        char now[192];
+        snprintf(now, sizeof now,
+                  "hp %u sus %u rev %u cmb %u mv %04X st %u acc %u fall %u f48 %u f30 %u f68 %u "
+                  "pend %u sm %u c63 %02X 243e %u",
+                  MEM16(p + 0x20), MEM16(p + 0x22), MEM16(p + 0x26), MEM16(p + 0x28),
+                  MEM16(p + 0x2E), MEM8(p + 0x33), MEM16(0x9B2858 + side * 2),
+                  MEM8(0x9B25BC + side), MEM8(0x9B2548 + side), MEM8(0x9B2730 + side),
+                  MEM8(0x9B2568 + side), MEM16(0x5CB466 + side * 0x30), MEM8(0x591F50),
+                  MEM8(0xC59863), MEM8(0x9B243E));
+        now[sizeof now - 1] = 0;
+        if (!strcmp(now, last[side])) continue;
         ++lines;
-        fprintf(stderr, "[DAMAGE] frame %u side %u: health %u (%+d) move %04X category %u phase %u\n",
-                g_doa3_frames_presented, side + 1, now & 0xFFFF,
-                (int)(now & 0xFFFF) - (int)(last[side] & 0xFFFF), now >> 16, cat, MEM8(0x596A37));
-        last[side] = now; last_cat[side] = cat;
+        fprintf(stderr, "[DAMAGE] frame %u side %u phase %u: %s\n",
+                g_doa3_frames_presented, side + 1, MEM8(0x596A37), now);
+        strcpy(last[side], now);
     }
 }
 

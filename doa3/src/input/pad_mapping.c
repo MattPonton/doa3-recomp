@@ -117,7 +117,33 @@ int pad_mapping_focus_only(void) { pad_mapping_get(); return g_focus_only; }
 void pad_mapping_set_focus_only(int enabled) { pad_mapping_get(); g_focus_only = enabled != 0; }
 int pad_mapping_capture_menu(void) { pad_mapping_get(); return g_capture_menu; }
 void pad_mapping_set_capture_menu(int enabled) { pad_mapping_get(); g_capture_menu = enabled != 0; }
-void pad_mapping_reset_player(int player) { reset_mapping(pad_mapping_get_player(player)); }
+/* 0.2.18: the keyboard layout "Reset to defaults" gives a player whose input
+ * device is Keyboard (Matt's layout): WASD for the D-pad, Enter / Backspace
+ * for Start / Back, K L over M , for X Y over A B, ; Black, J White, N / .
+ * for the left / right triggers. Thumb clicks and the sticks unassigned. */
+static void reset_keyboard_mapping(PadMapping *m)
+{
+    static const struct { int ctl, vk; } d[] = {
+        { PADCTL_DPAD_UP, 'W' }, { PADCTL_DPAD_DOWN, 'S' },
+        { PADCTL_DPAD_LEFT, 'A' }, { PADCTL_DPAD_RIGHT, 'D' },
+        { PADCTL_START, VK_RETURN }, { PADCTL_BACK, VK_BACK },
+        { PADCTL_A, 'M' }, { PADCTL_B, VK_OEM_COMMA }, { PADCTL_X, 'K' }, { PADCTL_Y, 'L' },
+        { PADCTL_BLACK, VK_OEM_1 }, { PADCTL_WHITE, 'J' },
+        { PADCTL_LTRIGGER, 'N' }, { PADCTL_RTRIGGER, VK_OEM_PERIOD },
+    };
+    memset(m, 0, sizeof(*m));
+    for (size_t i = 0; i < sizeof(d) / sizeof(d[0]); i++) {
+        m->b[d[i].ctl].kind = PADSRC_KEY;
+        m->b[d[i].ctl].code = d[i].vk;
+    }
+}
+
+void pad_mapping_reset_player(int player)
+{
+    PadMapping *m = pad_mapping_get_player(player);
+    if (pad_mapping_device(player) == PAD_DEVICE_KEYBOARD) reset_keyboard_mapping(m);
+    else reset_mapping(m);
+}
 int pad_mapping_device(int p) { pad_mapping_get(); return p >= 0 && p < 4 ? g_devices[p] : PAD_DEVICE_NONE; }
 int pad_mapping_type(int p) { pad_mapping_get(); return p >= 0 && p < 4 ? g_types[p] : PAD_TYPE_DUKE; }
 void pad_mapping_set_device(int p, int device)

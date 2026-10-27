@@ -4432,3 +4432,33 @@ for a normal throw and the cliff case to compare.
   and Stagger Escape still show only in offline Sparring.
 - Debug tab hidden unless `DOA3_DEBUG=1` is set at launch, or toggled for
   the session with Ctrl+Shift+D while the Escape menu is open.
+
+## 0.2.18: Escape menu follow-ups, keyboard defaults, damage trace fields
+
+- Sparring tab disabled outside offline Sparring again. It holds "Show Move
+  Info" (the frame-data display, formerly "Show attack frame data") with
+  its explanation in a (?) tooltip. Hitboxes, hurtboxes and stage hazards
+  went back to Debug, as a "Fight information" header.
+- "Show performance overlay" moved from Debug to Video (Performance
+  divider, explanation in (?)); "Reset performance history" removed (turning
+  the overlay on clears it). Video's Reset turns the overlay off.
+- Menu size's description is a (?) tooltip now (it did not wrap).
+- Controls > Reset to defaults with the input device set to Keyboard gives
+  the keyboard layout: W/S/A/D D-pad, Enter Start, Backspace Back, M A,
+  comma B, K X, L Y, semicolon Black, J White, N left trigger, period
+  right trigger; thumb clicks and sticks unassigned.
+- DOA3_DAMAGE_TRACE now logs, per fighter, health, sustained / revised /
+  combo damage, move, state, and the fall handling bytes: accumulated
+  throw/hold damage 0x9B2858, fall type 0x9B25BC, 0x9B2548, 0x9B2730,
+  0x9B2568, the pending throw damage 0x5CB466 + side*0x30, stage mode
+  0x591F50, 0xC59863 and 0x9B243E.
+
+Lorelei cliff throw, static reading (Ghidra doa3_1.c names): the ledge
+handlers (0xA92C0, 0xA9420, 0xB9A40) copy the throw damage into
+AccumulatedThrowOrHoldDamage only while the victim's state is THROWN (10)
+or HELD (11), otherwise they store 0; GetMoveDamage then adds it to the
+ledge hit for fall types 1, 3 and 5, and type 4 applies it at the landing
+(scaled). 0xAA8C0 also forces type 4 with the accumulated damage zeroed.
+The trace is to show which of these the Tier 1->3 and 3->4 drops take.
+(3++ 1.48 patches the 0xA9301 store with a code cave at 0x2355E0 that keeps
+half the value for victim moves 0x423E / 0x4241; a different case.)
