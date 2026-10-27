@@ -7,6 +7,7 @@
 #include "recomp_funcs.h"
 #include <math.h>
 int doa3_ledge_throw_keep(uint32_t side);   /* recomp_manual.c, 0.2.19 */
+int doa3_ledge_impact_move(uint32_t move);  /* recomp_manual.c, 0.2.27 */
 /* DOA3 0.1.20: TDATA storage-costume tables (recomp_manual.c). */
 extern uint32_t g_tdata_names, g_tdata_pairs, g_tdata_tmp, g_tdata_cap, g_tdata_max_files, g_tdata_pair_dwords;
 void doa3_tdata_alloc(void);
@@ -112285,6 +112286,11 @@ loc_000A68FF: ;
 
 loc_000A6913: ;
     if (CMP_EQ(LO16(ecx), 0x425C)) goto loc_000A691D; /* je: equal / zero */
+    /* 0.2.27 hand edit (dip LedgeThrowDamage): the bounce-off fall (46T)
+     * hits the ledge in 0x425E / 0x425F rather than 0x425B / 0x425C and
+     * took the landing damage on both impacts; give its ledge impact the
+     * same 5 (hardware: 55 + 25 + 25). */
+    if (doa3_ledge_impact_move(LO16(ecx))) goto loc_000A691D;
 
 loc_000A691A: ;
     SET_LO8(eax, LO8(eax) + 0xFB);

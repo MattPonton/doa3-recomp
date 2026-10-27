@@ -4622,3 +4622,15 @@ ledge-impact animation the instant-throw fall uses); any other falling move
 gets the full 25 / 35 (StageMode 4: 35), so a fall that reaches the ledge in
 another move takes the landing damage twice. Needs a damage trace of the 46T
 fall to see its moves.
+
+## 0.2.27: 46T two-ledge fall
+
+Matt's 0.2.25 trace, Bass 46T on Hayate over Lorelei's Tier 1 and Tier 3
+edges: the throw's 55 lands on the ground first (move 0x0160), then the fall
+reaches the second-ledge phase (0x9B243E 5) and hits in 0x425E (25 / 35),
+then lands in 0x4267 (25 / 35). The instant-throw fall uses 0x425B, then
+0x4265. GetFallDamageForPlayer only gives 0x425B / 0x425C the 5. Hand edit
+at loc_000A6913 (gen/recomp_0002.c): with the LedgeThrowDamage dip,
+doa3_ledge_impact_move() also gives 0x425E / 0x425F the 5 (0x425F by analogy
+with the B / C pair; only 0x425E was seen). Dip renamed "Fix ledge fall
+damage over two ledges".

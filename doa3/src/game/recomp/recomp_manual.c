@@ -2413,6 +2413,15 @@ void sub_001DC360(void)
  * the second ledge and marks the side, and after the hit pass 0xB9140 the
  * first damage taken (SustainedDamage +0x22, or health +0x20 dropping) clears it, so it lands once,
  * with the first impact. */
+/* GetFallDamageForPlayer (0xA68A0-ish, Lorelei second-ledge phase 0x9B243E
+ * == 5) deals 5 for the ledge impact only in moves 0x425B / 0x425C. Matt's
+ * trace of 46T over the edge: impact in 0x425E, landing in 0x4267 (the
+ * instant-throw fall: 0x425B, then 0x4265), so it dealt 25 + 25 (35 + 35). */
+int doa3_ledge_impact_move(uint32_t move)
+{
+    return dip_get(DIP_LEDGE_THROW_DAMAGE) && (move == 0x425E || move == 0x425F);
+}
+
 static uint8_t s_ledge_carry[2];
 static uint16_t s_ledge_hp[2];
 int doa3_ledge_throw_keep(uint32_t side)
