@@ -4657,3 +4657,22 @@ axis-aligned untextured 4-vertex strips / fans on a supersampled surface
 (surface finer than the host on an axis) now get the same surface-grid
 edges: up to 3 x 3 pieces with alpha scaled by covered share; same state
 conditions as the line coverage. DOA3_QUAD_COVERAGE=0 turns it off.
+
+## 0.2.30: pause menu panels, name sprites
+
+0.2.29 left the Sparring pause menu unchanged: its traces show no rectcov
+draws -- the pause menu is drawn on the 720x480 fight surface (program scale
+1), which the supersampled-only gate excluded. Translucent untextured
+rectangles now also get surface-grid edges when the surface is stretched to
+the host (16:9 / ultrawide: 1.186 host px per surface px horizontally).
+
+Character select names (trace 13554): EIN's sprite is 14 display rows,
+v 0.4375..0.4921875 of a 128x256 atlas (format 0x0871192A) -- one texel per
+display pixel. With the supersampled menus' display offset its top edge is
+at 270.77, so host row centres sampled 0.23 texel past texel centres and the
+bottom row took ~25% of the atlas row below (the next name's top): a dotted
+line under the name. On supersampled surfaces, axis-aligned textured
+4-vertex sprites whose texel-per-host-pixel ratio is 1 on an axis get their
+UVs shifted (less than half a texel) so host pixel centres sample texel
+centres, as hardware's two surface rows per display row do.
+DOA3_SPRITE_TEXEL_SNAP=0 turns it off.

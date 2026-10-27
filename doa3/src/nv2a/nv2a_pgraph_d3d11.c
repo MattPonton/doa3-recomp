@@ -4918,6 +4918,62 @@ static void submit_draw_inner(void)
                 return;
             }
         }
+        /* 0.2.30: 1:1 sprites on the supersampled menus sample texel
+         * centres. The menus' sprites carry one texel per display pixel
+         * (character select's names: 14 texels over 14 display rows of a
+         * 128x256 atlas). With the display offset (x.77) a host pixel centre
+         * fell 0.23 texel past a texel centre, so the bottom row blended a
+         * quarter of the atlas row below it -- the top of the next fighter's
+         * name, a dotted line under each name. Hardware averages two surface
+         * rows that both land inside the texel. Shift the UVs (by under half a
+         * texel) so the first covered host pixel samples a texel centre, on
+         * each axis whose texel-per-host-pixel ratio is 1. */
+        if (out_vert_count == 4 && g_pg.tex[0].enabled &&
+            (g_pg.d3d_prim_type == D3DPT_TRIANGLESTRIP || g_pg.d3d_prim_type == D3DPT_TRIANGLEFAN) &&
+            (g_fit_surface_px[0] < 0.999f || g_fit_surface_px[1] < 0.999f) &&
+            !d3d8_OffscreenTargetActive()) {
+            static int s_tenv = -1;
+            float x0 = out[0].x, x1 = out[0].x, y0 = out[0].y, y1 = out[0].y;
+            int i_, rect = 1;
+            if (s_tenv < 0) { const char *e = getenv("DOA3_SPRITE_TEXEL_SNAP"); s_tenv = !(e && *e == '0'); }
+            for (i_ = 1; i_ < 4; ++i_) {
+                if (out[i_].x < x0) x0 = out[i_].x; if (out[i_].x > x1) x1 = out[i_].x;
+                if (out[i_].y < y0) y0 = out[i_].y; if (out[i_].y > y1) y1 = out[i_].y;
+            }
+            for (i_ = 0; i_ < 4 && rect; ++i_)
+                if ((fabsf(out[i_].x - x0) > 1e-3f && fabsf(out[i_].x - x1) > 1e-3f) ||
+                    (fabsf(out[i_].y - y0) > 1e-3f && fabsf(out[i_].y - y1) > 1e-3f)) rect = 0;
+            if (rect && s_tenv && x1 - x0 > 1.0f && y1 - y0 > 1.0f) {
+                uint32_t fmt = g_pg.tex[0].format;
+                float tw = (float)(1u << ((fmt >> 20) & 0xF)), th = (float)(1u << ((fmt >> 24) & 0xF));
+                int ax;
+                for (ax = 0; ax < 2; ++ax) {
+                    float lo = ax ? y0 : x0, hi = ax ? y1 : x1, size = ax ? th : tw;
+                    float t_lo = 0.0f, t_hi = 0.0f, umax = 0.0f;
+                    int have_lo = 0, have_hi = 0;
+                    for (i_ = 0; i_ < 4; ++i_) {
+                        float pos = ax ? out[i_].y : out[i_].x, t = ax ? out[i_].v : out[i_].u;
+                        if (fabsf(t) > umax) umax = fabsf(t);
+                        if (fabsf(pos - lo) < 1e-3f) { t_lo = t; have_lo = 1; }
+                        else if (fabsf(pos - hi) < 1e-3f) { t_hi = t; have_hi = 1; }
+                    }
+                    if (!have_lo || !have_hi) continue;
+                    if (umax > 1.5f) size = 1.0f;                /* texel coordinates (linear) */
+                    {
+                        float per = (t_hi - t_lo) * size / (hi - lo);   /* texels per host pixel */
+                        float pc, tc, d;
+                        if (fabsf(fabsf(per) - 1.0f) > 0.02f) continue;
+                        pc = ceilf(lo - 0.5f) + 0.5f;                     /* first covered centre */
+                        tc = t_lo * size + (pc - lo) * per;
+                        d = (floorf(tc) + 0.5f) - tc;                     /* to the texel centre */
+                        if (fabsf(d) < 1e-4f) continue;
+                        for (i_ = 0; i_ < 4; ++i_) {
+                            if (ax) out[i_].v += d / size; else out[i_].u += d / size;
+                        }
+                    }
+                }
+            }
+        }
         /* 0.2.29: plain-colour rectangles on the supersampled menus get the
          * same surface-grid edges as the lines above. The Sparring pause
          * menu's grey option panels are a translucent quad (325.1..614.5 at
@@ -4930,9 +4986,14 @@ static void submit_draw_inner(void)
          * host on an axis (1x menus), the quad is untextured, axis-aligned
          * and one colour, and the state allows the alpha to carry coverage.
          * DOA3_QUAD_COVERAGE=0 turns it off. */
+        /* 0.2.30: also translucent ones on the 720x480 fight surface when it
+         * is stretched to the host (16:9: 1.186 host px per surface px): the
+         * Sparring pause menu is drawn there, not on the menus' surface. */
         if (out_vert_count == 4 && !g_pg.tex[0].enabled &&
             (g_pg.d3d_prim_type == D3DPT_TRIANGLESTRIP || g_pg.d3d_prim_type == D3DPT_TRIANGLEFAN) &&
-            (g_fit_surface_px[0] < 0.999f || g_fit_surface_px[1] < 0.999f) &&
+            (g_fit_surface_px[0] < 0.999f || g_fit_surface_px[1] < 0.999f ||
+             ((fabsf(g_fit_surface_px[0] - 1.0f) > 1e-3f || fabsf(g_fit_surface_px[1] - 1.0f) > 1e-3f) &&
+              g_pg.blend_enable && (out[0].color >> 24) < 0xFFu)) &&
             !d3d8_OffscreenTargetActive()) {
             static int s_qenv = -1;
             uint32_t cm = g_pg.color_mask;
