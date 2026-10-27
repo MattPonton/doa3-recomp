@@ -4518,3 +4518,22 @@ as 6P after the hold side switch). LedgeThrowDamage is now hidden: dip_hidden()
 makes dip_get() return 1, the General tab skips it and dip_save() does not
 write its key. The enum, ini key and help text stay, so it can be listed
 again by changing dip_hidden().
+
+## 0.2.22: Options > Video > Regulator (gamma, brightness, contrast)
+
+Matt's snapshots: 0x17B800 stores gamma / contrast / brightness at
+0xA4891C/20/24 (defaults 1.0, 0, 0; gamma 1..2, contrast -10..10,
+brightness -50..50 at the ends) and builds the 3 x 256 ramp at 0xA48928
+(identity at the defaults; e.g. gamma 2.0: 0,90,128,156,181,...; brightness
++50: 50,82,114,...), then calls D3DDevice_SetGammaRamp (0x1DC360) with flags
+1. Not IMMEDIATE, so the XDK copies it into the device (+0x2268 +0x214, by
+parity) and the vblank handler 0x1E4C80 writes it into the DAC palette
+through 0x1E1B64 (PRMDIO 0x6813C8/9, a stub here). Nothing reached the
+picture.
+
+0x1DC360 is overridden to pass the ramp to d3d8_gamma_set(); the present
+blit uploads it to a 256x1 texture when it changes and, unless it is the
+identity, draws with a pixel shader that looks each 8-bit channel up in its
+own ramp (as the DAC does). Applies to everything the blit shows (movies
+too), not to screenshots (taken from the guest frame) or the Escape menu.
+[GAMMA] logs the first 16 ramp changes.

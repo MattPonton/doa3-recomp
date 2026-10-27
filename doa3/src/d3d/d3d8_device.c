@@ -621,7 +621,74 @@ static const char g_blit_hlsl[] =
     "  V o; float2 uv = float2((id << 1) & 2, id & 2);\n"
     "  o.p = float4(uv * float2(2, -2) + float2(-1, 1), 0, 1); o.uv = uv; return o;\n"
     "}\n"
-    "float4 psmain(V i) : SV_Target { return float4(t.Sample(s, i.uv).rgb, 1); }\n";
+    "float4 psmain(V i) : SV_Target { return float4(t.Sample(s, i.uv).rgb, 1); }\n"
+    /* 1.0: the Xbox's gamma ramp (Options > Video > Regulator), applied the
+     * way the video DAC does: each 8-bit channel indexes its own ramp. */
+    "Texture2D<float4> lut : register(t1);\n"
+    "float4 psgamma(V i) : SV_Target {\n"
+    "  float3 c = saturate(t.Sample(s, i.uv).rgb) * 255.0 + 0.5;\n"
+    "  return float4(lut.Load(int3(int(c.r), 0, 0)).r, lut.Load(int3(int(c.g), 0, 0)).g,\n"
+    "                lut.Load(int3(int(c.b), 0, 0)).b, 1);\n"
+    "}\n";
+
+/* Gamma ramp (D3DDevice_SetGammaRamp, captured in recomp_manual.c). On the
+ * Xbox it goes to the DAC palette at the next vblank and affects the whole
+ * picture; here it is applied in the present blit. Identity: plain blit. */
+static ID3D11PixelShader       *g_gamma_ps;
+static ID3D11Texture2D         *g_gamma_tex;
+static ID3D11ShaderResourceView *g_gamma_srv;
+static unsigned char            g_gamma_ramp[768];
+static volatile LONG            g_gamma_seq, g_gamma_applied = -1;
+static int                      g_gamma_identity = 1;
+
+void d3d8_gamma_set(const unsigned char ramp[768])
+{
+    memcpy(g_gamma_ramp, ramp, 768);
+    InterlockedIncrement(&g_gamma_seq);
+}
+
+static ID3D11ShaderResourceView *gamma_lut(void)
+{
+    ID3D11Device *dev = g_device_state.d3d11_device;
+    ID3D11DeviceContext *ctx = g_device_state.d3d11_context;
+    LONG seq = g_gamma_seq;
+    if (seq != g_gamma_applied) {
+        unsigned char ramp[768], px[256 * 4];
+        int i, identity = 1;
+        memcpy(ramp, g_gamma_ramp, sizeof ramp);
+        g_gamma_applied = seq;
+        for (i = 0; i < 256; ++i) {
+            px[i * 4 + 0] = ramp[i];
+            px[i * 4 + 1] = ramp[256 + i];
+            px[i * 4 + 2] = ramp[512 + i];
+            px[i * 4 + 3] = 255;
+            if (ramp[i] != i || ramp[256 + i] != i || ramp[512 + i] != i) identity = 0;
+        }
+        g_gamma_identity = identity;
+        {   static unsigned s_logs;
+            if (s_logs++ < 16)
+                fprintf(stderr, "[GAMMA] ramp %s: R 0/64/128/192/255 = %u/%u/%u/%u/%u\n",
+                        identity ? "identity" : "set", ramp[0], ramp[64], ramp[128], ramp[192], ramp[255]); }
+        if (!identity && dev) {
+            if (!g_gamma_tex) {
+                D3D11_TEXTURE2D_DESC td;
+                memset(&td, 0, sizeof td);
+                td.Width = 256; td.Height = 1; td.MipLevels = 1; td.ArraySize = 1;
+                td.Format = DXGI_FORMAT_R8G8B8A8_UNORM; td.SampleDesc.Count = 1;
+                td.Usage = D3D11_USAGE_DEFAULT; td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+                if (FAILED(ID3D11Device_CreateTexture2D(dev, &td, NULL, &g_gamma_tex)) ||
+                    FAILED(ID3D11Device_CreateShaderResourceView(dev, (ID3D11Resource *)g_gamma_tex,
+                                                                 NULL, &g_gamma_srv))) {
+                    if (g_gamma_tex) { ID3D11Texture2D_Release(g_gamma_tex); g_gamma_tex = NULL; }
+                    return NULL;
+                }
+            }
+            ID3D11DeviceContext_UpdateSubresource(ctx, (ID3D11Resource *)g_gamma_tex, 0, NULL,
+                                                  px, sizeof px, 0);
+        }
+    }
+    return (!g_gamma_identity && g_gamma_ps) ? g_gamma_srv : NULL;
+}
 
 static int blit_init(void)
 {
@@ -637,6 +704,15 @@ static int blit_init(void)
         FAILED(D3DCompile(g_blit_hlsl, sizeof(g_blit_hlsl) - 1, "present_ps", NULL, NULL,
                           "psmain", "ps_4_0", 0, 0, &psb, &err))) {
         return 0;
+    }
+    {   ID3DBlob *gb = NULL, *ge = NULL;
+        if (SUCCEEDED(D3DCompile(g_blit_hlsl, sizeof(g_blit_hlsl) - 1, "present_gamma", NULL, NULL,
+                                 "psgamma", "ps_4_0", 0, 0, &gb, &ge))) {
+            ID3D11Device_CreatePixelShader(dev, ID3D10Blob_GetBufferPointer(gb),
+                                           ID3D10Blob_GetBufferSize(gb), NULL, &g_gamma_ps);
+            ID3D10Blob_Release(gb);
+        } else fprintf(stderr, "[GAMMA] ramp shader did not compile; gamma stays off\n");
+        if (ge) ID3D10Blob_Release(ge);
     }
     if (FAILED(ID3D11Device_CreateVertexShader(dev, ID3D10Blob_GetBufferPointer(vsb),
                                                ID3D10Blob_GetBufferSize(vsb), NULL, &g_blit_vs)) ||
@@ -793,13 +869,16 @@ static HRESULT d3d8_compose_and_present_from(ID3D11Texture2D *src_tex, ID3D11Sha
         ID3D11DeviceContext_IASetInputLayout(ctx, NULL);
         ID3D11DeviceContext_IASetPrimitiveTopology(ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         ID3D11DeviceContext_VSSetShader(ctx, g_blit_vs, NULL, 0);
-        ID3D11DeviceContext_PSSetShader(ctx, g_blit_ps, NULL, 0);
-        ID3D11DeviceContext_PSSetShaderResources(ctx, 0, 1, &scene_srv);
-        ID3D11DeviceContext_PSSetSamplers(ctx, 0, 1, &g_blit_smp);
-        ID3D11DeviceContext_Draw(ctx, 3, 0);
-        {   /* unbind the guest texture before it is a render target again */
-            ID3D11ShaderResourceView *none = NULL;
-            ID3D11DeviceContext_PSSetShaderResources(ctx, 0, 1, &none);
+        {   ID3D11ShaderResourceView *lut = gamma_lut();
+            ID3D11DeviceContext_PSSetShader(ctx, lut ? g_gamma_ps : g_blit_ps, NULL, 0);
+            ID3D11DeviceContext_PSSetShaderResources(ctx, 0, 1, &scene_srv);
+            if (lut) ID3D11DeviceContext_PSSetShaderResources(ctx, 1, 1, &lut);
+            ID3D11DeviceContext_PSSetSamplers(ctx, 0, 1, &g_blit_smp);
+            ID3D11DeviceContext_Draw(ctx, 3, 0);
+            {   /* unbind the guest texture before it is a render target again */
+                ID3D11ShaderResourceView *none[2] = { NULL, NULL };
+                ID3D11DeviceContext_PSSetShaderResources(ctx, 0, lut ? 2 : 1, none);
+            }
         }
 
         /* Overlay last, at window resolution. It draws nothing at all unless

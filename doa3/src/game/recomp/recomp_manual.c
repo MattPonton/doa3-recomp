@@ -2387,6 +2387,22 @@ static void perf_5s(double interval, const double ph[7], double present, double 
     s_next = GetTickCount() + 5000;
 }
 
+/* 1.0: D3DDevice_SetGammaRamp (0x1DC360, stdcall flags, ramp). The game's
+ * Options > Video > Regulator builds a 3 x 256-byte ramp at 0xA48928 from
+ * gamma / brightness / contrast (0x17B800) and sets it with flags 1, so the
+ * XDK queues it for the vblank handler 0x1E4C80 to write into the DAC
+ * palette (0x1E1B64, PRMDIO, a stub here). Hand the ramp to the present
+ * blit instead, whichever way it is set. */
+void sub_001DC360_gen(void);
+void sub_001DC360(void)
+{
+    extern void d3d8_gamma_set(const unsigned char ramp[768]);
+    uint32_t ramp = MEM32(esp + 8);
+    if (ramp) d3d8_gamma_set((const unsigned char *)XBOX_PTR(ramp));
+    sub_001DC360_gen();
+    if (g_fib_slice_due) xbox_fiber_timeslice();
+}
+
 /* Dip LedgeThrowDamage (0.2.19, 0.2.20). The ledge handler 0xA92C0 carries a
  * throw's damage into the fall (AccumulatedThrowOrHoldDamage 0x9B2858[side])
  * and GetMoveDamage adds it to every fall-type-3 impact. With one ledge there
