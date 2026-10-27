@@ -73,9 +73,14 @@ const char *dip_key(dip_switch d)   { return (unsigned)d < DIP_COUNT ? k_dip[d].
 const char *dip_label(dip_switch d) { return (unsigned)d < DIP_COUNT ? k_dip[d].label : ""; }
 const char *dip_help(dip_switch d)  { return (unsigned)d < DIP_COUNT ? k_dip[d].help : ""; }
 
+/* 1.0.0: the ledge throw damage fix ships always on and out of the menu;
+ * the switch stays in the code (and the [DipSwitches] key is ignored). */
+int dip_hidden(dip_switch d) { return d == DIP_LEDGE_THROW_DAMAGE; }
+
 int dip_get(dip_switch d)
 {
     if ((unsigned)d >= DIP_COUNT) return 0;
+    if (dip_hidden(d)) return 1;
     dip_load();
     return g_on[d] != 0;
 }
@@ -99,7 +104,8 @@ int dip_save(void)
     int i, ok = 1;
     dip_load();
     for (i = 0; i < DIP_COUNT; i++)
-        ok &= WritePrivateProfileStringA("DipSwitches", k_dip[i].key, g_on[i] ? "1" : "0",
-                                         doa3_settings_ini_path()) != 0;
+        if (!dip_hidden((dip_switch)i))
+            ok &= WritePrivateProfileStringA("DipSwitches", k_dip[i].key, g_on[i] ? "1" : "0",
+                                             doa3_settings_ini_path()) != 0;
     return ok;
 }

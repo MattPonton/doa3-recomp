@@ -4510,3 +4510,11 @@ once the dummy could act, with the corrected one. While the dummy's value is
 not settled (moves 0x90-0x95, or a state other than idle / jump / strike /
 throw attempt) the player's value, flipped, is used. [SPARRING] logs each
 change of the playback decision (first 40) with both fighters' values.
+
+## 0.2.21: ledge throw damage fix always on
+
+Matt verified both 0.2.20 fixes (63 then 25 / 35 on Lorelei; PP4P replays
+as 6P after the hold side switch). LedgeThrowDamage is now hidden: dip_hidden()
+makes dip_get() return 1, the General tab skips it and dip_save() does not
+write its key. The enum, ini key and help text stay, so it can be listed
+again by changing dip_hidden().

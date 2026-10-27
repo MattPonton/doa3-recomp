@@ -30,7 +30,9 @@ performance for low-end PCs.
 - Dip Switches: optional fixes and quality-of-life changes (left stick in
   menus, Random on the stage select, Random picking alternate and storage
   costumes, shared costumes, menu pixel offset, replay and winner pose only
-  on a match's final round, throw damage kept over a second ledge)
+  on a match's final round)
+- Fix for the original game losing a throw's damage when the opponent falls
+  over two ledges in one fall (Lorelei); always on
 - Sparring: record and replay the dummy's inputs, give the dummy (or, in Tag
   Sparring, your tag partner) to a second controller, and hold the Stagger
   Escape value, and a move info (frame data) display

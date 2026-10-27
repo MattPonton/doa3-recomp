@@ -587,6 +587,7 @@ void DrawGeneralSection()
     ImGui::Spacing();
     ImGui::SeparatorText("Dip Switches");
     for (int i = 0; i < DIP_COUNT; i++) {
+        if (dip_hidden((dip_switch)i)) continue;
         bool d = dip_get((dip_switch)i) != 0;
         if (ImGui::Checkbox(dip_label((dip_switch)i), &d))
             dip_set((dip_switch)i, d ? 1 : 0);

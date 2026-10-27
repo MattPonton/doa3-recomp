@@ -30,6 +30,7 @@ const char *dip_label(dip_switch d);
 const char *dip_help(dip_switch d);
 
 int  dip_get(dip_switch d);           /* loads the ini on first use */
+int  dip_hidden(dip_switch d);        /* always-on fix: not listed, not saved (1.0.0) */
 void dip_set(dip_switch d, int on);   /* takes effect immediately */
 void dip_reset(void);                 /* all off */
 int  dip_save(void);                  /* non-zero on success */
