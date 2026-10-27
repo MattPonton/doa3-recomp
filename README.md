@@ -28,10 +28,11 @@ also continues on performance for low-end PCs.
   controllers, up to four players, with per-player bindings and rumble
 - Master volume plus the game's own Music / Sound effects / Voice levels
 - Streamer mode: mutes the licensed Aerosmith songs wherever they play
-- Dip Switches: optional fixes and quality-of-life changes (left stick in
-  menus, Random on the stage select, Random picking alternate and storage
-  costumes, shared costumes, menu pixel offset, replay and winner pose only
-  on a match's final round, and a fix for ledge fall damage on Lorelei)
+- Dip Switches: optional fixes and quality-of-life changes (Random on the
+  stage select, Random picking alternate and storage costumes, shared
+  costumes, left stick in menus, menu pixel offset, Stage Select world map
+  locations, ledge fall damage on Lorelei, replay and winner pose only on a
+  match's final round)
 - The game's own gamma, brightness and contrast settings (Options > Video >
   Regulator) work as on hardware
 - Sparring: record and replay the dummy's inputs, give the dummy (or, in Tag
@@ -92,15 +93,16 @@ effect immediately and are saved in the `[DipSwitches]` section of
 
 | Switch | When on |
 | --- | --- |
-| Menu navigation with Left Stick | The left stick moves menu cursors as well as the directional pad. Fights are unchanged. |
 | Random is default stage option | Stage Select opens with the cursor on Random (every mode, Tag and Team Battle included). A stage the game remembers (returning to Stage Select after a match) is kept. |
 | Random includes alternate costume colors from disc | Random on Character Select can pick alternate colors and hairstyles, and Time Attack and Survival opponents can get them too. |
 | Random includes costumes from storage | Random can pick custom costumes from the TDATA folder, and Time Attack and Survival opponents can get them too. |
-| Allow players to select alternate options of the same costume | Both players can highlight the same costume as long as an alternate version of it is available. |
-| Correct offset of menu layout | The game draws its menus, frames and HUD one pixel right of and below the screen edge (hidden by a CRT's overscan). This lines the 2D layer up with the screen edges. |
-| Only show Replay on final round | Only the round that decides a match shows the replay after the round ends. |
-| Only show round's winner on final round | Only the round that decides a match shows the win pose after the round ends. |
+| Players can select the alternate colors of the same costume | Both players can highlight the same costume as long as an alternate version of it is available. |
+| Left Stick enabled for menu navigation | The left stick moves menu cursors as well as the directional pad. Fights are unchanged. |
+| Fix offset of menu layout | The game draws its UI one pixel right of and below where it belongs (hidden by a CRT's overscan). This removes the one-pixel gap. |
+| Fix World Map locations on Stage Select | Beach's marker on the Stage Select world map sits at Aqua Palace's location. This swaps the two locations. |
 | Fix ledge fall damage on Lorelei | On Lorelei, a fighter knocked off a ledge by a throw or hold could take the wrong amount of damage from the fall. With the switch on, throws and holds do the intended damage. |
+| Only show replay on final round | Only the round that decides a match shows the replay after the round ends. |
+| Only show winner on final round | Only the round that decides a match shows the win pose after the round ends. |
 
 ### Controls
 

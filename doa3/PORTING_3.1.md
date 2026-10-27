@@ -4746,3 +4746,11 @@ The old icon is still in earlier commits' history.
 Release. Version 1.0.0 (was 0.2.34); CHANGELOG.md has the 1.0.0 summary of
 everything since 0.0.128. The update check compares the release tag (v1.0.0)
 with major.minor.update.
+
+Dip switches reordered for the General tab (enum order = display order; the
+ini keys are unchanged) with Matt's final labels. New switch
+"WorldMapLocations" (values from Gultigargar): the stage table 0x29C960 has
+Beach (row 2) at world map x 0x48 (VA 0x29C988, file 0x290928) and Aqua
+Palace (row 12) at 0xB0 (VA 0x29CA28, file 0x2909C8); on, they are swapped.
+Applied at every frame end, only while the table holds one of the two
+layouts.

@@ -7,8 +7,6 @@
 #include "video_settings.h"
 
 static const struct { const char *key, *label, *help; } k_dip[DIP_COUNT] = {
-    { "LeftStickMenus", "Menu navigation with Left Stick",
-      "Enables left stick for menu movement." },
     { "RandomStageDefault", "Random is default stage option",
       "Sets the default cursor position to Random when selecting stages." },
     { "RandomAltCostumes", "Random includes alternate costume colors from disc",
@@ -17,22 +15,25 @@ static const struct { const char *key, *label, *help; } k_dip[DIP_COUNT] = {
     { "RandomStorageCostumes", "Random includes costumes from storage",
       "Enables custom costumes from the TDATA folder as picks when selecting a random character. "
       "Also allows opponents in Time Attack and Survival to get custom costumes." },
-    { "SharedCostumes", "Allow players to select alternate options of the same costume",
+    { "SharedCostumes", "Players can select the alternate colors of the same costume",
       "Allows both players to highlight the same costume as long as an alternate version is available." },
-    { "MenuOffset", "Correct offset of menu layout",
-      "The original game draws its menus, frames and HUD one pixel right of and below where "
-      "they belong: its sprite code adds a 0.53125 pixel offset, and the Xbox adds the same "
-      "offset again. A CRT's overscan hid it; on a modern screen a thin strip of the scene "
-      "shows along the left and top edges. On: the sprite code's offset is cancelled so the "
-      "2D layer lines up with the screen edges. Every 2D element moves together." },
-    { "ReplayFinalRoundOnly", "Only show Replay on final round",
-      "Only the round that decides a match shows the replay after the round ends." },
-    { "WinnerFinalRoundOnly", "Only show round's winner on final round",
-      "Only the round that decides a match shows the win pose after the round ends." },
+    { "LeftStickMenus", "Left Stick enabled for menu navigation",
+      "Enables left stick for menu movement." },
+    { "MenuOffset", "Fix offset of menu layout",
+      "The original game draws UI elements offset by one pixel right and one pixel down "
+      "from where they belong. Enabling this option adjusts the UI elements so the one pixel "
+      "gap is no longer present." },
+    { "WorldMapLocations", "Fix World Map locations on Stage Select",
+      "Beach's location is incorrectly set to the Aqua Palace location on the world map. "
+      "On: Beach's location is switched with Aqua Palace's location." },
     { "LedgeThrowDamage", "Fix ledge fall damage on Lorelei",
       "In the original game, on the Lorelei stage, a fighter could be knocked off a ledge by "
       "a throw or hold and take an incorrect amount of damage from the fall. Enabling this "
       "makes it so throws and holds do the intended amount of damage." },
+    { "ReplayFinalRoundOnly", "Only show replay on final round",
+      "Only the round that decides a match shows the replay after the round ends." },
+    { "WinnerFinalRoundOnly", "Only show winner on final round",
+      "Only the round that decides a match shows the win pose after the round ends." },
 };
 
 /* 1.0.0: the ledge throw damage fix is to ship always on and out of the

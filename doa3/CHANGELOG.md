@@ -9,8 +9,9 @@ First release of the Dead or Alive 3 (JAPAN, 3.1) recompilation. Since 0.0.128:
   hardware: left stick in menus; Random as the default stage option (Tag and
   Team Battle included); Random picking alternate and storage costumes;
   shared costumes with a different option; corrected menu pixel offset; the
-  KO replay and the winner pose only after a match's final round; and a fix
-  for Lorelei's double-hit ledge falls (a throw's damage lost on the fall's
+  KO replay and the winner pose only after a match's final round; Beach's
+  and Aqua Palace's places on the Stage Select world map; and a fix for
+  Lorelei's double-hit ledge falls (a throw's damage lost on the fall's
   first hit, or the landing damage dealt twice).
 - Storage costumes (TDATA): up to 99 per character, with x / y / l options;
   the costume list scrolls past nine.

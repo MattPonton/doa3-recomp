@@ -63,6 +63,20 @@ void doa3_menu_offset_apply(void)
     float want = dip_get(DIP_MENU_OFFSET) ? -0.53125f : 0.53125f;
     if (MEMF(0x251244) != want) MEMF(0x251244) = want;
 }
+/* Dip "Fix World Map locations on Stage Select" (1.0.0, values from
+ * Gultigargar). The stage table 0x29C960 (16 bytes per stage, the world map
+ * marker's x at +8) puts Beach (row 2, 0x29C988) at x 0x48 -- Aqua Palace's
+ * place -- and Aqua Palace (row 12, 0x29CA28) at 0xB0. On: the two are
+ * swapped; off: the original values. Only written while they hold one of the
+ * two layouts, so another release's table is left alone. */
+void doa3_world_map_apply(void)
+{
+    uint16_t beach = MEM16(0x29C988), aqua = MEM16(0x29CA28);
+    int on = dip_get(DIP_WORLD_MAP_LOCATIONS);
+    if (!((beach == 0x48 && aqua == 0xB0) || (beach == 0xB0 && aqua == 0x48))) return;
+    if (on && beach != 0xB0) { MEM16(0x29C988) = 0xB0; MEM16(0x29CA28) = 0x48; }
+    else if (!on && beach != 0x48) { MEM16(0x29C988) = 0x48; MEM16(0x29CA28) = 0xB0; }
+}
 void sub_00011980(void) { sub_00011980_gen(); doa3_costume_watch(); training_input_begin(); doa3_menu_offset_apply(); }
 /* CPU stun handler: Stagger Escape hold for a CPU fighter (0.1.14). */
 void sub_00016840_gen(void);
@@ -2495,6 +2509,8 @@ static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
 {
     damage_trace_frame();
     {   extern void doa3_menu_offset_apply(void);
+        extern void doa3_world_map_apply(void);
+        doa3_world_map_apply();
         doa3_menu_offset_apply();   /* 0.1.34: every frame, menus included */ }
     {   extern void doa3_prof_set_thread(void);
         static int s_prof_reg;
