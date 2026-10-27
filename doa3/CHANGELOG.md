@@ -1,5 +1,11 @@
 # DOA3 3.1 changelog
 
+## 1.0.1 — 2026-10-27
+
+- Fixed the game not booting for some players in borderless mode (it hung on
+  a black screen; windowed mode worked). Audio setup could read memory that
+  belonged to another part of the program, depending on the display size.
+
 ## 1.0.0 — 2026-10-27
 
 First release of the Dead or Alive 3 (JAPAN, 3.1) recompilation. Since 0.0.128:

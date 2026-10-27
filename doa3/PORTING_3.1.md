@@ -4754,3 +4754,16 @@ Beach (row 2) at world map x 0x48 (VA 0x29C988, file 0x290928) and Aqua
 Palace (row 12) at 0xB0 (VA 0x29CA28, file 0x2909C8); on, they are swapped.
 Applied at every frame end, only while the table holds one of the two
 layouts.
+
+## 1.0.1
+
+Boot hang reported on the 1.0.0 release (3416x1920 borderless; windowed
+booted). Log: KeStallExecutionProcessor(20) x1000 from sub_001F8A6D, the
+AC97 codec access semaphore poll (0xFEC00034 bit 0), then DirectSound init
+failed, CRI never opened D:\ (no loadfile.afs / bgm.afs) and the main fiber
+spun on "E9040828:'ptid' is range outside". No "GPU mem page 0xFEC00000"
+fault was logged: a host allocation already sat on the unreserved window, so
+the read hit foreign memory with bit 0 set. Same class as the NV2A and APU
+aperture fixes. xbox_MemoryLayoutInit now commits the AC97 page (0x130 =
+0x300, as the VEH did) and the USB page at 0xFED00000 (zero) before the
+heap and the kernel bridges allocate.

@@ -264,6 +264,44 @@ BOOL xbox_MemoryLayoutInit(const void *xbe_data, size_t xbe_size)
     }
 
     /*
+     * Back the MCPX AC97 controller page (Xbox VA 0xFEC00000) and the USB
+     * controller page (0xFED00000) now, before any host allocation can land
+     * on them. Unlike the two apertures above, nothing here needs to trap: the
+     * VEH used to commit a zero page on first touch, presetting AC97 global
+     * status 0x130 to "both codecs ready" (main.c). But the windows were never
+     * held, so a host allocation could sit on them first -- seen on a
+     * 3416x1920 borderless launch, where the guest's read of the AC97 codec
+     * access semaphore (0x34 bit 0, polled by sub_001F8A6D for 1000 x 20 us)
+     * hit someone else's memory with the bit set. The semaphore never
+     * released, DirectSound init failed, the CRI streams were never set up,
+     * and the boot hung on "'ptid' is range outside". Windowed mode moved the
+     * host allocations and hid it. (Guest stores there would also have landed
+     * in that foreign allocation.) Commit the pages ourselves with the
+     * contents the VEH would have given them.
+     */
+    {
+        static const uint32_t pages[2] = { 0xFEC00000u, 0xFED00000u };
+        for (int i = 0; i < 2; i++) {
+            void *want = (void *)((uintptr_t)pages[i] + g_memory_offset);
+            LPVOID r = VirtualAlloc(want, 0x10000u, MEM_RESERVE | MEM_COMMIT,
+                                    PAGE_READWRITE);
+            if (r == want) {
+                memset(r, 0, 0x10000u);
+                if (pages[i] == 0xFEC00000u)
+                    *(volatile uint32_t *)((uintptr_t)r + 0x130) = 0x00000300u;
+                fprintf(stderr, "xbox_MemoryLayoutInit: I/O page backed at %p "
+                                "(Xbox VA 0x%08X)\n", want, (unsigned)pages[i]);
+            } else {
+                fprintf(stderr, "xbox_MemoryLayoutInit: WARNING could not back the "
+                                "I/O page at %p (Xbox VA 0x%08X, got %p, error %lu) "
+                                "-- audio/input init may fail\n",
+                        want, (unsigned)pages[i], r, GetLastError());
+                if (r) VirtualFree(r, 0, MEM_RELEASE);
+            }
+        }
+    }
+
+    /*
      * Helper macro: convert Xbox VA to actual mapped address.
      * When g_memory_offset == 0 (ideal case), this is identity.
      */
