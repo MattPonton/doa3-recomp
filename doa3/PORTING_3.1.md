@@ -4583,3 +4583,24 @@ and gives each host pixel the covered share (nv_fit_to_backbuffer records
 the surface grid origin as well as its pitch). At 1x that is the hardware's
 2x2 average: the 2-surface-px rule at 577.6 covers surface rows 577 and 578,
 half of display rows 288 and 289 each.
+
+## 0.2.25: fight HUD line rows (NV2A sub-pixel precision), whole-pixel canvas
+
+Matt's Sparring fight capture vs hardware, life bar at x 550 / y 64: green
+bar rows 61-68 everywhere (right), but the dark frame lines were on rows 60,
+61 (top) and 70, 71 (bottom) where hardware has 59, 60 and 69, 70; at 32:9
+the vertical edge was a column right. mtrace_manual_115724: fight surface
+720x480, passthrough program c0 (1,1,..) c1 (0.53125, 0.53125); the frame is
+width-0x10 lines at y 60 / 70 (+0.53125). A 2 px line centred on 60.53125
+covers rows 60 and 61 by the pixel-centre rule; hardware covers 59 and 60
+because the NV2A keeps 4 fractional bits of a screen position and 60.53125
+truncates to 60.5. The coverage path now truncates the line centre to 1/16
+surface pixel first (character select's rule, 577.59 -> 577.5625, is
+unchanged: surface rows 577, 578).
+
+video_hud_region rounds the 16:9 canvas origin to a whole pixel (32:9 at 1x
+put it at 426.75), so ultrawide uses the same pixel grid as 16:9.
+
+The LedgeThrowDamage dip is listed again (on by default) for Matt's 46T
+report: the throw's damage, then the full landing damage (25 / 35) on both
+ledge impacts.

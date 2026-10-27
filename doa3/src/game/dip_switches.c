@@ -56,6 +56,12 @@ static const struct { const char *key, *label, *help; } k_dip[DIP_COUNT] = {
       "and lands with the first impact. Every other fall is unchanged." },
 };
 
+/* 1.0.0: the ledge throw damage fix is to ship always on and out of the
+ * menu (dip_hidden returning 1 for it). 0.2.25: listed again, on by default,
+ * while the 46T ledge fall is investigated. */
+int dip_hidden(dip_switch d) { (void)d; return 0; }
+static int dip_default(int i) { return i == DIP_LEDGE_THROW_DAMAGE; }
+
 static volatile LONG g_loaded;
 static volatile LONG g_on[DIP_COUNT];
 
@@ -64,7 +70,7 @@ static void dip_load(void)
     int i;
     if (g_loaded) return;
     for (i = 0; i < DIP_COUNT; i++)
-        g_on[i] = GetPrivateProfileIntA("DipSwitches", k_dip[i].key, 0,
+        g_on[i] = GetPrivateProfileIntA("DipSwitches", k_dip[i].key, dip_default(i),
                                         doa3_settings_ini_path()) != 0;
     g_loaded = 1;
 }
@@ -73,9 +79,6 @@ const char *dip_key(dip_switch d)   { return (unsigned)d < DIP_COUNT ? k_dip[d].
 const char *dip_label(dip_switch d) { return (unsigned)d < DIP_COUNT ? k_dip[d].label : ""; }
 const char *dip_help(dip_switch d)  { return (unsigned)d < DIP_COUNT ? k_dip[d].help : ""; }
 
-/* 1.0.0: the ledge throw damage fix ships always on and out of the menu;
- * the switch stays in the code (and the [DipSwitches] key is ignored). */
-int dip_hidden(dip_switch d) { return d == DIP_LEDGE_THROW_DAMAGE; }
 
 int dip_get(dip_switch d)
 {
@@ -96,7 +99,7 @@ void dip_reset(void)
 {
     int i;
     dip_load();
-    for (i = 0; i < DIP_COUNT; i++) g_on[i] = 0;
+    for (i = 0; i < DIP_COUNT; i++) g_on[i] = dip_default(i);
 }
 
 int dip_save(void)

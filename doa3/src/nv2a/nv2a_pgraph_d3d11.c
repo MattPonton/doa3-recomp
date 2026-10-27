@@ -4820,14 +4820,22 @@ static void submit_draw_inner(void)
                          * resolve's average at 1x, sharp edges at 2x. */
                         float t = horiz ? ty : tx, ctr = horiz ? a->y : a->x;
                         float pp = g_fit_surface_px[horiz ? 1 : 0], org = g_fit_origin[horiz ? 1 : 0];
-                        float lo = ctr - t * 0.5f, hi = ctr + t * 0.5f;
                         float s0 = horiz ? (a->x < b->x ? a->x : b->x) : (a->y < b->y ? a->y : b->y);
                         float s1 = horiz ? (a->x < b->x ? b->x : a->x) : (a->y < b->y ? b->y : a->y);
                         float covs[16];
                         int r, r0, nr, k0, k1, kk;
                         if (pp < 1e-3f) pp = 1e-3f;
-                        k0 = (int)ceilf((lo - org) / pp - 0.5f);        /* first centre >= lo */
-                        k1 = (int)ceilf((hi - org) / pp - 0.5f) - 1;    /* last centre < hi */
+                        {   /* 0.2.25: the NV2A keeps 4 fractional bits of a
+                             * screen position. Truncating the centre to
+                             * 1/16 surface pixel puts the HUD's 0.53125-offset
+                             * lines (fight life bar frame, x.53125) on the
+                             * same rows as hardware: 60.53125 -> 60.5, a
+                             * 2 px line covering rows 59 and 60, not 60, 61. */
+                            float cs = floorf((ctr - org) / pp * 16.0f) / 16.0f;
+                            float hs = t * 0.5f / pp;
+                            k0 = (int)ceilf(cs - hs - 0.5f);            /* first centre >= lo */
+                            k1 = (int)ceilf(cs + hs - 0.5f) - 1;        /* last centre < hi */
+                        }
                         if (k1 < k0) k1 = k0;                           /* never lose a line */
                         r0 = (int)floorf(org + (float)k0 * pp);
                         nr = (int)ceilf(org + (float)(k1 + 1) * pp) - r0;
