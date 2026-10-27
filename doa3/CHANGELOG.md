@@ -33,8 +33,8 @@ First release of the Dead or Alive 3 (JAPAN, 3.1) recompilation. Since 0.0.128:
 **Escape menu and app**
 - Tabs reorganized: General first (check for updates at boot, logging, dip
   switches); Video (menu size, performance overlay); Photo Mode (free camera,
-  hide either fighter or the HUD, screenshots); Sparring; Debug hidden unless
-  DOA3_DEBUG=1 or Ctrl+Shift+D.
+  hide either fighter or the HUD, screenshots); Sparring; developer tools
+  moved out of view.
 - Check for updates at boot (announces a newer GitHub release; never
   downloads anything).
 - Keyboard layout on Reset to defaults when the input device is Keyboard.

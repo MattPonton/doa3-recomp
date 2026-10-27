@@ -63,7 +63,7 @@ Files the port keeps next to `DOA3.exe`:
 | `HDD\D\` | The game files copied from your disc image |
 | `HDD\E\UDATA\54430001\` | The game's save data |
 | `Screenshots\` | Screenshots |
-| `Snapshots\` | Game memory snapshots saved from **Debug > Diagnostics**; kept between launches |
+| `Snapshots\` | Game memory snapshots (developer tool); kept between launches |
 | `doa3_log.txt` | Log, only when **Write log files** is on |
 | `Diagnostics\` | Developer captures, only when diagnostics are on; cleared at each launch |
 | `ShaderCache\` | Compiled shaders, kept so later launches start faster; safe to delete |
@@ -171,13 +171,6 @@ together.
 (how fast a critical stun or guard break plays out). **Hold** fixes the value
 at the start of every frame, for the human player or the dummy, CPU or not.
 
-### Debug (hidden)
-
-Developer and inspection tools: unlock-all, hitbox, hurtbox and stage-hazard
-overlays, render views and diagnostic captures. The tab is hidden; launch with
-the environment variable `DOA3_DEBUG=1`, or press **Ctrl+Shift+D** while the
-Escape menu is open, to show it. See [docs/DEBUG.md](docs/DEBUG.md).
-
 Online play from the original port is not available in this version.
 
 ## Changes to the game
@@ -206,11 +199,8 @@ The executable is written to `doa3/build/release/DOA3.exe`.
 ## Reporting bugs and contributing
 
 Please open an issue with steps to reproduce. Turn on **General > Write log
-files** first and attach `doa3_log.txt`; for graphics or timing problems, also
-show the Debug tab (Ctrl+Shift+D with the Escape menu open), enable
-**Debug > Diagnostics > Automatic diagnostic captures** and attach the
-`Diagnostics` folder. Copy both before relaunching, since a new launch
-replaces them. Pull requests are welcome.
+files** first and attach `doa3_log.txt`. Copy it before relaunching, since a
+new launch replaces it. Pull requests are welcome.
 
 ## Credits
 
