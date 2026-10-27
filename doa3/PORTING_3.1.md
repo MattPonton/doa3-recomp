@@ -4604,3 +4604,21 @@ put it at 426.75), so ultrawide uses the same pixel grid as 16:9.
 The LedgeThrowDamage dip is listed again (on by default) for Matt's 46T
 report: the throw's damage, then the full landing damage (25 / 35) on both
 ledge impacts.
+
+## 0.2.26: box corners
+
+0.2.25 result: the life bar frame rows match hardware, but every box's top
+corners had a notch (life bar frame, Sparring menu buttons). The coverage
+path snapped the line's centre to the surface grid but drew it along its
+length from the raw ends (x.53125), so a side edge from 59.53 began at row 60
+while hardware starts it at row 59 (59.5 after the 1/16 truncation). The ends
+are now truncated to 1/16 surface pixel too and the line covers the surface
+pixels whose centres lie between them.
+
+46T off Lorelei's Tier 1 (Matt, hardware too): 55, then 25 and 25 (35 / 35
+from Tier 3). GetFallDamageForPlayer on Lorelei during the second-ledge phase
+(0x9B243E == 5) returns 5 only for the victim moves 0x425B / 0x425C (the
+ledge-impact animation the instant-throw fall uses); any other falling move
+gets the full 25 / 35 (StageMode 4: 35), so a fall that reaches the ledge in
+another move takes the landing damage twice. Needs a damage trace of the 46T
+fall to see its moves.

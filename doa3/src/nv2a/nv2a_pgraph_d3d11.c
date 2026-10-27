@@ -4825,6 +4825,22 @@ static void submit_draw_inner(void)
                         float covs[16];
                         int r, r0, nr, k0, k1, kk;
                         if (pp < 1e-3f) pp = 1e-3f;
+                        {   /* 0.2.26: the ends too. Along the line it covers
+                             * the surface pixels whose centres lie between
+                             * its (1/16-truncated) ends; the raw ends at
+                             * x.53125 started the side edges one row late,
+                             * leaving a notch in every box's top corners
+                             * (life bar frame, Sparring menu buttons). */
+                            float pl = g_fit_surface_px[horiz ? 0 : 1], ol = g_fit_origin[horiz ? 0 : 1];
+                            if (pl > 1e-3f) {
+                                float e0 = floorf((s0 - ol) / pl * 16.0f) / 16.0f;
+                                float e1 = floorf((s1 - ol) / pl * 16.0f) / 16.0f;
+                                float ka = ceilf(e0 - 0.5f), kb = ceilf(e1 - 0.5f);
+                                if (kb <= ka) kb = ka + 1.0f;
+                                s0 = ol + ka * pl;
+                                s1 = ol + kb * pl;
+                            }
+                        }
                         {   /* 0.2.25: the NV2A keeps 4 fractional bits of a
                              * screen position. Truncating the centre to
                              * 1/16 surface pixel puts the HUD's 0.53125-offset
