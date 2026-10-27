@@ -4729,3 +4729,14 @@ left no free 128 MB range at any of the candidate bases. After a successful
 setup the program now starts itself again (same executable and command
 line) and exits, so the game boots in a clean address space, as it does on
 every later launch.
+
+## 0.2.34: icon from the user's disc
+
+The executable's icon (src/game/DOA.ico) was the XBE's title image, which
+should not be in the repository. It is replaced by placeholder.ico, a plain
+white rounded square. At boot, after default.xbe is loaded from HDD\D, the
+$$XTIMAGE section (XPR0: 128x128 DXT1, format 0x07710C2A, data at the
+header size 0x800) is decoded and set as the window's class / WM_SETICON
+icons (taskbar, title bar, Alt+Tab). The file icon in Explorer stays the
+placeholder (an exe's own icon resource cannot be changed while it runs).
+The old icon is still in earlier commits' history.

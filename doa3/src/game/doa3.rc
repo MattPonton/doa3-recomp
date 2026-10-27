@@ -1,5 +1,6 @@
-// Window, taskbar and Explorer icon
-1 ICON "DOA.ico"
+// Explorer / setup-screen icon: a plain placeholder. The running window takes
+// the disc's own title image from the XBE at boot (main.c, 0.2.34).
+1 ICON "placeholder.ico"
 
 // Version (Properties > Details, crash reports): see doa3_version.h
 #include <winver.h>
