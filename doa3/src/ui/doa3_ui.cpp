@@ -994,9 +994,11 @@ void DrawTrainingSection()
     }
     DrawMoveInfoToggle();   /* 0.2.18: frame data (was Debug > Fight information) */
     ImGui::SeparatorText("Dummy input recording");
+    ImGui::TextUnformatted("Record inputs as the dummy to have it play them back.");
     HelpMarker("Record temporarily gives you control of the dummy; press Escape to finish recording "
-               "or stop playback. Each slot holds up to 10 seconds. Directions replay as recorded; "
-               "positions are not reset. Recordings last for the current Sparring session; recording "
+               "or stop playback. Each slot holds up to 10 seconds. Directions replay relative to the "
+               "dummy's facing, so forward stays forward when the fighters switch sides; positions are "
+               "not reset. Recordings last for the current Sparring session; recording "
                "again replaces the selected slot. Guard, counter-action and counter-hit settings are in "
                "the game's own Sparring pause menu.");
     ImGui::SetNextItemWidth(ImGui::GetFontSize() * 4.0f);
@@ -1072,6 +1074,7 @@ void DrawTrainingSection()
     /* Stagger Escape (0.1.12). */
     ImGui::Spacing();
     ImGui::SeparatorText("Stagger Escape");
+    ImGui::TextUnformatted("Hold how quickly each fighter recovers from a critical stun.");
     HelpMarker("The critical-stun mash value: each input in a critical stun or guard break adds 3% (up to "
                "100%) and every idle frame takes 1% (down to 0%); it sets how fast the stun animation "
                "plays (0% = normal speed, 100% = double). Hold sets the value at the start of every frame, "

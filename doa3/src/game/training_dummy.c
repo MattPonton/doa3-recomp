@@ -13,6 +13,7 @@
 typedef struct RecordedInput {
     unsigned short buttons;
     short sticks[4];
+    unsigned char mirrored;   /* 0.2.19: the dummy's 0x4DA37C when recorded */
 } RecordedInput;
 typedef struct Recording {
     RecordedInput input[TRAINING_MAX_FRAMES];
@@ -317,6 +318,7 @@ void training_input_begin(void)
         /* Start and Back operate native menus/reset; never record them. */
         input.buttons=MEM16(0x73C8D0+s_port*0x2C)&0xFFCF;
         memcpy(input.sticks,(void *)XBOX_PTR(0x73C8EC+s_port*0x2C),sizeof(input.sticks));
+        input.mirrored=MEM8(0x4DA37C+s_dummy)==1;
         clip->input[clip->length++]=input;
         s_frame=clip->length;
     } else {
@@ -325,6 +327,17 @@ void training_input_begin(void)
             s_frame=0;
         }
         input=clip->input[s_frame++];
+        /* 0.2.19: the pad is screen-relative and the game turns left/right
+         * into back/forward by PlayerDisplayDirection (0x4DA37C[side], 1 =
+         * facing left; 0x1C570 swaps lever bits 0x40/0x80 with it). Recorded
+         * on one side and played on the other, mirror the clip's left/right
+         * (D-pad bits 4/8, both sticks' X) so forward stays forward. */
+        if ((MEM8(0x4DA37C+s_dummy)==1) != input.mirrored) {
+            unsigned short b=input.buttons;
+            input.buttons=(unsigned short)((b & ~0x000C) | ((b & 4) << 1) | ((b & 8) >> 1));
+            input.sticks[0]=input.sticks[0]==-32768 ? 32767 : (short)-input.sticks[0];
+            input.sticks[2]=input.sticks[2]==-32768 ? 32767 : (short)-input.sticks[2];
+        }
     }
     unsigned agg=0x73C8D0+s_virtual_port*0x2C;
     unsigned short buttons=input.buttons;

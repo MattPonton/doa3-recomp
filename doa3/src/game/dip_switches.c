@@ -47,6 +47,13 @@ static const struct { const char *key, *label, *help; } k_dip[DIP_COUNT] = {
       "The original game plays the round winner's pose after every round. On: rounds that do "
       "not end the match skip the winner's pose, as if Start had been pressed to skip it; the "
       "round that decides the match still plays it." },
+    { "LedgeThrowDamage", "Keep throw damage over a second ledge",
+      "In the original game a throw or hold that sends the opponent off a ledge adds its damage "
+      "to the fall's first impact. If the falling fighter crosses a second ledge before that "
+      "impact (Lorelei: Tier 1 to Tier 3, and Tier 3 to Tier 4), the game recomputes the carried "
+      "damage while the fighter is no longer being thrown and loses it, so only the fall damage "
+      "is dealt (5 + 25 instead of 63 + 25 for Bass's 4T 2T). On: the throw's damage is kept "
+      "and lands with the first impact. Every other fall is unchanged." },
 };
 
 static volatile LONG g_loaded;

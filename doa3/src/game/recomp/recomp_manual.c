@@ -2387,6 +2387,9 @@ static void perf_5s(double interval, const double ph[7], double present, double 
     s_next = GetTickCount() + 5000;
 }
 
+/* 0.2.19: dip LedgeThrowDamage, read by the hand edit in sub_000A92C0_gen. */
+int doa3_dip_ledge_throw_damage(void) { return dip_get(DIP_LEDGE_THROW_DAMAGE); }
+
 /* 0.2.16: DOA3_DAMAGE_TRACE=1 -- for the Lorelei cliff-throw damage report.
  * 0.2.18: one line per fighter whenever any of these change, each presented
  * fight frame (side record 0x59CF58 + side * 0x68):

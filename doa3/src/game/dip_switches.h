@@ -20,6 +20,7 @@ typedef enum {
     DIP_MENU_OFFSET,        /* 2D layer drawn without the extra pixel offset */
     DIP_REPLAY_FINAL_ONLY,  /* the KO replay only after the match's last round */
     DIP_WINNER_FINAL_ONLY,  /* the winner's pose only after the match's last round */
+    DIP_LEDGE_THROW_DAMAGE, /* a throw's damage survives a second ledge in the same fall */
     DIP_COUNT
 } dip_switch;
 

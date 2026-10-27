@@ -6,6 +6,7 @@
 #define RECOMP_GENERATED_CODE
 #include "recomp_funcs.h"
 #include <math.h>
+int doa3_dip_ledge_throw_damage(void);   /* recomp_manual.c, 0.2.19 */
 /* DOA3 0.1.20: TDATA storage-costume tables (recomp_manual.c). */
 extern uint32_t g_tdata_names, g_tdata_pairs, g_tdata_tmp, g_tdata_cap, g_tdata_max_files, g_tdata_pair_dwords;
 void doa3_tdata_alloc(void);
@@ -117640,6 +117641,15 @@ loc_000A92FD: ;
     if (CMP_EQ(LO8(eax), 0xB)) goto loc_000A930D; /* je: equal / zero */
 
 loc_000A9301: ;
+    /* 0.2.19 hand edit (dip LedgeThrowDamage): a second ledge crossed during
+     * the same fall (victim still in ledge-fall move 0x423E / 0x4241) keeps
+     * the throw damage carried from the first. The original stores 0 here
+     * because the victim is no longer THROWN / HELD. 3++ 1.48 patches this
+     * same store (code cave 0x2355E0) and keeps half of it. */
+    if (doa3_dip_ledge_throw_damage()) {
+        uint16_t mv_ = MEM16(edi * 0x68 + 0x59CF86);
+        if (mv_ == 0x423E || mv_ == 0x4241) goto loc_000A931C;
+    }
     MEM16(edi * 2 + 0x9B2858) = 0;
     goto loc_000A931C;
 

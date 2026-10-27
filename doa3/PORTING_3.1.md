@@ -4462,3 +4462,30 @@ ledge hit for fall types 1, 3 and 5, and type 4 applies it at the landing
 The trace is to show which of these the Tier 1->3 and 3->4 drops take.
 (3++ 1.48 patches the 0xA9301 store with a code cave at 0x2355E0 that keeps
 half the value for victim moves 0x423E / 0x4241; a different case.)
+
+## 0.2.19: ledge throw damage dip, recording mirrored by facing
+
+Lorelei trace (Bass 4T 2T on Hayate, Versus): the throw's 58 is carried into
+the fall by the ledge handler sub_000A92C0 (fall type 3, accumulated
+0x9B2858[side] = 58 while the victim is THROWN). Tier 0 -> 1/2: one ledge
+call, the first impact deals fall + 58 (30 + 58 = 88). Tier 1 -> 3 and
+3 -> 4: the victim, already in ledge-fall move 0x423E with state 9 (hurt),
+crosses a second ledge before the first impact; sub_000A92C0 runs again,
+the victim is no longer THROWN / HELD, and 0xA9301 stores 0 over the 58.
+The impact then deals only the fall damage (5), the landing 25 / 35.
+
+Dip "LedgeThrowDamage" (off by default for now; planned on and hidden for
+1.0.0): hand edit at loc_000A9301 in gen/recomp_0002.c skips the store when
+the victim's move (+0x2E) is 0x423E or 0x4241, the same condition 3++ 1.48
+uses for its code cave at 0x2355E0 (which keeps half the value instead).
+Read through doa3_dip_ledge_throw_damage() in recomp_manual.c. Re-apply the
+edit if recomp_0002.c is regenerated.
+
+Sparring recording: the pad is screen-relative and the game turns left /
+right into back / forward through PlayerDisplayDirection 0x4DA37C[side]
+(1 = mirrored; 0x1C570 and its siblings swap lever bits 0x40/0x80). Each
+recorded frame now keeps the dummy's 0x4DA37C; playback on the other side
+swaps D-pad left/right (bits 4/8) and negates both sticks' X.
+
+Sparring tab: one-line descriptions under "Dummy input recording" and
+"Stagger Escape" so their (?) markers sit on text instead of the dividers.
