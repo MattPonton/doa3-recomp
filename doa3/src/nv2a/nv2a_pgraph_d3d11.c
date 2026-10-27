@@ -2908,10 +2908,16 @@ static int nv_menu_panel_geometry(const OutputVertex *out, uint32_t n)
         out[1].x < (float)dw && out[2].y < (float)dh;
 }
 
+/* 1.0: host pixels per guest SURFACE pixel along x / y for the draw just
+ * fitted, for wide lines (SET_LINE_WIDTH is in surface pixels; the menus
+ * render 2x2 or 2x1 supersampled, their vertices in display pixels). */
+static float g_fit_surface_px[2] = { 1.0f, 1.0f };
+
 static int nv_fit_to_backbuffer(OutputVertex *out, uint32_t n, int screen_space)
 {
     unsigned gw = (g_pg.surface_clip_h >> 16) & 0xFFFF;
     unsigned gh = (g_pg.surface_clip_v >> 16) & 0xFFFF;
+    const unsigned surf_w = gw, surf_h = gh;
     unsigned bw = d3d8_GetBackbufferWidth();
     unsigned bh = d3d8_GetBackbufferHeight();
     float sx, sy;
@@ -2927,6 +2933,7 @@ static int nv_fit_to_backbuffer(OutputVertex *out, uint32_t n, int screen_space)
         if (doa3_guest_display_size(&dw, &dh)) { gw = dw; gh = dh; }
     }
 
+    g_fit_surface_px[0] = g_fit_surface_px[1] = 1.0f;
     if (!gw || !gh || !bw || !bh) return 0;
     if (screen_space && !g_pg.depth_test && !d3d8_OffscreenTargetActive() &&
         !(g_pg.tex[0].enabled && nv_samples_framebuffer(g_pg.tex[0].offset))) {
@@ -2942,9 +2949,19 @@ static int nv_fit_to_backbuffer(OutputVertex *out, uint32_t n, int screen_space)
     /* Projection already compensates for ultrawide; scaling it again would
      * squeeze the model. Only its panel centre moves into the HUD canvas. */
     float preview_shift = screen_space ? 0.0f : nv_menu_preview_shift(bw, gw);
-    if (!hud && preview_shift == 0.0f && gw == bw && gh == bh) return 0;
+    if (!hud && preview_shift == 0.0f && gw == bw && gh == bh) {
+        if (surf_w && surf_h) {
+            g_fit_surface_px[0] = (float)gw / (float)surf_w;
+            g_fit_surface_px[1] = (float)gh / (float)surf_h;
+        }
+        return 0;
+    }
     sx = hud_w / (float)gw;
     sy = (float)bh / (float)gh;
+    if (surf_w && surf_h) {
+        g_fit_surface_px[0] = sx * (float)gw / (float)surf_w;
+        g_fit_surface_px[1] = sy * (float)gh / (float)surf_h;
+    }
     for (i = 0; i < n; i++) {
         out[i].x = hud_x + preview_shift + out[i].x * sx;
         out[i].y *= sy;
@@ -4734,19 +4751,41 @@ static void submit_draw_inner(void)
          * HUD canvas by its full-screen window clip. */
         int clipped = nv_apply_window_clip(vignette ? 0 : hud);
         /* Wide lines. D3D11 rasterises every line one pixel wide; the guest
-         * asks for SET_LINE_WIDTH in surface pixels (character select's
-         * panel borders: 0x10 = 2 px of the 1440x960 supersampled surface,
-         * i.e. one display pixel). Scaled to the host target those are 2-3
-         * pixels, so draw each segment as a quad of that width. */
+         * asks for SET_LINE_WIDTH in surface pixels (6.3 fixed point; the
+         * menus' 0x10 / 0x20 = 2 / 4 px of the 1440x960 supersampled
+         * surface, i.e. 1 / 2 display pixels). Each segment is drawn as a
+         * quad of that width.
+         * 1.0 (line work): the width is scaled per axis by the draw's own
+         * surface-to-host scale (nv_fit_to_backbuffer). It used to be scaled
+         * by backbuffer width / surface width, so at 21:9 and 32:9 -- where
+         * the menus keep their 16:9 size in a centred canvas -- lines grew
+         * to 3 and 5 px, and even at 16:9 horizontal edges took the
+         * horizontal stretch (2.4 px instead of 2).
+         * The Xbox resolves the supersampled surface by averaging, so a line
+         * that straddles display rows shows as two partly covered rows
+         * (character select's name / style rule: ~50% white on two rows).
+         * Axis-aligned segments on plain colour draws reproduce that: one
+         * quad per host row or column, its alpha scaled by the coverage. */
         if ((g_pg.d3d_prim_type == D3DPT_LINELIST || g_pg.d3d_prim_type == D3DPT_LINESTRIP) &&
             g_pg.line_width && out_vert_count >= 2) {
-            unsigned gw = (g_pg.surface_clip_h >> 16) & 0xFFFF;
-            unsigned bw = d3d8_GetBackbufferWidth();
-            float t = (float)g_pg.line_width / 8.0f;
-            if (gw && bw && !d3d8_OffscreenTargetActive()) t *= (float)bw / (float)gw;
-            if (t > 1.25f) {
+            float lw = (float)g_pg.line_width / 8.0f;
+            float tx = lw * g_fit_surface_px[0], ty = lw * g_fit_surface_px[1];
+            uint32_t cm = g_pg.color_mask;
+            int all_rgb = (cm & NV097_SET_COLOR_MASK_RED_WRITE_ENABLE) &&
+                          (cm & NV097_SET_COLOR_MASK_GREEN_WRITE_ENABLE) &&
+                          (cm & NV097_SET_COLOR_MASK_BLUE_WRITE_ENABLE);
+            /* blend off, or SRC_ALPHA / ONE_MINUS_SRC_ALPHA */
+            int std_blend = g_pg.blend_enable && g_pg.blend_sfactor == 0x0302 &&
+                            g_pg.blend_dfactor == 0x0303;
+            int coverage = all_rgb && !g_pg.stencil_enable && !g_pg.depth_mask &&
+                           (!g_pg.blend_enable || std_blend) && !d3d8_OffscreenTargetActive();
+            {   static int s_env = -1;
+                if (s_env < 0) { const char *e = getenv("DOA3_LINE_COVERAGE"); s_env = !(e && *e == '0'); }
+                if (!s_env) coverage = 0; }
+            if (tx > 1.25f || ty > 1.25f || coverage) {
                 uint32_t nseg = (g_pg.d3d_prim_type == D3DPT_LINELIST) ? out_vert_count / 2 : out_vert_count - 1;
-                OutputVertex *q = (OutputVertex *)_alloca(nseg * 6 * sizeof(OutputVertex));
+                uint32_t span = (uint32_t)(tx > ty ? tx : ty) + 3;
+                OutputVertex *q = (OutputVertex *)_alloca(nseg * 6 * span * sizeof(OutputVertex));
                 uint32_t k, m = 0;
                 for (k = 0; k < nseg; k++) {
                     const OutputVertex *a = (g_pg.d3d_prim_type == D3DPT_LINELIST) ? &out[2 * k] : &out[k];
@@ -4754,22 +4793,61 @@ static void submit_draw_inner(void)
                     float dx = b->x - a->x, dy = b->y - a->y, len = sqrtf(dx * dx + dy * dy);
                     float ux, uy, nx, ny;
                     OutputVertex c[4];
+                    int horiz = fabsf(dy) < 1e-3f && fabsf(dx) >= 1e-3f;
+                    int vert  = fabsf(dx) < 1e-3f && fabsf(dy) >= 1e-3f;
+                    if (coverage && (horiz || vert)) {
+                        /* the thickness span, then one quad per host pixel */
+                        float t = horiz ? ty : tx, ctr = horiz ? a->y : a->x;
+                        float lo = ctr - t * 0.5f, hi = ctr + t * 0.5f;
+                        float s0 = horiz ? (a->x < b->x ? a->x : b->x) : (a->y < b->y ? a->y : b->y);
+                        float s1 = horiz ? (a->x < b->x ? b->x : a->x) : (a->y < b->y ? b->y : a->y);
+                        int r;
+                        for (r = (int)floorf(lo); (float)r < hi && m + 6 <= nseg * 6 * span; ++r) {
+                            float cov = (hi < (float)(r + 1) ? hi : (float)(r + 1)) -
+                                        (lo > (float)r ? lo : (float)r);
+                            uint32_t alpha, col;
+                            if (cov < 1.0f / 64.0f) continue;
+                            if (cov > 1.0f) cov = 1.0f;
+                            alpha = g_pg.blend_enable ? (a->color >> 24) : 255u;
+                            alpha = (uint32_t)((float)alpha * cov + 0.5f);
+                            col = (a->color & 0x00FFFFFFu) | (alpha << 24);
+                            c[0] = *a; c[1] = *a; c[2] = *b; c[3] = *b;
+                            if (horiz) {
+                                c[0].x = s0; c[0].y = (float)r;      c[1].x = s0; c[1].y = (float)(r + 1);
+                                c[2].x = s1; c[2].y = (float)r;      c[3].x = s1; c[3].y = (float)(r + 1);
+                            } else {
+                                c[0].y = s0; c[0].x = (float)r;      c[1].y = s0; c[1].x = (float)(r + 1);
+                                c[2].y = s1; c[2].x = (float)r;      c[3].y = s1; c[3].x = (float)(r + 1);
+                            }
+                            c[0].color = c[1].color = c[2].color = c[3].color = col;
+                            q[m++] = c[0]; q[m++] = c[2]; q[m++] = c[3];
+                            q[m++] = c[0]; q[m++] = c[3]; q[m++] = c[1];
+                        }
+                        continue;
+                    }
                     if (len < 1e-4f) { ux = 1.0f; uy = 0.0f; } else { ux = dx / len; uy = dy / len; }
                     /* No end caps: the guest already overlaps its segments at
                      * the corners (character select's top edge starts 3.5 px
                      * left of the side edge); capping them made the top and
                      * bottom edges overshoot the sides. */
-                    nx = -uy * t * 0.5f; ny = ux * t * 0.5f;
-                    ux = 0.0f; uy = 0.0f;
-                    c[0] = *a; c[0].x = a->x - ux + nx; c[0].y = a->y - uy + ny;
-                    c[1] = *a; c[1].x = a->x - ux - nx; c[1].y = a->y - uy - ny;
-                    c[2] = *b; c[2].x = b->x + ux + nx; c[2].y = b->y + uy + ny;
-                    c[3] = *b; c[3].x = b->x + ux - nx; c[3].y = b->y + uy - ny;
+                    nx = -uy * (tx > 1.0f ? tx : 1.0f) * 0.5f;
+                    ny = ux * (ty > 1.0f ? ty : 1.0f) * 0.5f;
+                    c[0] = *a; c[0].x = a->x + nx; c[0].y = a->y + ny;
+                    c[1] = *a; c[1].x = a->x - nx; c[1].y = a->y - ny;
+                    c[2] = *b; c[2].x = b->x + nx; c[2].y = b->y + ny;
+                    c[3] = *b; c[3].x = b->x - nx; c[3].y = b->y - ny;
                     q[m++] = c[0]; q[m++] = c[2]; q[m++] = c[3];
                     q[m++] = c[0]; q[m++] = c[3]; q[m++] = c[1];
                 }
+                if (coverage && !g_pg.blend_enable) {
+                    /* the coverage rides in alpha: blend it over what is there */
+                    dev->lpVtbl->SetRenderState(dev, D3DRS_ALPHABLENDENABLE, TRUE);
+                    dev->lpVtbl->SetRenderState(dev, D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+                    dev->lpVtbl->SetRenderState(dev, D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+                }
+                if (coverage) dev->lpVtbl->SetRenderState(dev, D3DRS_ALPHATESTENABLE, FALSE);
                 nv_mtrace_draw("inline-wideline", q, m);
-                dev->lpVtbl->DrawPrimitiveUP(dev, D3DPT_TRIANGLELIST, m / 3, q, sizeof(OutputVertex));
+                if (m) dev->lpVtbl->DrawPrimitiveUP(dev, D3DPT_TRIANGLELIST, m / 3, q, sizeof(OutputVertex));
                 if (clipped) { extern void d3d8_ResetScissorRect(void); d3d8_ResetScissorRect(); }
                 if (got == 0) dev->lpVtbl->SetVertexShader(dev, prev_vs);
                 g_pg.stats.draw_calls++;

@@ -4537,3 +4537,29 @@ identity, draws with a pixel shader that looks each 8-bit channel up in its
 own ramp (as the DAC does). Applies to everything the blit shows (movies
 too), not to screenshots (taken from the guest frame) or the Escape menu.
 [GAMMA] logs the first 16 ramp changes.
+
+## 0.2.23: menu line work (widths per axis, supersample coverage)
+
+Matt's comparisons (Cmp/Line Comparison: hardware 480p anamorphic 16:9 vs
+the port at 1x 16:9 / 21:9 / 32:9, ultrawide cropped to the 16:9 canvas).
+Sparring menu box edges, column x=100 / row y=112: hardware 2 rows (129,
+138) and ~2.4 columns; port 16:9 3 rows / 3 columns, 21:9 3 / 3, 32:9 5 / 5.
+Character select's name / style rule: hardware two ~50% rows (130, 136 over
+11; 192, 198 over ~135), port one solid 255 row (32:9: four rows).
+
+Cause: wide lines (SET_LINE_WIDTH 0x20 = 4 surface px on the 1440x960
+supersampled menu surface) were scaled by backbuffer width / surface width
+for both axes. At 21:9 / 32:9 the backbuffer is 1120 / 1706 wide at 1x while
+the menu keeps its 16:9 size in the centred canvas, so 4 px became 3.1 /
+4.7; at 16:9 horizontal edges took the horizontal stretch (2.37, not 2).
+
+nv_fit_to_backbuffer now records host pixels per surface pixel on each axis
+for the draw it fits (sx * display / surface, sy * display / surface), and
+the wide-line quads use x for vertical edges and y for horizontal ones.
+Hardware averages the supersampled surface down, so a line straddling
+display rows shows as partly covered rows; axis-aligned segments of plain
+colour line draws (all RGB written, no stencil, no depth write, blend off
+or SRC_ALPHA / ONE_MINUS_SRC_ALPHA, on the screen) are drawn as one quad
+per host row / column with alpha scaled by the covered fraction (blending
+SRC_ALPHA / INV_SRC_ALPHA, alpha test off for that draw; the next draw sets
+both again). DOA3_LINE_COVERAGE=0 turns the coverage part off.
