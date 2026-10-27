@@ -4676,3 +4676,27 @@ line under the name. On supersampled surfaces, axis-aligned textured
 UVs shifted (less than half a texel) so host pixel centres sample texel
 centres, as hardware's two surface rows per display row do.
 DOA3_SPRITE_TEXEL_SNAP=0 turns it off.
+
+## 0.2.31: stretched surfaces whole-pixel, translucent sprites' edges
+
+0.2.30 traces (Matt): the pause menu panels now go through rectcov, but a
+faint stripe stayed at their edges (column medians at y 162-182, 16:9:
+hardware 120 117 116 119 126 115 | port 115 115 116 108 118 105): the fill's
+partial last column and the frame line's partial first column were blended
+one over the other at partial alpha each, which never sums to a full
+covering. On the fight surface (720x480 stretched 1.186x to the host, the
+pause menu, command list and HUD) hardware does no averaging -- each
+surface pixel is wholly one primitive's and the TV / capture scaler
+resamples the picture afterwards. On such a stretched axis (pp >= 1) lines
+and rectangles now give each host pixel to the surface pixel under its
+centre (whole coverage), so neighbours meet without overlap or gap; only
+supersampled axes (pp < 1) keep the averaged edges. Also crisper life bar
+frame (hardware 120 / 113 grey, port was 88 / 71 at partial alpha).
+
+Singles character select COM. tab: a dark column between the panel's
+frame line and the tab -- the tab is a translucent textured sprite
+(80FFFFFF) with a hard left edge at 438.58 while the width-0x20 frame line
+ends in a partial column. Translucent textured axis-aligned sprites on the
+supersampled menus now get the same averaged edges, their partial edge
+pieces sampling the texture at the covered part's centre. (Tag character
+select shows the dark column on hardware too: its frame is width 0x10.)

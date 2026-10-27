@@ -4866,6 +4866,23 @@ static void submit_draw_inner(void)
                                 if (ov > 0.0f) covs[r] += ov;
                             }
                         }
+                        if (pp >= 0.999f) {
+                            /* 0.2.31: a surface stretched to the host (the
+                             * fight surface at 16:9: 1.186) is not averaged on
+                             * hardware -- each surface pixel is wholly one
+                             * primitive's, and the TV / scaler resamples the
+                             * finished picture. Fractional coverage here let a
+                             * line and a neighbouring fill share a host column
+                             * at partial alpha each (a darker stripe at panel
+                             * edges, a washed-out life bar frame). Give each
+                             * host pixel to the surface pixel under its centre. */
+                            float A_ = org + (float)k0 * pp, B_ = org + (float)(k1 + 1) * pp;
+                            int ra = (int)ceilf(A_ - 0.5f), rb = (int)ceilf(B_ - 0.5f);
+                            if (rb <= ra) rb = ra + 1;
+                            r0 = ra; nr = rb - ra;
+                            if (nr > 16) nr = 16;
+                            for (r = 0; r < nr; ++r) covs[r] = 1.0f;
+                        }
                         for (r = r0; r < r0 + nr && m + 6 <= nseg * 6 * span; ++r) {
                             float cov = covs[r - r0];
                             uint32_t alpha, col;
@@ -4989,7 +5006,13 @@ static void submit_draw_inner(void)
         /* 0.2.30: also translucent ones on the 720x480 fight surface when it
          * is stretched to the host (16:9: 1.186 host px per surface px): the
          * Sparring pause menu is drawn there, not on the menus' surface. */
-        if (out_vert_count == 4 && !g_pg.tex[0].enabled &&
+        /* 0.2.31: and translucent textured sprites on the supersampled
+         * menus (character select's COM. tab: its hard left edge left the
+         * frame line's partial column dark between them). */
+        if (out_vert_count == 4 &&
+            (!g_pg.tex[0].enabled ||
+             ((g_fit_surface_px[0] < 0.999f || g_fit_surface_px[1] < 0.999f) &&
+              g_pg.blend_enable && (out[0].color >> 24) < 0xFFu)) &&
             (g_pg.d3d_prim_type == D3DPT_TRIANGLESTRIP || g_pg.d3d_prim_type == D3DPT_TRIANGLEFAN) &&
             (g_fit_surface_px[0] < 0.999f || g_fit_surface_px[1] < 0.999f ||
              ((fabsf(g_fit_surface_px[0] - 1.0f) > 1e-3f || fabsf(g_fit_surface_px[1] - 1.0f) > 1e-3f) &&
@@ -5002,6 +5025,10 @@ static void submit_draw_inner(void)
             if (s_qenv < 0) { const char *e = getenv("DOA3_QUAD_COVERAGE"); s_qenv = !(e && *e == '0'); }
             for (i_ = 1; i_ < 4; ++i_) {
                 if (out[i_].color != out[0].color) rect = 0;
+                /* a textured one must map u along x and v along y only */
+                if (g_pg.tex[0].enabled &&
+                    ((fabsf(out[i_].x - out[0].x) < 1e-3f && fabsf(out[i_].u - out[0].u) > 1e-6f) ||
+                     (fabsf(out[i_].y - out[0].y) < 1e-3f && fabsf(out[i_].v - out[0].v) > 1e-6f))) rect = 0;
                 if (out[i_].x < x0) x0 = out[i_].x; if (out[i_].x > x1) x1 = out[i_].x;
                 if (out[i_].y < y0) y0 = out[i_].y; if (out[i_].y > y1) y1 = out[i_].y;
             }
@@ -5014,8 +5041,10 @@ static void submit_draw_inner(void)
                 (cm & NV097_SET_COLOR_MASK_BLUE_WRITE_ENABLE) &&
                 !g_pg.stencil_enable && !g_pg.depth_mask &&
                 (!g_pg.blend_enable || (g_pg.blend_sfactor == 0x0302 && g_pg.blend_dfactor == 0x0303))) {
-                /* per axis: covered host interval -> up to 3 runs (partial, full, partial) */
-                float run_a[2][3], run_b[2][3], run_c[2][3];
+                /* per axis: covered host interval -> up to 3 runs (partial, full, partial);
+                 * rmid: where a partial run samples the texture (centre of the
+                 * covered part), or -1 to interpolate across the run. */
+                float run_a[2][3], run_b[2][3], run_c[2][3], rmid[2][3];
                 int nrun[2], ax;
                 for (ax = 0; ax < 2; ++ax) {
                     float lo = ax ? y0 : x0, hi = ax ? y1 : x1;
@@ -5028,25 +5057,53 @@ static void submit_draw_inner(void)
                     ka = ceilf(e0 - 0.5f); kb = ceilf(e1 - 0.5f);
                     if (kb <= ka) kb = ka + 1.0f;
                     A = org + ka * pp; B = org + kb * pp;        /* covered host interval */
+                    if (pp >= 0.999f) {                          /* 0.2.31: stretched axis */
+                        int ra = (int)ceilf(A - 0.5f), rb = (int)ceilf(B - 0.5f);
+                        if (rb > ra) {
+                            run_a[ax][n] = (float)ra; run_b[ax][n] = (float)rb;
+                            run_c[ax][n] = 1.0f; rmid[ax][n++] = -1.0f;
+                        }
+                        nrun[ax] = n;
+                        continue;
+                    }
                     ca = (int)floorf(A); cb = (int)ceilf(B);     /* host pixels touched: ca..cb-1 */
                     fa = (float)(ca + 1) - A; if (fa > B - A) fa = B - A;
                     fb = B - (float)(cb - 1);
                     if (cb - ca == 1) {
-                        run_a[ax][n] = (float)ca; run_b[ax][n] = (float)cb; run_c[ax][n++] = B - A;
+                        run_a[ax][n] = (float)ca; run_b[ax][n] = (float)cb; run_c[ax][n] = B - A;
+                        rmid[ax][n++] = (A + B) * 0.5f;
                     } else {
-                        run_a[ax][n] = (float)ca; run_b[ax][n] = (float)(ca + 1); run_c[ax][n++] = fa;
-                        if (cb - ca > 2) { run_a[ax][n] = (float)(ca + 1); run_b[ax][n] = (float)(cb - 1); run_c[ax][n++] = 1.0f; }
-                        run_a[ax][n] = (float)(cb - 1); run_b[ax][n] = (float)cb; run_c[ax][n++] = fb;
+                        run_a[ax][n] = (float)ca; run_b[ax][n] = (float)(ca + 1); run_c[ax][n] = fa;
+                        rmid[ax][n++] = fa < 0.999f ? (A + (float)(ca + 1)) * 0.5f : -1.0f;
+                        if (cb - ca > 2) {
+                            run_a[ax][n] = (float)(ca + 1); run_b[ax][n] = (float)(cb - 1);
+                            run_c[ax][n] = 1.0f; rmid[ax][n++] = -1.0f;
+                        }
+                        run_a[ax][n] = (float)(cb - 1); run_b[ax][n] = (float)cb; run_c[ax][n] = fb;
+                        rmid[ax][n++] = fb < 0.999f ? ((float)(cb - 1) + B) * 0.5f : -1.0f;
                     }
                     nrun[ax] = n;
                 }
                 {
                     OutputVertex q[9 * 6];
                     uint32_t m = 0, base_a = g_pg.blend_enable ? (out[0].color >> 24) : 255u;
+                    /* texture mapping along each axis: t(pos) = t0 + (pos - p0) * dt */
+                    float u_l = 0, u_r = 0, v_t = 0, v_b = 0;
                     int ix, iy;
+                    for (i_ = 0; i_ < 4; ++i_) {
+                        if (fabsf(out[i_].x - x0) < 1e-3f) u_l = out[i_].u; else u_r = out[i_].u;
+                        if (fabsf(out[i_].y - y0) < 1e-3f) v_t = out[i_].v; else v_b = out[i_].v;
+                    }
+#define RC_U(px) (u_l + ((px) - x0) * (u_r - u_l) / (x1 - x0))
+#define RC_V(py) (v_t + ((py) - y0) * (v_b - v_t) / (y1 - y0))
                     for (iy = 0; iy < nrun[1]; ++iy)
                         for (ix = 0; ix < nrun[0]; ++ix) {
                             float cov = run_c[0][ix] * run_c[1][iy];
+                            float xa = run_a[0][ix], xb = run_b[0][ix], ya = run_a[1][iy], yb = run_b[1][iy];
+                            float ua = RC_U(rmid[0][ix] >= 0.0f ? rmid[0][ix] : xa);
+                            float ub = RC_U(rmid[0][ix] >= 0.0f ? rmid[0][ix] : xb);
+                            float va = RC_V(rmid[1][iy] >= 0.0f ? rmid[1][iy] : ya);
+                            float vb = RC_V(rmid[1][iy] >= 0.0f ? rmid[1][iy] : yb);
                             uint32_t a8, col;
                             OutputVertex c0 = out[0], c1, c2, c3;
                             if (cov < 1.0f / 64.0f) continue;
@@ -5054,13 +5111,15 @@ static void submit_draw_inner(void)
                             a8 = (uint32_t)((float)base_a * cov + 0.5f);
                             col = (out[0].color & 0x00FFFFFFu) | (a8 << 24);
                             c0.color = col; c1 = c0; c2 = c0; c3 = c0;
-                            c0.x = run_a[0][ix]; c0.y = run_a[1][iy];
-                            c1.x = run_b[0][ix]; c1.y = run_a[1][iy];
-                            c2.x = run_b[0][ix]; c2.y = run_b[1][iy];
-                            c3.x = run_a[0][ix]; c3.y = run_b[1][iy];
+                            c0.x = xa; c0.y = ya; c0.u = ua; c0.v = va;
+                            c1.x = xb; c1.y = ya; c1.u = ub; c1.v = va;
+                            c2.x = xb; c2.y = yb; c2.u = ub; c2.v = vb;
+                            c3.x = xa; c3.y = yb; c3.u = ua; c3.v = vb;
                             q[m++] = c0; q[m++] = c1; q[m++] = c2;
                             q[m++] = c0; q[m++] = c2; q[m++] = c3;
                         }
+#undef RC_U
+#undef RC_V
                     if (!g_pg.blend_enable) {
                         dev->lpVtbl->SetRenderState(dev, D3DRS_ALPHABLENDENABLE, TRUE);
                         dev->lpVtbl->SetRenderState(dev, D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
