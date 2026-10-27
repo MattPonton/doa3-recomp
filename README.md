@@ -33,10 +33,11 @@ performance for low-end PCs.
   on a match's final round)
 - Sparring: record and replay the dummy's inputs, give the dummy (or, in Tag
   Sparring, your tag partner) to a second controller, and hold the Stagger
-  Escape value
-- Screenshots (PNG) at render resolution, without the overlay
+  Escape value; hitbox, hurtbox, frame data and stage hazard displays
+- Photo Mode: free camera, hide either fighter or the HUD, and screenshots
+  (PNG) at render resolution, without the overlay
 - Check for updates at boot (General tab; announces a newer release, never
-  downloads anything) and an adjustable Escape-menu size
+  downloads anything) and an adjustable Escape-menu size (Video tab)
 
 ## Getting started
 

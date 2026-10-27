@@ -8,7 +8,7 @@
 
 void DrawCombatDebugMenu()
 {
-    if (!ImGui::CollapsingHeader("Combat diagnostics")) return;
+    ImGui::SeparatorText("Fight information");
     unsigned flags = combat_debug_flags();
     bool hit = (flags & COMBAT_HITBOXES) != 0;
     bool hurt = (flags & COMBAT_HURTBOXES) != 0;
@@ -35,12 +35,27 @@ void DrawCombatDebugMenu()
         (special ? COMBAT_SPECIAL_BOUNDARIES : 0) |
         (walls ? COMBAT_WALLS : 0) | (objects ? COMBAT_STAGE_OBJECTS : 0));
     ImGui::EndDisabled();
-    ImGui::TextWrapped("Red/pink solid spheres: hitboxes. Green/cyan wireframes: hurtboxes. Amber: an attack already registered contact. Volumes draw through characters and scenery.");
-    ImGui::TextWrapped("Frame data shows base startup (first active frame), active duration, and recovery alongside observed strike frames. The timeline uses blue for startup, red for active, yellow for recovery, and gray for missing samples. Cancels shorten the observation, not the base timing. Hit/block advantage is not yet measured.");
-    ImGui::TextWrapped("Hazards: blue ground shows slippery surfaces. Purple marks special boundaries used by ledges, breakable barriers, and other stage reactions; their behavior depends on the stage and floor level. Orange shows other boundaries and collidable objects, including ordinary walls. Boundary panels have a 3m display height. Object volumes use the game's collision dimensions.");
-    ImGui::TextWrapped("Hazards respect scene depth, so characters and foreground scenery hide them.");
+    ImGui::TextDisabled("Color legend (?)");
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+        ImGui::BeginTooltip();
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30.0f);
+        ImGui::TextUnformatted(
+            "Red/pink solid spheres: hitboxes. Green/cyan wireframes: hurtboxes. Amber: an attack already "
+            "registered contact. Volumes draw through characters and scenery.\n\n"
+            "Frame data shows base startup (first active frame), active duration, and recovery alongside "
+            "observed strike frames. The timeline uses blue for startup, red for active, yellow for recovery, "
+            "and gray for missing samples. Cancels shorten the observation, not the base timing. Hit/block "
+            "advantage is not yet measured.\n\n"
+            "Hazards: blue ground shows slippery surfaces. Purple marks special boundaries used by ledges, "
+            "breakable barriers, and other stage reactions; their behavior depends on the stage and floor "
+            "level. Orange shows other boundaries and collidable objects, including ordinary walls. Boundary "
+            "panels have a 3m display height; object volumes use the game's collision dimensions. Hazards "
+            "respect scene depth, so characters and foreground scenery hide them.\n\n"
+            "Session only. Unavailable during online play.");
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
+    }
     if (*combat_world_error()) ImGui::TextWrapped("%s", combat_world_error());
-    ImGui::TextDisabled("Session only. Unavailable during online play.");
 }
 
 namespace {

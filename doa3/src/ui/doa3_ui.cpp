@@ -88,6 +88,7 @@ void HelpMarker(const char *text)
 int   g_menu_scale = 100;
 int   g_menu_scale_built = 0;
 bool  g_menu_resize = false;
+bool  g_debug_tab = false;
 ImGuiStyle g_base_style;
 void ApplyMenuScale()
 {
@@ -430,12 +431,16 @@ void DrawVideoSection()
         video_set_window_mode(VIDEO_BORDERLESS);
         video_set_aspect(VIDEO_ASPECT_16_9);
         video_set_scale(3);
+        g_menu_scale = 100;
         SetStatus("Video settings reset to defaults");
         break;
-    case 2:
-        SetStatus(video_settings_save() ? "Saved doa3_settings.ini"
-                                        : "Could not write doa3_settings.ini");
+    case 2: {
+        int ok = video_settings_save();
+        char v[16]; _snprintf_s(v, sizeof v, _TRUNCATE, "%d", g_menu_scale);
+        ok = WritePrivateProfileStringA("General", "MenuScale", v, doa3_settings_ini_path()) && ok;
+        SetStatus(ok ? "Saved doa3_settings.ini" : "Could not write doa3_settings.ini");
         break;
+    }
     }
 
     ImGui::Separator();
@@ -454,6 +459,14 @@ void DrawVideoSection()
     if (ImGui::Combo("Internal resolution", &sc, kScale, IM_ARRAYSIZE(kScale)) &&
         sc + 1 != video_get_scale())
         video_set_scale(sc + 1);
+
+    /* 0.2.17: the Escape menu's own size (was in General in 0.2.16). */
+    ImGui::Spacing();
+    ImGui::SeparatorText("Menu");
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0f);
+    ImGui::SliderInt("Menu size", &g_menu_scale, 100, 250, "%d%%", ImGuiSliderFlags_AlwaysClamp);
+    if (ImGui::IsItemDeactivatedAfterEdit()) g_menu_scale = (g_menu_scale + 12) / 25 * 25;   /* 25 % steps */
+    ImGui::TextDisabled("Size of this menu and its text, in 25%% steps; applied when you let go of the slider.");
 }
 
 /* Audio output settings. */
@@ -521,15 +534,12 @@ void DrawGeneralSection()
     case 1:
         doa3_log_set_enabled(0);
         update_check_set_enabled(1);
-        g_menu_scale = 100;
         dip_reset();
         SetStatus("General settings reset to defaults");
         break;
     case 2: {
         int ok = doa3_log_save();
         ok = update_check_save() && ok;
-        {   char v[16]; _snprintf_s(v, sizeof v, _TRUNCATE, "%d", g_menu_scale);
-            ok = WritePrivateProfileStringA("General", "MenuScale", v, doa3_settings_ini_path()) && ok; }
         ok = dip_save() && ok;
         SetStatus(ok ? "Saved doa3_settings.ini"
                      : "Could not write doa3_settings.ini");
@@ -566,10 +576,6 @@ void DrawGeneralSection()
     if (ImGui::Checkbox("Write log files", &on))
         doa3_log_set_enabled(on ? 1 : 0);
 
-    ImGui::SetNextItemWidth(160.0f * g_menu_scale / 100.0f);
-    ImGui::SliderInt("Menu size", &g_menu_scale, 100, 250, "%d%%", ImGuiSliderFlags_AlwaysClamp);
-    if (ImGui::IsItemDeactivatedAfterEdit()) g_menu_scale = (g_menu_scale + 12) / 25 * 25;   /* 25 % steps */
-    HelpMarker("Size of this menu and its text. Applied when you let go of the slider; Save keeps it.");
 
     /* Dip switches: quality-of-life toggles for the game, all off by default
      * (off = the original game's behaviour). */
@@ -811,15 +817,7 @@ void DrawDebugSection()
         doa3_auto_capture_set(0);
         combat_debug_set_flags(0);
         ResetPerformanceOverlay();
-        free_camera_set_enabled(0);
-        free_camera_set_speed(10);
-        free_camera_reset_fov();
         d3d8_debug_views_reset();
-        debug_hide_ui_set(0);
-        debug_hide_player_set(0, 0);
-        debug_hide_player_set(1, 0);
-        debug_screenshot_key_set(VK_F12);
-        g_screenshot_listening = false;
         SetStatus("Debug settings reset to defaults");
         break;
     case 2:
@@ -828,7 +826,6 @@ void DrawDebugSection()
         break;
     }
     ImGui::Separator();
-    DrawCombatDebugMenu();
     DrawPerformanceDebugMenu();
     if (ImGui::CollapsingHeader("Vision modes")) {
         int view = d3d8_debug_view_get();
@@ -899,7 +896,31 @@ void DrawDebugSection()
                    "launches). Take two a second apart while a logic bug is showing and two once it is gone, "
                    "for comparison.");
     }
-    if (ImGui::CollapsingHeader("Camera controls")) {
+}
+
+/* 0.2.17: Photo Mode tab (from Debug): free camera, hiding the fighters and
+ * the HUD, and screenshots. */
+void DrawPhotoModeSection()
+{
+    switch (ResetSaveRow()) {
+    case 1:
+        free_camera_set_enabled(0);
+        free_camera_set_speed(10);
+        free_camera_reset_fov();
+        debug_hide_ui_set(0);
+        debug_hide_player_set(0, 0);
+        debug_hide_player_set(1, 0);
+        debug_screenshot_key_set(VK_F12);
+        g_screenshot_listening = false;
+        SetStatus("Photo Mode settings reset to defaults");
+        break;
+    case 2:
+        SetStatus(debug_settings_save() && debug_screenshot_key_save() ? "Saved doa3_settings.ini"
+                                                                       : "Could not write doa3_settings.ini");
+        break;
+    }
+    ImGui::SeparatorText("Free camera");
+    {
         bool camera = free_camera_enabled() != 0;
         if (ImGui::Checkbox("Free camera", &camera)) {
             if (!free_camera_set_enabled(camera ? 1 : 0))
@@ -915,7 +936,8 @@ void DrawDebugSection()
                    "controls are blocked while flying; the fight keeps running. Camera mode is temporary "
                    "and unavailable during online play.");
     }
-    if (ImGui::CollapsingHeader("Screenshots and UI")) {
+    ImGui::SeparatorText("Hide characters and HUD");
+    {
         ImGui::BeginDisabled(netplay_active() != 0);
         for (int side = 0; side < 2; ++side) {
             bool hide = debug_hide_player_get(side) != 0;
@@ -928,6 +950,7 @@ void DrawDebugSection()
         if (ImGui::Checkbox("Hide UI", &hidden)) debug_hide_ui_set(hidden);
         HelpMarker("Hides game screen overlays, including HUD and menus. Some fades may also disappear. "
                    "Escape always opens these settings so you can restore the UI.");
+        ImGui::SeparatorText("Screenshots");
         PadBinding key = { PADSRC_KEY, debug_screenshot_key_get() };
         char name[80];
         pad_binding_label(key, name, sizeof(name));
@@ -945,8 +968,6 @@ void DrawDebugSection()
         ImGui::TextWrapped("%s", d3d8_screenshot_status());
         HelpMarker("Captures the game at its render resolution without this settings menu. Use a key that is "
                    "not assigned to fighter or camera controls. Hotkey changes save automatically.");
-    } else {
-        g_screenshot_listening = false;
     }
 }
 
@@ -963,8 +984,10 @@ void DrawTrainingSection()
     static bool loop=false;
     TrainingStatus status;
     training_status(&status);
+    DrawCombatDebugMenu();   /* 0.2.17: Fight information (from Debug); any offline fight */
     if (!training_available()) {
-        ImGui::TextDisabled("Available only in offline Sparring.");
+        ImGui::SeparatorText("Sparring");
+        ImGui::TextDisabled("Recording, the second controller and Stagger Escape are available only in offline Sparring.");
         return;
     }
     ImGui::SeparatorText("Dummy input recording");
@@ -1120,14 +1143,18 @@ void DrawMenu()
                 DrawAudioSection();
                 ImGui::EndTabItem();
             }
-            ImGui::BeginDisabled(!training_available());
+            if (ImGui::BeginTabItem("Photo Mode")) {
+                debug_visible = true;    /* the screenshot key listener lives here now */
+                DrawPhotoModeSection();
+                ImGui::EndTabItem();
+            }
             if (ImGui::BeginTabItem("Sparring")) {
                 DrawTrainingSection();
                 ImGui::EndTabItem();
             }
-            ImGui::EndDisabled();
-            if (ImGui::BeginTabItem("Debug")) {
-                debug_visible = true;
+            /* 0.2.17: Debug is hidden unless DOA3_DEBUG=1 is set, or toggled
+             * for this session with Ctrl+Shift+D while this menu is open. */
+            if (g_debug_tab && ImGui::BeginTabItem("Debug")) {
                 DrawDebugSection();
                 ImGui::EndTabItem();
             }
@@ -1167,6 +1194,8 @@ extern "C" int doa3_ui_init(void)
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
     ImGui::StyleColorsDark();
     g_base_style = ImGui::GetStyle();
+    {   char v[8];
+        g_debug_tab = GetEnvironmentVariableA("DOA3_DEBUG", v, sizeof v) > 0 && v[0] == '1'; }
     g_menu_scale = (int)GetPrivateProfileIntA("General", "MenuScale", 100, doa3_settings_ini_path());
     if (g_menu_scale < 100 || g_menu_scale > 250) g_menu_scale = 100;
 
@@ -1231,6 +1260,12 @@ extern "C" int doa3_ui_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         return 1;
     }
 
+    if (msg == WM_KEYDOWN && wp == 'D' && g_visible && !(lp & (1 << 30)) &&
+        (GetAsyncKeyState(VK_CONTROL) & 0x8000) && (GetAsyncKeyState(VK_SHIFT) & 0x8000)) {
+        g_debug_tab = !g_debug_tab;
+        SetStatus(g_debug_tab ? "Debug tab shown for this session" : "Debug tab hidden");
+        return 1;
+    }
     if ((msg == WM_KEYDOWN && wp != VK_SNAPSHOT && !(lp & (1 << 30))) ||
         (msg == WM_KEYUP && wp == VK_SNAPSHOT)) {
         if (g_visible && g_screenshot_listening) {

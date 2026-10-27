@@ -4416,3 +4416,19 @@ only the small cliff hit is taken. First a trace:
 `DOA3_DAMAGE_TRACE=1` logs `[DAMAGE]` whenever a fighter's health, move
 or move category changes in a fight (side record +0x20 / +0x2E / +0x33),
 for a normal throw and the cliff case to compare.
+
+## 0.2.17: Escape menu tabs
+
+- "Menu size" moved from General to Video, under its own "Menu" divider with
+  a one-line description. Video's Reset/Save now covers it ([General]
+  MenuScale= is unchanged, so 0.2.16 settings carry over).
+- New "Photo Mode" tab, left of Sparring: free camera (speed, reset), Hide
+  Player 1 / Player 2 / UI, and the screenshot key with "Take screenshot".
+  All moved out of Debug; Photo Mode has its own Reset/Save.
+- The fight information display (hitboxes, hurtboxes, frame data, stage
+  hazards; formerly Debug > "Combat diagnostics") is at the top of the
+  Sparring tab, its explanation in a "Color legend (?)" tooltip. The
+  Sparring tab is now always selectable; recording, the second controller
+  and Stagger Escape still show only in offline Sparring.
+- Debug tab hidden unless `DOA3_DEBUG=1` is set at launch, or toggled for
+  the session with Ctrl+Shift+D while the Escape menu is open.
