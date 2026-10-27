@@ -4740,3 +4740,9 @@ header size 0x800) is decoded and set as the window's class / WM_SETICON
 icons (taskbar, title bar, Alt+Tab). The file icon in Explorer stays the
 placeholder (an exe's own icon resource cannot be changed while it runs).
 The old icon is still in earlier commits' history.
+
+## 1.0.0
+
+Release. Version 1.0.0 (was 0.2.34); CHANGELOG.md has the 1.0.0 summary of
+everything since 0.0.128. The update check compares the release tag (v1.0.0)
+with major.minor.update.

@@ -1,5 +1,48 @@
 # DOA3 3.1 changelog
 
+## 1.0.0 — 2026-10-27
+
+First release of the Dead or Alive 3 (JAPAN, 3.1) recompilation. Since 0.0.128:
+
+**Game**
+- Dip Switches (General tab), all off by default so the game plays as on
+  hardware: left stick in menus; Random as the default stage option (Tag and
+  Team Battle included); Random picking alternate and storage costumes;
+  shared costumes with a different option; corrected menu pixel offset; the
+  KO replay and the winner pose only after a match's final round; and a fix
+  for Lorelei's double-hit ledge falls (a throw's damage lost on the fall's
+  first hit, or the landing damage dealt twice).
+- Storage costumes (TDATA): up to 99 per character, with x / y / l options;
+  the costume list scrolls past nine.
+- Options > Video > Regulator (gamma, brightness, contrast) now changes the
+  picture.
+
+**Sparring**
+- Record and play back the dummy's inputs (three slots, loop); playback
+  follows the dummy's facing, so forward stays forward after a side switch.
+- A second controller can take the dummy, or in Tag Sparring your partner.
+- Hold the Stagger Escape value for either fighter.
+- Show Move Info (frame data).
+
+**Graphics**
+- Menu and HUD line work matched to hardware at 16:9, 21:9 and 32:9: line
+  widths and positions, box corners, panel edges, the supersampled menus'
+  half-pixel offset and averaging, and atlas sprites no longer bleeding into
+  their neighbors (character names, Options buttons).
+
+**Escape menu and app**
+- Tabs reorganized: General first (check for updates at boot, logging, dip
+  switches); Video (menu size, performance overlay); Photo Mode (free camera,
+  hide either fighter or the HUD, screenshots); Sparring; Debug hidden unless
+  DOA3_DEBUG=1 or Ctrl+Shift+D.
+- Check for updates at boot (announces a newer GitHub release; never
+  downloads anything).
+- Keyboard layout on Reset to defaults when the input device is Keyboard.
+- First-run setup starts the game in a fresh process after copying the disc
+  image (it could close instead of starting).
+- The executable carries a plain placeholder icon; the window uses the
+  title image from the user's own disc.
+
 ## 0.0.128 — 2026-10-13
 
 - Extend the centered ultrawide character-select portrait and backing-panel
