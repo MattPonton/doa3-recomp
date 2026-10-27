@@ -4918,6 +4918,104 @@ static void submit_draw_inner(void)
                 return;
             }
         }
+        /* 0.2.29: plain-colour rectangles on the supersampled menus get the
+         * same surface-grid edges as the lines above. The Sparring pause
+         * menu's grey option panels are a translucent quad (325.1..614.5 at
+         * 16:9) framed by width-0x20 lines; the lines' partial edge columns
+         * met the quad's hard edge one column apart, leaving a one-pixel
+         * stripe at the panel's right (16:9) or left (21:9) edge. The quad's
+         * edges now cover the host pixels by the share of surface pixels
+         * inside them (hardware's 2x2 / 2x1 average): up to 3 x 3 pieces,
+         * each with its alpha scaled. Only when the surface is finer than the
+         * host on an axis (1x menus), the quad is untextured, axis-aligned
+         * and one colour, and the state allows the alpha to carry coverage.
+         * DOA3_QUAD_COVERAGE=0 turns it off. */
+        if (out_vert_count == 4 && !g_pg.tex[0].enabled &&
+            (g_pg.d3d_prim_type == D3DPT_TRIANGLESTRIP || g_pg.d3d_prim_type == D3DPT_TRIANGLEFAN) &&
+            (g_fit_surface_px[0] < 0.999f || g_fit_surface_px[1] < 0.999f) &&
+            !d3d8_OffscreenTargetActive()) {
+            static int s_qenv = -1;
+            uint32_t cm = g_pg.color_mask;
+            float x0 = out[0].x, x1 = out[0].x, y0 = out[0].y, y1 = out[0].y;
+            int rect = 1, i_;
+            if (s_qenv < 0) { const char *e = getenv("DOA3_QUAD_COVERAGE"); s_qenv = !(e && *e == '0'); }
+            for (i_ = 1; i_ < 4; ++i_) {
+                if (out[i_].color != out[0].color) rect = 0;
+                if (out[i_].x < x0) x0 = out[i_].x; if (out[i_].x > x1) x1 = out[i_].x;
+                if (out[i_].y < y0) y0 = out[i_].y; if (out[i_].y > y1) y1 = out[i_].y;
+            }
+            for (i_ = 0; i_ < 4 && rect; ++i_)
+                if ((fabsf(out[i_].x - x0) > 1e-3f && fabsf(out[i_].x - x1) > 1e-3f) ||
+                    (fabsf(out[i_].y - y0) > 1e-3f && fabsf(out[i_].y - y1) > 1e-3f)) rect = 0;
+            if (rect && s_qenv && x1 - x0 > 1e-3f && y1 - y0 > 1e-3f &&
+                (cm & NV097_SET_COLOR_MASK_RED_WRITE_ENABLE) &&
+                (cm & NV097_SET_COLOR_MASK_GREEN_WRITE_ENABLE) &&
+                (cm & NV097_SET_COLOR_MASK_BLUE_WRITE_ENABLE) &&
+                !g_pg.stencil_enable && !g_pg.depth_mask &&
+                (!g_pg.blend_enable || (g_pg.blend_sfactor == 0x0302 && g_pg.blend_dfactor == 0x0303))) {
+                /* per axis: covered host interval -> up to 3 runs (partial, full, partial) */
+                float run_a[2][3], run_b[2][3], run_c[2][3];
+                int nrun[2], ax;
+                for (ax = 0; ax < 2; ++ax) {
+                    float lo = ax ? y0 : x0, hi = ax ? y1 : x1;
+                    float pp = g_fit_surface_px[ax], org = g_fit_origin[ax];
+                    float e0, e1, ka, kb, A, B, fa, fb;
+                    int ca, cb, n = 0;
+                    if (pp < 1e-3f) pp = 1e-3f;
+                    e0 = floorf((lo - org) / pp * 16.0f) / 16.0f;
+                    e1 = floorf((hi - org) / pp * 16.0f) / 16.0f;
+                    ka = ceilf(e0 - 0.5f); kb = ceilf(e1 - 0.5f);
+                    if (kb <= ka) kb = ka + 1.0f;
+                    A = org + ka * pp; B = org + kb * pp;        /* covered host interval */
+                    ca = (int)floorf(A); cb = (int)ceilf(B);     /* host pixels touched: ca..cb-1 */
+                    fa = (float)(ca + 1) - A; if (fa > B - A) fa = B - A;
+                    fb = B - (float)(cb - 1);
+                    if (cb - ca == 1) {
+                        run_a[ax][n] = (float)ca; run_b[ax][n] = (float)cb; run_c[ax][n++] = B - A;
+                    } else {
+                        run_a[ax][n] = (float)ca; run_b[ax][n] = (float)(ca + 1); run_c[ax][n++] = fa;
+                        if (cb - ca > 2) { run_a[ax][n] = (float)(ca + 1); run_b[ax][n] = (float)(cb - 1); run_c[ax][n++] = 1.0f; }
+                        run_a[ax][n] = (float)(cb - 1); run_b[ax][n] = (float)cb; run_c[ax][n++] = fb;
+                    }
+                    nrun[ax] = n;
+                }
+                {
+                    OutputVertex q[9 * 6];
+                    uint32_t m = 0, base_a = g_pg.blend_enable ? (out[0].color >> 24) : 255u;
+                    int ix, iy;
+                    for (iy = 0; iy < nrun[1]; ++iy)
+                        for (ix = 0; ix < nrun[0]; ++ix) {
+                            float cov = run_c[0][ix] * run_c[1][iy];
+                            uint32_t a8, col;
+                            OutputVertex c0 = out[0], c1, c2, c3;
+                            if (cov < 1.0f / 64.0f) continue;
+                            if (cov > 1.0f) cov = 1.0f;
+                            a8 = (uint32_t)((float)base_a * cov + 0.5f);
+                            col = (out[0].color & 0x00FFFFFFu) | (a8 << 24);
+                            c0.color = col; c1 = c0; c2 = c0; c3 = c0;
+                            c0.x = run_a[0][ix]; c0.y = run_a[1][iy];
+                            c1.x = run_b[0][ix]; c1.y = run_a[1][iy];
+                            c2.x = run_b[0][ix]; c2.y = run_b[1][iy];
+                            c3.x = run_a[0][ix]; c3.y = run_b[1][iy];
+                            q[m++] = c0; q[m++] = c1; q[m++] = c2;
+                            q[m++] = c0; q[m++] = c2; q[m++] = c3;
+                        }
+                    if (!g_pg.blend_enable) {
+                        dev->lpVtbl->SetRenderState(dev, D3DRS_ALPHABLENDENABLE, TRUE);
+                        dev->lpVtbl->SetRenderState(dev, D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+                        dev->lpVtbl->SetRenderState(dev, D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+                    }
+                    dev->lpVtbl->SetRenderState(dev, D3DRS_ALPHATESTENABLE, FALSE);
+                    nv_mtrace_draw("inline-rectcov", q, m);
+                    if (m) dev->lpVtbl->DrawPrimitiveUP(dev, D3DPT_TRIANGLELIST, m / 3, q, sizeof(OutputVertex));
+                    if (clipped) { extern void d3d8_ResetScissorRect(void); d3d8_ResetScissorRect(); }
+                    if (got == 0) dev->lpVtbl->SetVertexShader(dev, prev_vs);
+                    g_pg.stats.draw_calls++;
+                    g_pg.stats.vertices_submitted += num_verts;
+                    return;
+                }
+            }
+        }
         nv_mtrace_draw("inline", out, out_vert_count);
         {   extern FILE *g_doa3_mtrace;
             if (g_doa3_mtrace) {

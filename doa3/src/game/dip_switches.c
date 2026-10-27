@@ -50,7 +50,7 @@ static const struct { const char *key, *label, *help; } k_dip[DIP_COUNT] = {
     { "LedgeThrowDamage", "Fix ledge fall damage over double-hit ledges in Lorelei",
       "In the original game on the Lorelei stage a fighter could be knocked off a ledge where "
       "they take a hit from the environment while falling and then take the ground hit when "
-      "landing. Certain attacks would cause their damage to be lost when being knocked into the "
+      "landing. Certain throws or holds would cause their damage to be lost when being knocked into the "
       "fall's first hit. On: the throw's damage is added to the 5 damage of the fall's first "
       "hit." },
 };
@@ -59,7 +59,7 @@ static const struct { const char *key, *label, *help; } k_dip[DIP_COUNT] = {
  * menu (dip_hidden returning 1 for it). 0.2.25: listed again, on by default;
  * 0.2.28: kept listed for 1.0.0 (Matt: players may want the original). */
 int dip_hidden(dip_switch d) { (void)d; return 0; }
-static int dip_default(int i) { return i == DIP_LEDGE_THROW_DAMAGE; }
+static int dip_default(int i) { (void)i; return 0; }   /* 0.2.29: all off, ledge fix included */
 
 static volatile LONG g_loaded;
 static volatile LONG g_on[DIP_COUNT];

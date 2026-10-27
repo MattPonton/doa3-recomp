@@ -4641,3 +4641,19 @@ Matt verified the 46T and 4T 2T ledge falls and the box corners. The dip
 stays listed for 1.0.0 (on by default) so the original behavior can still be
 played; label "Fix ledge fall damage over double-hit ledges in Lorelei",
 shorter tooltip in Matt's wording.
+
+## 0.2.29: menu panel edges; ledge dip off by default
+
+Ledge dip: off by default like every other switch (Matt), tooltip says
+"certain throws or holds".
+
+Sparring pause menu traces (16:9 / 21:9 / 32:9): each grey option panel is
+an untextured translucent quad (80BABABA, 325.1..614.5 x 130.1..154.1 at
+16:9) inside width-0x20 frame lines. The lines' coverage gave partial edge
+columns (614-616) while the quad ended at a hard edge (last column 613), so
+column 614 had only the line's share -- a one-pixel stripe at the panel's
+right edge at 16:9, left at 21:9 / 32:9 (different canvas phase). One-colour
+axis-aligned untextured 4-vertex strips / fans on a supersampled surface
+(surface finer than the host on an axis) now get the same surface-grid
+edges: up to 3 x 3 pieces with alpha scaled by covered share; same state
+conditions as the line coverage. DOA3_QUAD_COVERAGE=0 turns it off.

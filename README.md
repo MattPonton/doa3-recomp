@@ -32,7 +32,7 @@ performance for low-end PCs.
   costumes, shared costumes, menu pixel offset, replay and winner pose only
   on a match's final round)
 - Fix for the original game's damage on two-ledge falls at Lorelei (a throw's
-  damage lost, or the landing damage dealt twice); on by default
+  damage lost, or the landing damage dealt twice); a dip switch, off by default
 - Sparring: record and replay the dummy's inputs, give the dummy (or, in Tag
   Sparring, your tag partner) to a second controller, and hold the Stagger
   Escape value, and a move info (frame data) display
