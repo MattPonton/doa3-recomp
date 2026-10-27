@@ -4700,3 +4700,21 @@ ends in a partial column. Translucent textured axis-aligned sprites on the
 supersampled menus now get the same averaged edges, their partial edge
 pieces sampling the texture at the covered part's centre. (Tag character
 select shows the dark column on hardware too: its frame is width 0x10.)
+
+## 0.2.32: sprite samples kept inside their atlas piece; ledge moves
+
+Matt verified the pause menu, life bar and COM. tab. Two left:
+Options > Game Settings buttons had a 1 px blue bar on their right side at
+16:9 and 32:9, and Button Config frames a bright sliver on the right. Trace
+01468: the button end cap is a 5-texel piece (u 0.234..0.3125 of a 64-wide
+atlas, 0x030A4800) drawn over 558.70..564.63; host column 564's centre
+samples texel 19.89, 39% of the neighbouring atlas column. Hardware draws
+it at 720 wide (no supersampling on the Options menus) and does not reach
+that far. Axis-aligned 2D sprites (u, v within 0..1) now have their mapping
+pulled in so the first / last covered host pixel samples no further out
+than the piece's edge texel centres (DOA3_SPRITE_CLAMP=0 turns it off).
+
+Ledge dip: Matt's move table -- 0x425B / 0x425C HC_CASTLE_FR_UP / _DW (roof
+hit fall, 5 damage), 0x425D / 0x425E HC_CASTLE2_FR_UP / _DW (the stage
+transition fall). The 46T fix now covers 0x425D / 0x425E (0.2.27 guessed
+0x425F for the mirror).

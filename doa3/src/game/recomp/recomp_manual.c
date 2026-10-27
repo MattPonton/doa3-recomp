@@ -2419,7 +2419,10 @@ void sub_001DC360(void)
  * instant-throw fall: 0x425B, then 0x4265), so it dealt 25 + 25 (35 + 35). */
 int doa3_ledge_impact_move(uint32_t move)
 {
-    return dip_get(DIP_LEDGE_THROW_DAMAGE) && (move == 0x425E || move == 0x425F);
+    /* Matt's move table: 0x425B / 0x425C HC_CASTLE_FR_UP / _DW (roof hit
+     * fall, 5 damage), 0x425D / 0x425E HC_CASTLE2_FR_UP / _DW (the stage
+     * transition fall, face up / face down). 0.2.27 guessed 0x425F. */
+    return dip_get(DIP_LEDGE_THROW_DAMAGE) && (move == 0x425D || move == 0x425E);
 }
 
 static uint8_t s_ledge_carry[2];

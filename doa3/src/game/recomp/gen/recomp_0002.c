@@ -112287,7 +112287,7 @@ loc_000A68FF: ;
 loc_000A6913: ;
     if (CMP_EQ(LO16(ecx), 0x425C)) goto loc_000A691D; /* je: equal / zero */
     /* 0.2.27 hand edit (dip LedgeThrowDamage): the bounce-off fall (46T)
-     * hits the ledge in 0x425E / 0x425F rather than 0x425B / 0x425C and
+     * hits the ledge in 0x425D / 0x425E rather than 0x425B / 0x425C and
      * took the landing damage on both impacts; give its ledge impact the
      * same 5 (hardware: 55 + 25 + 25). */
     if (doa3_ledge_impact_move(LO16(ecx))) goto loc_000A691D;

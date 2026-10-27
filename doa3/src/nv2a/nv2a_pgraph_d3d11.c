@@ -4991,6 +4991,68 @@ static void submit_draw_inner(void)
                 }
             }
         }
+        /* 0.2.32: keep a 2D sprite's samples inside its own texels. Menu
+         * sprites are pieces of atlases (Options buttons: 5-texel end caps
+         * of a 64-wide atlas drawn over 5.93 host pixels at 16:9); the last
+         * covered host pixel's centre fell 0.4 texel past the piece and the
+         * bilinear filter took in the neighbouring atlas column -- a one
+         * pixel blue bar down Game Settings' buttons, a bright sliver on the
+         * Button Config frames. Hardware draws the piece at 720 wide, where
+         * it does not reach that far. Per axis, if the first / last covered
+         * host pixel samples outside [first texel centre, last texel centre]
+         * of the piece, the mapping is pulled in to those centres.
+         * DOA3_SPRITE_CLAMP=0 turns it off. */
+        if (out_vert_count == 4 && g_pg.tex[0].enabled &&
+            (g_pg.d3d_prim_type == D3DPT_TRIANGLESTRIP || g_pg.d3d_prim_type == D3DPT_TRIANGLEFAN) &&
+            !d3d8_OffscreenTargetActive()) {
+            static int s_cenv = -1;
+            float x0 = out[0].x, x1 = out[0].x, y0 = out[0].y, y1 = out[0].y;
+            int i_, rect = 1;
+            if (s_cenv < 0) { const char *e = getenv("DOA3_SPRITE_CLAMP"); s_cenv = !(e && *e == '0'); }
+            for (i_ = 1; i_ < 4; ++i_) {
+                if (out[i_].x < x0) x0 = out[i_].x; if (out[i_].x > x1) x1 = out[i_].x;
+                if (out[i_].y < y0) y0 = out[i_].y; if (out[i_].y > y1) y1 = out[i_].y;
+            }
+            for (i_ = 0; i_ < 4 && rect; ++i_) {
+                if ((fabsf(out[i_].x - x0) > 1e-3f && fabsf(out[i_].x - x1) > 1e-3f) ||
+                    (fabsf(out[i_].y - y0) > 1e-3f && fabsf(out[i_].y - y1) > 1e-3f)) rect = 0;
+                if (fabsf(out[i_].u) > 1.001f || fabsf(out[i_].v) > 1.001f) rect = 0;   /* tiled / texel coords */
+            }
+            if (rect && s_cenv && x1 - x0 > 1.0f && y1 - y0 > 1.0f) {
+                uint32_t fmt = g_pg.tex[0].format;
+                float tw = (float)(1u << ((fmt >> 20) & 0xF)), th = (float)(1u << ((fmt >> 24) & 0xF));
+                int ax;
+                for (ax = 0; ax < 2; ++ax) {
+                    float lo = ax ? y0 : x0, hi = ax ? y1 : x1, size = ax ? th : tw;
+                    float t_lo = 0.0f, t_hi = 0.0f, pc0, pc1, per, tc0, tc1, tmin, tmax, n0, n1, k;
+                    int have_lo = 0, have_hi = 0, consistent = 1;
+                    for (i_ = 0; i_ < 4; ++i_) {
+                        float pos = ax ? out[i_].y : out[i_].x, t = ax ? out[i_].v : out[i_].u;
+                        if (fabsf(pos - lo) < 1e-3f) { if (have_lo && fabsf(t - t_lo) > 1e-6f) consistent = 0; t_lo = t; have_lo = 1; }
+                        else { if (have_hi && fabsf(t - t_hi) > 1e-6f) consistent = 0; t_hi = t; have_hi = 1; }
+                    }
+                    if (!have_lo || !have_hi || !consistent) continue;
+                    if (fabsf(t_hi - t_lo) * size < 1.5f) continue;            /* under 2 texels */
+                    pc0 = ceilf(lo - 0.5f) + 0.5f;                              /* first covered centre */
+                    pc1 = ceilf(hi - 0.5f) - 0.5f;                              /* last covered centre */
+                    if (pc1 <= pc0) continue;
+                    per = (t_hi - t_lo) * size / (hi - lo);                     /* texels per host px */
+                    tc0 = t_lo * size + (pc0 - lo) * per;
+                    tc1 = t_lo * size + (pc1 - lo) * per;
+                    tmin = (t_lo < t_hi ? t_lo : t_hi) * size + 0.5f;
+                    tmax = (t_lo < t_hi ? t_hi : t_lo) * size - 0.5f;
+                    n0 = tc0 < tmin ? tmin : (tc0 > tmax ? tmax : tc0);
+                    n1 = tc1 < tmin ? tmin : (tc1 > tmax ? tmax : tc1);
+                    if (fabsf(n0 - tc0) < 1e-4f && fabsf(n1 - tc1) < 1e-4f) continue;
+                    k = (n1 - n0) / (pc1 - pc0);                                /* new texels per px */
+                    for (i_ = 0; i_ < 4; ++i_) {
+                        float pos = ax ? out[i_].y : out[i_].x;
+                        float t = (n0 + (pos - pc0) * k) / size;
+                        if (ax) out[i_].v = t; else out[i_].u = t;
+                    }
+                }
+            }
+        }
         /* 0.2.29: plain-colour rectangles on the supersampled menus get the
          * same surface-grid edges as the lines above. The Sparring pause
          * menu's grey option panels are a translucent quad (325.1..614.5 at
