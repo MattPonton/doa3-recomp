@@ -4634,3 +4634,10 @@ at loc_000A6913 (gen/recomp_0002.c): with the LedgeThrowDamage dip,
 doa3_ledge_impact_move() also gives 0x425E / 0x425F the 5 (0x425F by analogy
 with the B / C pair; only 0x425E was seen). Dip renamed "Fix ledge fall
 damage over two ledges".
+
+## 0.2.28: ledge dip wording
+
+Matt verified the 46T and 4T 2T ledge falls and the box corners. The dip
+stays listed for 1.0.0 (on by default) so the original behavior can still be
+played; label "Fix ledge fall damage over double-hit ledges in Lorelei",
+shorter tooltip in Matt's wording.

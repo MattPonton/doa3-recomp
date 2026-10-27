@@ -47,21 +47,17 @@ static const struct { const char *key, *label, *help; } k_dip[DIP_COUNT] = {
       "The original game plays the round winner's pose after every round. On: rounds that do "
       "not end the match skip the winner's pose, as if Start had been pressed to skip it; the "
       "round that decides the match still plays it." },
-    { "LedgeThrowDamage", "Fix ledge fall damage over two ledges",
-      "In the original game a throw or hold that sends the opponent off a ledge adds its damage "
-      "to the fall's first impact. If the falling fighter crosses a second ledge before that "
-      "impact (Lorelei: Tier 1 to Tier 3, and Tier 3 to Tier 4), the game recomputes the carried "
-      "damage while the fighter is no longer being thrown and loses it, so only the fall damage "
-      "is dealt (5 + 25 instead of 63 + 25 for Bass's 4T 2T). A throw that drops the opponent "
-      "first and lets them bounce over the edge (Bass's 46T) instead gets the full landing "
-      "damage on both impacts (55 + 25 + 25). On: the throw's damage is kept and lands with the "
-      "first impact, and the bounce-off fall's ledge impact deals 5 like the other. Every other "
-      "fall is unchanged." },
+    { "LedgeThrowDamage", "Fix ledge fall damage over double-hit ledges in Lorelei",
+      "In the original game on the Lorelei stage a fighter could be knocked off a ledge where "
+      "they take a hit from the environment while falling and then take the ground hit when "
+      "landing. Certain attacks would cause their damage to be lost when being knocked into the "
+      "fall's first hit. On: the throw's damage is added to the 5 damage of the fall's first "
+      "hit." },
 };
 
 /* 1.0.0: the ledge throw damage fix is to ship always on and out of the
- * menu (dip_hidden returning 1 for it). 0.2.25: listed again, on by default,
- * while the 46T ledge fall is investigated. */
+ * menu (dip_hidden returning 1 for it). 0.2.25: listed again, on by default;
+ * 0.2.28: kept listed for 1.0.0 (Matt: players may want the original). */
 int dip_hidden(dip_switch d) { (void)d; return 0; }
 static int dip_default(int i) { return i == DIP_LEDGE_THROW_DAMAGE; }
 
