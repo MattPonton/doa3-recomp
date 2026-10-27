@@ -4563,3 +4563,23 @@ or SRC_ALPHA / ONE_MINUS_SRC_ALPHA, on the screen) are drawn as one quad
 per host row / column with alpha scaled by the covered fraction (blending
 SRC_ALPHA / INV_SRC_ALPHA, alpha test off for that draw; the next draw sets
 both again). DOA3_LINE_COVERAGE=0 turns the coverage part off.
+
+## 0.2.24: menu 2D offset under supersampling, lines on the surface grid
+
+0.2.23 result (Matt, singles character select at 1x): the name / style rule
+was still one solid row at 16:9 and 21:9 (two rows only at 32:9). The aa
+trace (DOA3_LINE_COVERAGE_OFF run) has it as an inline LINE, width 0x10, at
+y 288.53 (raw, no offset added), blend off. The supersampled menus load the
+XYZRHW passthrough program with c0 = (2, 2, 2^24-1, 1): scale 2 per
+supersampled axis, so the "unit scale plus sub-pixel offset" test from
+earlier skipped it and no screen-space offset was applied to any menu draw
+-- everything sat about half a display pixel up / left of hardware. A
+program of scale 1 or 2 per axis is now accepted and its offset taken in
+display pixels (offset / scale); @XYZRHW lines in the method trace show it.
+
+Line coverage (0.2.23) now rasterises the line's thickness on the guest's
+surface grid -- surface pixels whose centre it covers, as the NV2A does --
+and gives each host pixel the covered share (nv_fit_to_backbuffer records
+the surface grid origin as well as its pitch). At 1x that is the hardware's
+2x2 average: the 2-surface-px rule at 577.6 covers surface rows 577 and 578,
+half of display rows 288 and 289 each.

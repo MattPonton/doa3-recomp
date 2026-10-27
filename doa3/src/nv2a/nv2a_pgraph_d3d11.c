@@ -2912,6 +2912,7 @@ static int nv_menu_panel_geometry(const OutputVertex *out, uint32_t n)
  * fitted, for wide lines (SET_LINE_WIDTH is in surface pixels; the menus
  * render 2x2 or 2x1 supersampled, their vertices in display pixels). */
 static float g_fit_surface_px[2] = { 1.0f, 1.0f };
+static float g_fit_origin[2];   /* host position of surface pixel 0's edge */
 
 static int nv_fit_to_backbuffer(OutputVertex *out, uint32_t n, int screen_space)
 {
@@ -2934,6 +2935,7 @@ static int nv_fit_to_backbuffer(OutputVertex *out, uint32_t n, int screen_space)
     }
 
     g_fit_surface_px[0] = g_fit_surface_px[1] = 1.0f;
+    g_fit_origin[0] = g_fit_origin[1] = 0.0f;
     if (!gw || !gh || !bw || !bh) return 0;
     if (screen_space && !g_pg.depth_test && !d3d8_OffscreenTargetActive() &&
         !(g_pg.tex[0].enabled && nv_samples_framebuffer(g_pg.tex[0].offset))) {
@@ -2962,6 +2964,7 @@ static int nv_fit_to_backbuffer(OutputVertex *out, uint32_t n, int screen_space)
         g_fit_surface_px[0] = sx * (float)gw / (float)surf_w;
         g_fit_surface_px[1] = sy * (float)gh / (float)surf_h;
     }
+    g_fit_origin[0] = hud_x + preview_shift;
     for (i = 0; i < n; i++) {
         out[i].x = hud_x + preview_shift + out[i].x * sx;
         out[i].y *= sy;
@@ -4509,9 +4512,23 @@ static void submit_draw_inner(void)
             vin[0][0] = 100.0f; vin[0][1] = 100.0f;
             if (nv2a_vp_execute(&g_pg.vp, vin, o1)) {
                 float sx_ = (o1[0][0] - o0[0][0]) / 100.0f, sy_ = (o1[0][1] - o0[0][1]) / 100.0f;
-                if (fabsf(sx_ - 1.0f) < 1e-4f && fabsf(sy_ - 1.0f) < 1e-4f &&
-                    o0[0][0] >= 0.0f && o0[0][0] < 1.0f && o0[0][1] >= 0.0f && o0[0][1] < 1.0f) {
-                    in_ox = o0[0][0]; in_oy = o0[0][1];
+                /* 1.0 (line work): the supersampled menus (2x2 / 2x1) load
+                 * the same program with a scale of 2 per supersampled axis;
+                 * the vertices stay in display pixels here, so take the
+                 * offset in display pixels (offset / scale). Without it
+                 * every menu draw sat half a display pixel up / left of
+                 * hardware: character select's name / style rule landed on
+                 * one row instead of straddling two. */
+                int ux_ = fabsf(sx_ - 1.0f) < 1e-4f || fabsf(sx_ - 2.0f) < 1e-4f;
+                int uy_ = fabsf(sy_ - 1.0f) < 1e-4f || fabsf(sy_ - 2.0f) < 1e-4f;
+                float ox_ = ux_ ? o0[0][0] / (sx_ > 1.5f ? 2.0f : 1.0f) : -1.0f;
+                float oy_ = uy_ ? o0[0][1] / (sy_ > 1.5f ? 2.0f : 1.0f) : -1.0f;
+                if (ux_ && uy_ && ox_ >= 0.0f && ox_ < 1.0f && oy_ >= 0.0f && oy_ < 1.0f) {
+                    in_ox = ox_; in_oy = oy_;
+                    {   extern FILE *g_doa3_mtrace;
+                        if (g_doa3_mtrace && (sx_ > 1.5f || sy_ > 1.5f))
+                            fprintf(g_doa3_mtrace, "@XYZRHW program scale %.0fx%.0f offset %.5f,%.5f -> %.5f,%.5f display\n",
+                                    sx_, sy_, o0[0][0], o0[0][1], ox_, oy_); }
                 }
             }
         }
@@ -4784,7 +4801,7 @@ static void submit_draw_inner(void)
                 if (!s_env) coverage = 0; }
             if (tx > 1.25f || ty > 1.25f || coverage) {
                 uint32_t nseg = (g_pg.d3d_prim_type == D3DPT_LINELIST) ? out_vert_count / 2 : out_vert_count - 1;
-                uint32_t span = (uint32_t)(tx > ty ? tx : ty) + 3;
+                uint32_t span = 17;
                 OutputVertex *q = (OutputVertex *)_alloca(nseg * 6 * span * sizeof(OutputVertex));
                 uint32_t k, m = 0;
                 for (k = 0; k < nseg; k++) {
@@ -4796,15 +4813,37 @@ static void submit_draw_inner(void)
                     int horiz = fabsf(dy) < 1e-3f && fabsf(dx) >= 1e-3f;
                     int vert  = fabsf(dx) < 1e-3f && fabsf(dy) >= 1e-3f;
                     if (coverage && (horiz || vert)) {
-                        /* the thickness span, then one quad per host pixel */
+                        /* The thickness span is rasterised on the guest's
+                         * SURFACE grid (pixels whose centre it covers), as
+                         * the NV2A does, then each host pixel takes the
+                         * share of covered surface pixels inside it -- the
+                         * resolve's average at 1x, sharp edges at 2x. */
                         float t = horiz ? ty : tx, ctr = horiz ? a->y : a->x;
+                        float pp = g_fit_surface_px[horiz ? 1 : 0], org = g_fit_origin[horiz ? 1 : 0];
                         float lo = ctr - t * 0.5f, hi = ctr + t * 0.5f;
                         float s0 = horiz ? (a->x < b->x ? a->x : b->x) : (a->y < b->y ? a->y : b->y);
                         float s1 = horiz ? (a->x < b->x ? b->x : a->x) : (a->y < b->y ? b->y : a->y);
-                        int r;
-                        for (r = (int)floorf(lo); (float)r < hi && m + 6 <= nseg * 6 * span; ++r) {
-                            float cov = (hi < (float)(r + 1) ? hi : (float)(r + 1)) -
-                                        (lo > (float)r ? lo : (float)r);
+                        float covs[16];
+                        int r, r0, nr, k0, k1, kk;
+                        if (pp < 1e-3f) pp = 1e-3f;
+                        k0 = (int)ceilf((lo - org) / pp - 0.5f);        /* first centre >= lo */
+                        k1 = (int)ceilf((hi - org) / pp - 0.5f) - 1;    /* last centre < hi */
+                        if (k1 < k0) k1 = k0;                           /* never lose a line */
+                        r0 = (int)floorf(org + (float)k0 * pp);
+                        nr = (int)ceilf(org + (float)(k1 + 1) * pp) - r0;
+                        if (nr < 1) nr = 1;
+                        if (nr > 16) nr = 16;
+                        for (r = 0; r < nr; ++r) covs[r] = 0.0f;
+                        for (kk = k0; kk <= k1; ++kk) {
+                            float ea = org + (float)kk * pp, eb = ea + pp;
+                            for (r = 0; r < nr; ++r) {
+                                float pa = (float)(r0 + r), pb = pa + 1.0f;
+                                float ov = (eb < pb ? eb : pb) - (ea > pa ? ea : pa);
+                                if (ov > 0.0f) covs[r] += ov;
+                            }
+                        }
+                        for (r = r0; r < r0 + nr && m + 6 <= nseg * 6 * span; ++r) {
+                            float cov = covs[r - r0];
                             uint32_t alpha, col;
                             if (cov < 1.0f / 64.0f) continue;
                             if (cov > 1.0f) cov = 1.0f;
