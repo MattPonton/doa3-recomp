@@ -4718,3 +4718,14 @@ Ledge dip: Matt's move table -- 0x425B / 0x425C HC_CASTLE_FR_UP / _DW (roof
 hit fall, 5 damage), 0x425D / 0x425E HC_CASTLE2_FR_UP / _DW (the stage
 transition fall). The 46T fix now covers 0x425D / 0x425E (0.2.27 guessed
 0x425F for the mirror).
+
+## 0.2.33: restart after first-run setup
+
+Matt, fresh install: after the disc image was copied the program closed.
+Log: "[SETUP] game files installed", then "xbox_MemoryLayoutInit: failed to
+map base view (131072 KB)". The setup screen's D3D11 device, the extraction
+buffers and the overlay DLLs hooked into it (OBS graphics-hook in this log)
+left no free 128 MB range at any of the candidate bases. After a successful
+setup the program now starts itself again (same executable and command
+line) and exits, so the game boots in a clean address space, as it does on
+every later launch.

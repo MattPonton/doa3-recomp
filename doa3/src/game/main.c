@@ -1727,6 +1727,27 @@ int main(int argc, char **argv)
             return 0;
         }
         fprintf(stderr, "[SETUP] game files installed\n");
+        /* 0.2.33: start the game in a fresh process. The setup screen (its
+         * D3D11 device, the extraction buffers, and whatever overlay DLLs
+         * hook it -- OBS's graphics-hook here) leaves the address space too
+         * fragmented for the 128 MB Xbox memory view, so the first launch
+         * closed right after copying ("failed to map base view"). */
+        {
+            wchar_t exe[MAX_PATH];
+            STARTUPINFOW si; PROCESS_INFORMATION pi;
+            memset(&si, 0, sizeof si); si.cb = sizeof si;
+            memset(&pi, 0, sizeof pi);
+            if (GetModuleFileNameW(NULL, exe, MAX_PATH) &&
+                CreateProcessW(exe, GetCommandLineW(), NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+                fprintf(stderr, "[SETUP] restarting to start the game (pid %lu)\n", (unsigned long)pi.dwProcessId);
+                fflush(stderr);
+                CloseHandle(pi.hThread);
+                CloseHandle(pi.hProcess);
+                return 0;
+            }
+            fprintf(stderr, "[SETUP] could not restart (error %lu); continuing in this process\n",
+                    (unsigned long)GetLastError());
+        }
     }
 
     if (!load_xbe(DOA3_XBE_PATH, &xbe_data, &xbe_size)) {
