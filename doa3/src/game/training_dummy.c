@@ -21,9 +21,31 @@ typedef struct Recording {
     int length;
 } Recording;
 static Recording s_slots[TRAINING_SLOTS];
+
 static int s_mode, s_slot, s_frame, s_loop, s_modified, s_record_tick;
 static unsigned s_human, s_dummy, s_port, s_virtual_port, s_character;
 static unsigned short s_previous;
+
+/* 0.2.20: which way a fighter's left/right reads. PlayerDisplayDirection
+ * 0x4DA37C[side] (1 = mirrored) is set each frame by SetPlayerAngle, but not while the fighter is throwing /
+ * holding, and while it is in moves 0x90-0x95 (down / getting up) it is the
+ * plain screen side without the facing correction. Input fed then is parsed
+ * once the fighter can act, with the corrected value -- so a clip replayed
+ * as the dummy gets up after a side switch came out mirrored the wrong way.
+ * While the dummy's own value is not settled, use the player's (the two face
+ * each other, so the dummy's is the player's flipped). */
+static int direction_settled(unsigned side)
+{
+    unsigned rec=0x59CF58+side*0x68, mv=MEM16(rec+0x2E), st=MEM8(rec+0x33);
+    if (mv>=0x90 && mv<=0x95) return 0;
+    return st==0 || st==1 || st==2 || st==3 || st==16;
+}
+static int dummy_mirrored(void)
+{
+    if (!direction_settled(s_dummy) && direction_settled(s_human))
+        return MEM8(0x4DA37C+s_human)!=1;
+    return MEM8(0x4DA37C+s_dummy)==1;
+}
 static unsigned char s_old_port, s_old_human, s_old_analog;
 static unsigned char s_aggregate[0x2C], s_extra[8], s_bindings[20];
 static unsigned char s_human_aggregate[0x2C], s_human_extra[8];
@@ -318,7 +340,7 @@ void training_input_begin(void)
         /* Start and Back operate native menus/reset; never record them. */
         input.buttons=MEM16(0x73C8D0+s_port*0x2C)&0xFFCF;
         memcpy(input.sticks,(void *)XBOX_PTR(0x73C8EC+s_port*0x2C),sizeof(input.sticks));
-        input.mirrored=MEM8(0x4DA37C+s_dummy)==1;
+        input.mirrored=(unsigned char)dummy_mirrored();
         clip->input[clip->length++]=input;
         s_frame=clip->length;
     } else {
@@ -332,7 +354,18 @@ void training_input_begin(void)
          * facing left; 0x1C570 swaps lever bits 0x40/0x80 with it). Recorded
          * on one side and played on the other, mirror the clip's left/right
          * (D-pad bits 4/8, both sticks' X) so forward stays forward. */
-        if ((MEM8(0x4DA37C+s_dummy)==1) != input.mirrored) {
+        int now=dummy_mirrored();
+        {   static int s_last=-1; static unsigned s_logs;
+            if (now!=s_last && s_logs<40) {
+                ++s_logs;
+                fprintf(stderr,"[SPARRING] playback frame %d: dummy %s (dummy dir %u move %04X state %u, player dir %u move %04X state %u), clip %s\n",
+                        s_frame-1, now ? "mirrored" : "normal",
+                        MEM8(0x4DA37C+s_dummy), MEM16(0x59CF86+s_dummy*0x68), MEM8(0x59CF8B+s_dummy*0x68),
+                        MEM8(0x4DA37C+s_human), MEM16(0x59CF86+s_human*0x68), MEM8(0x59CF8B+s_human*0x68),
+                        input.mirrored ? "mirrored" : "normal");
+            }
+            s_last=now; }
+        if (now != input.mirrored) {
             unsigned short b=input.buttons;
             input.buttons=(unsigned short)((b & ~0x000C) | ((b & 4) << 1) | ((b & 8) >> 1));
             input.sticks[0]=input.sticks[0]==-32768 ? 32767 : (short)-input.sticks[0];

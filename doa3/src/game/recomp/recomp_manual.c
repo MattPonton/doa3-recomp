@@ -2387,8 +2387,45 @@ static void perf_5s(double interval, const double ph[7], double present, double 
     s_next = GetTickCount() + 5000;
 }
 
-/* 0.2.19: dip LedgeThrowDamage, read by the hand edit in sub_000A92C0_gen. */
-int doa3_dip_ledge_throw_damage(void) { return dip_get(DIP_LEDGE_THROW_DAMAGE); }
+/* Dip LedgeThrowDamage (0.2.19, 0.2.20). The ledge handler 0xA92C0 carries a
+ * throw's damage into the fall (AccumulatedThrowOrHoldDamage 0x9B2858[side])
+ * and GetMoveDamage adds it to every fall-type-3 impact. With one ledge there
+ * is one impact. Crossing a second ledge (Lorelei Tier 1 -> 3, 3 -> 4) reruns
+ * the handler, which stores 0 because the victim is no longer THROWN / HELD,
+ * so the throw's damage is lost; just keeping it (0.2.19) put it on both the
+ * impact and the landing. Now the hand edit in sub_000A92C0_gen keeps it at
+ * the second ledge and marks the side, and after the hit pass 0xB9140 the
+ * first damage taken (SustainedDamage +0x22, or health +0x20 dropping) clears it, so it lands once,
+ * with the first impact. */
+static uint8_t s_ledge_carry[2];
+static uint16_t s_ledge_hp[2];
+int doa3_ledge_throw_keep(uint32_t side)
+{
+    uint16_t mv;
+    if (side > 1 || !dip_get(DIP_LEDGE_THROW_DAMAGE)) return 0;
+    mv = MEM16(0x59CF86 + side * 0x68);       /* the victim's ledge-fall move */
+    if (mv != 0x423E && mv != 0x4241) return 0;
+    if (!MEM16(0x9B2858 + side * 2)) return 0;
+    s_ledge_carry[side] = 1;
+    s_ledge_hp[side] = MEM16(0x59CF78 + side * 0x68);
+    return 1;
+}
+void sub_000B9140_gen(void);
+void sub_000B9140(void)
+{
+    sub_000B9140_gen();
+    for (unsigned side = 0; side < 2; ++side) {
+        if (!s_ledge_carry[side]) continue;
+        if (MEM16(0x59CF7A + side * 0x68) ||               /* the impact landed: */
+            MEM16(0x59CF78 + side * 0x68) < s_ledge_hp[side]) { /* sustained, or health down */
+            MEM16(0x9B2858 + side * 2) = 0;
+            s_ledge_carry[side] = 0;
+        } else if (!MEM8(0x9B25BC + side) || MEM8(0x596A37) != 1) {
+            s_ledge_carry[side] = 0;                       /* fall over / round over */
+        }
+    }
+    if (g_fib_slice_due) xbox_fiber_timeslice();
+}
 
 /* 0.2.16: DOA3_DAMAGE_TRACE=1 -- for the Lorelei cliff-throw damage report.
  * 0.2.18: one line per fighter whenever any of these change, each presented

@@ -4489,3 +4489,24 @@ swaps D-pad left/right (bits 4/8) and negates both sticks' X.
 
 Sparring tab: one-line descriptions under "Dummy input recording" and
 "Stagger Escape" so their (?) markers sit on text instead of the dividers.
+
+## 0.2.20: ledge throw damage once; recording direction while getting up
+
+Ledge dip, 0.2.19 result: the first impact was 58 + 5 = 63, but the landing
+was 58 + 25 too -- GetMoveDamage adds the carried damage to every fall-type-3
+hit, and the two-ledge fall has two (impact, landing). The hand edit now
+calls doa3_ledge_throw_keep(side), which keeps the value and marks the side;
+sub_000B9140 (the hit pass at the top of 0xB5090) is overridden to clear
+0x9B2858[side] once the victim has taken damage (SustainedDamage +0x22 set,
+or health below its value at the second ledge). The mark also ends when the
+fall type 0x9B25BC returns to 0 or the fight phase leaves 1. 3++'s halving
+splits the 58 across both hits instead.
+
+Recording: SetPlayerAngle leaves 0x4DA37C stale while a fighter throws or
+holds, and in moves 0x90-0x95 (down / getting up) sets it to the bare screen
+side without the facing correction. A clip replayed while the dummy got up
+after a side switch was mirrored by that value, but the input was parsed
+once the dummy could act, with the corrected one. While the dummy's value is
+not settled (moves 0x90-0x95, or a state other than idle / jump / strike /
+throw attempt) the player's value, flipped, is used. [SPARRING] logs each
+change of the playback decision (first 40) with both fighters' values.
