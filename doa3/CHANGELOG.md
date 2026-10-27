@@ -44,6 +44,9 @@ First release of the Dead or Alive 3 (JAPAN, 3.1) recompilation. Since 0.0.128:
 - The executable carries a plain placeholder icon; the window uses the
   title image from the user's own disc.
 
+**Known issue**
+- Audio is not yet 1:1 with hardware; work on it continues.
+
 ## 0.0.128 — 2026-10-13
 
 - Extend the centered ultrawide character-select portrait and backing-panel

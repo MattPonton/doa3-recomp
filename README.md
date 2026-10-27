@@ -14,8 +14,9 @@ off by default; a few small changes are always on (see
 [Changes to the game](#changes-to-the-game)).
 
 **Status:** v1.0.0 — every game mode is playable, with menus and HUD matched
-to hardware at 16:9, 21:9 and 32:9. Rollback netcode is the next goal; work
-also continues on performance for low-end PCs.
+to hardware at 16:9, 21:9 and 32:9. Audio is not yet 1:1 with hardware and is
+still being worked on. Rollback netcode is the next goal; work also continues
+on performance for low-end PCs.
 
 ## Features
 
