@@ -19,8 +19,7 @@ also continues on performance for low-end PCs.
 
 ## Features
 
-- Native x86-64 Windows executable; also runs on Steam Deck through Proton
-  (Proton Experimental recommended)
+- Native x86-64 Windows executable
 - Windowed or borderless fullscreen
 - Aspect ratios: 4:3 (full screen or anamorphic), 16:9, 21:9 and 32:9
 - Internal resolution 1x (480p), 2x (960p), 3x (1440p) or 4x (1920p)
@@ -186,6 +185,11 @@ These are always on:
   creating the save file. This option can be changed in the game's Options'
   Video settings. Note: This does not affect 4:3 (Fullscreen) aspect ratio
   where the FMVs will play in their native 4:3 resolution.
+- **Storage costumes (TDATA).** (1) Each character's costume limit was
+  increased from 9 to 99. (2) Any costume can be given additional color
+  options by adding `.X`, `.Y` or `.L` before the extension of the costume's
+  files (for example `aya01.Y.xpr` and `aya01.Y.cat`), selected with X, Y or
+  L+A on Character Select. Both the `.xpr` and the `.cat` file are needed.
 
 ## Building
 
