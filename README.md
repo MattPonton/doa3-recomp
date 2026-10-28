@@ -75,16 +75,16 @@ Press **Escape** at any time to open the settings overlay. Its tabs are
 **General**, **Controls**, **Video**, **Audio**, **Photo Mode** and
 **Sparring**. Most tabs have **Reset to defaults** and **Save** buttons;
 changes apply immediately, and **Save** keeps them for the next launch.
-Hover over a **(?)** for an explanation of a setting.
+Hover over a **(?)** for an explanation of a setting. The mouse pointer is
+hidden over the game while the menu is closed.
 
 ### General
 
+- **Exit Game** closes the game, the same as Alt+F4.
 - **Check for updates at boot** (on by default): asks GitHub whether a newer
   release exists and shows a short notice over the game if so, with a link to
   the release page. Nothing is downloaded or installed. **Check now** checks
   again.
-- **Write log files** writes `doa3_log.txt`, which is useful when reporting a
-  bug.
 
 **Dip Switches** change how the game itself behaves. Every switch is off by
 default, so with none set the game plays exactly as on an Xbox. They take
@@ -104,6 +104,13 @@ effect immediately and are saved in the `[DipSwitches]` section of
 | Only show replay on final round | Only the round that decides a match shows the replay after the round ends. |
 | Only show winner on final round | Only the round that decides a match shows the win pose after the round ends. |
 
+**Logging** is what a bug report needs:
+
+- **Write log files** writes `doa3_log.txt` next to the game.
+- **Create a trace file** records the next frame's graphics commands and a
+  screenshot in the `Diagnostics` folder. Use it while a visual bug is on
+  screen. The folder is emptied at the next launch, so copy the files first.
+
 ### Controls
 
 - **Input only when focused**: ignore input while another window is active.
@@ -115,7 +122,8 @@ effect immediately and are saved in the `[DipSwitches]` section of
   The device list shows only connected controllers, numbered per model
   when more than one of a kind is connected.
   Right-click a binding to clear it. Player 1 defaults to Automatic; Players
-  2–4 default to None until assigned. With **Keyboard** chosen, **Reset to
+  2–4 default to None until assigned. A controller's **Reset to defaults**
+  puts White on LB and Black on RB. With **Keyboard** chosen, **Reset to
   defaults** loads a keyboard layout: W / A / S / D for the directional pad,
   Enter and Backspace for Start and Back, K / L over M / comma for X / Y over
   A / B, semicolon for Black, J for White, N and period for the left and right
@@ -130,7 +138,7 @@ and **Show performance overlay** shows frame rate and frame times.
 ### Audio
 
 - **Master volume**: the PC port's overall output level, applied after the
-  game's own mix (including movies).
+  game's own mix (including movies). 80% by default.
 - **Game volume**: the game's own **Music**, **Sound effects** and **Voice**
   settings, the same as Options > Audio Setting, in steps of 5. They are
   stored in the game's save the next time the game saves.
@@ -146,7 +154,8 @@ and **Show performance overlay** shows frame rate and frame times.
 - **Hide Player 1 / Player 2 / UI**: hide either fighter or the game's HUD and
   menus (Escape always opens this menu so you can bring them back).
 - **Screenshots**: a hotkey (F12 by default, reassignable) saves a PNG at the
-  render resolution, without this menu, to `Screenshots\`.
+  render resolution, without this menu, to `Screenshots\`. A short notice in
+  the corner confirms it was saved (it is never in the picture).
 
 ### Sparring
 
@@ -205,9 +214,11 @@ The executable is written to `doa3/build/release/DOA3.exe`.
 
 ## Reporting bugs and contributing
 
-Please open an issue with steps to reproduce. Turn on **General > Write log
-files** first and attach `doa3_log.txt`. Copy it before relaunching, since a
-new launch replaces it. Pull requests are welcome.
+Please open an issue with steps to reproduce. Turn on **General > Logging >
+Write log files** first and attach `doa3_log.txt`. Copy it before relaunching,
+since a new launch replaces it. For a graphics bug, also press **Create a
+trace file** while it is on screen and attach the files from the
+`Diagnostics` folder. Pull requests are welcome.
 
 ## Credits
 

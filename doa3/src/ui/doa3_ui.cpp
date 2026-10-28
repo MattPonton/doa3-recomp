@@ -30,7 +30,7 @@ extern "C" const char *ds4_model_name(int slot);   /* input/ds4_device.c */
 #include "../game/update_check.h"
 #include "../game/doa3_version.h"
 #include <shellapi.h>
-#define DOA3_VER_STR_UI DOA3_VER_STR
+#define DOA3_VER_STR_UI DOA3_VER_FULL_STR
 #include "../online/netplay_session.h"
 #include "../online/netplay.h"
 #include "../online/net_upnp.h"
@@ -317,7 +317,8 @@ static void DrawPlayerControls()
     ImGui::TableHeadersRow();
 
     const char *group = nullptr;
-    for (int i = 0; i < PADCTL_COUNT; ++i) {
+    for (int row = 0; row < PADCTL_COUNT; ++row) {
+        const int i = pad_ctl_display_order(row);
         const char *g = pad_ctl_group(i);
         if (!group || strcmp(g, group) != 0) {
             group = g;
@@ -480,7 +481,7 @@ void DrawAudioSection()
 {
     switch (ResetSaveRow()) {
     case 1:
-        audio_set_volume(100);
+        audio_set_volume(80);
         audio_streamer_mode_set(0);
         SetStatus("Audio settings reset to defaults");
         break;
@@ -496,7 +497,7 @@ void DrawAudioSection()
                          ImGuiSliderFlags_AlwaysClamp))
         audio_set_volume(volume);
     ImGui::TextWrapped("Overall output level of the PC version, applied after the game's own mix "
-                       "(music, voices, sound effects and movies). 100%% leaves the game unchanged. "
+                       "(music, voices, sound effects and movies). 100%% leaves the game unchanged; the default is 80%%. "
                        "Choose Save to keep it for next time.");
 
     ImGui::Spacing();
@@ -554,6 +555,20 @@ void DrawGeneralSection()
 
     ImGui::Separator();
 
+    /* 1.0.2: close the game from the menu (same as the window's close button
+     * or Alt+F4). */
+    ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.62f, 0.12f, 0.12f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.78f, 0.18f, 0.18f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.90f, 0.22f, 0.22f, 1.0f));
+    if (ImGui::Button("Exit Game")) {
+        HWND hwnd = d3d8_GetHWND();
+        if (hwnd) PostMessageA(hwnd, WM_CLOSE, 0, 0);
+    }
+    ImGui::PopStyleColor(3);
+    HelpMarker("Closes Dead or Alive 3. Settings you have not saved are not kept, and progress is "
+               "kept only as far as the game itself last saved.");
+    ImGui::Spacing();
+
     bool upd = update_check_enabled() != 0;
     if (ImGui::Checkbox("Check for updates at boot", &upd))
         update_check_set_enabled(upd ? 1 : 0);
@@ -577,11 +592,6 @@ void DrawGeneralSection()
         }
     }
 
-    bool on = doa3_log_enabled() != 0;
-    if (ImGui::Checkbox("Write log files", &on))
-        doa3_log_set_enabled(on ? 1 : 0);
-
-
     /* Dip switches: quality-of-life toggles for the game, all off by default
      * (off = the original game's behaviour). */
     ImGui::Spacing();
@@ -599,6 +609,23 @@ void DrawGeneralSection()
             ImGui::EndTooltip();
         }
     }
+
+    /* 1.0.2: what a bug report needs, without the Debug tab. */
+    ImGui::Spacing();
+    ImGui::SeparatorText("Logging");
+    bool on = doa3_log_enabled() != 0;
+    if (ImGui::Checkbox("Write log files", &on))
+        doa3_log_set_enabled(on ? 1 : 0);
+    HelpMarker("Writes doa3_log.txt next to the game, for bug reports. Choose Save to keep this "
+               "setting for next time.");
+    if (ImGui::Button("Create a trace file")) {
+        InterlockedExchange(&g_doa3_trace_request, 1);
+        SetStatus("The next frame will be traced to the Diagnostics folder");
+    }
+    HelpMarker("Records the next frame's graphics commands (mtrace_manual_*.txt) and a screenshot "
+               "(aa_*.bmp) in the Diagnostics folder next to the game. Use it while a visual bug is "
+               "on screen; the game keeps running behind this menu. The folder is emptied at the next "
+               "launch, so send the files before restarting the game.");
 }
 
 /* 0.2.16: a newer release: a notice at the top for 12 seconds, or until the
@@ -625,6 +652,38 @@ void DrawUpdateBanner()
                      ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
                      ImGuiWindowFlags_NoNav | ImGuiWindowFlags_AlwaysAutoResize))
         ImGui::TextUnformatted(text);
+    ImGui::End();
+}
+
+/* 1.0.2: a short notice when a screenshot has been written (or failed). It
+ * appears after the frame was captured, so it is never in the picture. */
+ULONGLONG g_shot_toast_until;
+int g_shot_toast_seen = -1, g_shot_toast_ok;
+bool ScreenshotToastPending()
+{
+    int ok = 0, n = d3d8_screenshot_finished(&ok);
+    if (g_shot_toast_seen < 0) g_shot_toast_seen = n;   /* nothing from before this check */
+    if (n != g_shot_toast_seen) {
+        g_shot_toast_seen = n;
+        g_shot_toast_ok = ok;
+        g_shot_toast_until = GetTickCount64() + 2500;
+    }
+    return GetTickCount64() < g_shot_toast_until;
+}
+void DrawScreenshotToast()
+{
+    if (!ScreenshotToastPending()) return;
+    const ImGuiViewport *vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(ImVec2(vp->WorkPos.x + vp->WorkSize.x - 16.0f,
+                                   vp->WorkPos.y + vp->WorkSize.y - 16.0f),
+                            ImGuiCond_Always, ImVec2(1.0f, 1.0f));
+    ImGui::SetNextWindowBgAlpha(0.75f);
+    if (ImGui::Begin("##screenshot_toast", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
+                     ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+                     ImGuiWindowFlags_NoNav | ImGuiWindowFlags_AlwaysAutoResize))
+        ImGui::TextUnformatted(g_shot_toast_ok ? "Screenshot saved to the Screenshots folder"
+                                               : "Screenshot failed (check disk space and folder permissions)");
     ImGui::End();
 }
 
@@ -877,13 +936,7 @@ void DrawDebugSection()
                    "normal play. Choose Save to keep this setting for next time.");
         if (env_forced)
             ImGui::TextDisabled("Set by the DOA3_AUTO_CAPTURE environment variable for this launch.");
-        if (ImGui::Button("Trace the next frame")) {
-            InterlockedExchange(&g_doa3_trace_request, 1);
-            SetStatus("The next frame will be traced to the Diagnostics folder");
-        }
-        HelpMarker("Records the next frame's graphics commands (mtrace_manual_*.txt) and a screenshot "
-                   "(aa_*.bmp) in the Diagnostics folder. Use it while a visual bug is on screen; the game "
-                   "keeps running behind this menu.");
+        ImGui::TextDisabled("Create a trace file: General > Logging.");
         if (ImGui::Button("Save the next frame's textures")) {
             InterlockedExchange(&g_doa3_texdump_request, 1);
             SetStatus("The next frame's textures will be saved to the Textures folder");
@@ -1242,6 +1295,16 @@ extern "C" void doa3_ui_toggle(void)
     /* The input mapping applies the configured menu capture policy. */
     pad_mapping_set_menu_open(g_visible ? 1 : 0);
     if (g_visible) free_camera_release_mouse();
+    /* Show or hide the cursor now, without waiting for the mouse to move
+     * (the window's thread answers WM_SETCURSOR; this may be the pad's). */
+    {
+        HWND hwnd = d3d8_GetHWND();
+        POINT pt;
+        RECT rc;
+        if (hwnd && GetCursorPos(&pt) && GetWindowRect(hwnd, &rc) && PtInRect(&rc, pt) &&
+            WindowFromPoint(pt) == hwnd)
+            PostMessageA(hwnd, WM_SETCURSOR, (WPARAM)hwnd, MAKELPARAM(HTCLIENT, WM_MOUSEMOVE));
+    }
 }
 
 extern "C" int doa3_ui_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
@@ -1292,6 +1355,14 @@ extern "C" int doa3_ui_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         }
     }
 
+    /* 1.0.2: the game has no use for the mouse, so the cursor is hidden over
+     * the game while this menu is closed. Every mouse move over the window
+     * asks again; the menu (and the first-run setup) show it as usual. */
+    if (msg == WM_SETCURSOR && !g_visible && LOWORD(lp) == HTCLIENT) {
+        SetCursor(NULL);
+        return 1;
+    }
+
     if (!g_ready || !g_visible) return 0;
 
     /* Grab the raw VK for a listening row before ImGui swallows it. */
@@ -1329,7 +1400,7 @@ extern "C" void doa3_ui_render(void)
     /* Nothing to do on a normal frame unless the menu is open or online play
      * has something to say over the game. */
     if (!g_visible && !NetplayBannerPending() && !combat_debug_flags() && !PerformanceOverlayEnabled() && training.mode==TRAINING_IDLE &&
-        !UpdateBannerPending()) return;
+        !UpdateBannerPending() && !ScreenshotToastPending()) return;
     if (!g_ready && !doa3_ui_init()) return;
 
     ID3D11DeviceContext *ctx = d3d8_GetD3D11Context();
@@ -1367,6 +1438,7 @@ extern "C" void doa3_ui_render(void)
     DrawPerformanceOverlay();
     DrawTrainingBanner();
     DrawUpdateBanner();
+    DrawScreenshotToast();
     if (g_visible) DrawMenu();
     DrawNetplayBanner();
 

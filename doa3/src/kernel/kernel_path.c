@@ -9,18 +9,20 @@
  *   HDD\E\                       E:, Partition1        data
  *   HDD\E\TDATA\<title id>\       T:                   title data
  *   HDD\E\UDATA\<title id>\       U:                   saved games
- *   HDD\X\  HDD\Y\  HDD\Z\          X: Y: Z:, Partition3-5  cache partitions
+ *   HDD\X\  HDD\Y\  HDD\Z\          X: Y: Z:, Partition3-5  cache partitions (never created)
  *   HDD\F\  HDD\G\                 F: G:, Partition6-7   extended partitions
  *
  * <title id> is the XBE's (DOA3_TITLE_ID), lower-case hex, so a save from a
  * real console or from Cxbx-R can be dropped straight into UDATA. The game
- * maps its cache drive Z: itself; it lands in HDD\Z\ and is filled by the
- * game's own first-boot install.
+ * maps its cache drive Z: itself; on the console its first-boot install
+ * copies the archives there. This build reads them from the disc instead
+ * (direct_afs), so the cache folders are never made.
  */
 
 #include "kernel.h"
 #include <stdio.h>
 #include <string.h>
+#include <wctype.h>
 
 /* Base directories - set at init */
 static WCHAR s_game_dir[MAX_PATH];    /* D: (the disc) */
@@ -144,6 +146,22 @@ static int match_prefix(const char* path, const char* prefix)
     return i;
 }
 
+/* 1.0.2: is `win_path` one of the cache partitions (HDD\X, HDD\Y, HDD\Z)
+ * or inside one? Those folders are never created; see xbox_translate_path. */
+int xbox_path_is_cache_dir(const WCHAR *win_path)
+{
+    size_t n;
+    if (!win_path) return 0;
+    if (!s_initialized) xbox_path_init(NULL, NULL);
+    n = wcslen(s_hdd_dir);
+    if (_wcsnicmp(win_path, s_hdd_dir, n) != 0 || win_path[n] != L'\\') return 0;
+    {
+        WCHAR c = (WCHAR)towupper(win_path[n + 1]);
+        WCHAR after = win_path[n + 2];
+        return (c == L'X' || c == L'Y' || c == L'Z') && (after == 0 || after == L'\\');
+    }
+}
+
 /* Host directory for an Xbox drive letter, or 0 if it is not one we map. */
 static int drive_dir(char letter, WCHAR *out)
 {
@@ -219,8 +237,13 @@ translate:
         for (WCHAR* q = remainder_wide; *q; q++)
             if (*q == L'/') *q = L'\\';
         swprintf_s(win_path_buf, buf_size, L"%s\\%s", base, remainder_wide);
-        /* The writable partitions are created on first use; the disc is not. */
-        if (wcscmp(base, s_game_dir) != 0)
+        /* The writable partitions are created on first use; the disc is not.
+         * 1.0.2: nor are the cache partitions (X: Y: Z:). The PC build reads
+         * the archives straight from the disc (direct_afs) and never copies
+         * anything to Z:, so an HDD\Z folder would only ever sit empty. The
+         * CRI's cache scan of z:\ now finds no folder and reports every file
+         * "not in cache", which is what it reported for the empty one. */
+        if (wcscmp(base, s_game_dir) != 0 && !xbox_path_is_cache_dir(base))
             make_dirs(base);
         XBOX_TRACE(XBOX_LOG_PATH, "%s -> %S", xbox_path, win_path_buf);
         return TRUE;

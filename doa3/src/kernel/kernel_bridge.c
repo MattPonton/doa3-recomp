@@ -1586,8 +1586,8 @@ static NTSTATUS bridge_create_file_impl(
             options |= 0x00000001;
     }
     if (options & 0x00000001) { /* FILE_DIRECTORY_FILE */
-        if (disposition == 2 || disposition == 3)
-            CreateDirectoryW(win_path, NULL);
+        if ((disposition == 2 || disposition == 3) && !xbox_path_is_cache_dir(win_path))
+            CreateDirectoryW(win_path, NULL);   /* 1.0.2: never the X: Y: Z: cache */
         h = CreateFileW(win_path, win_access, win_share, NULL,
                         OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
     } else {

@@ -20,9 +20,9 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "FileDescription", "Dead or Alive 3 PC recompilation"
-            VALUE "FileVersion",     DOA3_VER_STR
+            VALUE "FileVersion",     DOA3_VER_FULL_STR
             VALUE "ProductName",     "doa3-recomp"
-            VALUE "ProductVersion",  DOA3_VER_STR
+            VALUE "ProductVersion",  DOA3_VER_FULL_STR
             VALUE "OriginalFilename", "DOA3.exe"
         END
     END

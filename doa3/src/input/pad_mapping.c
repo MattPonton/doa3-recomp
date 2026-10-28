@@ -37,6 +37,14 @@ static const struct { const char *key, *group; int axis; } k_ctl[PADCTL_COUNT] =
 const char *pad_ctl_key(int c)   { return (c >= 0 && c < PADCTL_COUNT) ? k_ctl[c].key   : "?"; }
 const char *pad_ctl_group(int c) { return (c >= 0 && c < PADCTL_COUNT) ? k_ctl[c].group : "?"; }
 int         pad_ctl_is_axis(int c){ return (c >= 0 && c < PADCTL_COUNT) ? k_ctl[c].axis  : 0; }
+/* 1.0.2: the Controls table lists White above Black (left shoulder before
+ * right). Only the display order changes; the ini keys stay as they are. */
+int pad_ctl_display_order(int row)
+{
+    if (row == PADCTL_BLACK) return PADCTL_WHITE;
+    if (row == PADCTL_WHITE) return PADCTL_BLACK;
+    return row;
+}
 
 /* Xbox wButtons bit for the eight digital controls (same values as XInput's). */
 static WORD ctl_xbox_bit(int c)
@@ -72,9 +80,10 @@ static void reset_mapping(PadMapping *m)
         { PADCTL_B,          PADSRC_PAD_BUTTON,  XINPUT_GAMEPAD_B },
         { PADCTL_X,          PADSRC_PAD_BUTTON,  XINPUT_GAMEPAD_X },
         { PADCTL_Y,          PADSRC_PAD_BUTTON,  XINPUT_GAMEPAD_Y },
-        /* Xbox Black/White sit where XInput has the shoulder buttons. */
-        { PADCTL_BLACK,      PADSRC_PAD_BUTTON,  XINPUT_GAMEPAD_LEFT_SHOULDER },
-        { PADCTL_WHITE,      PADSRC_PAD_BUTTON,  XINPUT_GAMEPAD_RIGHT_SHOULDER },
+        /* Xbox Black/White sit where XInput has the shoulder buttons: White
+         * on LB, Black on RB (1.0.2; the other way round before). */
+        { PADCTL_BLACK,      PADSRC_PAD_BUTTON,  XINPUT_GAMEPAD_RIGHT_SHOULDER },
+        { PADCTL_WHITE,      PADSRC_PAD_BUTTON,  XINPUT_GAMEPAD_LEFT_SHOULDER },
         { PADCTL_LTRIGGER,   PADSRC_PAD_TRIGGER, 0 },
         { PADCTL_RTRIGGER,   PADSRC_PAD_TRIGGER, 1 },
 

@@ -31,6 +31,14 @@ jobs:
           if (-not $m.Success) {
               throw "Could not parse DOA3_VER_STR out of doa3/src/game/doa3_version.h"
           }
+          # A test build (build number other than 0) is never released.
+          $b = [regex]::Match($text, '#define\s+DOA3_VER_BUILD\s+([0-9]+)')
+          if (-not $b.Success) {
+              throw "Could not parse DOA3_VER_BUILD out of doa3/src/game/doa3_version.h"
+          }
+          if ([int]$b.Groups[1].Value -ne 0) {
+              throw "DOA3_VER_BUILD is $($b.Groups[1].Value): set it to 0 to release (test builds are not published)"
+          }
           $tag = "v$($m.Groups[1].Value)"
           Write-Host "version: $tag"
           "tag=$tag"                     | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8

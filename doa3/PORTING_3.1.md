@@ -4767,3 +4767,38 @@ the read hit foreign memory with bit 0 set. Same class as the NV2A and APU
 aperture fixes. xbox_MemoryLayoutInit now commits the AC97 page (0x130 =
 0x300, as the VEH did) and the USB page at 0xFED00000 (zero) before the
 heap and the kernel bridges allocate.
+
+## 1.0.2.1
+
+Versioning: releases now count up one at a time (v1.0.2, v1.0.3, ...). Test
+builds between releases carry the next release's three numbers plus
+DOA3_VER_BUILD from 1 (1.0.2.1, ...). DOA3_VER_STR stays three numbers (the
+release workflow's tag); DOA3_VER_FULL_STR is shown in the log's first line,
+the exe's version resource, the update log line and the General tab. The
+update check treats a test build as older than the release of the same three
+numbers. release.yml refuses to publish while DOA3_VER_BUILD is not 0. The
+CHANGELOG section for the release in progress is headed "not yet released"
+and gets its date when the build number goes back to 0.
+
+Batch 1 from the post-1.0.1 reports:
+- Exit Game (General tab, red): posts WM_CLOSE, the Alt+F4 path.
+- Cursor: doa3_ui_wndproc answers WM_SETCURSOR over the client area with
+  SetCursor(NULL) while the menu is closed. doa3_ui_toggle posts a
+  WM_SETCURSOR so the change shows without moving the mouse. The first-run
+  setup answers WM_SETCURSOR itself (ImGui's cursor, else the arrow) so it
+  is not hidden there.
+- Screenshot notice: d3d8_screenshot_finished() counts finished captures
+  (saved or failed); the overlay shows a 2.5 s notice bottom-right when the
+  count changes. The capture is taken before the overlay is drawn.
+- Logging section (General): Write log files moved there, plus "Create a
+  trace file" (g_doa3_trace_request), removed from Debug > Diagnostics.
+- Black/White: defaults now White = LB, Black = RB (were Black = LB, White =
+  RB); the Controls table shows White above Black (pad_ctl_display_order).
+  Ini keys unchanged; saved layouts are kept. The keyboard defaults (J White,
+  ; Black) already had White on the left.
+- Master volume default 80 (static default, ini fallback, Reset to defaults).
+- HDD\X, Y, Z are never created (xbox_path_is_cache_dir): not on path
+  translation, and not for a directory create from NtCreateFile (bridge and
+  kernel_file). The only thing that touched z:\ since direct_afs was the CRI
+  cache scan, which now finds no folder. Needs a boot test with HDD\Z
+  deleted.

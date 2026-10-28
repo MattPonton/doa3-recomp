@@ -39,7 +39,8 @@ static int newer_than_this(const char *tag)
     if (sscanf(tag, "%u.%u.%u", &a, &b, &c) < 2) return 0;
     if (a != mine[0]) return a > mine[0];
     if (b != mine[1]) return b > mine[1];
-    return c > mine[2];
+    if (c != mine[2]) return c > mine[2];
+    return DOA3_VER_BUILD != 0;   /* a test build of this version: the release is newer */
 }
 
 /* The value of "key":"value" in a small JSON object (no escapes expected). */
@@ -109,7 +110,7 @@ static DWORD WINAPI check_thread(LPVOID unused)
     free(body);
     if (ok == 1) {
         int newer = newer_than_this(g_tag);
-        fprintf(stderr, "[UPDATE] latest release %s (this build %s): %s\n", g_tag, DOA3_VER_STR,
+        fprintf(stderr, "[UPDATE] latest release %s (this build %s): %s\n", g_tag, DOA3_VER_FULL_STR,
                 newer ? "an update is available" : "up to date");
         InterlockedExchange(&g_state, newer ? 3 : 2);
     } else if (ok == 2) {

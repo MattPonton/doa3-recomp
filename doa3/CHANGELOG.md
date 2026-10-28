@@ -1,5 +1,22 @@
 # DOA3 3.1 changelog
 
+## 1.0.2 — not yet released
+
+- **Exit Game** button on the General tab.
+- The mouse pointer is hidden over the game while the Esc menu is closed.
+- A "Screenshot saved" notice appears in the corner after a screenshot (it is
+  never in the picture).
+- New **Logging** section at the bottom of the General tab: **Write log
+  files**, and **Create a trace file** (moved out of the developer tools) for
+  graphics bug reports.
+- Controller defaults: White is now on LB and Black on RB, and White is listed
+  above Black in the Controls table. A saved layout is kept; press **Reset to
+  defaults** on a player's tab to get the new one.
+- Master volume starts at 80% on a first launch (100% was loud). A saved
+  volume is kept.
+- The empty `HDD\Z` folder is no longer created. It can be deleted.
+- Test builds now show a fourth version number (1.0.2.1, 1.0.2.2, ...).
+
 ## 1.0.1 — 2026-10-27
 
 - Fixed the game not booting for some players in borderless mode (it hung on
