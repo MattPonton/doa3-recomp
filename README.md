@@ -127,7 +127,8 @@ effect immediately and are saved in the `[DipSwitches]` section of
   defaults** loads a keyboard layout: W / A / S / D for the directional pad,
   Enter and Backspace for Start and Back, K / L over M / comma for X / Y over
   A / B, semicolon for Black, J for White, N and period for the left and right
-  triggers.
+  triggers, T / G / F / H for the left stick and the arrow keys for the right
+  stick.
 
 ### Video
 

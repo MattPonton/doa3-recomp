@@ -2552,3 +2552,18 @@ HRESULT d3d8_AsyncPresent(int buf)
     g_flip_guest++;
     return d3d8_compose_and_present_from(c->tex, c->srv, 1);
 }
+
+/* 1.0.2: Debug > Frame advance holds the game at a frame end and redraws
+ * the last finished frame with the overlay, without touching the copy of
+ * the previous frame that effects read (`async` = 1 skips keeping it), so
+ * the next frame renders exactly as it would have. `buf` is the
+ * asynchronous GPU thread's finished copy to show, or -1 for the guest
+ * frame (synchronous). The render thread must be idle. */
+HRESULT d3d8_PresentPaused(int buf)
+{
+    if (buf >= 0) {
+        FbCopy *c = &g_async_frame[buf & 1];
+        if (c->tex && c->srv) return d3d8_compose_and_present_from(c->tex, c->srv, 1);
+    }
+    return d3d8_compose_and_present_from(g_device_state.default_tex, g_device_state.default_srv, 1);
+}

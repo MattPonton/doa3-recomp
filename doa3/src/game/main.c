@@ -329,6 +329,8 @@ static DWORD WINAPI doa3_watchdog(LPVOID unused)
         now = g_doa3_heartbeat;
 
         if (now != last) { last = now; stalled = 0; continue; }
+        {   extern volatile LONG g_doa3_frame_paused;   /* 1.0.2: Debug > Frame advance */
+            if (g_doa3_frame_paused) { stalled = 0; continue; } }
         /* Before the first present the heartbeat is legitimately 0, so boot
          * progress is measured by kernel calls instead: 6 s without one means
          * the guest is spinning in its own code (a hang that Windows reports

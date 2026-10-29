@@ -2296,7 +2296,8 @@ static FILE *doa3_mtrace_open(const char *name)
     return f;
 }
 
-volatile LONG g_doa3_trace_request;   /* set by the Debug tab */
+volatile LONG g_doa3_trace_request;   /* set by the menu (General > Logging) */
+volatile LONG g_doa3_trace_frames;    /* 1.0.2: frames still to trace (Debug tab) */
 static void doa3_mtrace_frame(unsigned next)
 {
     extern FILE *g_doa3_mtrace;
@@ -2320,7 +2321,10 @@ static void doa3_mtrace_frame(unsigned next)
     {   /* Debug > Diagnostics > "Trace the next frame": one method trace plus
          * its screenshot, on demand (works with automatic captures off). */
         extern volatile LONG g_doa3_trace_request;
-        if (InterlockedExchange(&g_doa3_trace_request, 0)) {
+        /* 1.0.2: Debug > "Trace the next N frames" counts down here, one
+         * trace per frame end. */
+        if (InterlockedExchange(&g_doa3_trace_request, 0) ||
+            (g_doa3_trace_frames > 0 && InterlockedDecrement(&g_doa3_trace_frames) >= 0)) {
             char path[64];
             g_doa3_aa_shot = next;
             sprintf(path, "mtrace_manual_%05u.txt", next);
@@ -2522,6 +2526,67 @@ static void damage_trace_frame(void)
     }
 }
 
+/* 1.0.2: Debug > Frame advance. At the end of a frame (after it was shown)
+ * the game thread is held while g_doa3_frame_pause is set; each step lets
+ * one more frame run. While held, the window is redrawn with the last
+ * finished frame and the overlay, messages are pumped, the APU output is
+ * silent (audio_apply_volume) and the watchdog stays quiet. With "trace
+ * each step", the stepped frame is traced: the trace is armed here for the
+ * next frame, as doa3_mtrace_frame does at a frame end. Never during online
+ * play or while a movie owns the screen. The guest clock is not stopped;
+ * like an online-play wait, the game's frame logic only advances per frame. */
+volatile LONG g_doa3_frame_pause;      /* UI: hold at frame ends */
+volatile LONG g_doa3_frame_steps;      /* UI: frames to let through */
+volatile LONG g_doa3_frame_paused;     /* the game thread is being held */
+volatile LONG g_doa3_frame_step_trace; /* UI: trace each stepped frame */
+static void doa3_frame_pause_point(void)
+{
+    extern int netplay_active(void);
+    extern int doa3_movie_host_owns_screen(void);
+    extern long d3d8_PresentPaused(int buf);
+    extern void d3d8_Lock(void), d3d8_Unlock(void);
+    extern void doa3_pump_messages(void);
+    int buf = -1;
+    if (!g_doa3_frame_pause) return;
+    if (netplay_active() || doa3_movie_host_owns_screen()) {
+        InterlockedExchange(&g_doa3_frame_pause, 0);
+        InterlockedExchange(&g_doa3_frame_steps, 0);
+        return;
+    }
+    if (g_doa3_frame_steps > 0) {          /* a step already granted: hold after it */
+        InterlockedDecrement(&g_doa3_frame_steps);
+        if (g_doa3_frame_steps > 0) return;
+    }
+    if (s_async_active) {
+        /* Let the render thread finish everything queued, then show the
+         * newest finished copy (the frame the game just ended). */
+        LONG f;
+        pb_wait(pb_is_drained, 0);
+        f = s_frames_done;
+        if (s_buf_frame[f & 1] == f) buf = (int)(f & 1);
+    }
+    InterlockedExchange(&g_doa3_frame_paused, 1);
+    fprintf(stderr, "[PAUSE] held after frame %u\n", g_doa3_frames_presented);
+    while (g_doa3_frame_pause && g_doa3_frame_steps <= 0) {
+        if (s_async_active) d3d8_Lock();
+        d3d8_PresentPaused(buf);
+        if (s_async_active) d3d8_Unlock();
+        doa3_pump_messages();
+        Sleep(15);
+    }
+    if (g_doa3_frame_pause && g_doa3_frame_steps > 0) {
+        /* The step's frames run now (one per press); the hold comes back
+         * at the end of the last. */
+        if (g_doa3_frame_step_trace) {
+            if (s_async_active) d3d8_Lock();
+            InterlockedExchange(&g_doa3_trace_request, 1);
+            doa3_mtrace_frame(g_doa3_frames_presented + 1);
+            if (s_async_active) d3d8_Unlock();
+        }
+    }
+    InterlockedExchange(&g_doa3_frame_paused, 0);
+}
+
 static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
 {
     damage_trace_frame();
@@ -2606,6 +2671,7 @@ static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
         s_frame_perf.pb = s_frame_perf.workers = s_frame_perf.longest_worker = 0;
         s_frame_perf.kicks = 0;
     }
+    doa3_frame_pause_point();   /* 1.0.2: Debug > Frame advance */
     LONGLONG pace_begin = entry ? doa3_perf_now() : 0;
     d3d4134_pace();
     if (entry) s_frame_perf.pace = doa3_perf_now() - pace_begin;

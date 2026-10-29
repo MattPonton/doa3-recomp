@@ -4829,3 +4829,32 @@ write to the game's folder ...` (the log itself may not be writable then)
 and sets g_doa3_folder_write_error; the overlay shows a warning for 20 s
 (or until the menu opens) and on the General tab, and a failed Save's
 status adds "the game's folder is protected (see General)".
+
+## 1.0.2.3
+
+Keyboard defaults (Matt): left stick T G F H (LY+ LY- LX- LX+), right stick
+the arrow keys. Keys drive an axis at full deflection (axis_magnitude).
+pad_binding_label sets the extended-key bit for the arrows and the
+navigation block, so they read "Up" and not "Num 8".
+
+Frame advance (Debug > Frame advance, F7/F8 while the Debug tab is on), for
+Omega's KO effect. doa3_frame_pause_point runs in d3d4134_frame_done after
+the frame was presented, before the pacing. While g_doa3_frame_pause is set
+and no step is pending, the game thread loops: with the asynchronous GPU
+thread it first drains the queue (pb_is_drained) and shows the newest
+finished copy; d3d8_PresentPaused composes it (or the guest frame when
+synchronous) with async = 1, so the previous-frame copy that effects read
+is not overwritten while held; messages are pumped every 15 ms.
+g_doa3_frame_paused silences audio_apply_volume and the watchdog. Each step
+(g_doa3_frame_steps) lets one frame through; held F8 repeats. "Trace each
+stepped frame" arms the trace for the next frame on the spot
+(g_doa3_trace_request + doa3_mtrace_frame(next), under the D3D lock when
+asynchronous), since a request set while held would be consumed at the
+stepped frame's end and trace the frame after it. Skipped in online play
+and while a movie owns the screen. The guest clock is not frozen; as with an
+online-play wait, the game's logic advances per frame.
+
+"Trace the next frames" (2-30): g_doa3_trace_frames counts down in
+doa3_mtrace_frame, one trace per frame end.
+
+Rewind is left for the rollback branch, whose state save/restore it needs.

@@ -72,6 +72,35 @@ const char *kFolderWarning =
     "Move the game's folder somewhere you own (not Program Files or a synced OneDrive folder), "
     "or allow DOA3.exe in Windows Security > Ransomware protection > Controlled folder access "
     "or in your antivirus.";
+/* 1.0.2: Debug > Frame advance (recomp_manual.c). */
+extern "C" volatile LONG g_doa3_frame_pause, g_doa3_frame_steps, g_doa3_frame_paused,
+                         g_doa3_frame_step_trace, g_doa3_trace_frames;
+extern "C" unsigned g_doa3_frames_presented;
+void FramePauseToggle()
+{
+    InterlockedExchange(&g_doa3_frame_steps, 0);
+    InterlockedExchange(&g_doa3_frame_pause, g_doa3_frame_pause ? 0 : 1);
+}
+void FrameStep()
+{
+    if (g_doa3_frame_pause) InterlockedIncrement(&g_doa3_frame_steps);
+}
+void DrawPausedBanner()
+{
+    if (!g_doa3_frame_paused) return;
+    const ImGuiViewport *vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(ImVec2(vp->WorkPos.x + 16.0f, vp->WorkPos.y + vp->WorkSize.y - 16.0f),
+                            ImGuiCond_Always, ImVec2(0.0f, 1.0f));
+    ImGui::SetNextWindowBgAlpha(0.75f);
+    if (ImGui::Begin("##paused_banner", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
+                     ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+                     ImGuiWindowFlags_NoNav | ImGuiWindowFlags_AlwaysAutoResize))
+        ImGui::Text("Paused after frame %u   F7 resume   F8 step%s", g_doa3_frames_presented,
+                    g_doa3_frame_step_trace ? " (traced)" : "");
+    ImGui::End();
+}
+
 void SetStatus(const char *s)
 {
     /* A failed save points at the reason when it is known. */
@@ -941,6 +970,36 @@ void DrawDebugSection()
     }
     ImGui::Separator();
     DrawCombatDebugMenu();   /* hitboxes, hurtboxes, stage hazards */
+    if (ImGui::CollapsingHeader("Frame advance")) {
+        bool paused = g_doa3_frame_pause != 0;
+        if (ImGui::Button(paused ? "Resume (F7)" : "Pause (F7)")) FramePauseToggle();
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!paused);
+        if (ImGui::Button("Step one frame (F8)")) FrameStep();
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::TextDisabled("frame %u", g_doa3_frames_presented);
+        bool trace = g_doa3_frame_step_trace != 0;
+        if (ImGui::Checkbox("Trace each stepped frame", &trace))
+            InterlockedExchange(&g_doa3_frame_step_trace, trace ? 1 : 0);
+        HelpMarker("Pause holds the game at the end of a frame, with the sound off; Step lets exactly one "
+                   "more frame run (hold F8 to keep stepping). With the trace option, each stepped frame "
+                   "writes mtrace_manual_*.txt and aa_*.bmp to the Diagnostics folder. F7 and F8 work with "
+                   "this menu closed while the Debug tab is enabled. Not available during online play or "
+                   "while a movie is playing.");
+        ImGui::Spacing();
+        static int s_trace_n = 10;
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.0f);
+        ImGui::SliderInt("##trace_n", &s_trace_n, 2, 30, "%d frames");
+        ImGui::SameLine();
+        if (ImGui::Button("Trace the next frames")) {
+            InterlockedExchange(&g_doa3_trace_frames, s_trace_n);
+            SetStatus("The next frames will be traced to the Diagnostics folder");
+        }
+        HelpMarker("Writes a trace and a screenshot for each of the next frames, starting with the next "
+                   "one. Each frame takes about 20 MB at 4x internal resolution.");
+        if (g_doa3_trace_frames > 0) ImGui::TextDisabled("%ld frame(s) left to trace", g_doa3_trace_frames);
+    }
     if (ImGui::CollapsingHeader("Vision modes")) {
         int view = d3d8_debug_view_get();
         if (ImGui::Combo("Render view", &view, "Normal\0Wireframe\0Vertex colors\0UV checker\0Distance\0"))
@@ -1382,6 +1441,13 @@ extern "C" int doa3_ui_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         return 1;
     }
 
+    /* 1.0.2: Frame advance hotkeys, only while the Debug tab is enabled.
+     * F8 repeats when held, stepping continuously. */
+    if (g_debug_tab && msg == WM_KEYDOWN && !(g_visible && (g_listening >= 0 || g_screenshot_listening))) {
+        if (wp == VK_F7 && !(lp & (1 << 30))) { FramePauseToggle(); return 1; }
+        if (wp == VK_F8) { FrameStep(); return 1; }
+    }
+
     if (msg == WM_KEYDOWN && wp == 'D' && g_visible && !(lp & (1 << 30)) &&
         (GetAsyncKeyState(VK_CONTROL) & 0x8000) && (GetAsyncKeyState(VK_SHIFT) & 0x8000)) {
         g_debug_tab = !g_debug_tab;
@@ -1450,7 +1516,8 @@ extern "C" void doa3_ui_render(void)
     /* Nothing to do on a normal frame unless the menu is open or online play
      * has something to say over the game. */
     if (!g_visible && !NetplayBannerPending() && !combat_debug_flags() && !PerformanceOverlayEnabled() && training.mode==TRAINING_IDLE &&
-        !UpdateBannerPending() && !ScreenshotToastPending() && !FolderBannerPending()) return;
+        !UpdateBannerPending() && !ScreenshotToastPending() && !FolderBannerPending() &&
+        !g_doa3_frame_paused) return;
     if (!g_ready && !doa3_ui_init()) return;
 
     ID3D11DeviceContext *ctx = d3d8_GetD3D11Context();
@@ -1490,6 +1557,7 @@ extern "C" void doa3_ui_render(void)
     DrawUpdateBanner();
     DrawScreenshotToast();
     DrawFolderBanner();
+    DrawPausedBanner();
     if (g_visible) DrawMenu();
     DrawNetplayBanner();
 

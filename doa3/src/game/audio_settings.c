@@ -52,6 +52,10 @@ int audio_settings_save(void)
 void audio_apply_volume(int16_t *samples, size_t count)
 {
     int volume = audio_get_volume();
+    {   /* 1.0.2: silent while the game is held by Debug > Frame advance. */
+        extern volatile LONG g_doa3_frame_paused;
+        if (g_doa3_frame_paused) volume = 0;
+    }
     if (volume == 100) return;
     if (volume == 0) {
         memset(samples, 0, count * sizeof(*samples));

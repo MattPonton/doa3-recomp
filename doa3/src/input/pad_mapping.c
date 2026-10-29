@@ -130,7 +130,8 @@ void pad_mapping_set_capture_menu(int enabled) { pad_mapping_get(); g_capture_me
 /* 0.2.18: the keyboard layout "Reset to defaults" gives a player whose input
  * device is Keyboard (Matt's layout): WASD for the D-pad, Enter / Backspace
  * for Start / Back, K L over M , for X Y over A B, ; Black, J White, N / .
- * for the left / right triggers. Thumb clicks and the sticks unassigned. */
+ * for the left / right triggers. Thumb clicks unassigned. 1.0.2: T G F H
+ * for the left stick (up, down, left, right), the arrow keys for the right. */
 static void reset_keyboard_mapping(PadMapping *m)
 {
     static const struct { int ctl, vk; } d[] = {
@@ -140,6 +141,12 @@ static void reset_keyboard_mapping(PadMapping *m)
         { PADCTL_A, 'M' }, { PADCTL_B, VK_OEM_COMMA }, { PADCTL_X, 'K' }, { PADCTL_Y, 'L' },
         { PADCTL_BLACK, VK_OEM_1 }, { PADCTL_WHITE, 'J' },
         { PADCTL_LTRIGGER, 'N' }, { PADCTL_RTRIGGER, VK_OEM_PERIOD },
+        /* 1.0.2: T G F H for the left stick, the arrow keys for the right
+         * (up, down, left, right). A key gives the full deflection. */
+        { PADCTL_LY_POS, 'T' }, { PADCTL_LY_NEG, 'G' },
+        { PADCTL_LX_NEG, 'F' }, { PADCTL_LX_POS, 'H' },
+        { PADCTL_RY_POS, VK_UP },   { PADCTL_RY_NEG, VK_DOWN },
+        { PADCTL_RX_NEG, VK_LEFT }, { PADCTL_RX_POS, VK_RIGHT },
     };
     memset(m, 0, sizeof(*m));
     for (size_t i = 0; i < sizeof(d) / sizeof(d[0]); i++) {
@@ -236,7 +243,17 @@ void pad_binding_label(PadBinding b, char *out, size_t n)
         /* GetKeyNameText wants the scan code in bits 16..23. */
         UINT sc = MapVirtualKeyA((UINT)b.code, MAPVK_VK_TO_VSC);
         char name[64] = { 0 };
-        if (sc && GetKeyNameTextA((LONG)(sc << 16), name, (int)sizeof(name)) > 0)
+        LONG lp = (LONG)(sc << 16);
+        /* The arrows and the navigation block share scan codes with the
+         * number pad; the extended bit names them "Up" rather than "Num 8". */
+        switch (b.code) {
+        case VK_UP: case VK_DOWN: case VK_LEFT: case VK_RIGHT:
+        case VK_INSERT: case VK_DELETE: case VK_HOME: case VK_END:
+        case VK_PRIOR: case VK_NEXT: case VK_DIVIDE: case VK_RCONTROL: case VK_RMENU:
+            lp |= 1L << 24; break;
+        default: break;
+        }
+        if (sc && GetKeyNameTextA(lp, name, (int)sizeof(name)) > 0)
             _snprintf_s(out, n, _TRUNCATE, "Key %s", name);
         else
             _snprintf_s(out, n, _TRUNCATE, "Key 0x%02X", b.code);

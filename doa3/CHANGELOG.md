@@ -25,6 +25,10 @@
   OneDrive folder, Controlled folder access or an antivirus), a warning now
   says so at launch and on the General tab, instead of **Save** silently
   doing nothing.
+- Keyboard **Reset to defaults** now also binds the sticks: T / G / F / H for
+  the left stick (up, down, left, right) and the arrow keys for the right.
+- Developer tools: frame advance (pause and step one frame at a time, with an
+  optional trace of each step) and tracing several frames in a row.
 - Test builds now show a fourth version number (1.0.2.1, 1.0.2.2, ...).
 
 ## 1.0.1 — 2026-10-27
