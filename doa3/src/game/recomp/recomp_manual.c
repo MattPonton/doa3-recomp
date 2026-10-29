@@ -2533,8 +2533,9 @@ static void damage_trace_frame(void)
  * silent (audio_apply_volume) and the watchdog stays quiet. With "trace
  * each step", the stepped frame is traced: the trace is armed here for the
  * next frame, as doa3_mtrace_frame does at a frame end. Never during online
- * play or while a movie owns the screen. The guest clock is not stopped;
- * like an online-play wait, the game's frame logic only advances per frame. */
+ * play or while a movie owns the screen. The guest's clocks stand still
+ * while held (xbox_clock_hold): with them running, the first frame after a
+ * hold saw all the held time pass at once. */
 volatile LONG g_doa3_frame_pause;      /* UI: hold at frame ends */
 volatile LONG g_doa3_frame_steps;      /* UI: frames to let through */
 volatile LONG g_doa3_frame_paused;     /* the game thread is being held */
@@ -2546,6 +2547,10 @@ static void doa3_frame_pause_point(void)
     extern long d3d8_PresentPaused(int buf);
     extern void d3d8_Lock(void), d3d8_Unlock(void);
     extern void doa3_pump_messages(void);
+    extern void xbox_clock_hold(int on);
+    extern void xbox_clock_advance(LONGLONG ticks);
+    static LONGLONG s_step_began;   /* QPC when the last step's frame started */
+    LARGE_INTEGER now, freq;
     int buf = -1;
     if (!g_doa3_frame_pause) return;
     if (netplay_active() || doa3_movie_host_owns_screen()) {
@@ -2566,6 +2571,16 @@ static void doa3_frame_pause_point(void)
         if (s_buf_frame[f & 1] == f) buf = (int)(f & 1);
     }
     InterlockedExchange(&g_doa3_frame_paused, 1);
+    xbox_clock_hold(1);   /* the guest's clocks stand still while held */
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&now);
+    {   /* A stepped frame should look like 1/60 s to the game: credit the
+         * clock with what its run fell short of that. */
+        LONGLONG period = freq.QuadPart / 60;
+        if (s_step_began && now.QuadPart - s_step_began < period)
+            xbox_clock_advance(period - (now.QuadPart - s_step_began));
+        s_step_began = 0;
+    }
     fprintf(stderr, "[PAUSE] held after frame %u\n", g_doa3_frames_presented);
     while (g_doa3_frame_pause && g_doa3_frame_steps <= 0) {
         if (s_async_active) d3d8_Lock();
@@ -2584,6 +2599,11 @@ static void doa3_frame_pause_point(void)
             if (s_async_active) d3d8_Unlock();
         }
     }
+    if (g_doa3_frame_pause && g_doa3_frame_steps > 0) {
+        QueryPerformanceCounter(&now);
+        s_step_began = now.QuadPart;
+    }
+    xbox_clock_hold(0);
     InterlockedExchange(&g_doa3_frame_paused, 0);
 }
 

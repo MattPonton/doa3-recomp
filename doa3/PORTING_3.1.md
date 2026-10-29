@@ -4858,3 +4858,19 @@ online-play wait, the game's logic advances per frame.
 doa3_mtrace_frame, one trace per frame end.
 
 Rewind is left for the rollback branch, whose state save/restore it needs.
+
+## 1.0.2.4
+
+Matt's frame-advance run through Omega's KO showed a corner box and, back
+on the title, a dark blue DOATEC HK; a run without pausing rendered both
+correctly, so the hold itself caused it. The guest clocks kept running
+while held: the first frame after each hold saw seconds pass. The traces
+show the effect catching up -- frames 22405 and 22421 draw Omega's flame
+sheet about 80 times, with a 720x480-viewport composite (box -1282..2002 x
+-1057..1537, drawn unscaled) that never appears in normal play.
+
+xbox_clock_hold (kernel_hal.c) now subtracts the time held from
+KeQueryPerformanceCounter, and KeQueryInterruptTime and the KeTickCount
+thread derive from it. A step credits the clock with what the stepped
+frame's run fell short of 1/60 s (xbox_clock_advance), so each step looks
+like one frame to the game. KeQuerySystemTime (wall clock) is unchanged.

@@ -121,10 +121,36 @@ static void xbox_update_tick_count(void)
  * Both Xbox and Windows return LARGE_INTEGER.
  * ============================================================================ */
 
+/* 1.0.2: Debug > Frame advance stops the guest's clocks while it holds the
+ * game: the time spent held is subtracted from KeQueryPerformanceCounter,
+ * KeQueryInterruptTime and KeTickCount. Without it the first frame after a
+ * hold saw seconds pass at once, and time-driven effects (Omega's KO) ran
+ * their timeline ahead in one go: the after-image layered dozens of times
+ * and the title screen afterwards was left dark. */
+static volatile LONGLONG s_held_total, s_held_start;   /* QPC ticks */
+void xbox_clock_hold(int on)
+{
+    LARGE_INTEGER now;
+    QueryPerformanceCounter(&now);
+    if (on && !s_held_start) s_held_start = now.QuadPart;
+    else if (!on && s_held_start) { s_held_total += now.QuadPart - s_held_start; s_held_start = 0; }
+}
+/* Move the guest's clocks ahead by `ticks` (QPC units), while held. */
+void xbox_clock_advance(LONGLONG ticks)
+{
+    if (ticks > 0) s_held_total -= ticks;
+}
+LONGLONG xbox_clock_held_ticks(LONGLONG now)
+{
+    LONGLONG start = s_held_start;
+    return s_held_total + (start ? now - start : 0);
+}
+
 LARGE_INTEGER __stdcall xbox_KeQueryPerformanceCounter(void)
 {
     LARGE_INTEGER counter;
     QueryPerformanceCounter(&counter);
+    counter.QuadPart -= xbox_clock_held_ticks(counter.QuadPart);
     return counter;
 }
 
