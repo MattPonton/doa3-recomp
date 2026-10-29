@@ -3,7 +3,8 @@
 ## 1.0.2 — not yet released
 
 - **Exit Game** button on the General tab.
-- The mouse pointer is hidden over the game while the Esc menu is closed.
+- The mouse pointer over the game hides after a second without moving while
+  the Esc menu is closed, and comes back when you move the mouse.
 - A "Screenshot saved" notice appears in the corner after a screenshot (it is
   never in the picture).
 - New **Logging** section at the bottom of the General tab: **Write log

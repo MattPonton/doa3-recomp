@@ -75,8 +75,9 @@ Press **Escape** at any time to open the settings overlay. Its tabs are
 **General**, **Controls**, **Video**, **Audio**, **Photo Mode** and
 **Sparring**. Most tabs have **Reset to defaults** and **Save** buttons;
 changes apply immediately, and **Save** keeps them for the next launch.
-Hover over a **(?)** for an explanation of a setting. The mouse pointer is
-hidden over the game while the menu is closed.
+Hover over a **(?)** for an explanation of a setting. While the menu is
+closed, the mouse pointer hides after a second without moving and comes back
+when you move the mouse.
 
 ### General
 

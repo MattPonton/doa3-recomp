@@ -4974,3 +4974,11 @@ credits movie is not a Theater entry -- it plays after a Story ending
 (Options can skip it once seen), so the switch does not affect it (Matt:
 fine as is). tests/debug_settings still exercises the old [Debug] key and
 needs updating.
+
+## 1.0.2.11
+
+Cursor (Matt): instead of always hidden with the menu closed, it hides after
+1 s without WM_MOUSEMOVE (checked each doa3_ui_render) and shows again after
+0.5 s of continuous movement (a move more than 200 ms after the last starts
+a new streak; repeated moves at the same position are ignored). Closing the
+menu leaves it visible for that second.

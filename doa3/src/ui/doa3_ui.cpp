@@ -56,6 +56,10 @@ namespace {
 bool g_ready   = false;
 bool g_visible = false;
 bool g_screenshot_listening = false;
+/* Cursor over the game while the menu is closed (doa3_ui_wndproc). */
+bool g_cursor_shown = false;
+ULONGLONG g_cursor_last_move, g_cursor_streak;
+LPARAM g_cursor_last_pos = -1;
 
 /* Rebind capture state, mirroring MapperPanel's listening_/armed_ pair. */
 int  g_listening = -1;   /* row capturing a binding, or -1 */
@@ -1412,6 +1416,7 @@ extern "C" void doa3_ui_toggle(void)
     /* The input mapping applies the configured menu capture policy. */
     pad_mapping_set_menu_open(g_visible ? 1 : 0);
     if (g_visible) free_camera_release_mouse();
+    else { g_cursor_shown = true; g_cursor_last_move = GetTickCount64(); }   /* hides after 1 s idle */
     /* Show or hide the cursor now, without waiting for the mouse to move
      * (the window's thread answers WM_SETCURSOR; this may be the pad's). */
     {
@@ -1479,11 +1484,24 @@ extern "C" int doa3_ui_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         }
     }
 
-    /* 1.0.2: the game has no use for the mouse, so the cursor is hidden over
-     * the game while this menu is closed. Every mouse move over the window
-     * asks again; the menu (and the first-run setup) show it as usual. */
+    /* 1.0.2: the game has no use for the mouse, so while this menu is closed
+     * the cursor over the game hides after a second without movement and
+     * comes back after half a second of moving it (a bumped mouse does not
+     * bring it back). The menu and the first-run setup always show it. */
+    if (msg == WM_MOUSEMOVE && !g_visible) {
+        ULONGLONG now = GetTickCount64();
+        if (lp != g_cursor_last_pos) {             /* Windows repeats moves on the spot */
+            g_cursor_last_pos = lp;
+            if (now - g_cursor_last_move > 200) g_cursor_streak = now;   /* a new movement */
+            g_cursor_last_move = now;
+            if (!g_cursor_shown && now - g_cursor_streak >= 500) {
+                g_cursor_shown = true;
+                SetCursor(LoadCursor(NULL, IDC_ARROW));
+            }
+        }
+    }
     if (msg == WM_SETCURSOR && !g_visible && LOWORD(lp) == HTCLIENT) {
-        SetCursor(NULL);
+        SetCursor(g_cursor_shown ? LoadCursor(NULL, IDC_ARROW) : NULL);
         return 1;
     }
 
@@ -1513,6 +1531,14 @@ extern "C" int doa3_ui_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 
 extern "C" void doa3_ui_render(void)
 {
+    /* 1.0.2: hide the cursor after a second without mouse movement. */
+    if (g_cursor_shown && !g_visible && GetTickCount64() - g_cursor_last_move > 1000) {
+        g_cursor_shown = false;
+        HWND hwnd = d3d8_GetHWND();
+        POINT pt;
+        if (hwnd && GetCursorPos(&pt) && WindowFromPoint(pt) == hwnd)
+            PostMessageA(hwnd, WM_SETCURSOR, (WPARAM)hwnd, MAKELPARAM(HTCLIENT, WM_MOUSEMOVE));
+    }
     TickPerformanceOverlay();
     free_camera_tick(d3d8_GetHWND(), g_visible ? 1 : 0);
     TrainingStatus training;
