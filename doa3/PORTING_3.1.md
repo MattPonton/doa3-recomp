@@ -4874,3 +4874,20 @@ KeQueryPerformanceCounter, and KeQueryInterruptTime and the KeTickCount
 thread derive from it. A step credits the clock with what the stepped
 frame's run fell short of 1/60 s (xbox_clock_advance), so each step looks
 like one frame to the game. KeQuerySystemTime (wall clock) is unchanged.
+
+## 1.0.2.5
+
+1.0.2.4's stepped KO (Matt, traces 29097-29212) no longer drew the corner
+box, but the fighters and stage vanished part way, a flame view appeared
+after black, and the title / mode select afterwards had a black
+background; a run without pausing was fine. The hold started the guest
+clock's stop only after draining the render thread, and with "trace each
+stepped frame" that drain writes the trace and a 20 MB screenshot: each
+step still showed the game a few hundred milliseconds instead of 1/60 s,
+so time-driven effects ran far ahead. The clock now stops before the
+drain; the step credit is measured to that point.
+
+Sparring on the waterfall stage afterwards (aa_42168) shows a straight
+vertical seam where the sky meets the cliff, like a user's report from
+low-end hardware that Matt could not reproduce before. Not yet
+investigated; it may be the same family (state left behind) or separate.

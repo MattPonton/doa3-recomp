@@ -2562,6 +2562,13 @@ static void doa3_frame_pause_point(void)
         InterlockedDecrement(&g_doa3_frame_steps);
         if (g_doa3_frame_steps > 0) return;
     }
+    /* Stop the guest's clocks first: the drain below waits for the render
+     * thread, which is slow while each frame is traced, and none of that
+     * time should reach the game. */
+    xbox_clock_hold(1);
+    InterlockedExchange(&g_doa3_frame_paused, 1);
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&now);
     if (s_async_active) {
         /* Let the render thread finish everything queued, then show the
          * newest finished copy (the frame the game just ended). */
@@ -2570,10 +2577,6 @@ static void doa3_frame_pause_point(void)
         f = s_frames_done;
         if (s_buf_frame[f & 1] == f) buf = (int)(f & 1);
     }
-    InterlockedExchange(&g_doa3_frame_paused, 1);
-    xbox_clock_hold(1);   /* the guest's clocks stand still while held */
-    QueryPerformanceFrequency(&freq);
-    QueryPerformanceCounter(&now);
     {   /* A stepped frame should look like 1/60 s to the game: credit the
          * clock with what its run fell short of that. */
         LONGLONG period = freq.QuadPart / 60;
