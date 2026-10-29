@@ -4994,3 +4994,24 @@ TogglePerformanceOverlay, and with the menu open L1/R1 (L3 not held) the
 previous/next enabled tab (ImGuiTabItemFlags_SetSelected; Sparring skipped
 outside training_available(), Debug while hidden). Buttons still reach the
 game.
+
+## 1.0.2.13
+
+Generic DirectInput controllers share the four native slots (4-7) with the
+PlayStation pads: found_pad accepts any DI8DEVTYPE_GAMEPAD / JOYSTICK, but
+creates it first and drops it if its device path has "IG_" (Windows'
+DirectInput view of an XInput controller). They are read with the same
+c_dfDIJoystick2 format; generic_translate uses the PlayStation face/shoulder
+order (Square Cross Circle Triangle L1 R1 L2 R2 Select Start L3 R3, what
+most PS3-mode arcade sticks report), L2/R2 buttons as full triggers, the
+right stick from Z/Rz or else Rx/Ry, and centres axes the pad does not
+have (enumerated by guidType). The Controls device list names them by
+product name. No rumble (DirectInput force feedback is not used). Untested
+here: needs a DirectInput pad or stick.
+
+DualSense / DualShock 4 rumble over Bluetooth is not done. It needs the
+Bluetooth output reports (0x31 / 0x11, 78 bytes, CRC-32 over 0xA2 + data),
+and sending them switches the controller to its full Bluetooth input
+reports, which DirectInput cannot read -- so input would also have to move
+to raw HID (as SDL, DS4Windows and the emulators do). Waiting for a tester
+with a Bluetooth controller.

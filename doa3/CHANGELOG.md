@@ -42,6 +42,8 @@
 - Controller shortcuts: L3 + R3 opens or closes the Esc menu, LB / RB change
   tabs while it is open, L3 + RB takes a screenshot, and L3 + Y shows or hides
   the performance overlay.
+- DirectInput controllers (arcade sticks, fight pads and other non-Xbox
+  controllers) now work and can be assigned and rebound on the Controls tab.
 - Test builds now show a fourth version number (1.0.2.1, 1.0.2.2, ...).
 
 ## 1.0.1 — 2026-10-27

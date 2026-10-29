@@ -25,7 +25,9 @@ on performance for low-end PCs.
 - Aspect ratios: 4:3 (full screen or anamorphic), 16:9, 21:9 and 32:9
 - Internal resolution 1x (480p), 2x (960p), 3x (1440p) or 4x (1920p)
 - Keyboard, Xbox, PS4 (DualShock 4) and PS5 (DualSense, DualSense Edge)
-  controllers, up to four players, with per-player bindings and rumble
+  controllers, plus other DirectInput controllers such as arcade sticks and
+  fight pads, up to four players, with per-player bindings and rumble (Xbox,
+  and PlayStation over USB)
 - Master volume plus the game's own Music / Sound effects / Voice levels
 - Streamer mode: mutes the licensed Aerosmith songs wherever they play
 - Dip Switches: optional fixes and quality-of-life changes (Random on the

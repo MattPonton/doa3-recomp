@@ -14,6 +14,11 @@ static struct {
     XINPUT_STATE state;
     Ds4Rumble *rumble;
     int ps5;   /* DualSense or DualSense Edge */
+    /* 1.0.2: any other DirectInput gamepad or joystick (not one that Windows
+     * also offers through XInput): arcade sticks, fight pads, older pads. */
+    int generic;
+    int axes;          /* bit n: axis n present (X Y Z Rx Ry Rz) */
+    char name[48];
 } s_pads[4];
 
 static SHORT stick(LONG value, int invert)
@@ -41,6 +46,54 @@ void ds4_translate(const DIJOYSTATE2 *raw, XINPUT_GAMEPAD *pad)
     pad->sThumbRY = stick(raw->lRz, 1);
     pad->bLeftTrigger = (BYTE)((raw->lRx < 0 ? 0 : raw->lRx > 65535 ? 65535 : raw->lRx) / 257);
     pad->bRightTrigger = (BYTE)((raw->lRy < 0 ? 0 : raw->lRy > 65535 ? 65535 : raw->lRy) / 257);
+}
+
+/* 1.0.2: a generic DirectInput pad. Most arcade sticks and fight pads in
+ * DirectInput (PS3) mode report the PlayStation order: Square Cross Circle
+ * Triangle L1 R1 L2 R2 Select Start L3 R3, hat = d-pad, so the same face
+ * button mapping applies; L2 / R2 are buttons, pressed = full trigger. A
+ * right stick is Z / Rz when the pad has them, otherwise Rx / Ry. Axes the
+ * pad does not have stay centred. Everything can be rebound in Controls. */
+static void generic_translate(const DIJOYSTATE2 *raw, int axes, XINPUT_GAMEPAD *pad)
+{
+    ds4_translate(raw, pad);
+    pad->bLeftTrigger = (raw->rgbButtons[6] & 0x80) ? 255 : 0;
+    pad->bRightTrigger = (raw->rgbButtons[7] & 0x80) ? 255 : 0;
+    if (!(axes & 1)) pad->sThumbLX = 0;
+    if (!(axes & 2)) pad->sThumbLY = 0;
+    if ((axes & 4) && (axes & 32)) {
+        /* Z / Rz: already the right stick */
+    } else if ((axes & 8) && (axes & 16)) {
+        pad->sThumbRX = stick(raw->lRx, 0);
+        pad->sThumbRY = stick(raw->lRy, 1);
+    } else {
+        pad->sThumbRX = pad->sThumbRY = 0;
+    }
+}
+
+typedef struct { int axes; } AxisPresence;
+static BOOL CALLBACK note_axis(const DIDEVICEOBJECTINSTANCEA *object, void *context)
+{
+    AxisPresence *p = context;
+    if (IsEqualGUID(&object->guidType, &GUID_XAxis))  p->axes |= 1;
+    if (IsEqualGUID(&object->guidType, &GUID_YAxis))  p->axes |= 2;
+    if (IsEqualGUID(&object->guidType, &GUID_ZAxis))  p->axes |= 4;
+    if (IsEqualGUID(&object->guidType, &GUID_RxAxis)) p->axes |= 8;
+    if (IsEqualGUID(&object->guidType, &GUID_RyAxis)) p->axes |= 16;
+    if (IsEqualGUID(&object->guidType, &GUID_RzAxis)) p->axes |= 32;
+    return DIENUM_CONTINUE;
+}
+
+/* Windows lists every XInput controller in DirectInput too; its device path
+ * contains "IG_". Those are read through XInput. */
+static int is_xinput_device(IDirectInputDevice8A *device)
+{
+    DIPROPGUIDANDPATH path = {0};
+    path.diph.dwSize = sizeof(path);
+    path.diph.dwHeaderSize = sizeof(path.diph);
+    path.diph.dwHow = DIPH_DEVICE;
+    if (FAILED(IDirectInputDevice8_GetProperty(device, DIPROP_GUIDANDPATH, &path.diph))) return 0;
+    return wcsstr(path.wszPath, L"IG_") != NULL || wcsstr(path.wszPath, L"ig_") != NULL;
 }
 
 static void close_pad(int slot)
@@ -83,7 +136,9 @@ static BOOL CALLBACK found_pad(const DIDEVICEINSTANCEA *info, void *context)
      * layout: buttons Square Cross Circle Triangle L1 R1 L2 R2
      * Share/Create Options L3 R3, hat = d-pad, X/Y left stick, Z/Rz right
      * stick, Rx/Ry triggers. */
-    if (vendor != 0x054c || (product != 0x05c4 && product != 0x09cc && product != 0x0ba0 && !ps5))
+    int sony = vendor == 0x054c && (product == 0x05c4 || product == 0x09cc || product == 0x0ba0 || ps5);
+    int kind = GET_DIDEVICE_TYPE(info->dwDevType);
+    if (!sony && kind != DI8DEVTYPE_GAMEPAD && kind != DI8DEVTYPE_JOYSTICK)
         return DIENUM_CONTINUE;
     for (int i = 0; i < 4; ++i)
         if (s_pads[i].known && IsEqualGUID(&s_pads[i].id, &info->guidInstance)) { slot = i; break; }
@@ -94,6 +149,12 @@ static BOOL CALLBACK found_pad(const DIDEVICEINSTANCEA *info, void *context)
     if (s_pads[slot].device) return DIENUM_CONTINUE;
     hr = IDirectInput8_CreateDevice(s_input, &info->guidInstance, &device, NULL);
     if (FAILED(hr)) return DIENUM_CONTINUE;
+    if (!sony && is_xinput_device(device)) {
+        /* read through XInput instead; forget the slot we reserved */
+        IDirectInputDevice8_Release(device);
+        s_pads[slot].seen = 0;
+        return DIENUM_CONTINUE;
+    }
     hr = IDirectInputDevice8_SetDataFormat(device, &c_dfDIJoystick2);
     if (SUCCEEDED(hr)) hr = IDirectInputDevice8_SetCooperativeLevel(device, NULL, DISCL_NONEXCLUSIVE | DISCL_BACKGROUND);
     if (SUCCEEDED(hr)) {
@@ -106,17 +167,28 @@ static BOOL CALLBACK found_pad(const DIDEVICEINSTANCEA *info, void *context)
     s_pads[slot].known = 1;
     s_pads[slot].device = device;
     s_pads[slot].ps5 = ps5;
+    s_pads[slot].generic = !sony;
+    {   AxisPresence presence = {0};
+        IDirectInputDevice8_EnumObjects(device, note_axis, &presence, DIDFT_AXIS);
+        s_pads[slot].axes = presence.axes;
+    }
+    _snprintf_s(s_pads[slot].name, sizeof s_pads[slot].name, _TRUNCATE, "%s",
+                info->tszProductName[0] ? info->tszProductName : "Controller");
     memset(&s_pads[slot].state, 0, sizeof(s_pads[slot].state));
     IDirectInputDevice8_Acquire(device);
     DIPROPGUIDANDPATH path = {0};
     path.diph.dwSize = sizeof(path);
     path.diph.dwHeaderSize = sizeof(path.diph);
     path.diph.dwHow = DIPH_DEVICE;
-    if (SUCCEEDED(IDirectInputDevice8_GetProperty(device, DIPROP_GUIDANDPATH, &path.diph)))
+    if (sony && SUCCEEDED(IDirectInputDevice8_GetProperty(device, DIPROP_GUIDANDPATH, &path.diph)))
         s_pads[slot].rumble = ds4_rumble_open(path.wszPath);
-    fprintf(stderr, "[INPUT] %s %d connected: %s (USB rumble %s)\n",
-        ps5 ? "PS5 controller" : "PS4 controller", slot + 1, info->tszProductName,
-        s_pads[slot].rumble ? "available" : "unavailable");
+    if (sony)
+        fprintf(stderr, "[INPUT] %s %d connected: %s (USB rumble %s)\n",
+            ps5 ? "PS5 controller" : "PS4 controller", slot + 1, info->tszProductName,
+            s_pads[slot].rumble ? "available" : "unavailable");
+    else
+        fprintf(stderr, "[INPUT] DirectInput controller %d connected: %s (vendor %04X product %04X, axes %02X)\n",
+            slot + 1, info->tszProductName, vendor, product, s_pads[slot].axes);
     return DIENUM_CONTINUE;
 }
 
@@ -164,7 +236,8 @@ DWORD ds4_read(int slot, XINPUT_STATE *state)
         if (hr == DIERR_UNPLUGGED || hr == DIERR_DEVICENOTREG) close_pad(slot);
         return ERROR_DEVICE_NOT_CONNECTED;
     }
-    ds4_translate(&raw, &pad);
+    if (s_pads[slot].generic) generic_translate(&raw, s_pads[slot].axes, &pad);
+    else ds4_translate(&raw, &pad);
     if (memcmp(&pad, &s_pads[slot].state.Gamepad, sizeof(pad))) ++s_pads[slot].state.dwPacketNumber;
     s_pads[slot].state.Gamepad = pad;
     *state = s_pads[slot].state;
@@ -186,5 +259,6 @@ DWORD ds4_set_rumble(int slot, const XINPUT_VIBRATION *motors)
 const char *ds4_model_name(int slot)
 {
     if (slot < 0 || slot >= 4 || !s_pads[slot].device) return "PlayStation controller";
+    if (s_pads[slot].generic) return s_pads[slot].name;
     return s_pads[slot].ps5 ? "PS5 controller" : "PS4 controller";
 }
