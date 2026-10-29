@@ -44,6 +44,8 @@
   the performance overlay.
 - DirectInput controllers (arcade sticks, fight pads and other non-Xbox
   controllers) now work and can be assigned and rebound on the Controls tab.
+- Movies (the intro, endings, credits and the Theater) take much less CPU to
+  decode, so they should play smoothly on slower PCs.
 - Test builds now show a fourth version number (1.0.2.1, 1.0.2.2, ...).
 
 ## 1.0.1 — 2026-10-27

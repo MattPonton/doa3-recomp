@@ -20,6 +20,7 @@ STEPS = [
     ("reversible Debug unlock menu reads", [sys.executable, "-m", "tools.recomp.debug_unlock_reads"]),
     ("direct AFS archive loading", [sys.executable, "-m", "tools.recomp.direct_afs"]),
     ("save signature compatibility", [sys.executable, "-m", "tools.recomp.save_compat"]),
+    ("jump tables as switches", [sys.executable, "tools/recomp/switch_tables.py"]),
 ]
 
 

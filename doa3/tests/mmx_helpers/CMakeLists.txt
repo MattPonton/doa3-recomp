@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.20)
+project(mmx_helpers_test C)
+enable_testing()
+add_executable(mmx_helpers_test mmx_helpers_test.c)
+target_include_directories(mmx_helpers_test PRIVATE ../../src/game/recomp ../../src/game ../../src)
+add_test(NAME mmx_helpers COMMAND mmx_helpers_test)

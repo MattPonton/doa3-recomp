@@ -5015,3 +5015,29 @@ and sending them switches the controller to its full Bluetooth input
 reports, which DirectInput cannot read -- so input would also have to move
 to raw HID (as SDL, DS4Windows and the emulators do). Waiting for a tester
 with a Bluetooth controller.
+
+## 1.0.2.14
+
+Movie decode cost (Matt's list: FMVs not smooth on low-end PCs). A
+DOA3_PROFILE run over the intro, an ending and the credits puts the Sofdec
+decoder's hot spots on the game thread at sub_001A3480 (YUV to RGB, MMX
+table lookups), sub_001AFB20 (MMX IDCT), and sub_001B0C40 / sub_001B3FB0
+(the VLC readers), with smaller shares in the half-pel averaging at
+0x20C000-0x20F000.
+
+- The MMX helpers in recomp_types.h were lane-by-lane loops, and MMQ_LOAD
+  resolved the address twice and did two volatile dword reads. On x64 each
+  helper is now one or two SSE2 instructions on the low quadword, and
+  MMQ_LOAD is one 8-byte load from one resolved address (MMQ_STORE resolves
+  once and keeps its two volatile stores). The scalar loops remain for
+  other targets. tests/mmx_helpers checks every helper against the scalar
+  reference, including saturation and out-of-range shift counts. Lifting
+  sub_001AFB20 and sub_001A3480 into a Linux harness gave byte-identical
+  guest memory, with the IDCT 4-9x faster and a 640x480 colour conversion
+  going from 2.1-7.7 ms to 0.5-0.6 ms (clang / gcc; MSVC not measured).
+- Lifted jump tables were a run of `if (_jt == target) goto` lines, a
+  linear compare chain per dispatch (170 targets in sub_001B3FB0, read once
+  per coefficient). tools/recomp/switch_tables.py (last postprocess step)
+  rewrites the 512 live tables as `switch (_jt)` with the same targets and
+  the same RECOMP_ITAIL fallback; 19 tables whose targets all lie outside
+  their function are left alone.
