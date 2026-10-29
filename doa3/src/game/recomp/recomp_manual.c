@@ -2540,6 +2540,7 @@ volatile LONG g_doa3_frame_pause;      /* UI: hold at frame ends */
 volatile LONG g_doa3_frame_steps;      /* UI: frames to let through */
 volatile LONG g_doa3_frame_paused;     /* the game thread is being held */
 volatile LONG g_doa3_frame_step_trace; /* UI: trace each stepped frame */
+volatile LONG g_doa3_frame_slow_ms;    /* UI: extra milliseconds per frame (debug) */
 static void doa3_frame_pause_point(void)
 {
     extern int netplay_active(void);
@@ -2552,6 +2553,11 @@ static void doa3_frame_pause_point(void)
     static LONGLONG s_step_began;   /* QPC when the last step's frame started */
     LARGE_INTEGER now, freq;
     int buf = -1;
+    if (g_doa3_frame_slow_ms > 0 && !netplay_active()) {
+        /* Debug > "Simulate a slow PC": every frame takes this much longer,
+         * with every clock running, to reproduce what slow machines see. */
+        Sleep((DWORD)g_doa3_frame_slow_ms);
+    }
     if (!g_doa3_frame_pause) return;
     if (netplay_active() || doa3_movie_host_owns_screen()) {
         InterlockedExchange(&g_doa3_frame_pause, 0);

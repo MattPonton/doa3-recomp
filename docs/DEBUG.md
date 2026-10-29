@@ -137,6 +137,10 @@ frame**, every stepped frame writes its trace and screenshot to `Diagnostics`,
 so a short effect can be followed frame by frame. Pausing is not available
 during online play or while a movie is playing.
 
+**Simulate a slow PC** (0 to 120 ms, off at every launch) makes every frame
+take that much longer with the game's clocks running, to reproduce problems
+that only slower computers hit (for example Omega's KO).
+
 **Trace the next frames** traces each of the next 2 to 30 frames in a row,
 starting with the next one, without pausing. Each frame takes about 20 MB at
 4x internal resolution.

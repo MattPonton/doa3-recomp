@@ -28,7 +28,8 @@
 - Keyboard **Reset to defaults** now also binds the sticks: T / G / F / H for
   the left stick (up, down, left, right) and the arrow keys for the right.
 - Developer tools: frame advance (pause and step one frame at a time, with an
-  optional trace of each step) and tracing several frames in a row.
+  optional trace of each step), tracing several frames in a row, and a
+  slow-PC simulation.
 - Test builds now show a fourth version number (1.0.2.1, 1.0.2.2, ...).
 
 ## 1.0.1 — 2026-10-27

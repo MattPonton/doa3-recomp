@@ -4891,3 +4891,22 @@ Sparring on the waterfall stage afterwards (aa_42168) shows a straight
 vertical seam where the sky meets the cliff, like a user's report from
 low-end hardware that Matt could not reproduce before. Not yet
 investigated; it may be the same family (state left behind) or separate.
+
+## 1.0.2.6
+
+The Omega KO report (GTX 1060 / i7-7700HQ, 1.0.1) is the same failure as
+frame advance: his log has the game's own frame time at 92 ms (54 of 54
+frames over 17.5 ms, worst 110) right before the KO, then his video shows
+the blue silhouette screen and he returns to a broken title screen. Matt's
+hardware capture (cmp/omega-hw, 60 fps) is the reference: the after-image
+blur runs through the fight; after the KO both fighters stay visible
+through the fade (about 350 frames from the KO letters to black), then the
+ending movie. No blue screen.
+
+Debug > Frame advance > "Simulate a slow PC" (0-120 ms, not saved) sleeps
+that long at every frame end with all clocks running, so the slow-machine
+failure can be reproduced and a fix tested on a fast PC. Candidates for
+what races ahead: the guest's tick count (KeTickCount, read once a frame
+at 0xA64AB into 0x9B2390), the CRI/ADX streams (0x1C6F70..0x1C7920 read it
+too), and the APU, which keeps playing in real time (also while frame
+advance holds the game, so a sound-synchronised timeline would still skip).
