@@ -65,7 +65,21 @@ int  g_input_player = 0;
 
 char g_status[128] = { 0 };
 
-void SetStatus(const char *s) { _snprintf_s(g_status, sizeof(g_status), _TRUNCATE, "%s", s); }
+/* 1.0.2: DOA3.exe's folder refused a test write at boot (main.c). */
+extern "C" unsigned long g_doa3_folder_write_error;
+const char *kFolderWarning =
+    "Dead or Alive 3 cannot write to its folder, so settings and game saves will not be kept. "
+    "Move the game's folder somewhere you own (not Program Files or a synced OneDrive folder), "
+    "or allow DOA3.exe in Windows Security > Ransomware protection > Controlled folder access "
+    "or in your antivirus.";
+void SetStatus(const char *s)
+{
+    /* A failed save points at the reason when it is known. */
+    if (g_doa3_folder_write_error && strncmp(s, "Could not write", 15) == 0)
+        _snprintf_s(g_status, sizeof(g_status), _TRUNCATE, "%s: the game's folder is protected (see General)", s);
+    else
+        _snprintf_s(g_status, sizeof(g_status), _TRUNCATE, "%s", s);
+}
 
 /* 0.2.16: a "(?)" after the previous item; its text shows on hover, so the
  * long explanations no longer take up the tabs. */
@@ -555,6 +569,14 @@ void DrawGeneralSection()
 
     ImGui::Separator();
 
+    if (g_doa3_folder_write_error) {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.45f, 1.0f), "%s (Windows error %lu)", kFolderWarning,
+                           g_doa3_folder_write_error);
+        ImGui::PopTextWrapPos();
+        ImGui::Separator();
+    }
+
     /* 1.0.2: close the game from the menu (same as the window's close button
      * or Alt+F4). */
     ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.62f, 0.12f, 0.12f, 1.0f));
@@ -652,6 +674,34 @@ void DrawUpdateBanner()
                      ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
                      ImGuiWindowFlags_NoNav | ImGuiWindowFlags_AlwaysAutoResize))
         ImGui::TextUnformatted(text);
+    ImGui::End();
+}
+
+/* 1.0.2: DOA3.exe's folder refused a test write at boot (main.c): say so
+ * over the game for 20 seconds, or until the menu is opened, and on the
+ * General tab. */
+ULONGLONG g_folder_banner_until;
+bool FolderBannerPending()
+{
+    if (!g_doa3_folder_write_error) return false;
+    if (!g_folder_banner_until) g_folder_banner_until = GetTickCount64() + 20000;
+    return !g_visible && GetTickCount64() < g_folder_banner_until;
+}
+void DrawFolderBanner()
+{
+    if (!FolderBannerPending()) return;
+    const ImGuiViewport *vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(ImVec2(vp->WorkPos.x + vp->WorkSize.x * 0.5f, vp->WorkPos.y + 64.0f),
+                            ImGuiCond_Always, ImVec2(0.5f, 0.0f));
+    ImGui::SetNextWindowBgAlpha(0.85f);
+    if (ImGui::Begin("##folder_banner", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
+                     ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+                     ImGuiWindowFlags_NoNav | ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 36.0f);
+        ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.45f, 1.0f), "%s", kFolderWarning);
+        ImGui::PopTextWrapPos();
+    }
     ImGui::End();
 }
 
@@ -1400,7 +1450,7 @@ extern "C" void doa3_ui_render(void)
     /* Nothing to do on a normal frame unless the menu is open or online play
      * has something to say over the game. */
     if (!g_visible && !NetplayBannerPending() && !combat_debug_flags() && !PerformanceOverlayEnabled() && training.mode==TRAINING_IDLE &&
-        !UpdateBannerPending() && !ScreenshotToastPending()) return;
+        !UpdateBannerPending() && !ScreenshotToastPending() && !FolderBannerPending()) return;
     if (!g_ready && !doa3_ui_init()) return;
 
     ID3D11DeviceContext *ctx = d3d8_GetD3D11Context();
@@ -1439,6 +1489,7 @@ extern "C" void doa3_ui_render(void)
     DrawTrainingBanner();
     DrawUpdateBanner();
     DrawScreenshotToast();
+    DrawFolderBanner();
     if (g_visible) DrawMenu();
     DrawNetplayBanner();
 

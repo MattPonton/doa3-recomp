@@ -15,6 +15,16 @@
 - Master volume starts at 80% on a first launch (100% was loud). A saved
   volume is kept.
 - The empty `HDD\Z` folder is no longer created. It can be deleted.
+- Fixed a CPU tag team getting the same character in the same costume as
+  your tag partner when **Random includes alternate costume colors** (or
+  storage costumes) is on, in Time Attack and Survival.
+- Settings now save in a folder whose path has characters outside your
+  Windows language (for example a Japanese or accented user name), where
+  **Save** used to fail.
+- If Windows won't let the game write to its folder (Program Files, a synced
+  OneDrive folder, Controlled folder access or an antivirus), a warning now
+  says so at launch and on the General tab, instead of **Save** silently
+  doing nothing.
 - Test builds now show a fourth version number (1.0.2.1, 1.0.2.2, ...).
 
 ## 1.0.1 — 2026-10-27

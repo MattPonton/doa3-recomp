@@ -4802,3 +4802,30 @@ Batch 1 from the post-1.0.1 reports:
   kernel_file). The only thing that touched z:\ since direct_afs was the CRI
   cache scan, which now finds no folder. Needs a boot test with HDD\Z
   deleted.
+
+## 1.0.2.2
+
+Gultigargar's report (Random alternate colours on, tag Time Attack, mode
+3): his team was 02 (alternate) + 04 (Ryu, costume 00). His log has
+`[RANDALT] CPU opponent character 04 (mode 3): costume slot 0 alternate 0
+-> 00 (game chose 01)`: the game had avoided the clash, our pick put it
+back. sub_00076B30's mirror check read only the side records
+0x59CF58 + side*0x68, which in a tag fight hold just the member on point.
+The game's own rule (0x76B82, tag flag 0xC59866 set) reads the human
+side's team, characters 0x59CF44 + side*5 + member and costumes
+0x5A2620 + side*5 + member; the pick is now rejected against both members
+too (up to 4 tries, then the game's choice).
+
+Settings paths: doa3_settings_ini_path, pad_mapping_default_path and
+netplay's ini_path built the path with GetModuleFileNameA, which turns
+characters outside the ANSI code page into '?' (non-Latin or accented
+folder names), so Get/WritePrivateProfileString and fopen used a wrong
+path and Save failed. exe_path.h converts the wide path, falling back to
+the 8.3 short path (ASCII) when the conversion is lossy.
+
+Protected folders: at boot main.c creates and deletes
+doa3_write_test.tmp next to the exe. On failure it logs `[SETTINGS] cannot
+write to the game's folder ...` (the log itself may not be writable then)
+and sets g_doa3_folder_write_error; the overlay shows a warning for 20 s
+(or until the menu opens) and on the General tab, and a failed Save's
+status adds "the game's folder is protected (see General)".

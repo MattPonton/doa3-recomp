@@ -959,6 +959,23 @@ void sub_00076B30(void)
                     if (MEM8(0x59CF58 + p * 0x68) == 1 && MEM8(0x59CF59 + p * 0x68) == ch &&
                         MEM8(0x59CF5A + p * 0x68) == costume) break;
                 if (p < 2) continue;   /* mirror match in the same outfit */
+                /* 1.0.2: in a tag fight the side record holds only the
+                 * member on point, so a pick could match the human's
+                 * partner (Gultigargar: his Ryu in costume 1 met a CPU Ryu
+                 * in costume 1). The game's own rule (0x76B82, when the
+                 * tag flag 0xC59866 is set) reads the human side's team:
+                 * characters 0x59CF44 + side*5 + member, costumes
+                 * 0x5A2620 + side*5 + member. Check both members. */
+                if (MEM8(0xC59866)) {
+                    uint32_t m, clash = 0;
+                    for (p = 0; p < 2 && !clash; p++) {
+                        if (MEM8(0x59CF58 + p * 0x68) != 1) continue;
+                        for (m = 0; m < 2; m++)
+                            if (MEM8(0x59CF44 + p * 5 + m) == ch &&
+                                MEM8(0x5A2620 + p * 5 + m) == costume) { clash = 1; break; }
+                    }
+                    if (clash) continue;
+                }
                 {   static int s_log;
                     if (s_log < 32) {
                         s_log++;

@@ -1,3 +1,4 @@
+#include "../game/exe_path.h"
 #include "pad_mapping.h"
 
 #include <windows.h>
@@ -250,15 +251,8 @@ void pad_binding_label(PadBinding b, char *out, size_t n)
 const char *pad_mapping_default_path(void)
 {
     static char path[MAX_PATH];
-    char *slash;
     if (path[0]) return path;
-    if (!GetModuleFileNameA(NULL, path, MAX_PATH)) {
-        strcpy_s(path, sizeof(path), "doa3_input.ini");
-        return path;
-    }
-    slash = strrchr(path, '\\');
-    if (slash) slash[1] = 0; else path[0] = 0;
-    strcat_s(path, sizeof(path), "doa3_input.ini");
+    doa3_exe_file_ansi("doa3_input.ini", path, sizeof path);   /* 1.0.2: non-ANSI folders */
     return path;
 }
 

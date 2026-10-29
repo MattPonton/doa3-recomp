@@ -214,6 +214,11 @@ The executable is written to `doa3/build/release/DOA3.exe`.
 
 ## Reporting bugs and contributing
 
+If **Save** doesn't stick, or the game warns that it cannot write to its
+folder, move the game's folder somewhere you own (not Program Files or a
+synced OneDrive folder), or allow `DOA3.exe` in Windows Security >
+Ransomware protection > Controlled folder access or in your antivirus.
+
 Please open an issue with steps to reproduce. Turn on **General > Logging >
 Write log files** first and attach `doa3_log.txt`. Copy it before relaunching,
 since a new launch replaces it. For a graphics bug, also press **Create a

@@ -56,6 +56,10 @@ static IDirect3D8   *g_d3d8;
 static IDirect3DDevice8 *g_d3d_device;
 static IDirectSound8 *g_dsound;   /* host DirectSound (mirrors burnout3) */
 
+/* 1.0.2: non-zero (the Windows error) when DOA3.exe's folder refused a test
+ * write at boot; the Esc menu warns about it. */
+unsigned long g_doa3_folder_write_error;
+
 static LRESULT CALLBACK doa3_wndproc(HWND h, UINT m, WPARAM w, LPARAM l)
 {
     if (m == WM_DEVICECHANGE && w == DBT_DEVNODES_CHANGED) {
@@ -1805,6 +1809,30 @@ int main(int argc, char **argv)
 #endif
     if (diag_cleared)
         fprintf(stderr, "[DOA3] removed %d file(s) left in Diagnostics by the previous run\n", diag_cleared);
+    {   /* 1.0.2: settings, saves and the extracted disc all live next to
+         * the exe. Some players' Save did nothing: a folder Windows protects
+         * (Program Files, or Controlled folder access / antivirus on Desktop
+         * and Documents) refuses the write. Find out once, log it, and let
+         * the menu say so instead of failing quietly. */
+        WCHAR test[MAX_PATH];
+        DWORD n = GetModuleFileNameW(NULL, test, MAX_PATH);
+        WCHAR *slash = n ? wcsrchr(test, L'\\') : NULL;
+        if (slash && (size_t)(slash - test) + 24 < MAX_PATH) {
+            HANDLE h;
+            wcscpy(slash + 1, L"doa3_write_test.tmp");
+            h = CreateFileW(test, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
+                            FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, NULL);
+            if (h == INVALID_HANDLE_VALUE) {
+                g_doa3_folder_write_error = GetLastError();
+                if (!g_doa3_folder_write_error) g_doa3_folder_write_error = ERROR_ACCESS_DENIED;
+                *slash = 0;
+                fprintf(stderr, "[SETTINGS] cannot write to the game's folder %S (error %lu): "
+                                "settings and saves will not be kept\n", test, g_doa3_folder_write_error);
+            } else {
+                CloseHandle(h);
+            }
+        }
+    }
 
     atexit(doa3_atexit);
     SetUnhandledExceptionFilter(doa3_unhandled);
