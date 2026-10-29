@@ -4314,3 +4314,109 @@ removed); the engine is src/audio/dsound_hle.c:
 
 Tests for the removed code (apu_idle, apu_irq, audio_mix) are removed;
 audio_capture builds from oal_output.c.
+
+## dsstdfx.bin decoded; the console reverb run offline
+
+The effects image the game downloads to the GP DSP (D:\dsstdfx.bin) is
+parsed, decrypted, disassembled and run by tools/dsstdfx (README there).
+The disassembler and DSP56300/GP DMA emulation are xemu's
+(hw/xbox/mcpx/apu/dsp, espes and Matt Borgerson, from Hatari; GPL-2.0+),
+fetched at a fixed commit and kept out of the game build. Nothing in the
+port's audio changes in this step.
+
+Image (XDK 4134 standard image), read as DSOUND's DownloadEffectsImage
+(sub_001F3A9F, sub_001F3832) reads it: header at 0x800 (3140 code words,
+2554 state words), code from 0x818 (P:0), state blocks (X:0x80), the
+DSEFFECTIMAGEDESC at 0x6110, ten effects. The code is encrypted: a 64-bit
+LFSR (sub_001F72ED) seeded 0x7FA49BCA:49DE12BA and stepped 81 times
+(sub_001F7366) is the key for the eight-byte per-effect keys after the
+descriptor, and those decrypt each effect (sub_001F7393). Mixbin n is
+X:0x1400 + 0x20n, also addressed as X:0xC00 + 0x20n.
+
+| FX | effect | mixbins |
+| --- | --- | --- |
+| 0 | I3DL2 reverb, 24 kHz | 10 (I3DL2) in, 6-9 out |
+| 1 | XTalk | 6-9 in, added into 0, 1, 4, 5 |
+| 2-7 | not identified (FX6/7 carry biquad lowpass coefficients) | FX sends 12-23 |
+| 8 | second I3DL2 reverb, fixed preset | FX send 11 in, 0, 1, 4, 5 out |
+| 9 | level meter (sum and peak of each speaker bin, into its state) | 0-5 read |
+
+What the game uses: pImageLoc {I3DL2 0, XTalk 1} (0xA5CF4), and its sound
+module gives every 3D voice bins 6, 8, 7, 9 and 10 at 0 mB plus LFE
+(0xA54E1); no voice uses the FX sends, so FX2-8 are idle. On the console
+the reverb's four outputs are the XTalk bins, so the wet signal goes
+through XTalk to the speakers like the dry 3D signal. The reverb runs its
+loops 16 samples per 32-sample frame (24 kHz, with fixed decimation and
+interpolation biquads at P:0019-0040), and cross-fades to new room
+parameters over 336 frames (P:0154).
+
+Room parameters: the commit (sub_001F40FD) reads state words 0-69, runs
+sub_001F828D/sub_001F874E, writes words 70-135. tools/dsstdfx/i3dl2.py runs
+that x86 code from the XBE under Unicorn for the 50 listeners at 0x2D3EB8.
+For room 0 (Generic) it reproduces the image's built-in defaults in 59 of
+66 words; the rest are sign extension above bit 24, 1-LSB rounding, and the
+input filter pair (107/108) and two delays (74/75), which fit the image
+having been built from a slightly different default listener.
+
+Stage rooms: stage IDs from 50 index (room, slow-motion room) pairs at
+0x299AD8 (most stages 30/43; 25/38, 26/39, 27/40, 28/41, 29/42, 31/44,
+34/47 elsewhere). sub_0008ABF0 sets the game speed; while it is not 1.0,
+sub_000E89A0 selects the second room, and at normal speed the current room
+(0x7FE2F0) is restored.
+
+Responses (fxrun, impulse into bin 10, bins 6-9, 4 s): the emulated
+reverb decays as the parameters say, T60 0.8-1.0 x flDecayTime in almost
+every room; onsets follow flReflectionsDelay. The hardware recordings in
+Cmp/ do not: after the voice ends, Beach/Forest/Snow (room 30, 0.20 s)
+decay at about T60 0.75 s and Ice Cave (room 25, 0.36 s) at about 1.5 s,
+the ~4x of 0.0.171. Not yet explained. Ruled out: scratch units (DSOUND
+allocates exactly the image's 0xC2000 bytes, so the DMA fields are bytes,
+as xemu treats them), and xemu's unimplemented `asl S1,S2,D` (0C1E48/4C,
+only in helpers at P:006E/0074 that nothing calls). Still open: GP DMA
+timing (xemu completes transfers at once), the slow-motion room being
+active in some recordings, and a dry capture of the taunt to compare
+against the hardware directly.
+
+## Room reverb calibrated against the hardware recordings
+
+With the dry clip of the taunt (Cmp/ay_bakka.wav, the ADX the game plays,
+at 48 kHz) the Cmp recordings can be measured directly. Waveform
+deconvolution does not work (Ayane moves during the taunt, so the HRTF
+changes under it); band energy envelopes do. Each recording, in 250-1000,
+1000-3000 and 3000-8000 Hz, fits G * dry + A * (dry * exponential decay) +
+noise floor to 2-3 dB rms (27 of 30; LostWorld_1, Beach_CenterRight and
+DangerZone fit worse). The fitted T60 identifies each area's room: it is
+4x that room's flDecayTime in every one (room 30, the open stages: 0.77 s
+for 0.20; 31 Snow 0.52/0.14; 29 Iron Hell, Pancratium 0.80/0.20; 28
+X-Octagon 0.88/0.22; 25 Ice Cave 1.43/0.36; 26 Aquarium 1.40/0.34; 27 Danger
+Zone 1.65/0.42). Pre-delays stay at 10-28 ms, so the delays are not scaled,
+only the decay. The DSP emulation of the console's own reverb (previous
+section) decays at 1x; why the hardware differs is still not known, but
+the recordings settle what it does.
+
+The previous section's "decay as given" was wrong. The port's reverb,
+measured the same way (OpenAL Soft rendered offline with ds_set_i3dl2's
+mapping, the dry clip through it, scored on the 20-900 ms after the voice
+ends), was 6-14 dB too quiet after the voice in every room: with the short
+decay only the early reflections, the same level in every room, carried
+the wet sound, so open stages were too wet and Ice Cave, Danger Zone and
+Aquarium far too dry. One correction for all rooms, fitted over 12
+recordings in 7 rooms (Nelder-Mead on the tail error), takes the error
+from 9.1 to 2.1 dB rms:
+
+- flDecayTime x 4.3 (EAX's limit, 20 s, now caps the longest presets)
+- lReverb + 620 mB
+- lReflections - 1100 mB (the least certain: -740 to -1130 across the
+  leave-one-room-out fits)
+- flDecayHFRatio x 1.54 (the recorded rooms all ask for 1.3 and fit best
+  at EAX's 2.0 limit; 1.54 is the least scale that reaches it)
+
+Left out of each fit in turn, every room is predicted within 0.2 dB of its
+all-room fit, and the decay and late-gain values barely move (x4.28-4.52,
++601..+635 mB).
+
+Not changed: the direct sound. Its shape against the dry clip differs from
+OpenAL Soft's frontal HRTF by up to 4 dB per octave (hardware, re 500 Hz:
+125 Hz -3.2, 250 +0.3, 1 k +1.8, 2 k -1.0, 4 k -1.6, 8 k -3.2; the port:
+-6.3, -2.3, -2.3, -0.2, -0.4, -5.6), because the console filters 3D voices
+with its own HRTF tables rather than OpenAL Soft's.

@@ -20,3 +20,6 @@
 /doa3/netplay_full_*.bin
 /doa3/netplay_events.txt
 /doa3/build/release/netplay_events.txt
+/doa3/tools/dsstdfx/dsp/xemu
+/doa3/tools/dsstdfx/dsp/out
+Cmp
