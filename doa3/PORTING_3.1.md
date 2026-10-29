@@ -4982,3 +4982,15 @@ Cursor (Matt): instead of always hidden with the menu closed, it hides after
 0.5 s of continuous movement (a move more than 200 ms after the last starts
 a new streak; repeated moves at the same position are ignored). Closing the
 menu leaves it visible for that second.
+
+## 1.0.2.12
+
+Controller hotkeys (Matt's list): PollControllerHotkeys runs at the top of
+doa3_ui_render every frame, reads every connected physical slot (XInput 0-3,
+PlayStation 4-7) while the game window has focus and no binding or
+screenshot key is being captured, and fires a combination once when it
+becomes held: L3+R3 doa3_ui_toggle, L3+R1 d3d8_screenshot_request, L3+Y
+TogglePerformanceOverlay, and with the menu open L1/R1 (L3 not held) the
+previous/next enabled tab (ImGuiTabItemFlags_SetSelected; Sparring skipped
+outside training_available(), Debug while hidden). Buttons still reach the
+game.

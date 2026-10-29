@@ -132,6 +132,19 @@ effect immediately and are saved in the `[DipSwitches]` section of
   triggers, T / G / F / H for the left stick and the arrow keys for the right
   stick.
 
+**Controller shortcuts** (any connected controller, Xbox names; PlayStation:
+L3 / R3 / L1 / R1 / Triangle):
+
+| Buttons | Does |
+| --- | --- |
+| L3 + R3 | Open or close the Escape menu |
+| LB / RB | Previous / next tab, while the menu is open |
+| L3 + RB | Take a screenshot |
+| L3 + Y | Show or hide the performance overlay |
+
+They don't fire while a binding is being captured. The buttons also reach the
+game as usual.
+
 ### Video
 
 **Window type** (windowed / borderless fullscreen), **Aspect ratio** and

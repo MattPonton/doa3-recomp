@@ -32,6 +32,7 @@ float HistoryValue(void *, int index)
 }
 
 bool PerformanceOverlayEnabled() { return enabled; }
+void TogglePerformanceOverlay() { enabled = !enabled; ClearHistory(); }   /* 1.0.2: L3 + Y */
 void ResetPerformanceOverlay()
 {
     enabled = false;

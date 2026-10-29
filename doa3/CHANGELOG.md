@@ -39,6 +39,9 @@
 - **Unlock all characters, costumes and Theater movies** is now a dip switch
   on the General tab (it was in the developer tools). Your save is not
   changed, and a setting saved before is kept.
+- Controller shortcuts: L3 + R3 opens or closes the Esc menu, LB / RB change
+  tabs while it is open, L3 + RB takes a screenshot, and L3 + Y shows or hides
+  the performance overlay.
 - Test builds now show a fourth version number (1.0.2.1, 1.0.2.2, ...).
 
 ## 1.0.1 — 2026-10-27

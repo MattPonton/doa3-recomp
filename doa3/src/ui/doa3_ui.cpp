@@ -56,6 +56,8 @@ namespace {
 bool g_ready   = false;
 bool g_visible = false;
 bool g_screenshot_listening = false;
+/* 1.0.2: controller hotkeys switch tabs (L1 / R1); see PollControllerHotkeys. */
+int g_tab_current = 0, g_tab_request = -1;
 /* Cursor over the game while the menu is closed (doa3_ui_wndproc). */
 bool g_cursor_shown = false;
 ULONGLONG g_cursor_last_move, g_cursor_streak;
@@ -739,6 +741,56 @@ void DrawFolderBanner()
     ImGui::End();
 }
 
+/* 1.0.2: controller hotkeys, on any connected controller, while the game
+ * window has focus and no binding is being captured:
+ *   L3 + R3      open / close this menu
+ *   L1 / R1      previous / next tab, while the menu is open
+ *   L3 + R1      screenshot
+ *   L3 + Y       performance overlay on / off
+ * A combination fires once when it becomes held. The buttons still reach
+ * the game as usual (R1 is Black by default), as on the console. */
+extern "C" void doa3_ui_toggle(void);
+WORD g_hotkey_prev[XBOX_HOST_CONTROLLERS];
+int NextTab(int from, int dir)
+{
+    for (int k = 1; k <= 7; ++k) {
+        int t = ((from + dir * k) % 7 + 7) % 7;
+        if (t == 5 && !training_available()) continue;
+        if (t == 6 && !g_debug_tab) continue;
+        return t;
+    }
+    return from;
+}
+void PollControllerHotkeys()
+{
+    HWND hwnd = d3d8_GetHWND();
+    if (!hwnd || GetForegroundWindow() != hwnd || g_listening >= 0 || g_screenshot_listening) {
+        memset(g_hotkey_prev, 0, sizeof g_hotkey_prev);
+        return;
+    }
+    DWORD mask = xbox_InputPhysicalMask();
+    for (int slot = 0; slot < XBOX_HOST_CONTROLLERS; ++slot) {
+        XINPUT_STATE st;
+        if (!(mask & (1u << slot)) || xbox_InputReadPhysical(slot, &st) != ERROR_SUCCESS) {
+            g_hotkey_prev[slot] = 0;
+            continue;
+        }
+        WORD now = st.Gamepad.wButtons, before = g_hotkey_prev[slot];
+        g_hotkey_prev[slot] = now;
+        auto held = [](WORD b, WORD combo) { return (b & combo) == combo; };
+        auto fired = [&](WORD combo) { return held(now, combo) && !held(before, combo); };
+        const WORD L3 = XINPUT_GAMEPAD_LEFT_THUMB, R3 = XINPUT_GAMEPAD_RIGHT_THUMB;
+        const WORD L1 = XINPUT_GAMEPAD_LEFT_SHOULDER, R1 = XINPUT_GAMEPAD_RIGHT_SHOULDER;
+        if (fired(L3 | R3)) { doa3_ui_toggle(); continue; }
+        if (fired(L3 | R1)) { d3d8_screenshot_request(); continue; }
+        if (fired(L3 | XINPUT_GAMEPAD_Y)) { TogglePerformanceOverlay(); continue; }
+        if (g_visible && !(now & L3) && !(before & L3)) {
+            if (fired(L1)) g_tab_request = NextTab(g_tab_current, -1);
+            else if (fired(R1)) g_tab_request = NextTab(g_tab_current, +1);
+        }
+    }
+}
+
 /* 1.0.2: a short notice when a screenshot has been written (or failed). It
  * appears after the frame was captured, so it is never in the picture. */
 ULONGLONG g_shot_toast_until;
@@ -1308,39 +1360,47 @@ void DrawMenu()
         if (ImGui::BeginTabBar("##tabs")) {
             /* 0.2.16: General first; the Online tab is hidden until online
              * play works on this version of the game. */
-            if (ImGui::BeginTabItem("General")) {
+            /* 1.0.2: tab index order (L1 / R1 move through the enabled ones). */
+            auto tab = [&](int index, const char *name) {
+                ImGuiTabItemFlags f = g_tab_request == index ? ImGuiTabItemFlags_SetSelected : 0;
+                if (!ImGui::BeginTabItem(name, nullptr, f)) return false;
+                g_tab_current = index;
+                return true;
+            };
+            if (tab(0, "General")) {
                 DrawGeneralSection();
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("Controls")) {
+            if (tab(1, "Controls")) {
                 DrawControlsSection();
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("Video")) {
+            if (tab(2, "Video")) {
                 DrawVideoSection();
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("Audio")) {
+            if (tab(3, "Audio")) {
                 DrawAudioSection();
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("Photo Mode")) {
+            if (tab(4, "Photo Mode")) {
                 debug_visible = true;    /* the screenshot key listener lives here now */
                 DrawPhotoModeSection();
                 ImGui::EndTabItem();
             }
             ImGui::BeginDisabled(!training_available());
-            if (ImGui::BeginTabItem("Sparring")) {
+            if (tab(5, "Sparring")) {
                 DrawTrainingSection();
                 ImGui::EndTabItem();
             }
             ImGui::EndDisabled();
             /* 0.2.17: Debug is hidden unless DOA3_DEBUG=1 is set, or toggled
              * for this session with Ctrl+Shift+D while this menu is open. */
-            if (g_debug_tab && ImGui::BeginTabItem("Debug")) {
+            if (g_debug_tab && tab(6, "Debug")) {
                 DrawDebugSection();
                 ImGui::EndTabItem();
             }
+            g_tab_request = -1;
 
             ImGui::EndTabBar();
         }
@@ -1531,6 +1591,7 @@ extern "C" int doa3_ui_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 
 extern "C" void doa3_ui_render(void)
 {
+    PollControllerHotkeys();   /* 1.0.2 */
     /* 1.0.2: hide the cursor after a second without mouse movement. */
     if (g_cursor_shown && !g_visible && GetTickCount64() - g_cursor_last_move > 1000) {
         g_cursor_shown = false;
