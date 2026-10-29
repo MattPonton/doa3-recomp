@@ -4948,3 +4948,16 @@ renderer (d3d8_keep_prev_frame / the async copies), which needs no delay.
 Not yet understood: why a render thread that falls behind makes the game's
 KO logic go wrong at all. With the loop gone that needs a much slower
 machine, but it is worth finding (Steam Deck).
+
+## 1.0.2.9
+
+1.0.2.8 passed Matt's +10 ms slow-GPU-thread test (no KO damage). It also
+made the KO run at 60 fps, which Matt notes looks wrong, like the Xbox One
+/ Series backward compatibility. The delay loop is what slows the KO on
+the console: in the hardware capture (cmp/omega-hw, 60 fps) the picture
+changes every frame during the fight and on exactly every third frame from
+the KO letters to the fade (20 fps), then the ending movie. The hand edit
+now also sets g_doa3_gpu_delay_frame, and d3d4134_pace holds that frame
+for three 1/60 s periods instead of one. The vertical-blank handler still
+runs once per presented frame, so the game's logic advances one step per
+frame, as it does on hardware.

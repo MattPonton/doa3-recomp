@@ -2168,6 +2168,9 @@ void sub_001E4AA0(void);
  * TECMO logo for one). Hold each flip to the next 1/60 s deadline. While
  * waiting, give the CPU to ready worker fibers -- on hardware the CRI
  * decoder/streaming threads run while the game thread waits for vblank. */
+/* 1.0.2.8: set by the hand edit in sub_0006BF10 (Omega's after-image GPU
+ * delay loop); this frame takes three vertical blanks, as on hardware. */
+volatile long g_doa3_gpu_delay_frame;
 static void d3d4134_pace(void)
 {
     extern int xbox_fiber_workers_ready(void);
@@ -2192,6 +2195,8 @@ static void d3d4134_pace(void)
     QueryPerformanceCounter(&now);
     if (!s_next) s_next = now.QuadPart;
     s_next += period;
+    if (InterlockedExchange(&g_doa3_gpu_delay_frame, 0))
+        s_next += 2 * period;   /* the console's GPU stall: 20 fps, as on hardware */
     /* overran by more than 8 frames: write the hitch off, re-anchor */
     if (now.QuadPart - s_next > period * 8) s_next = now.QuadPart;
     for (;;) {

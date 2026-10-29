@@ -85320,8 +85320,14 @@ void sub_0006BF10(void)
      * 90+ on a laptop, where the render thread then fell behind the game
      * and the KO broke (blue screen, fighters gone, the KO restarting, a
      * damaged title screen afterwards). Our renderer keeps the previous
-     * frame itself, so one write does the same job. */
+     * frame itself, so one write does the same job.
+     * On hardware the loop holds that frame for three vertical blanks: the
+     * KO plays at 20 frames per second (Matt's capture, one new image every
+     * third frame from the KO letters to the fade). d3d4134_pace stretches
+     * the frame to three 1/60 s periods the same way. */
     esi = 1;
+    {   extern volatile long g_doa3_gpu_delay_frame;
+        g_doa3_gpu_delay_frame = 1; }
 
 loc_0006BF10: ;
     edx = 0x302;

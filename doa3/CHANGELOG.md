@@ -18,7 +18,8 @@
 - Fixed Omega's KO on slower PCs: it could slow to a crawl, show a blue
   screen, lose both fighters or restart the KO, and leave the title screen
   and later fights drawn wrong until the game was restarted. The KO is also
-  much lighter on every PC now.
+  much lighter on every PC now, and plays in the original's slow motion
+  (20 frames per second, as on the Xbox).
 - Fixed a CPU tag team getting the same character in the same costume as
   your tag partner when **Random includes alternate costume colors** (or
   storage costumes) is on, in Time Attack and Survival.
