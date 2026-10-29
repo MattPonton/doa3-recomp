@@ -85311,6 +85311,17 @@ loc_0006BF00: ;
 void sub_0006BF10(void)
 {
     int _flags = 0; /* fallback flag var */
+    /* HAND EDIT (1.0.2.8): a GPU delay loop. Omega's after-image effect
+     * (sub_000F72E0, phase 2) calls 0x6BF00, which sets esi = 1,000,000
+     * and lands here to write the same two blend-function methods a
+     * million times: 8 MB of push buffer per frame, only to make the
+     * console's GPU wait. Here every one of them is copied, translated and
+     * handed to the render thread: about 38 ms per frame on a fast PC and
+     * 90+ on a laptop, where the render thread then fell behind the game
+     * and the KO broke (blue screen, fighters gone, the KO restarting, a
+     * damaged title screen afterwards). Our renderer keeps the previous
+     * frame itself, so one write does the same job. */
+    esi = 1;
 
 loc_0006BF10: ;
     edx = 0x302;

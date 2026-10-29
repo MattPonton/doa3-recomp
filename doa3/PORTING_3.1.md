@@ -4926,3 +4926,25 @@ the game within a frame (the KO frame wraps the 1 MB push buffer several
 times). "Simulate a slow GPU thread" (Debug > Frame advance, 0-30 ms per
 translated batch, not saved) delays pb_render_thread before each batch to
 test that on a fast PC.
+
+## 1.0.2.8
+
+"Simulate a slow GPU thread" at 10 ms per batch reproduced the report on
+Matt's PC (cmp/omega-plus-10-gpu): blue frames, the fighters gone, the KO
+letters starting over several times.
+
+The cost behind it: sub_0006BF10 is a delay loop. Omega's after-image
+handler sub_000F72E0, in phase 2 (ebx == 2 at 0xF7466), calls 0x6BF00,
+which sets esi = 0xF4240 (1,000,000) and loops writing SET_BLEND_FUNC_SFACTOR
+0x302 / DFACTOR 0x303 through 0x1DDEB0: the 934,550 + 934,545 0344/0348
+methods in the KO traces, 8 MB of push buffer per frame, written only to
+keep the console's GPU busy. In the port that is guest CPU time (about 38
+ms a frame on Matt's PC, 92 on the reporter's i7-7700HQ), several wraps of
+the 1 MB push buffer and two million methods for the render thread.
+Hand edit in gen/recomp_0001.c: esi = 1 on entry, so the pair is written
+once. The previous-frame image the effect samples is kept by the host
+renderer (d3d8_keep_prev_frame / the async copies), which needs no delay.
+
+Not yet understood: why a render thread that falls behind makes the game's
+KO logic go wrong at all. With the loop gone that needs a much slower
+machine, but it is worth finding (Steam Deck).

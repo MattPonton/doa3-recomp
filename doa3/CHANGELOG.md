@@ -15,6 +15,10 @@
 - Master volume starts at 80% on a first launch (100% was loud). A saved
   volume is kept.
 - The empty `HDD\Z` folder is no longer created. It can be deleted.
+- Fixed Omega's KO on slower PCs: it could slow to a crawl, show a blue
+  screen, lose both fighters or restart the KO, and leave the title screen
+  and later fights drawn wrong until the game was restarted. The KO is also
+  much lighter on every PC now.
 - Fixed a CPU tag team getting the same character in the same costume as
   your tag partner when **Random includes alternate costume colors** (or
   storage costumes) is on, in Time Attack and Survival.
