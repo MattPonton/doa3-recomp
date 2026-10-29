@@ -6,13 +6,11 @@
   "type": "recomp",
   "original": { "region": "Japan", "revision": "1" },
   "project": "Dead or Alive 3 Recompiled",
-  "status": "playable",
+  "status": "released",
   "targets": ["Windows"],
   "toolchain": "xboxrecomp",
   "approach": "Static recompilation of the XBE to C, with an NV2A-to-Direct3D 11 renderer and an XAudio2 APU",
   "maintainers": [
-    { "name": "MattPonton", "link": "https://github.com/MattPonton" },
-    { "name": "Jay-Collins", "link": "https://github.com/Jay-Collins" }
-  ],
-  "notes": "Targets the Japanese release (TC-001, XBE certificate version 1), known in the community as v3.1. v1.0.0: all modes playable as a 1:1 port, with menus and HUD matched to hardware at 16:9, 21:9 and 32:9; audio is still being brought to 1:1; rollback netcode is next."
+    { "name": "MattPonton", "link": "https://github.com/MattPonton" }
+  ]
 }
