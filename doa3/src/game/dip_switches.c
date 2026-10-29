@@ -34,6 +34,11 @@ static const struct { const char *key, *label, *help; } k_dip[DIP_COUNT] = {
       "Only the round that decides a match shows the replay after the round ends." },
     { "WinnerFinalRoundOnly", "Only show winner on final round",
       "Only the round that decides a match shows the win pose after the round ends." },
+    { "UnlockAll", "Unlock all characters, costumes and Theater movies",
+      "Makes every character, costume and Theater movie available in the menus. Your save "
+      "is not changed: turn this off to go back to what you have unlocked yourself. Re-enter "
+      "Character Select or Theater to refresh the list. The credits movie still plays only "
+      "after a Story Mode ending, as in the original." },
 };
 
 /* 1.0.0: the ledge throw damage fix is to ship always on and out of the
@@ -52,6 +57,11 @@ static void dip_load(void)
     for (i = 0; i < DIP_COUNT; i++)
         g_on[i] = GetPrivateProfileIntA("DipSwitches", k_dip[i].key, dip_default(i),
                                         doa3_settings_ini_path()) != 0;
+    /* 1.0.2: Unlock all moved here from the Debug tab ([Debug] UnlockAll);
+     * an ini saved before keeps its setting until the switch is saved. */
+    if (GetPrivateProfileIntA("DipSwitches", "UnlockAll", -1, doa3_settings_ini_path()) == -1)
+        g_on[DIP_UNLOCK_ALL] = GetPrivateProfileIntA("Debug", "UnlockAll", 0,
+                                                      doa3_settings_ini_path()) != 0;
     g_loaded = 1;
 }
 

@@ -103,6 +103,7 @@ effect immediately and are saved in the `[DipSwitches]` section of
 | Fix ledge fall damage on Lorelei | On Lorelei, a fighter knocked off a ledge by a throw or hold could take the wrong amount of damage from the fall. With the switch on, throws and holds do the intended damage. |
 | Only show replay on final round | Only the round that decides a match shows the replay after the round ends. |
 | Only show winner on final round | Only the round that decides a match shows the win pose after the round ends. |
+| Unlock all characters, costumes and Theater movies | Every character, costume and Theater movie is available in the menus. Your save is not changed; turn it off to go back to what you have unlocked. The credits movie still plays only after a Story Mode ending. |
 
 **Logging** is what a bug report needs:
 

@@ -1,4 +1,5 @@
 #include "debug_settings.h"
+#include "dip_switches.h"
 #include "debug_capture.h"
 #include "../perf_capture.h"
 #include "video_settings.h"
@@ -7,7 +8,6 @@
 #include "online/netplay_session.h"
 #include <windows.h>
 
-static volatile LONG g_unlock_all;
 static unsigned g_hide_players;
 static int g_hide_ui, g_screenshot_key = VK_F12;
 static volatile LONG g_auto_capture;
@@ -131,20 +131,21 @@ int debug_screenshot_key_save(void)
     return WritePrivateProfileStringA("Debug", "ScreenshotKey", value, doa3_settings_ini_path()) != 0;
 }
 
+/* 1.0.2: the General tab's dip switch "Unlock all characters, costumes and
+ * Theater movies" (was Debug > Unlockables, [Debug] UnlockAll). */
 int debug_unlock_all_get(void)
 {
-    return (int)InterlockedCompareExchange(&g_unlock_all, 0, 0);
+    return dip_get(DIP_UNLOCK_ALL);
 }
 
 void debug_unlock_all_set(int enabled)
 {
-    InterlockedExchange(&g_unlock_all, enabled != 0);
+    dip_set(DIP_UNLOCK_ALL, enabled);
 }
 
 int debug_settings_load(void)
 {
     const char *path = doa3_settings_ini_path();
-    debug_unlock_all_set(GetPrivateProfileIntA("Debug", "UnlockAll", 0, path) != 0);
     doa3_auto_capture_set(GetPrivateProfileIntA("Debug", "AutoCapture", 0, path) != 0);
     g_screenshot_key = VK_F12;
     debug_screenshot_key_set(GetPrivateProfileIntA("Debug", "ScreenshotKey", VK_F12, path));
@@ -155,8 +156,7 @@ int debug_settings_load(void)
 
 int debug_settings_save(void)
 {
-    int result = WritePrivateProfileStringA("Debug", "UnlockAll",
-        debug_unlock_all_get() ? "1" : "0", doa3_settings_ini_path()) != 0;
+    int result = 1;
     result = (WritePrivateProfileStringA("Debug", "AutoCapture",
         InterlockedCompareExchange(&g_auto_capture, 0, 0) ? "1" : "0",
         doa3_settings_ini_path()) != 0) && result;

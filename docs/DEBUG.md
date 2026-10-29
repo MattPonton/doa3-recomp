@@ -5,13 +5,6 @@ They are not needed to play, some may change or be removed before v1.0, and
 most are unavailable during online play. Sections start collapsed; click a
 heading to expand it.
 
-## Unlockables
-
-Open **Escape > Debug > Unlockables** and tick **Unlock all unlockables** to access characters,
-costumes and Theater movies. Re-enter the selection screen to refresh its list.
-Unticking restores normal unlock checks; earned progress and the game save are
-preserved. Choose **Save** to remember the toggle in `doa3_settings.ini`.
-
 ## Camera controls
 
 Enter a stage, open **Escape > Debug > Camera controls**, enable **Free camera**, then close the

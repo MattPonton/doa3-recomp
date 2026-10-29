@@ -4961,3 +4961,16 @@ now also sets g_doa3_gpu_delay_frame, and d3d4134_pace holds that frame
 for three 1/60 s periods instead of one. The vertical-blank handler still
 runs once per presented frame, so the game's logic advances one step per
 frame, as it does on hardware.
+
+## 1.0.2.10
+
+Unlock all moved from Debug > Unlockables to the dip switches
+(DIP_UNLOCK_ALL, [DipSwitches] UnlockAll, listed last). debug_unlock_all_get
+/ _set now read and write the switch, so doa3_debug_unlock_read8 and the
+generated reads are unchanged; [Debug] UnlockAll is read once as the
+default when the new key is absent, and no longer written. The Theater
+grid is the 16 entries of 0x29CD40 (ending flags 0x5A0B49 + index); the
+credits movie is not a Theater entry -- it plays after a Story ending
+(Options can skip it once seen), so the switch does not affect it (Matt:
+fine as is). tests/debug_settings still exercises the old [Debug] key and
+needs updating.

@@ -958,7 +958,6 @@ void DrawDebugSection()
 {
     switch (ResetSaveRow()) {
     case 1:
-        debug_unlock_all_set(0);
         doa3_auto_capture_set(0);
         combat_debug_set_flags(0);
         d3d8_debug_views_reset();
@@ -1040,14 +1039,6 @@ void DrawDebugSection()
         HelpMarker("Views apply to depth-tested geometry. Transparency and cutouts may appear solid. "
                    "Backfaces can only reveal geometry submitted by the game. These options are temporary.");
         if (d3d8_debug_view_error()[0]) ImGui::TextWrapped("%s", d3d8_debug_view_error());
-    }
-    if (ImGui::CollapsingHeader("Unlockables")) {
-        bool unlock = debug_unlock_all_get() != 0;
-        if (ImGui::Checkbox("Unlock all unlockables", &unlock))
-            debug_unlock_all_set(unlock ? 1 : 0);
-        HelpMarker("Unlocks characters, costumes and Theater movies; re-enter character select or Theater "
-                   "to refresh the list. Your earned unlocks and save data are preserved: untick to use your "
-                   "normal unlocks. Choose Save to keep this setting for next time.");
     }
     if (ImGui::CollapsingHeader("Diagnostics")) {
         bool cap = doa3_auto_capture_enabled() != 0;

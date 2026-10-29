@@ -22,6 +22,7 @@ typedef enum {             /* in General tab display order (1.0.0) */
     DIP_LEDGE_THROW_DAMAGE, /* Lorelei two-ledge fall damage */
     DIP_REPLAY_FINAL_ONLY,  /* the KO replay only after the match's last round */
     DIP_WINNER_FINAL_ONLY,  /* the winner's pose only after the match's last round */
+    DIP_UNLOCK_ALL,         /* menus show everything unlocked; the save is unchanged (1.0.2) */
     DIP_COUNT
 } dip_switch;
 

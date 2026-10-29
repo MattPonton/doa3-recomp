@@ -35,6 +35,9 @@
 - Developer tools: frame advance (pause and step one frame at a time, with an
   optional trace of each step), tracing several frames in a row, and a
   slow-PC simulation.
+- **Unlock all characters, costumes and Theater movies** is now a dip switch
+  on the General tab (it was in the developer tools). Your save is not
+  changed, and a setting saved before is kept.
 - Test builds now show a fourth version number (1.0.2.1, 1.0.2.2, ...).
 
 ## 1.0.1 — 2026-10-27
