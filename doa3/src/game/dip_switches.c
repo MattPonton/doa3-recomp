@@ -37,8 +37,8 @@ static const struct { const char *key, *label, *help; } k_dip[DIP_COUNT] = {
     { "UnlockAll", "Unlock all characters, costumes and Theater movies",
       "Makes every character, costume and Theater movie available in the menus. Your save "
       "is not changed: turn this off to go back to what you have unlocked yourself. Re-enter "
-      "Character Select or Theater to refresh the list. The credits movie still plays only "
-      "after a Story Mode ending, as in the original." },
+      "Character Select or Theater to refresh the list. The credits movie is not unlocked by "
+      "this; it still depends on your own save." },
 };
 
 /* 1.0.0: the ledge throw damage fix is to ship always on and out of the
