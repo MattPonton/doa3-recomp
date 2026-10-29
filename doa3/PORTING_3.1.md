@@ -4910,3 +4910,19 @@ what races ahead: the guest's tick count (KeTickCount, read once a frame
 at 0xA64AB into 0x9B2390), the CRI/ADX streams (0x1C6F70..0x1C7920 read it
 too), and the APU, which keeps playing in real time (also while frame
 advance holds the game, so a sound-synchronised timeline would still skip).
+
+## 1.0.2.7
+
+Matt at +80 ms per frame (cmp/omega-plus-80): the KO plays like the
+hardware capture (fighters visible through the fade, then the ending and
+credits movies and a normal title screen). Slow frames with every clock
+running do not reproduce the report, so time skipping is not the cause
+for him. His +80 log still shows the KO costing about 38 ms of game time
+per frame beyond the 80 (the ~930k blend-function writes); the reporter's
+92 ms is that on a slower CPU.
+
+New hypothesis: on the reporter's machine the render thread falls behind
+the game within a frame (the KO frame wraps the 1 MB push buffer several
+times). "Simulate a slow GPU thread" (Debug > Frame advance, 0-30 ms per
+translated batch, not saved) delays pb_render_thread before each batch to
+test that on a fast PC.

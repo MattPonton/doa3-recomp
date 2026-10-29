@@ -74,7 +74,8 @@ const char *kFolderWarning =
     "or in your antivirus.";
 /* 1.0.2: Debug > Frame advance (recomp_manual.c). */
 extern "C" volatile LONG g_doa3_frame_pause, g_doa3_frame_steps, g_doa3_frame_paused,
-                         g_doa3_frame_step_trace, g_doa3_trace_frames, g_doa3_frame_slow_ms;
+                         g_doa3_frame_step_trace, g_doa3_trace_frames, g_doa3_frame_slow_ms,
+                         g_doa3_rthread_slow_ms;
 extern "C" unsigned g_doa3_frames_presented;
 void FramePauseToggle()
 {
@@ -1007,6 +1008,14 @@ void DrawDebugSection()
         HelpMarker("Makes every frame take this much longer, with the game's clocks running normally, to "
                    "reproduce what slower computers see (Omega's KO slowed to about 90 ms per frame on a "
                    "player's laptop). 80 ms is about 11 frames per second. Not saved; off at every launch.");
+        int rslow = (int)g_doa3_rthread_slow_ms;
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.0f);
+        if (ImGui::SliderInt("Simulate a slow GPU thread", &rslow, 0, 30, rslow ? "+%d ms per batch" : "off"))
+            InterlockedExchange(&g_doa3_rthread_slow_ms, rslow);
+        HelpMarker("Delays the thread that turns the game's graphics commands into PC graphics by this much "
+                   "per batch of commands (several per frame), so it falls behind the game as it can on slower "
+                   "computers. Not saved; off at "
+                   "every launch.");
     }
     if (ImGui::CollapsingHeader("Vision modes")) {
         int view = d3d8_debug_view_get();

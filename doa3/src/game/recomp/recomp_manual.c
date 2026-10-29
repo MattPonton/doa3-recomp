@@ -2045,6 +2045,7 @@ static LONG            s_buf_frame[2] = { -1, -1 };     /* frame held by each co
 LONGLONG               g_doa3_rthread_busy;             /* QPC ticks spent translating, for [PERF-5S] */
 
 static int pbq_empty(void) { return s_pbq_head == s_pbq_tail; }
+volatile LONG g_doa3_rthread_slow_ms;   /* Debug: extra ms per command batch on the render thread */
 
 static DWORD WINAPI pb_render_thread(LPVOID unused)
 {
@@ -2057,6 +2058,12 @@ static DWORD WINAPI pb_render_thread(LPVOID unused)
         int flip = 0;
         if (pbq_empty()) { WaitForSingleObject(s_pbq_work, INFINITE); continue; }
         it = s_pbq[s_pbq_head % PBQ_N];
+        if (it.translate && g_doa3_rthread_slow_ms > 0) {
+            /* Debug > "Simulate a slow GPU thread": each batch of graphics
+             * commands waits, so the render thread falls behind the game
+             * within a frame, as on a slower machine. */
+            Sleep((DWORD)g_doa3_rthread_slow_ms);
+        }
         if (it.translate) {
             LONGLONG begin = doa3_perf_now();
             d3d8_Lock();

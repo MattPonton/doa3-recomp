@@ -141,6 +141,10 @@ during online play or while a movie is playing.
 take that much longer with the game's clocks running, to reproduce problems
 that only slower computers hit (for example Omega's KO).
 
+**Simulate a slow GPU thread** (0 to 30 ms per batch, off at every launch)
+delays the thread that translates the game's graphics commands, so it falls
+behind the game the way it can on slower computers.
+
 **Trace the next frames** traces each of the next 2 to 30 frames in a row,
 starting with the next one, without pausing. Each frame takes about 20 MB at
 4x internal resolution.
