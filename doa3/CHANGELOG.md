@@ -1,6 +1,6 @@
 # DOA3 3.1 changelog
 
-## 1.0.3 — not yet released
+## 1.0.3 — 2026-10-30
 
 - Fixed movies on slower PCs (1.0.2): they started too fast and then
   flickered to black for the rest of the movie.

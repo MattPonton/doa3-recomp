@@ -5158,3 +5158,8 @@ vblank by less than half a period, to the nearest boundary of the
 deadline's phase, so no boundary fires twice (same simulation: 0.998x on
 the slow PC, 1.000x on a fast one). Reproducible on a fast PC with Debug >
 Simulate a slow PC set to ~20 ms during a Theater movie.
+
+## 1.0.3 (release)
+
+Released from 1.0.3.1. Gultigargar confirmed his movies are fixed; Matt
+reproduced the bug on 1.0.2 with Simulate a slow PC at +20 ms.
