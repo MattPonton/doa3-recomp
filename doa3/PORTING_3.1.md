@@ -5131,3 +5131,9 @@ dip_get/dip_set), checks that an old [Debug] UnlockAll=1 is picked up when
 there is no [DipSwitches] UnlockAll, that dip_save writes the switch, and
 that debug_settings_load no longer changes it. CHANGELOG: developer-tool
 and test-build entries removed (Matt: release notes are for players).
+
+## 1.0.2 (release)
+
+Released from 1.0.2.19: DOA3_VER_BUILD 0, DOA3_VER_FULL_STR "1.0.2", the
+CHANGELOG section dated. Verified by Matt before release: everything in
+the changelog except DirectInput controllers (no controller to test with).

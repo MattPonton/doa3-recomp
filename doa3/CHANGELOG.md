@@ -1,6 +1,6 @@
 # DOA3 3.1 changelog
 
-## 1.0.2 — not yet released
+## 1.0.2 — 2026-10-29
 
 - **Exit Game** button on the General tab.
 - The mouse pointer over the game hides after a second without moving while
