@@ -2207,16 +2207,27 @@ static void d3d4134_pace(void)
      * pictures were held for uneven times. A lap now starts only if the
      * longest recent lap fits in the time left, except the first lap of a
      * frame, which always runs (no worker can be starved; on a PC whose
-     * decode is longer than a frame that lap is as late as before). The
+     * decode is longer than a frame that lap is as late as before; with the
+     * vblank aligned below, that first lap comes at the start of the frame). The
      * estimate decays by 1/32 per frame, so ordinary laps (well under 1 ms)
      * are never held back once a movie is over. Not during netplay. */
     s_lap_est -= s_lap_est / 32;
     int laps_this_frame = 0;
+    {   /* the guest vblank fires at this frame's deadline (xbox_fiber.c), so
+         * the workers it wakes -- the movie decoder -- start their lap at the
+         * beginning of the next frame with the whole frame ahead of them */
+        extern void xbox_fiber_vblank_align(long long deadline);
+        xbox_fiber_vblank_align(s_next);
+    }
     for (;;) {
         LONGLONG rem;
         QueryPerformanceCounter(&now);
         rem = s_next - now.QuadPart;
-        if (rem <= 0) break;
+        if (rem <= 0) {
+            extern void xbox_fiber_vblank_tick(void);
+            xbox_fiber_vblank_tick();   /* the deadline's vblank, now */
+            break;
+        }
         extern int xbox_fiber_is_coroutine(void);
         extern void xbox_fiber_vblank_tick(void);
         xbox_fiber_vblank_tick();

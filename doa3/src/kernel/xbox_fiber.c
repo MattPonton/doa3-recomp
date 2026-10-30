@@ -257,14 +257,37 @@ static unsigned g_vbl_seq;
 static unsigned g_vbl_seen[MAX_FIBERS];
 #define VBL_CATCHUP_MAX 6u
 
+/* 1.0.2: the guest vblank runs at the presentation rate (60 Hz, the pace in
+ * recomp_manual.c) and is phase-locked to its frame deadline by
+ * xbox_fiber_vblank_align. It used to free-run at 59.94 Hz, so it drifted
+ * through the presented frame once every ~17 s; during a movie it wakes the
+ * Sofdec decoder, whose lap (a whole picture) then started with anything
+ * from a full frame to a fraction of a millisecond left, and in the late
+ * part of each cycle most movie frames missed their vblank. */
+static LONGLONG s_vbl_qpf, s_vbl_next;
+void xbox_fiber_vblank_align(long long deadline)
+{
+    LARGE_INTEGER now;
+    LONGLONG period;
+    if (!s_vbl_qpf || !s_vbl_next) return;          /* not started yet */
+    period = s_vbl_qpf / 60;
+    QueryPerformanceCounter(&now);
+    /* the first boundary of the deadline's phase that is still ahead (or
+     * the deadline itself when the frame already overran it) */
+    if (deadline > now.QuadPart)
+        deadline -= period * ((deadline - now.QuadPart) / period);
+    s_vbl_next = deadline;
+}
+
 void xbox_fiber_vblank_tick(void)
 {
-    static LONGLONG s_qpf, s_next;
+    LONGLONG s_qpf, s_next;
     LARGE_INTEGER now;
     LONGLONG period;
     unsigned elapsed = 1;
-    if (!s_qpf) { LARGE_INTEGER f; QueryPerformanceFrequency(&f); s_qpf = f.QuadPart; }
-    period = s_qpf * 1001 / 60000;                  /* 59.94 Hz */
+    if (!s_vbl_qpf) { LARGE_INTEGER f; QueryPerformanceFrequency(&f); s_vbl_qpf = f.QuadPart; }
+    s_qpf = s_vbl_qpf; s_next = s_vbl_next;
+    period = s_qpf / 60;                            /* the presentation rate */
     QueryPerformanceCounter(&now);
     if (now.QuadPart < s_next) return;
     if (!s_next) {
@@ -279,6 +302,7 @@ void xbox_fiber_vblank_tick(void)
             s_next += period * (LONGLONG)elapsed;
         }
     }
+    s_vbl_next = s_next;
     g_vbl_seq += elapsed;
     xbox_fiber_wake(XBOX_FIB_VBLANK_KEY);
 }

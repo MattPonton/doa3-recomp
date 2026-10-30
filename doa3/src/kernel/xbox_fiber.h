@@ -46,6 +46,8 @@ void xbox_fiber_block(uint32_t event_va);
 /* Key worker fibers park on to wait for the next (59.94 Hz) vertical blank. */
 #define XBOX_FIB_VBLANK_KEY 0xB1A4B1A4u
 void xbox_fiber_vblank_tick(void);
+/* 1.0.2: phase-lock the guest vblank to the pace's frame deadline (QPC). */
+void xbox_fiber_vblank_align(long long deadline);
 void xbox_fiber_vblank_wait(void);   /* worker fibers: one pass per elapsed vblank */
 
 /* Wake every fiber WAITING on event_va (mark them runnable). event_va == 0 wakes

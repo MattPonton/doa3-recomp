@@ -5064,3 +5064,26 @@ interface) can no longer take a lower native slot than a PS4 / PS5 pad and
 become player 1 under automatic assignment. The Sony path is otherwise
 unchanged from 1.0.1 (same translation, rumble and the XInput-path check
 skipped).
+
+## 1.0.2.16
+
+1.0.2.15 did not change the movie frame intervals (opening: still 35-136
+of 300 frames over 17.5 ms per 5 s). The pattern explains why: the bad
+windows come and go on a ~17 s cycle. The guest vblank
+(xbox_fiber_vblank_tick) free-ran at 59.94 Hz while the pace presents at
+60.00 Hz, so it slid through the presented frame once every 1/0.06 = 16.7 s.
+The vblank is what wakes the Sofdec decoder, so its lap started at that
+drifting point; the "first lap of a frame always runs" rule of 1.0.2.15
+then let it overrun whenever the vblank fell late in the frame. Now the
+vblank uses the pace's period (QPF / 60) and the pace phase-locks it to
+each frame's deadline (xbox_fiber_vblank_align, first boundary still ahead
+so a 3-period GPU-stall frame still gets three vblanks), and fires it when
+the deadline passes. The decoder wakes at the frame boundary and its lap
+runs at the start of the next pace with the whole frame left. The guest
+vblank rate is 0.1% faster than NTSC, the same rate the game's frames
+already run at.
+
+Not explained yet: some movie stretches also have a ~10 ms burst of guest
+work on the game thread every 8 frames (PERF-PHASE before-flush 9-11 ms,
+no worker lap). If it is the player decoding on the main thread because
+the worker fell behind, this fixes it too.
