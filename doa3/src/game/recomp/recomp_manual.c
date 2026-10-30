@@ -2691,6 +2691,22 @@ static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
     game_audio_frame();               /* game volumes, streamer mode */
 
     prepared = entry ? doa3_perf_now() : 0;
+    /* 1.0.2: while a movie plays, wait for the frame's deadline first and
+     * present after it, so every movie frame goes out on the 60 Hz grid.
+     * Presenting first (as in gameplay, for the lowest input delay) put each
+     * movie frame out whenever the game finished it, and the frames that
+     * carried a picture decode (every other one) went out several ms later
+     * than the rest. */
+    extern int doa3_movie_host_owns_screen(void);   /* movie frames arriving */
+    extern int netplay_active(void);
+    int pace_first = !async_frame && doa3_movie_host_owns_screen() && !netplay_active();
+    LONGLONG pace_first_ticks = 0;
+    if (pace_first) {
+        LONGLONG pace_begin = doa3_perf_now();
+        doa3_frame_pause_point();
+        d3d4134_pace();
+        if (pace_begin) pace_first_ticks = doa3_perf_now() - pace_begin;
+    }
     if (entry) {   /* hand the phase split to the frame capture (main.c) */
         extern double g_doa3_phase_ms[7]; extern unsigned g_doa3_phase_kicks;
         LARGE_INTEGER fq; double ms;
@@ -2725,7 +2741,7 @@ static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
         QueryPerformanceFrequency(&frequency);
         double ms = 1000.0 / frequency.QuadPart;
         perf_5s(s_frame_perf.presented ? (presented - s_frame_perf.presented) * ms : -1.0,
-                g_doa3_phase_ms, (presented - prepared) * ms, ms);
+                g_doa3_phase_ms, (presented - prepared - pace_first_ticks) * ms, ms);
         if (perf_on && s_frame_perf.presented &&
             (presented - s_frame_perf.presented) * ms >= 25.0) {
             fprintf(stderr, "[PERF-PHASE] frame %u interval %.3f pace-prev %.3f workers-prev %.3f longest-worker %.3f before-flush %.3f pb-subset %.3f kicks %u flush %.3f auxiliary %.3f present %.3f end-qpc %lld\n",
@@ -2739,15 +2755,20 @@ static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
                 (presented - prepared) * ms, (long long)presented);
         }
         s_frame_perf.presented = presented;
-        s_phase_prev_present = presented - prepared;
+        s_phase_prev_present = presented - prepared - pace_first_ticks;
         s_frame_perf.pb = s_frame_perf.workers = s_frame_perf.longest_worker = 0;
         s_frame_perf.kicks = 0;
     }
-    doa3_frame_pause_point();   /* 1.0.2: Debug > Frame advance */
-    LONGLONG pace_begin = entry ? doa3_perf_now() : 0;
-    d3d4134_pace();
-    if (entry) s_frame_perf.pace = doa3_perf_now() - pace_begin;
-    else memset(&s_frame_perf, 0, sizeof s_frame_perf);
+    if (!pace_first) {
+        doa3_frame_pause_point();   /* 1.0.2: Debug > Frame advance */
+        LONGLONG pace_begin = entry ? doa3_perf_now() : 0;
+        d3d4134_pace();
+        if (entry) s_frame_perf.pace = doa3_perf_now() - pace_begin;
+        else memset(&s_frame_perf, 0, sizeof s_frame_perf);
+    } else {
+        if (entry) s_frame_perf.pace = pace_first_ticks;
+        else memset(&s_frame_perf, 0, sizeof s_frame_perf);
+    }
     { extern void doa3_fn_profile_tick(void); doa3_fn_profile_tick(); }
     eax = sv_eax; ecx = sv_ecx; edx = sv_edx; ebx = sv_ebx;    /* the worker laps */
     esi = sv_esi; edi = sv_edi; esp = sv_esp; g_seh_ebp = sv_seh;

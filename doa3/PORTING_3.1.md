@@ -5087,3 +5087,21 @@ Not explained yet: some movie stretches also have a ~10 ms burst of guest
 work on the game thread every 8 frames (PERF-PHASE before-flush 9-11 ms,
 no worker lap). If it is the player decoding on the main thread because
 the worker fell behind, this fixes it too.
+
+## 1.0.2.17
+
+1.0.2.16 made the movie pattern exact rather than better: 150 of every 300
+frames over 17.5 ms, "workers 0.00", game 6.5 ms in the slow frames. With
+the vblank at the deadline the decoder no longer ran in a pace lap; it ran
+straight after the deadline (the vblank handler / the start of the next
+game frame), i.e. inside the game phase of every other frame, and
+d3d4134_frame_done presents before it paces -- so each frame that carried
+a decode went out ~6 ms later in its frame than the next one (22.6 / 10.7 ms
+intervals, mean 16.67). Presenting first is right for gameplay (no added
+input delay), but while a movie plays (doa3_movie_host_owns_screen: guest
+movie frames in the last 100 ms) frame_done now runs the frame-advance
+pause point and the pace first and presents at the deadline, so movie
+frames go out on the 60 Hz grid whatever the decode does, as long as decode
+plus game fit in a frame. Not in netplay or async-GPU frames (the async
+path is off during movies anyway). The aligned vblank of 1.0.2.16 stays:
+it gives the decoder the whole frame after each deadline.
