@@ -5121,3 +5121,13 @@ gap, but with the pace before the present that gap holds no pace, so the
 value went negative and perf_5s skipped the frame. frame_done now keeps the
 pace that actually lies in the gap (s_gap_pace: 0 after a pace-first frame)
 for that and for [PERF-PHASE] before-flush. Diagnostics only.
+
+## 1.0.2.19
+
+Cursor (Matt): it comes back after 0.25 s of movement instead of 0.5 s.
+tests/debug_settings follows the 1.0.2.10 move of Unlock all to the dip
+switches: it links dip_switches.c (debug_unlock_all_get/set are now
+dip_get/dip_set), checks that an old [Debug] UnlockAll=1 is picked up when
+there is no [DipSwitches] UnlockAll, that dip_save writes the switch, and
+that debug_settings_load no longer changes it. CHANGELOG: developer-tool
+and test-build entries removed (Matt: release notes are for players).

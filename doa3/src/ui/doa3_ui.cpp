@@ -1546,7 +1546,7 @@ extern "C" int doa3_ui_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 
     /* 1.0.2: the game has no use for the mouse, so while this menu is closed
      * the cursor over the game hides after a second without movement and
-     * comes back after half a second of moving it (a bumped mouse does not
+     * comes back after a quarter second of moving it (a bumped mouse does not
      * bring it back). The menu and the first-run setup always show it. */
     if (msg == WM_MOUSEMOVE && !g_visible) {
         ULONGLONG now = GetTickCount64();
@@ -1554,7 +1554,7 @@ extern "C" int doa3_ui_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             g_cursor_last_pos = lp;
             if (now - g_cursor_last_move > 200) g_cursor_streak = now;   /* a new movement */
             g_cursor_last_move = now;
-            if (!g_cursor_shown && now - g_cursor_streak >= 500) {
+            if (!g_cursor_shown && now - g_cursor_streak >= 250) {
                 g_cursor_shown = true;
                 SetCursor(LoadCursor(NULL, IDC_ARROW));
             }
