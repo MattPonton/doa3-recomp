@@ -5105,3 +5105,19 @@ frames go out on the 60 Hz grid whatever the decode does, as long as decode
 plus game fit in a frame. Not in netplay or async-GPU frames (the async
 path is off during movies anyway). The aligned vblank of 1.0.2.16 stays:
 it gives the decoder the whole frame after each deadline.
+
+## 1.0.2.18
+
+1.0.2.17 result (Matt's PC, performance_frames.csv, movie frames only):
+logo, opening, Theater ending, Hayate ending and credits all at a mean of
+16.67 ms with 1.4-5.1% of frames over 17.5 ms, none over 20 ms but one
+(max 18.0-21.7 ms); gameplay in the same run is 6.4% over 17.5 ms. Before
+(1.0.2.13-16): 10-50% over 17.5 ms with 23-35 ms frames. Skipping each
+movie still works; no audio desync seen.
+
+The [PERF-5S] summary dropped nearly every movie frame in 1.0.2.17: its
+"game" phase subtracted the previous frame's pace from the present-to-entry
+gap, but with the pace before the present that gap holds no pace, so the
+value went negative and perf_5s skipped the frame. frame_done now keeps the
+pace that actually lies in the gap (s_gap_pace: 0 after a pace-first frame)
+for that and for [PERF-PHASE] before-flush. Diagnostics only.

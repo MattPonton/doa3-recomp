@@ -2659,6 +2659,7 @@ static void doa3_frame_pause_point(void)
     InterlockedExchange(&g_doa3_frame_paused, 0);
 }
 
+static LONGLONG s_gap_pace;   /* perf: pace time inside the last present-to-entry gap */
 static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
 {
     damage_trace_frame();
@@ -2712,7 +2713,7 @@ static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
         LARGE_INTEGER fq; double ms;
         QueryPerformanceFrequency(&fq); ms = 1000.0 / fq.QuadPart;
         g_doa3_phase_ms[0] = s_frame_perf.presented ?
-            (entry - s_frame_perf.presented - s_frame_perf.pace - s_frame_perf.pb) * ms : -1.0;
+            (entry - s_frame_perf.presented - s_gap_pace - s_frame_perf.pb) * ms : -1.0;
         g_doa3_phase_ms[1] = s_frame_perf.pb * ms;
         g_doa3_phase_ms[2] = (flushed - entry) * ms;
         g_doa3_phase_ms[3] = (prepared - flushed) * ms;
@@ -2749,7 +2750,7 @@ static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
                 (presented - s_frame_perf.presented) * ms,
                 s_frame_perf.pace * ms, s_frame_perf.workers * ms,
                 s_frame_perf.longest_worker * ms,
-                (entry - s_frame_perf.presented - s_frame_perf.pace) * ms,
+                (entry - s_frame_perf.presented - s_gap_pace) * ms,
                 s_frame_perf.pb * ms, s_frame_perf.kicks,
                 (flushed - entry) * ms, (prepared - flushed) * ms,
                 (presented - prepared) * ms, (long long)presented);
@@ -2769,6 +2770,9 @@ static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
         if (entry) s_frame_perf.pace = pace_first_ticks;
         else memset(&s_frame_perf, 0, sizeof s_frame_perf);
     }
+    /* the pace that lies between this present and the next frame's entry
+     * (none when it ran before the present) */
+    s_gap_pace = pace_first ? 0 : s_frame_perf.pace;
     { extern void doa3_fn_profile_tick(void); doa3_fn_profile_tick(); }
     eax = sv_eax; ecx = sv_ecx; edx = sv_edx; ebx = sv_ebx;    /* the worker laps */
     esi = sv_esi; edi = sv_edi; esp = sv_esp; g_seh_ebp = sv_seh;
