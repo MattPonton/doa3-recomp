@@ -5041,3 +5041,26 @@ table lookups), sub_001AFB20 (MMX IDCT), and sub_001B0C40 / sub_001B3FB0
   rewrites the 512 live tables as `switch (_jt)` with the same targets and
   the same RECOMP_ITAIL fallback; 19 tables whose targets all lie outside
   their function are left alone.
+
+## 1.0.2.15
+
+Movie frame pacing. The 1.0.2.14 profile run (Matt's PC) also showed the
+movies' frame intervals: 30-145 of every 300 frames over 17.5 ms (gameplay:
+1-30), the mean still 16.67 ms, and every frame over 25 ms with one worker
+lap of 12-16 ms inside d3d4134_pace (PERF-PHASE workers-prev = longest-worker).
+During a movie the Sofdec decode runs in those laps (the kernel-call
+timeslice is off until g_doa3_post_movie), and a lap cannot be interrupted;
+pace started one whenever more than 1 ms was left, so a picture decode begun
+late overran the vblank and the next frame came early. Pace now keeps a
+decaying maximum of the lap time (s_lap_est, -1/32 per frame) and starts a
+lap only if it fits in the time left, except the first lap of each frame,
+which always runs, so every worker still gets at least one lap per frame
+(a lap from the primary goes round every READY worker). Gameplay laps are
+well under 1 ms, so outside movies nothing changes; netplay is exempt.
+
+DirectInput: ds4_probe enumerates twice, Sony pads first, so a generic
+DirectInput device (a wheel, a flight stick, a keyboard's joystick
+interface) can no longer take a lower native slot than a PS4 / PS5 pad and
+become player 1 under automatic assignment. The Sony path is otherwise
+unchanged from 1.0.1 (same translation, rumble and the XInput-path check
+skipped).

@@ -2177,7 +2177,8 @@ static void d3d4134_pace(void)
     extern int xbox_fiber_is_primary(void);
     extern void xbox_fiber_yield(void);
     extern int doa3_workers_may_run(void);
-    static LONGLONG s_qpf, s_next;
+    extern int netplay_active(void);
+    static LONGLONG s_qpf, s_next, s_lap_est;
     static HANDLE s_timer;
     LARGE_INTEGER now;
     LONGLONG period;
@@ -2199,6 +2200,18 @@ static void d3d4134_pace(void)
         s_next += 2 * period;   /* the console's GPU stall: 20 fps, as on hardware */
     /* overran by more than 8 frames: write the hitch off, re-anchor */
     if (now.QuadPart - s_next > period * 8) s_next = now.QuadPart;
+    /* 1.0.2: a worker lap cannot be interrupted, and while a movie plays one
+     * lap is the decode of a whole picture (up to ~15 ms). Started with only
+     * a few ms left before the vblank, it overran it: in the movies about a
+     * third of the frames came 1-10 ms late and the next one early, so the
+     * pictures were held for uneven times. A lap now starts only if the
+     * longest recent lap fits in the time left, except the first lap of a
+     * frame, which always runs (no worker can be starved; on a PC whose
+     * decode is longer than a frame that lap is as late as before). The
+     * estimate decays by 1/32 per frame, so ordinary laps (well under 1 ms)
+     * are never held back once a movie is over. Not during netplay. */
+    s_lap_est -= s_lap_est / 32;
+    int laps_this_frame = 0;
     for (;;) {
         LONGLONG rem;
         QueryPerformanceCounter(&now);
@@ -2207,10 +2220,17 @@ static void d3d4134_pace(void)
         extern int xbox_fiber_is_coroutine(void);
         extern void xbox_fiber_vblank_tick(void);
         xbox_fiber_vblank_tick();
-        if (rem * 1000 > s_qpf && (xbox_fiber_is_primary() || xbox_fiber_is_coroutine()) &&
+        int lap_fits = !laps_this_frame || rem > s_lap_est || netplay_active();
+        if (rem * 1000 > s_qpf && lap_fits && (xbox_fiber_is_primary() || xbox_fiber_is_coroutine()) &&
             doa3_workers_may_run() && xbox_fiber_workers_ready()) {
             LONGLONG worker_begin = doa3_perf_now();
+            LARGE_INTEGER lap_begin, lap_end;
+            QueryPerformanceCounter(&lap_begin);
             xbox_fiber_yield();             /* a worker lap while we wait */
+            QueryPerformanceCounter(&lap_end);
+            ++laps_this_frame;
+            if (lap_end.QuadPart - lap_begin.QuadPart > s_lap_est)
+                s_lap_est = lap_end.QuadPart - lap_begin.QuadPart;
             if (worker_begin) {
                 LONGLONG elapsed = doa3_perf_now() - worker_begin;
                 s_frame_perf.workers += elapsed;

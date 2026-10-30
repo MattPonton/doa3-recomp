@@ -129,7 +129,8 @@ static BOOL CALLBACK found_pad(const DIDEVICEINSTANCEA *info, void *context)
     int slot = -1;
     IDirectInputDevice8A *device = NULL;
     HRESULT hr;
-    (void)context;
+    /* context: 0 = the Sony pass, 1 = the generic pass (see ds4_probe) */
+    int generic_pass = context != NULL;
     int ps5 = product == 0x0ce6 || product == 0x0df2;   /* DualSense, DualSense Edge */
     /* Restrict this mapping to Sony DS4 and DualSense hardware; never
      * double-enumerate Xbox pads. Through DirectInput both report the same
@@ -140,6 +141,7 @@ static BOOL CALLBACK found_pad(const DIDEVICEINSTANCEA *info, void *context)
     int kind = GET_DIDEVICE_TYPE(info->dwDevType);
     if (!sony && kind != DI8DEVTYPE_GAMEPAD && kind != DI8DEVTYPE_JOYSTICK)
         return DIENUM_CONTINUE;
+    if (sony == generic_pass) return DIENUM_CONTINUE;
     for (int i = 0; i < 4; ++i)
         if (s_pads[i].known && IsEqualGUID(&s_pads[i].id, &info->guidInstance)) { slot = i; break; }
     if (slot < 0) for (int i = 0; i < 4; ++i)
@@ -215,7 +217,11 @@ int ds4_probe(void)
     if (!InterlockedExchange(&s_discovery_pending, 0)) return 0;
     probed = 1; last = now;
     for (int i = 0; i < 4; ++i) s_pads[i].seen = 0;
-    if (SUCCEEDED(IDirectInput8_EnumDevices(s_input, DI8DEVCLASS_GAMECTRL, found_pad, NULL, DIEDFL_ATTACHEDONLY)))
+    /* PlayStation pads first, so another DirectInput device (a wheel, a
+     * stick, a joystick interface on a keyboard) never takes a lower slot
+     * than them and becomes player 1 under automatic assignment. */
+    if (SUCCEEDED(IDirectInput8_EnumDevices(s_input, DI8DEVCLASS_GAMECTRL, found_pad, NULL, DIEDFL_ATTACHEDONLY)) &&
+        SUCCEEDED(IDirectInput8_EnumDevices(s_input, DI8DEVCLASS_GAMECTRL, found_pad, (void *)1, DIEDFL_ATTACHEDONLY)))
         for (int i = 0; i < 4; ++i) if (!s_pads[i].seen) close_pad(i);
     return 1;
 }
