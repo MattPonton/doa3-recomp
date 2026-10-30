@@ -1,5 +1,10 @@
 # DOA3 3.1 changelog
 
+## 1.0.3 — not yet released
+
+- Fixed movies on slower PCs (1.0.2): they started too fast and then
+  flickered to black for the rest of the movie.
+
 ## 1.0.2 — 2026-10-29
 
 - **Exit Game** button on the General tab.

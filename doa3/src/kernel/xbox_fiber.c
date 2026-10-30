@@ -267,16 +267,22 @@ static unsigned g_vbl_seen[MAX_FIBERS];
 static LONGLONG s_vbl_qpf, s_vbl_next;
 void xbox_fiber_vblank_align(long long deadline)
 {
-    LARGE_INTEGER now;
-    LONGLONG period;
+    LONGLONG period, r;
     if (!s_vbl_qpf || !s_vbl_next) return;          /* not started yet */
     period = s_vbl_qpf / 60;
-    QueryPerformanceCounter(&now);
-    /* the first boundary of the deadline's phase that is still ahead (or
-     * the deadline itself when the frame already overran it) */
-    if (deadline > now.QuadPart)
-        deadline -= period * ((deadline - now.QuadPart) / period);
-    s_vbl_next = deadline;
+    /* 1.0.3: move the next vblank by less than half a period, to the
+     * boundary of the deadline's phase nearest to it. 1.0.2 set it to the
+     * deadline itself when a frame had overrun it -- a boundary that had
+     * often already fired during the frame -- so on a PC slow enough to
+     * overrun frames (every decode frame of a movie) that vblank counted
+     * twice, the guest's clock ran fast and movies played fast, then dropped
+     * frames (black flicker) to catch up. Now no boundary can fire twice:
+     * the vblank count keeps the frame rate, and only its phase follows the
+     * deadline. */
+    r = (deadline - s_vbl_next) % period;            /* C: sign of the dividend */
+    if (r > period / 2) r -= period;
+    else if (r <= -period / 2) r += period;
+    s_vbl_next += r;
 }
 
 void xbox_fiber_vblank_tick(void)

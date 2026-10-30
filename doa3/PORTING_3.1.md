@@ -5137,3 +5137,24 @@ and test-build entries removed (Matt: release notes are for players).
 Released from 1.0.2.19: DOA3_VER_BUILD 0, DOA3_VER_FULL_STR "1.0.2", the
 CHANGELOG section dated. Verified by Matt before release: everything in
 the changelog except DirectInput controllers (no controller to test with).
+
+## 1.0.3.1
+
+Gultigargar (i3-10300) and the 1.0.2 reporter (i7-7700HQ): every movie
+starts far too fast, then flickers to black for the rest (Kasumi's ending
+from the Theater: runs of 1-13 black frames every ~0.4 s in his 30 fps
+capture; the log shows the async render thread taking over mid-movie at
+frame 601 and back, i.e. no movie frame for 100 ms at a time).
+
+Cause: xbox_fiber_vblank_align (1.0.2.16). When a frame had overrun its
+deadline it set the next guest vblank to that deadline, and that boundary
+had usually already fired during the frame (a worker blocking runs the
+tick), so it fired again: one extra guest vblank per overrun frame. On a
+PC where the picture decode overruns its frame, that is most movie frames,
+the guest clock ran up to ~2-4x fast (simulated: 3.9x), so the movie raced
+ahead, then Sofdec skipped pictures to stay with it. Matt's PC never
+overran, which is why it did not show here. The align now moves the next
+vblank by less than half a period, to the nearest boundary of the
+deadline's phase, so no boundary fires twice (same simulation: 0.998x on
+the slow PC, 1.000x on a fast one). Reproducible on a fast PC with Debug >
+Simulate a slow PC set to ~20 ms during a Theater movie.
