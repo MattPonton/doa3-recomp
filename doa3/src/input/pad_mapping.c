@@ -181,7 +181,15 @@ void pad_mapping_set_type(int p, int type)
     xbox_InputConfigurationChanged();
 }
 
-void pad_mapping_set_menu_open(int open) { g_menu_open = open ? 1 : 0; }
+/* 1.0.4: after the Escape menu closes, a player's input stays neutral until
+ * everything they hold is let go, so the A / Enter that chose Resume (or a
+ * held stick) does not reach the game as a fresh press. */
+static unsigned g_release_wait;
+void pad_mapping_set_menu_open(int open)
+{
+    if (g_menu_open && !open) g_release_wait = 0xFFu;
+    g_menu_open = open ? 1 : 0;
+}
 int  pad_mapping_menu_open(void)         { return g_menu_open; }
 
 int pad_mapping_player_has_key(int player)
@@ -478,4 +486,14 @@ void pad_mapping_apply_player(int player, const void *xinput_state, XBOX_GAMEPAD
                                axis_magnitude(m->b[PADCTL_RX_NEG], xi));
     out->sThumbRY = clamp_axis(axis_magnitude(m->b[PADCTL_RY_POS], xi) -
                                axis_magnitude(m->b[PADCTL_RY_NEG], xi));
+
+    if (player >= 0 && player < 8 && (g_release_wait & (1u << player))) {
+        int held = out->wButtons != 0;
+        for (i = 0; i < 8; i++) if (out->bAnalogButtons[i] > 30) held = 1;
+        if (out->sThumbLX > 8000 || out->sThumbLX < -8000 || out->sThumbLY > 8000 || out->sThumbLY < -8000 ||
+            out->sThumbRX > 8000 || out->sThumbRX < -8000 || out->sThumbRY > 8000 || out->sThumbRY < -8000)
+            held = 1;
+        if (held) memset(out, 0, sizeof(*out));
+        else g_release_wait &= ~(1u << player);
+    }
 }

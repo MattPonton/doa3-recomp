@@ -42,8 +42,8 @@ on performance for low-end PCs.
   Escape value, and a move info (frame data) display
 - Photo Mode: free camera, hide either fighter or the HUD, and screenshots
   (PNG) at render resolution, without the overlay
-- Check for updates at boot (General tab; announces a newer release, never
-  downloads anything) and an adjustable Escape-menu size (Video tab)
+- Check for updates at boot (Game screen; announces a newer release, never
+  downloads anything)
 
 ## Getting started
 
@@ -73,21 +73,26 @@ Files the port keeps next to `DOA3.exe`:
 
 ## Settings (Escape menu)
 
-Press **Escape** at any time to open the settings overlay. Its tabs are
-**General**, **Controls**, **Video**, **Audio**, **Photo Mode** and
-**Sparring**. Most tabs have **Reset to defaults** and **Save** buttons;
-changes apply immediately, and **Save** keeps them for the next launch.
-Hover over a **(?)** for an explanation of a setting. While the menu is
+Press **Escape** (or **L3 + R3** on a controller) at any time to open the
+menu: a list over the game with **Resume**, **Display**, **Sound**, **Game**,
+**Controls**, **Photo Mode**, **Sparring** and **Quit**. Use the arrow keys
+or the d-pad to choose, **Left / Right** to change a setting, **Enter / A** to
+select and **Escape / B** to go back; the mouse works too. The line under
+the list explains the selected setting. Changes apply immediately and are
+saved when you leave the screen; each screen has **Reset to defaults**.
+**Controls**, **Photo Mode** and **Sparring** still open in a window with
+tabs; close it (or press Escape / B) to return to the list. While the menu is
 closed, the mouse pointer hides after a second without moving and comes back
 when you move the mouse.
 
-### General
+### Game
 
-- **Exit Game** closes the game, the same as Alt+F4.
+- **Pause while this menu is open** (off by default): holds the game and its
+  sound while the menu is open. Never during online play or a movie.
 - **Check for updates at boot** (on by default): asks GitHub whether a newer
-  release exists and shows a short notice over the game if so, with a link to
-  the release page. Nothing is downloaded or installed. **Check now** checks
-  again.
+  release exists and shows a short notice over the game if so; **Open the
+  release page** appears when there is one. Nothing is downloaded or
+  installed. **Check for updates now** checks again.
 
 **Dip Switches** change how the game itself behaves. Every switch is off by
 default, so with none set the game plays exactly as on an Xbox. They take
@@ -140,20 +145,21 @@ L3 / R3 / L1 / R1 / Triangle):
 | Buttons | Does |
 | --- | --- |
 | L3 + R3 | Open or close the Escape menu |
-| LB / RB | Previous / next tab, while the menu is open |
+| LB / RB | Previous / next tab, in the Controls, Photo Mode and Sparring window |
 | L3 + RB | Take a screenshot |
 | L3 + Y | Show or hide the performance overlay |
 
 They don't fire while a binding is being captured. The buttons also reach the
 game as usual.
 
-### Video
+### Display
 
 **Window type** (windowed / borderless fullscreen), **Aspect ratio** and
-**Internal resolution**; **Menu size** scales this settings menu (100–250 %),
-and **Show performance overlay** shows frame rate and frame times.
+**Internal resolution**; **Performance overlay** shows frame rate and frame
+times; **Classic menu size** scales the Controls, Photo Mode and Sparring
+window (100–250 %).
 
-### Audio
+### Sound
 
 - **Master volume**: the PC port's overall output level, applied after the
   game's own mix (including movies). 80% by default.
@@ -177,7 +183,7 @@ and **Show performance overlay** shows frame rate and frame times.
 
 ### Sparring
 
-Available in offline Sparring only (the tab is grayed out elsewhere).
+Available in offline Sparring only (grayed out elsewhere).
 
 **Show Move Info** displays each attack's startup, active and recovery frames.
 
@@ -237,7 +243,7 @@ folder, move the game's folder somewhere you own (not Program Files or a
 synced OneDrive folder), or allow `DOA3.exe` in Windows Security >
 Ransomware protection > Controlled folder access or in your antivirus.
 
-Please open an issue with steps to reproduce. Turn on **General > Logging >
+Please open an issue with steps to reproduce. Turn on **Game > Logging >
 Write log files** first and attach `doa3_log.txt`. Copy it before relaunching,
 since a new launch replaces it. For a graphics bug, also press **Create a
 trace file** while it is on screen and attach the files from the
@@ -266,7 +272,9 @@ trace file** while it is on screen and attach the files from the
   [GekkoNet](https://github.com/HeatXD/GekkoNet),
   [miniupnpc](https://github.com/miniupnp/miniupnp),
   [pl_mpeg](https://github.com/phoboslab/pl_mpeg) and
-  [stb_image_write](https://github.com/nothings/stb).
+  [stb_image_write](https://github.com/nothings/stb); the menu's
+  [Poppins](https://github.com/itfoundry/Poppins) font (SIL Open Font License,
+  `doa3/third_party/fonts`).
 
 ## Legal
 

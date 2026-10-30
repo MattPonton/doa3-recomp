@@ -114,7 +114,7 @@ Each `performance_frames.csv` row also splits the frame into game code
 (`game_ms`), graphics command translation (`pb_ms`, `flush_ms`), the previous
 frame's present and pacing wait, and counts its draws.
 
-**Create a trace file** (now under **General > Logging**) records one frame's
+**Create a trace file** (now under **Game > Logging** in the menu) records one frame's
 graphics commands (`mtrace_manual_*.txt`) and a screenshot (`aa_*.bmp`) in the
 `Diagnostics` folder, whether or not automatic captures are on. Open the menu
 while a visual bug is on screen and press it; the game keeps running behind

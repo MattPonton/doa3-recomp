@@ -5163,3 +5163,40 @@ Simulate a slow PC set to ~20 ms during a Theater movie.
 
 Released from 1.0.3.1. Gultigargar confirmed his movies are fixed; Matt
 reproduced the bug on 1.0.2 with Simulate a slow PC at +20 ms.
+
+## 1.0.4.1
+
+Escape menu redesign, first part (Matt: a full-screen list like the VF2 / VF3
+recomps, black instead of their colours, DOA3-style blue selection).
+
+- src/ui/pause_menu.cpp / .h: an immediate-mode list engine on ImGui's draw
+  lists in one full-screen NoNav window: black horizontal gradient (opaque
+  left, see-through right), "MENU" title with a blue rule, a section line,
+  rows (Action, Toggle, Choice, Step; Heading and Note between them), the
+  selected row's help under the list, the button hints and the version at
+  the bottom. Sizes follow the window height (row text 2.8 % of it).
+  Up / Down (arrows, d-pad, left stick) move the selection at End, skipping
+  disabled rows and wrapping; Left / Right change the selected value;
+  Enter / Space / A or a click activate (a click on the value's halves steps
+  it); Backspace / B is BackPressed; the wheel scrolls a long list, and the
+  view follows keyboard moves. Long labels are cut with an ellipsis.
+- Fonts: Poppins Medium and Bold Italic (OFL 1.1), Latin subsets (~15 KB
+  each) in third_party/fonts, embedded through src/ui/menu_fonts.h, added
+  after ImGui's default font every time the atlas is rebuilt
+  (ApplyMenuScale), and drawn at any size (ImGui 1.92 dynamic fonts).
+- doa3_ui.cpp: screens Main, Display, Sound, Game and Quit. Controls,
+  Photo Mode, Sparring and Debug open the old tabbed window on their tab
+  (SCR_CLASSIC); its close button, Esc or B (when nothing is being edited)
+  return to the list, and LB / RB still switch its tabs. Esc goes back a
+  screen, closes at Main. A screen saves its settings to doa3_settings.ini
+  when left (Back, B, Esc, or closing the menu from it) if anything changed;
+  the Save buttons are only in the old window now.
+- Pause while this menu is open ([General] PauseInMenu, default off): the
+  frame-advance hold (g_doa3_frame_pause) while the menu is open, not in
+  netplay; the hold already refuses during movies. g_menu_paused keeps the
+  Debug "Paused after frame" banner away.
+- pad_mapping: after the menu closes, each player's input stays neutral until
+  everything they hold is released, so the A / Enter that chose Resume does
+  not reach the game.
+- The menu was checked on Linux by rendering its ImGui draw data in software
+  over a game screenshot (1920x1080): Main, Display and Game screens.

@@ -2,6 +2,7 @@
 #include "combat_overlay.h"
 #include "combat_world.h"
 #include "performance_overlay.h"
+#include "pause_menu.h"
 #include "../game/combat_debug.h"
 #include "../game/training_dummy.h"
 
@@ -58,6 +59,18 @@ bool g_visible = false;
 bool g_screenshot_listening = false;
 /* 1.0.2: controller hotkeys switch tabs (L1 / R1); see PollControllerHotkeys. */
 int g_tab_current = 0, g_tab_request = -1;
+/* 1.0.4: the list menu (pause_menu.cpp). The screens not yet moved to it
+ * open the tabbed window on their tab (SCR_CLASSIC); leaving it comes back
+ * to the list. */
+enum MenuScreen { SCR_MAIN, SCR_DISPLAY, SCR_SOUND, SCR_GAME, SCR_QUIT, SCR_CLASSIC };
+MenuScreen g_screen = SCR_MAIN;
+pm::State g_pm_main, g_pm_display, g_pm_sound, g_pm_game, g_pm_quit;
+bool g_screen_dirty = false;      /* a setting on this screen changed: save on Back */
+/* 1.0.4: "Pause the game while this menu is open" ([General] PauseInMenu),
+ * through the frame-advance hold (recomp_manual.c). */
+bool g_pause_in_menu = false;
+bool g_menu_paused = false;
+void MenuBack();
 /* Cursor over the game while the menu is closed (doa3_ui_wndproc). */
 bool g_cursor_shown = false;
 ULONGLONG g_cursor_last_move, g_cursor_streak;
@@ -94,7 +107,7 @@ void FrameStep()
 }
 void DrawPausedBanner()
 {
-    if (!g_doa3_frame_paused) return;
+    if (!g_doa3_frame_paused || g_menu_paused) return;
     const ImGuiViewport *vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(ImVec2(vp->WorkPos.x + 16.0f, vp->WorkPos.y + vp->WorkSize.y - 16.0f),
                             ImGuiCond_Always, ImVec2(0.0f, 1.0f));
@@ -112,7 +125,7 @@ void SetStatus(const char *s)
 {
     /* A failed save points at the reason when it is known. */
     if (g_doa3_folder_write_error && strncmp(s, "Could not write", 15) == 0)
-        _snprintf_s(g_status, sizeof(g_status), _TRUNCATE, "%s: the game's folder is protected (see General)", s);
+        _snprintf_s(g_status, sizeof(g_status), _TRUNCATE, "%s: the game's folder is protected (see Game)", s);
     else
         _snprintf_s(g_status, sizeof(g_status), _TRUNCATE, "%s", s);
 }
@@ -149,6 +162,7 @@ void ApplyMenuScale()
     ImFontConfig cfg;
     cfg.SizePixels = 13.0f * s;
     io.Fonts->AddFontDefault(&cfg);
+    pm::AddFonts(io.Fonts);   /* 1.0.4: the list menu's fonts */
     ImGui_ImplDX11_InvalidateDeviceObjects();   /* the font atlas is rebuilt on the next NewFrame */
     ImGui::GetStyle() = g_base_style;
     ImGui::GetStyle().ScaleAllSizes(s);
@@ -699,7 +713,7 @@ void DrawUpdateBanner()
 {
     if (!UpdateBannerPending()) return;
     char text[160];
-    _snprintf_s(text, sizeof text, _TRUNCATE, "Dead or Alive 3 recomp %s is available. Esc > General for the release page.",
+    _snprintf_s(text, sizeof text, _TRUNCATE, "Dead or Alive 3 recomp %s is available. Esc > Game for the release page.",
                 update_check_latest());
     const ImGuiViewport *vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(ImVec2(vp->WorkPos.x + vp->WorkSize.x * 0.5f, vp->WorkPos.y + 24.0f),
@@ -784,7 +798,7 @@ void PollControllerHotkeys()
         if (fired(L3 | R3)) { doa3_ui_toggle(); continue; }
         if (fired(L3 | R1)) { d3d8_screenshot_request(); continue; }
         if (fired(L3 | XINPUT_GAMEPAD_Y)) { TogglePerformanceOverlay(); continue; }
-        if (g_visible && !(now & L3) && !(before & L3)) {
+        if (g_visible && g_screen == SCR_CLASSIC && !(now & L3) && !(before & L3)) {
             if (fired(L1)) g_tab_request = NextTab(g_tab_current, -1);
             else if (fired(R1)) g_tab_request = NextTab(g_tab_current, +1);
         }
@@ -1109,7 +1123,7 @@ void DrawDebugSection()
                    "normal play. Choose Save to keep this setting for next time.");
         if (env_forced)
             ImGui::TextDisabled("Set by the DOA3_AUTO_CAPTURE environment variable for this launch.");
-        ImGui::TextDisabled("Create a trace file: General > Logging.");
+        ImGui::TextDisabled("Create a trace file: Game > Logging.");
         if (ImGui::Button("Save the next frame's textures")) {
             InterlockedExchange(&g_doa3_texdump_request, 1);
             SetStatus("The next frame's textures will be saved to the Textures folder");
@@ -1408,9 +1422,303 @@ void DrawMenu()
     ImGui::End();
     if (!debug_visible || !open) g_screenshot_listening = false;
 
-    if (!open) {
-        g_visible = false;
-        pad_mapping_set_menu_open(0);
+    if (!open) MenuBack();
+    /* B on a pad leaves the window too (not while a binding is listened for,
+     * an item is being edited, or a popup is open). */
+    else if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false) && g_listening < 0 &&
+             !g_screenshot_listening && !ImGui::IsAnyItemActive() &&
+             !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel))
+        MenuBack();
+}
+
+/* ── List menu screens (1.0.4) ──────────────────────────────────────────
+ * Main, Display, Sound, Game and Quit use the list engine (pause_menu.cpp).
+ * A screen's settings are saved to doa3_settings.ini when it is left (Back,
+ * B, Esc, or closing the menu) if any of them changed. */
+
+const char *const kMenuTitle = "MENU";
+const char *const kMenuVersion = "Dead or Alive 3 Recomp " DOA3_VER_STR_UI;
+
+void SetMenuPause(bool on)
+{
+    if (on && !g_menu_paused && !g_doa3_frame_pause && !netplay_active()) {
+        InterlockedExchange(&g_doa3_frame_steps, 0);
+        InterlockedExchange(&g_doa3_frame_pause, 1);
+        g_menu_paused = true;
+    } else if (!on && g_menu_paused) {
+        InterlockedExchange(&g_doa3_frame_pause, 0);
+        g_menu_paused = false;
+    }
+}
+
+void SaveScreen(MenuScreen scr)
+{
+    int ok = 1;
+    switch (scr) {
+    case SCR_DISPLAY: {
+        char v[16];
+        ok = video_settings_save();
+        _snprintf_s(v, sizeof v, _TRUNCATE, "%d", g_menu_scale);
+        ok = WritePrivateProfileStringA("General", "MenuScale", v, doa3_settings_ini_path()) && ok;
+        break;
+    }
+    case SCR_SOUND:
+        ok = audio_settings_save();
+        break;
+    case SCR_GAME:
+        ok = doa3_log_save();
+        ok = update_check_save() && ok;
+        ok = dip_save() && ok;
+        ok = WritePrivateProfileStringA("General", "PauseInMenu", g_pause_in_menu ? "1" : "0",
+                                        doa3_settings_ini_path()) && ok;
+        break;
+    default:
+        return;
+    }
+    SetStatus(ok ? "Settings saved" : "Could not write doa3_settings.ini");
+}
+
+/* Leave the current screen: a list screen saves and returns to the main
+ * list; the main list closes the menu. */
+void MenuBack()
+{
+    if (g_screen == SCR_MAIN) { doa3_ui_toggle(); return; }
+    if (g_screen_dirty) SaveScreen(g_screen);
+    g_screen_dirty = false;
+    g_screen = SCR_MAIN;
+    g_listening = -1;
+    g_armed = false;
+    g_screenshot_listening = false;
+}
+
+void OpenScreen(MenuScreen scr, pm::State &st)
+{
+    g_screen = scr;
+    g_screen_dirty = false;
+    st.Reset();
+}
+
+void OpenClassic(int tab)
+{
+    g_screen = SCR_CLASSIC;
+    g_screen_dirty = false;
+    g_tab_request = tab;
+    g_menu_resize = true;    /* centred again at its size */
+}
+
+void DrawMainScreen()
+{
+    pm::Begin(g_pm_main, kMenuTitle, nullptr);
+    if (g_doa3_folder_write_error) pm::Note(kFolderWarning, IM_COL32(255, 140, 115, 255));
+    if (pm::Action("Resume", "Back to the game.")) { doa3_ui_toggle(); }
+    if (pm::Action("Display", "Window type, picture shape, internal resolution and the performance overlay."))
+        OpenScreen(SCR_DISPLAY, g_pm_display);
+    if (pm::Action("Sound", "Overall volume, the game's music, effects and voice levels, and streamer mode."))
+        OpenScreen(SCR_SOUND, g_pm_sound);
+    if (pm::Action("Game", "Pausing, update checks, dip switches and log files."))
+        OpenScreen(SCR_GAME, g_pm_game);
+    if (pm::Action("Controls", "Each player's controller, keys and buttons."))
+        OpenClassic(1);
+    if (pm::Action("Photo Mode", "Free camera, hiding the fighters and the game's screens, and screenshots."))
+        OpenClassic(4);
+    if (pm::Action("Sparring", training_available()
+                   ? "Dummy recording and playback, and move information, for Sparring."
+                   : "Dummy recording and playback, and move information. Available in an offline Sparring fight.",
+                   training_available() != 0))
+        OpenClassic(5);
+    if (g_debug_tab && pm::Action("Debug", "Developer tools."))
+        OpenClassic(6);
+    if (pm::Action("Quit", "Close Dead or Alive 3.")) {
+        OpenScreen(SCR_QUIT, g_pm_quit);
+    }
+    if (pm::BackPressed()) doa3_ui_toggle();
+    pm::End(g_status, kMenuVersion);
+}
+
+void DrawDisplayScreen()
+{
+    static const char *const kWindow[] = { "Windowed", "Borderless fullscreen" };
+    static const char *const kScale[]  = { "1x (480p)", "2x (960p)", "3x (1440p)", "4x (1920p)" };
+    const char *kAspect[VIDEO_ASPECT_COUNT];
+    for (int i = 0; i < VIDEO_ASPECT_COUNT; ++i) kAspect[i] = video_aspect_name(i);
+
+    pm::Begin(g_pm_display, kMenuTitle, "Display");
+    int wm = video_get_window_mode();
+    if (pm::Choice("Window type", wm, kWindow, 2,
+                   "A normal window, or borderless fullscreen covering the screen the window is on.")) {
+        video_set_window_mode(wm);
+        g_screen_dirty = true;
+    }
+    int ar = video_get_aspect();
+    if (pm::Choice("Aspect ratio", ar, kAspect, VIDEO_ASPECT_COUNT,
+                   "The shape of the picture. 4:3 is the original; the wide shapes show more of each scene.")) {
+        video_set_aspect(ar);
+        g_screen_dirty = true;
+    }
+    int sc = video_get_scale() - 1;
+    if (pm::Choice("Internal resolution", sc, kScale, 4,
+                   "How sharp the 3D is. 1x is the Xbox's own resolution; higher is sharper and needs a "
+                   "faster graphics card.")) {
+        video_set_scale(sc + 1);
+        g_screen_dirty = true;
+    }
+    bool perf = PerformanceOverlayEnabled();
+    if (pm::Toggle("Performance overlay", perf,
+                   "Frames per second and frame times in the corner (also L3 + Y on a controller). "
+                   "For this session only."))
+        TogglePerformanceOverlay();
+    int ms = g_menu_scale;
+    if (pm::Step("Classic menu size", ms, 100, 250, 25, "%d%%",
+                 "The size of the Controls, Photo Mode and Sparring windows and their text.")) {
+        g_menu_scale = ms;
+        g_screen_dirty = true;
+    }
+    if (pm::Action("Reset to defaults", "Borderless fullscreen, 16:9, 3x, classic menus at 100%.")) {
+        video_set_window_mode(VIDEO_BORDERLESS);
+        video_set_aspect(VIDEO_ASPECT_16_9);
+        video_set_scale(3);
+        g_menu_scale = 100;
+        ResetPerformanceOverlay();
+        g_screen_dirty = true;
+        SetStatus("Display settings reset to defaults");
+    }
+    if (pm::Action("Back", "Keeps your changes and goes back.") || pm::BackPressed()) MenuBack();
+    pm::End(g_status, kMenuVersion);
+}
+
+void DrawSoundScreen()
+{
+    static const char *const kChannel[3] = { "Music", "Sound effects", "Voice" };
+    pm::Begin(g_pm_sound, kMenuTitle, "Sound");
+    int volume = audio_get_volume();
+    if (pm::Step("Master volume", volume, 0, 100, 5, "%d%%",
+                 "Overall level of the PC version, after the game's own mix (music, voices, effects and "
+                 "movies). 100% leaves the game unchanged; the default is 80%.")) {
+        audio_set_volume(volume);
+        g_screen_dirty = true;
+    }
+    const bool ready = game_audio_available() != 0;
+    for (int ch = 0; ch < 3; ++ch) {
+        int v = game_audio_get(ch);
+        if (pm::Step(kChannel[ch], v, 0, 100, 5, "%d",
+                     ready ? "The same setting as the game's Options > Audio Setting. It is kept in the game's "
+                             "save the next time the game saves (leaving Options, or after the credits)."
+                           : "Available once the game has loaded its save.",
+                     ready))
+            game_audio_request(ch, v);
+    }
+    bool streamer = audio_streamer_mode_get() != 0;
+    if (pm::Toggle("Streamer mode", streamer,
+                   "Silences Aerosmith's licensed songs (\"Nine Lives\", \"Amazing\" and \"Home Tonight\") "
+                   "wherever they play, including the opening, the credits and the sound test. Your saved "
+                   "music volume is never changed.")) {
+        audio_streamer_mode_set(streamer ? 1 : 0);
+        g_screen_dirty = true;
+    }
+    if (game_audio_streamer_muting()) pm::Note("A licensed song is muted right now.");
+    if (pm::Action("Reset to defaults", "Master volume 80%, streamer mode off. The game's own levels are not changed.")) {
+        audio_set_volume(80);
+        audio_streamer_mode_set(0);
+        g_screen_dirty = true;
+        SetStatus("Sound settings reset to defaults");
+    }
+    if (pm::Action("Back", "Keeps your changes and goes back.") || pm::BackPressed()) MenuBack();
+    pm::End(g_status, kMenuVersion);
+}
+
+void DrawGameScreen()
+{
+    pm::Begin(g_pm_game, kMenuTitle, "Game");
+    if (g_doa3_folder_write_error) pm::Note(kFolderWarning, IM_COL32(255, 140, 115, 255));
+    if (pm::Toggle("Pause while this menu is open", g_pause_in_menu,
+                   "Holds the game (and its sound) while this menu is open. Never during online play or "
+                   "a movie.")) {
+        SetMenuPause(g_pause_in_menu);
+        g_screen_dirty = true;
+    }
+
+    pm::Heading("Updates");
+    bool upd = update_check_enabled() != 0;
+    if (pm::Toggle("Check for updates at boot", upd,
+                   "At start-up, asks GitHub for the latest release of this port (one small request; "
+                   "nothing is downloaded or installed).")) {
+        update_check_set_enabled(upd ? 1 : 0);
+        g_screen_dirty = true;
+    }
+    {
+        int st = update_check_state();
+        char latest[64];
+        const char *value = st == 1 ? "Checking..." : st == 2 ? "Up to date" :
+                            st == 4 ? "Could not reach GitHub" : "";
+        if (st == 3) {
+            _snprintf_s(latest, sizeof latest, _TRUNCATE, "%s available", update_check_latest());
+            value = latest;
+        }
+        if (pm::Action("Check for updates now", "Asks GitHub for the latest release now.", st != 1, value))
+            update_check_now();
+        if (st == 3 && pm::Action("Open the release page", "Opens the new release's page in your browser."))
+            ShellExecuteA(NULL, "open", update_check_url(), NULL, NULL, SW_SHOWNORMAL);
+    }
+
+    pm::Heading("Dip switches");
+    for (int i = 0; i < DIP_COUNT; i++) {
+        if (dip_hidden((dip_switch)i)) continue;
+        bool d = dip_get((dip_switch)i) != 0;
+        if (pm::Toggle(dip_label((dip_switch)i), d, dip_help((dip_switch)i))) {
+            dip_set((dip_switch)i, d ? 1 : 0);
+            g_screen_dirty = true;
+        }
+    }
+
+    pm::Heading("Logging");
+    bool on = doa3_log_enabled() != 0;
+    if (pm::Toggle("Write log files", on,
+                   "Writes doa3_log.txt next to the game, for bug reports. Takes effect at the next launch.")) {
+        doa3_log_set_enabled(on ? 1 : 0);
+        g_screen_dirty = true;
+    }
+    if (pm::Action("Create a trace file",
+                   "Records the next frame's graphics commands (mtrace_manual_*.txt) and a screenshot "
+                   "(aa_*.bmp) in the Diagnostics folder next to the game, for a visual bug on screen now. "
+                   "The folder is emptied at the next launch, so send the files before restarting.")) {
+        InterlockedExchange(&g_doa3_trace_request, 1);
+        SetStatus("The next frame will be traced to the Diagnostics folder");
+    }
+
+    if (pm::Action("Reset to defaults", "Pausing off, update checks on, every dip switch off, log files off.")) {
+        g_pause_in_menu = false;
+        SetMenuPause(false);
+        doa3_log_set_enabled(0);
+        update_check_set_enabled(1);
+        dip_reset();
+        g_screen_dirty = true;
+        SetStatus("Game settings reset to defaults");
+    }
+    if (pm::Action("Back", "Keeps your changes and goes back.") || pm::BackPressed()) MenuBack();
+    pm::End(g_status, kMenuVersion);
+}
+
+void DrawQuitScreen()
+{
+    pm::Begin(g_pm_quit, kMenuTitle, "Quit");
+    pm::Note("Close Dead or Alive 3? Progress is kept only as far as the game itself last saved.");
+    if (pm::Action("No", "Back to the menu.") || pm::BackPressed()) MenuBack();
+    if (pm::Action("Yes, quit", "Closes the game.")) {
+        HWND hwnd = d3d8_GetHWND();
+        if (hwnd) PostMessageA(hwnd, WM_CLOSE, 0, 0);
+    }
+    pm::End(g_status, kMenuVersion);
+}
+
+void DrawPauseMenu()
+{
+    switch (g_screen) {
+    case SCR_MAIN:    DrawMainScreen(); break;
+    case SCR_DISPLAY: DrawDisplayScreen(); break;
+    case SCR_SOUND:   DrawSoundScreen(); break;
+    case SCR_GAME:    DrawGameScreen(); break;
+    case SCR_QUIT:    DrawQuitScreen(); break;
+    case SCR_CLASSIC: DrawMenu(); break;
     }
 }
 
@@ -1439,6 +1747,7 @@ extern "C" int doa3_ui_init(void)
     g_base_style = ImGui::GetStyle();
     {   char v[8];
         g_debug_tab = GetEnvironmentVariableA("DOA3_DEBUG", v, sizeof v) > 0 && v[0] == '1'; }
+    g_pause_in_menu = GetPrivateProfileIntA("General", "PauseInMenu", 0, doa3_settings_ini_path()) != 0;
     g_menu_scale = (int)GetPrivateProfileIntA("General", "MenuScale", 100, doa3_settings_ini_path());
     if (g_menu_scale < 100 || g_menu_scale > 250) g_menu_scale = 100;
 
@@ -1467,7 +1776,14 @@ extern "C" int doa3_ui_visible(void) { return g_visible ? 1 : 0; }
 
 extern "C" void doa3_ui_toggle(void)
 {
+    if (g_visible && g_screen_dirty) SaveScreen(g_screen);   /* closed from a list screen */
+    g_screen_dirty = false;
     g_visible = !g_visible;
+    /* 1.0.4: always opens on the main list, with Resume selected. */
+    g_screen = SCR_MAIN;
+    g_pm_main.Reset();
+    SetMenuPause(g_visible && g_pause_in_menu);
+    if (g_visible) g_status[0] = 0;   /* no message left over from last time */
     if (g_visible) training_stop();
     g_listening = -1;
     g_armed = false;
@@ -1508,6 +1824,8 @@ extern "C" int doa3_ui_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             g_listening = -1;
             g_armed = false;
             SetStatus("Rebind cancelled");
+        } else if (g_visible && g_screen != SCR_MAIN) {
+            MenuBack();   /* 1.0.4: Esc goes back a screen */
         } else {
             doa3_ui_toggle();
         }
@@ -1653,7 +1971,7 @@ extern "C" void doa3_ui_render(void)
     DrawScreenshotToast();
     DrawFolderBanner();
     DrawPausedBanner();
-    if (g_visible) DrawMenu();
+    if (g_visible) DrawPauseMenu();
     DrawNetplayBanner();
 
     ImGui::Render();
