@@ -5288,3 +5288,13 @@ To find what starts that capture: the D3DDevice_SetRenderTarget hook
 (sub_001DC8E0) logs, for 256x256 targets (at most 48 lines), the frame and
 the guest return addresses on the stack that follow a call instruction
 ("[RTTCALL]"). Temporary.
+
+## 1.0.4.10
+
+1.0.4.9 logged no [RTTCALL]: those surfaces report size 1x1 in the surface
+header (the [RTT] target lines say so too), so the 256x256 filter never
+matched. Now every SetRenderTarget to a non-device surface is logged once
+per (surface, call chain), up to 96 lines. Matt's 1.0.4.9 run: Team Battle
+captures for both costume-3 Zacks (frame 4353 into 02D6C600, 5112 into
+0369C600 -- each Zack has his own surface); Survival's Zack at frame 7711,
+none.
