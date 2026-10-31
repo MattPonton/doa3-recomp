@@ -626,6 +626,32 @@ void sub_001C1D0F(void)
     }
     sub_001C1D0F_gen();
     if (force) MEM8(0x9B36A0u) = (uint8_t)saved;
+    if (mode == 5 && slot < 4) {
+        /* 1.0.4.13 (temporary): 1.0.4.12 logged no [REFL] for Matt's
+         * Survival Zack. Log this call's inputs and the gate's state
+         * whenever they change. 0x5B20B2 + slot*6 is the slot's loaded
+         * model (byte 0 must be 0, +3 the character, +4 the costume) that
+         * the capture checks (0x861E0); 0x598E80 must be nonzero. */
+        extern unsigned g_doa3_frames_presented;
+        static uint32_t s_last[4][3];
+        static int s_logged;
+        uint32_t t = 0x5B20B2u + slot * 6u;
+        uint32_t a = (ch << 24) | (costume << 16) | (MEM8(0x596A37u) << 8) | MEM8(0x9B36A8u);
+        uint32_t b = (MEM8(0x598E80u) << 24) | (MEM8(t) << 16) | (MEM8(t + 3) << 8) | MEM8(t + 4);
+        uint32_t c = (MEM8(0x596ADCu) << 24) | (s_valid[slot] << 16) | (s_need[slot] << 8) |
+                     (force << 4) | (g_doa3_offrt_sets != before);
+        if ((a != s_last[slot][0] || b != s_last[slot][1] || c != s_last[slot][2]) && s_logged < 300) {
+            s_logged++;
+            s_last[slot][0] = a; s_last[slot][1] = b; s_last[slot][2] = c;
+            fprintf(stderr, "[REFLGATE] frame %u slot %u: char %02X costume %02X queue %u | 596A37 %u 9B36A8 %u"
+                    " 5C93AA %u/%u C59865 %u/%u | 598E80 %u model %02X %02X %02X | valid %u need %u force %u captured %u\n",
+                    g_doa3_frames_presented, slot, ch, costume, MEM8(0x596ADCu), MEM8(0x596A37u), MEM8(0x9B36A8u),
+                    MEM8(0x5C93AAu), MEM8(0x9B3710u), MEM8(0xC59865u), MEM8(0x9B36A0u),
+                    MEM8(0x598E80u), MEM8(t), MEM8(t + 3), MEM8(t + 4),
+                    s_valid[slot], s_need[slot], force, g_doa3_offrt_sets != before);
+            fflush(stderr);
+        }
+    }
     if (g_doa3_offrt_sets != before && slot < 4) {
         if (force) {
             extern unsigned g_doa3_frames_presented;

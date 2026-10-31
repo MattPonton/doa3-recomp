@@ -5334,3 +5334,15 @@ confirmed.
 Pause in menu: [General] PauseInMenu was read in doa3_ui_init, which runs
 on the first frame with something to draw, after the first toggle had
 already decided not to pause. Both now call LoadMenuSettings (once).
+
+## 1.0.4.13
+
+Matt's 1.0.4.12 Survival run (DOA3_TEST_SURVIVAL_ZACK): Zack in costume
+0x02 came in as opponent 1 at frame 2510 and still showed the Beach; no
+[REFL] line, so the forced capture never rendered. The pause fix is
+confirmed. Temporary "[REFLGATE]" lines (mode 5, up to 300) log each
+sub_001C1D0F call whose inputs or gate state changed: the setup flags, the
+slot's loaded-model entry 0x5B20B2 + slot*6 that the capture checks through
+0x861E0 (byte 0 must be 0, +3/+4 the character and costume), 0x598E80, and
+the override's own state. No lines at all would mean the call doesn't
+happen in Survival.
