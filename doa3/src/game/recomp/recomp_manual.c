@@ -908,6 +908,17 @@ void sub_000CD870(void)
  * game asks more than once while setting up one fight, so the answer for a
  * character is kept for 120 frames. Random bytes come from the game's pool
  * 0x404998 stirred by a call counter, never the host. */
+/* TEMPORARY test aid (1.0.4.8), for the Zack costume 3 reflection in
+ * Survival: with DOA3_TEST_SURVIVAL_ZACK=1, every Survival opponent after
+ * the current one is Zack (the queue 0x59D04C[0x596ADC], read by 0x76E50
+ * at 0x77273), and a Survival Zack wears costume 3 (0x02). Remove once the
+ * reflection is understood. */
+static int test_survival_zack(void)
+{
+    static int s_on = -1;
+    if (s_on < 0) { const char *e = getenv("DOA3_TEST_SURVIVAL_ZACK"); s_on = e && *e == '1'; }
+    return s_on;
+}
 void sub_00076B30_gen(void);
 void sub_00076B30(void)
 {
@@ -963,7 +974,7 @@ void sub_00076B30(void)
                  * the stage up for each fight, so it is left alone. The
                  * game itself never gives a CPU opponent this costume
                  * (costume 1, or 2 for the mirror match). */
-                if (mode == 5 && ch == 0x00 && costume == 0x02) continue;
+                if (mode == 5 && ch == 0x00 && costume == 0x02 && !test_survival_zack()) continue;
                 for (p = 0; p < 2; p++)
                     if (MEM8(0x59CF58 + p * 0x68) == 1 && MEM8(0x59CF59 + p * 0x68) == ch &&
                         MEM8(0x59CF5A + p * 0x68) == costume) break;
@@ -997,6 +1008,19 @@ void sub_00076B30(void)
                 break;
             }
             s_cache_valid[ch] = 1; s_cache_frame[ch] = g_doa3_frames_presented; s_cache_costume[ch] = eax & 0xFF;
+        }
+    }
+    if (test_survival_zack() && mode == 5) {
+        uint32_t next = MEM8(0x596ADC) + 1u;
+        if (next < 0x100 && MEM8(0x59D04C + next) <= 0x18) MEM8(0x59D04C + next) = 0x00;
+        if (ch == 0x00) eax = (eax & ~0xFFu) | 0x02;
+        {   static int s_log;
+            if (s_log < 32) {
+                s_log++;
+                fprintf(stderr, "[TEST] Survival: opponent %u character %02X costume %02X; next opponent set to Zack\n",
+                        MEM8(0x596ADC), ch, eax & 0xFF);
+                fflush(stderr);
+            }
         }
     }
     if (g_fib_slice_due) xbox_fiber_timeslice();

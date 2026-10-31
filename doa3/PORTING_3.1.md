@@ -5262,3 +5262,15 @@ The 1.0.4.6 exclusion is Survival only (mode 5). Matt: Time Attack sets the
 stage up for each fight, as if the opponent had been chosen at Character
 Select, so its capture covers the opponent; Survival brings opponents in
 without a stage change.
+
+## 1.0.4.8
+
+TEMPORARY test aid for the Survival Zack costume 3 reflection: with
+DOA3_TEST_SURVIVAL_ZACK=1, sub_00076B30 (asked for each Survival opponent's
+costume) sets the next entry of the opponent queue 0x59D04C (index
+0x596ADC, read at 0x77273 by 0x76E50) to Zack when it holds a character,
+and gives a Survival Zack costume 0x02 regardless of the dip switches
+("[TEST] Survival" lines). Matt's log of 1.0.4.5: the game renders the
+stage picture into 0x0369C600 when a costume-3 Zack joins in Team Battle
+(frame 46909) and in mode 3 (frame 13821); Survival (mode 5) is untested.
+To be removed once that is known.
