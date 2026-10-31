@@ -5298,3 +5298,12 @@ per (surface, call chain), up to 96 lines. Matt's 1.0.4.9 run: Team Battle
 captures for both costume-3 Zacks (frame 4353 into 02D6C600, 5112 into
 0369C600 -- each Zack has his own surface); Survival's Zack at frame 7711,
 none.
+
+## 1.0.4.11
+
+The guest stack has no return addresses (the lifter pushes 0 for them), so
+[RTTCALL] now records the host call stack (RtlCaptureStackBackTrace, 40
+frames, as RVAs for DOA3.map). 1.0.4.10's run, same pattern: Team Battle
+SetRenderTarget into 02D6C600 at frame 2443 and 0369C600 at 3269, each on
+the frame the costume-3 Zack entered; Survival's Zack at frame 6050, no
+SetRenderTarget at all.

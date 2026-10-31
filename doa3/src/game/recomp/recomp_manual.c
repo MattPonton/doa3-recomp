@@ -563,27 +563,25 @@ void sub_001DC8E0(void)
         arg != MEM32(dev + 0x207C) && arg != MEM32(dev + 0x2080) && arg != MEM32(dev + 0x2084)) {
         uint32_t data = MEM32(arg + 4) & 0x03FFFFFFu;
         {   /* 1.0.4.9 (temporary, Zack costume 3 in Survival): who renders
-             * into a 256x256 surface (the reflection captures). Logs the
-             * guest return addresses on the stack, keeping only those that
-             * follow a call instruction. */
+             * into an offscreen surface (the reflection captures). The guest stack holds no return addresses (the lifter pushes
+             * 0), so record the host call stack: each recompiled function
+             * is a host function, and DOA3.map turns the RVAs back into
+             * sub_XXXXXXXX names. */
             extern unsigned g_doa3_frames_presented;
             static uint32_t s_seen[96];
             static int s_n;
-            uint32_t ret[14], i, found = 0, sp = esp, key = data;
+            void *frames[40];
+            USHORT n = RtlCaptureStackBackTrace(1, 40, frames, NULL);
+            uintptr_t base = (uintptr_t)GetModuleHandleA(NULL);
+            uint32_t key = data, i;
             int k;
-            for (i = 0; i < 0x180 && found < 14; i += 4) {
-                uint32_t v = MEM32(sp + i);
-                if (v < 0x11005 || v >= 0x230000) continue;
-                if (MEM8(v - 5) == 0xE8 || MEM8(v - 2) == 0xFF || MEM8(v - 3) == 0xFF || MEM8(v - 6) == 0xFF)
-                    ret[found++] = v;
-            }
-            for (i = 0; i < found; i++) key = key * 31u + ret[i];
+            for (i = 0; i < n; i++) key = key * 31u + (uint32_t)((uintptr_t)frames[i] - base);
             for (k = 0; k < s_n && s_seen[k] != key; k++) {}
             if (k == s_n && s_n < 96) {   /* each surface + call chain once */
                 s_seen[s_n++] = key;
-                fprintf(stderr, "[RTTCALL] frame %u: SetRenderTarget %08X (data %08X fmt %08X size %08X) from",
-                        g_doa3_frames_presented, arg, data, MEM32(arg + 0xC), MEM32(arg + 0x10));
-                for (i = 0; i < found; i++) fprintf(stderr, " %06X", ret[i]);
+                fprintf(stderr, "[RTTCALL] frame %u: SetRenderTarget %08X (data %08X) host rva",
+                        g_doa3_frames_presented, arg, data);
+                for (i = 0; i < n; i++) fprintf(stderr, " %X", (unsigned)((uintptr_t)frames[i] - base));
                 fprintf(stderr, "\n");
                 fflush(stderr);
             }
