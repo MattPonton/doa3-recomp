@@ -5387,3 +5387,15 @@ for the intro, 1 during the fight and 2 in the KO phase, when the next
 Survival opponent joins. So a CPU slot's Zack is now captured on joining
 and once more on the first frame of phase 1 (s_fight). The [REFL] line
 gives the phase.
+
+## 1.0.4.17
+
+Matt, 1.0.4.16: fixed, except once a joining Zack stayed white until he
+was about to land and then got the right picture. The log has it: capture
+at frame 9453 in phase 2 (445 draws, 168450 pixels: the white kind), then
+9505 in phase 1. So while a joining CPU Zack hasn't had his phase-1
+capture, phase 2 now recaptures him every 8 frames (s_when).
+
+The DOA3_TEST_SURVIVAL_ZACK test aid is removed (0x76B30 back to the
+random costume pick alone, which now may give a Survival opponent Zack's
+costume 3 again).

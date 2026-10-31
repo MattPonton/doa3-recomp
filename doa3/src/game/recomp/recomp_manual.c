@@ -602,6 +602,8 @@ void sub_001C1D0F(void)
 {
     static uint32_t s_done[4];      /* 1 + key of the last capture in each slot */
     static uint32_t s_fight[4];     /* 1 + key of the last capture in the fight phase */
+    static uint32_t s_when[4];      /* frame of the last capture */
+    extern unsigned g_doa3_frames_presented;
     uint32_t ch = MEM8(esp + 4), costume = MEM8(esp + 8), slot = MEM8(esp + 12);
     uint32_t mode = MEM8(0x5A2858u), phase = MEM8(0x596A37u), before = g_doa3_offrt_sets, saved = 0;
     uint32_t key, side, human = 0;
@@ -618,12 +620,16 @@ void sub_001C1D0F(void)
         s_done[0] = s_done[1] = s_done[2] = s_done[3] = 0;
         s_fight[0] = s_fight[1] = s_fight[2] = s_fight[3] = 0;
     } else if (ch == 0x00 && costume == 0x02 &&
-               (s_done[slot] != key || (!human && phase == 1 && s_fight[slot] != key))) {
+               (s_done[slot] != key || (!human && phase == 1 && s_fight[slot] != key) ||
+                (!human && phase == 2 && s_fight[slot] != key &&
+                 g_doa3_frames_presented - s_when[slot] >= 8u))) {
         /* A joining opponent is captured as he comes in (0x596A37 is 2,
          * the KO phase) and once more when the fight resumes (1): a
          * capture taken while the stage is still in its KO effects (Matt,
          * 1.0.4.15: a wall explosion finishing the previous opponent) came
-         * out white. */
+         * out white. Until the fight resumes (about 50 frames), it is
+         * captured again every 8 frames, so a white picture doesn't stay
+         * on him for the whole jump (Matt saw that once in 1.0.4.16). */
         force = 1;
         saved = MEM8(0x9B36A0u);
         MEM8(0x9B36A0u) = (uint8_t)(MEM8(0xC59865u) ^ 1u);
@@ -632,7 +638,6 @@ void sub_001C1D0F(void)
     if (force) MEM8(0x9B36A0u) = (uint8_t)saved;
     if (g_doa3_offrt_sets != before && slot < 4 && mode == 5) {
         if (force) {
-            extern unsigned g_doa3_frames_presented;
             static int s_log;
             if (s_log < 32) {
                 s_log++;
@@ -642,6 +647,7 @@ void sub_001C1D0F(void)
             }
         }
         s_done[slot] = key;
+        s_when[slot] = g_doa3_frames_presented;
         if (phase == 1) s_fight[slot] = key;
     }
     if (g_fib_slice_due) xbox_fiber_timeslice();
@@ -982,17 +988,6 @@ void sub_000CD870(void)
  * game asks more than once while setting up one fight, so the answer for a
  * character is kept for 120 frames. Random bytes come from the game's pool
  * 0x404998 stirred by a call counter, never the host. */
-/* TEMPORARY test aid (1.0.4.8), for the Zack costume 3 reflection in
- * Survival: with DOA3_TEST_SURVIVAL_ZACK=1, every Survival opponent after
- * the current one is Zack (the queue 0x59D04C[0x596ADC], read by 0x76E50
- * at 0x77273), and a Survival Zack wears costume 3 (0x02). Remove once the
- * reflection is understood. */
-static int test_survival_zack(void)
-{
-    static int s_on = -1;
-    if (s_on < 0) { const char *e = getenv("DOA3_TEST_SURVIVAL_ZACK"); s_on = e && *e == '1'; }
-    return s_on;
-}
 void sub_00076B30_gen(void);
 void sub_00076B30(void)
 {
@@ -1073,19 +1068,6 @@ void sub_00076B30(void)
                 break;
             }
             s_cache_valid[ch] = 1; s_cache_frame[ch] = g_doa3_frames_presented; s_cache_costume[ch] = eax & 0xFF;
-        }
-    }
-    if (test_survival_zack() && mode == 5) {
-        uint32_t next = MEM8(0x596ADC) + 1u;
-        if (next < 0x100 && MEM8(0x59D04C + next) <= 0x18) MEM8(0x59D04C + next) = 0x00;
-        if (ch == 0x00) eax = (eax & ~0xFFu) | 0x02;
-        {   static int s_log;
-            if (s_log < 32) {
-                s_log++;
-                fprintf(stderr, "[TEST] Survival: opponent %u character %02X costume %02X; next opponent set to Zack\n",
-                        MEM8(0x596ADC), ch, eax & 0xFF);
-                fflush(stderr);
-            }
         }
     }
     if (g_fib_slice_due) xbox_fiber_timeslice();
