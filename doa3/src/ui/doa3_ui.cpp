@@ -1508,7 +1508,7 @@ void OpenClassic(int tab)
 
 void DrawMainScreen()
 {
-    pm::Begin(g_pm_main, kMenuTitle, nullptr);
+    pm::Begin(g_pm_main, kMenuTitle, nullptr, true);
     if (g_doa3_folder_write_error) pm::Note(kFolderWarning, IM_COL32(255, 140, 115, 255));
     if (pm::Action("Display", "Window type, picture shape, internal resolution and the performance overlay."))
         OpenScreen(SCR_DISPLAY, g_pm_display);

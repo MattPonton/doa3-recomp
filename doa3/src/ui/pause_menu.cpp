@@ -43,6 +43,7 @@ struct Frame {
     State *st = nullptr;
     ImDrawList *dl = nullptr;
     ImFont *row = nullptr, *title = nullptr, *label = nullptr, *head = nullptr;
+    bool  main = false;                 /* the top list's style */
     float W = 0, H = 0, x0 = 0, colW = 0;
     float rowSize = 0, textSize = 0, titleSize = 0, rowH = 0;
     float listTop = 0, listBottom = 0;
@@ -119,10 +120,12 @@ void DrawLabel(const Row &r, const char *label, float valueW)
     float room = F.colW - pad * 2.0f - (valueW > 0.0f ? valueW + pad : 0.0f);
     char text[200];
     _snprintf_s(text, sizeof text, _TRUNCATE, "%s", label);
-    float width = TextSize(F.label, F.rowSize, text).x;
+    ImFont *font = F.label;
+    if (F.main) { Upper(text); font = F.title; }   /* the top list: capitals, bold italic */
+    float width = TextSize(font, F.rowSize, text).x;
     float x = F.x0 + pad, y = r.y + (F.rowH - F.rowSize) * 0.5f - F.rowSize * 0.04f;
     if (width <= room) {
-        F.dl->AddText(F.label, F.rowSize, ImVec2(x, y), col, text);
+        F.dl->AddText(font, F.rowSize, ImVec2(x, y), col, text);
         return;
     }
     float shift = 0.0f;
@@ -137,7 +140,7 @@ void DrawLabel(const Row &r, const char *label, float valueW)
         shift = t < hold ? 0.0f : t < hold + run ? (float)((t - hold) * speed) : over;
     }
     F.dl->PushClipRect(ImVec2(x, r.y), ImVec2(x + room, r.y + F.rowH), true);
-    F.dl->AddText(F.label, F.rowSize, ImVec2(x - shift, y), col, text);
+    F.dl->AddText(font, F.rowSize, ImVec2(x - shift, y), col, text);
     F.dl->PopClipRect();
 }
 
@@ -193,7 +196,7 @@ void AddFonts(ImFontAtlas *atlas)
                                                (int)sizeof k_font_poppins_bold_italic, 48.0f, &cfg);
 }
 
-void Begin(State &st, const char *title, const char *section)
+void Begin(State &st, const char *title, const char *section, bool main)
 {
     ImGuiIO &io = ImGui::GetIO();
     const ImGuiViewport *vp = ImGui::GetMainViewport();
@@ -214,6 +217,7 @@ void Begin(State &st, const char *title, const char *section)
     F.row = g_row_font ? g_row_font : ImGui::GetFont();
     F.title = g_title_font ? g_title_font : F.row;
     F.label = g_label_font ? g_label_font : F.row;
+    F.main = main;
     F.head = g_head_font ? g_head_font : F.row;
     F.W = vp->Size.x; F.H = vp->Size.y;
     ImVec2 o = vp->Pos;

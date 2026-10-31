@@ -5233,3 +5233,9 @@ hold refuses to stop a movie and clears the request. The menu's hold now
 sets g_doa3_frame_pause to 2, which doa3_frame_pause_point also honours over
 a movie (the guest's clocks and the APU output stand still while held); the
 Debug frame advance (1) keeps the old rule.
+
+## 1.0.4.5
+
+Menu (Matt): the main list keeps its own style, capitals in Poppins Bold
+Italic, while the settings screens' rows stay normal case in Bold
+(pm::Begin's new `main` flag, set only by DrawMainScreen).

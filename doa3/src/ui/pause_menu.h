@@ -26,7 +26,9 @@ struct State {
 };
 
 /* title: large heading ("MENU"); section: the line under it ("Display"). */
-void Begin(State &st, const char *title, const char *section);
+/* main: the top list's style (labels in capitals, bold italic) rather
+ * than a settings screen's (normal case, bold). */
+void Begin(State &st, const char *title, const char *section, bool main = false);
 bool Action(const char *label, const char *help, bool enabled = true, const char *value = nullptr);
 bool Toggle(const char *label, bool &on, const char *help, bool enabled = true);
 bool Choice(const char *label, int &index, const char *const *names, int count,
