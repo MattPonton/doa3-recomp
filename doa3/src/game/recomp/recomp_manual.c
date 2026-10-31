@@ -593,18 +593,26 @@ void sub_001DC8E0(void)
  * or 2 and none of the others, in the other slot (1 after 3, Matt's
  * 1.0.4.13 log), so his suit kept whatever picture that slot had (the Beach
  * by default). In Survival, a Zack in costume 3 in a slot that has not been
- * captured for his place in the queue is captured: make last frame's copy
- * of 0xC59865 differ for this call only (the loop rewrites the copy right
- * after), every frame until the capture happens (the model check may
- * hold it back for a while). */
+ * captured for him (a CPU's: for his place in the queue) is captured:
+ * make last frame's copy of 0xC59865 differ for this call only (the loop
+ * rewrites the copy right after), every frame until the capture happens
+ * (the model check may hold it back for a while). */
 void sub_001C1D0F_gen(void);
 void sub_001C1D0F(void)
 {
     static uint32_t s_done[4];      /* 1 + key of the last capture in each slot */
     uint32_t ch = MEM8(esp + 4), costume = MEM8(esp + 8), slot = MEM8(esp + 12);
     uint32_t mode = MEM8(0x5A2858u), before = g_doa3_offrt_sets, saved = 0;
-    uint32_t key = 1u + ((MEM8(0x596ADCu) << 16) | (ch << 8) | costume);
+    uint32_t key, side, human = 0;
     int force = 0;
+    /* A human's slot keeps its fighter from one opponent to the next, so
+     * only a CPU slot's key has the queue position in it. Recapturing the
+     * player's Zack as well as a joining Zack in the same frame left both
+     * suits white (Matt, 1.0.4.14, with the test switch giving the
+     * opponent the player's costume). */
+    for (side = 0; side < 2; side++)
+        if (MEM8(0x59CF58u + side * 0x68u) == 1 && MEM8(0x59CF5Bu + side * 0x68u) == slot) human = 1;
+    key = 1u + (((human ? 0xFFu : MEM8(0x596ADCu)) << 16) | (ch << 8) | costume);
     if (mode != 5 || slot >= 4) {
         s_done[0] = s_done[1] = s_done[2] = s_done[3] = 0;
     } else if (ch == 0x00 && costume == 0x02 && s_done[slot] != key) {

@@ -5361,3 +5361,16 @@ Now the override forces the capture for a Survival Zack in costume 0x02
 whenever his slot has not been captured for (queue position, character,
 costume), whatever the phase, until a SetRenderTarget shows it happened.
 The [REFLGATE] logging is removed; [REFL] stays (32 lines at most).
+
+## 1.0.4.15
+
+Matt confirmed 1.0.4.14: playing Kasumi, the joining costume-3 Zack
+reflected Danger Zone (before and after its explosion). With his own Zack
+in costume 3 too (the test switch skips the mirror-outfit reroll), both
+suits went white: at frame 2195 the override captured slot 0 (the
+player's, because the queue position had changed) and slot 1 in the same
+frame. Now a human's slot (0x59CF58 + side*0x68 == 1, slot at +3) keys
+without the queue position, so only the joining fighter's slot is
+captured. Normal play doesn't produce this case (0x76B30 rerolls a
+mirror match in the same outfit, and the game never picks costume 0x02
+itself).
