@@ -1436,8 +1436,8 @@ void DrawMenu()
  * A screen's settings are saved to doa3_settings.ini when it is left (Back,
  * B, Esc, or closing the menu) if any of them changed. */
 
-const char *const kMenuTitle = "MENU";
-const char *const kMenuVersion = "Dead or Alive 3 Recomp " DOA3_VER_STR_UI;
+const char *const kMenuTitle = "DEAD OR ALIVE 3";
+const char *const kMenuVersion = "v" DOA3_VER_STR_UI;
 
 void SetMenuPause(bool on)
 {

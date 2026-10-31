@@ -98,6 +98,13 @@ Row BeginRow(const char *help, bool enabled)
     return r;
 }
 
+/* Labels and values are drawn in capitals (ASCII letters; the fonts are
+ * Latin subsets). */
+void Upper(char *t)
+{
+    for (; *t; ++t) if (*t >= 'a' && *t <= 'z') *t = (char)(*t - 'a' + 'A');
+}
+
 /* The label, shortened with an ellipsis if it would run into the value
  * (valueW: the value's width, 0 for none). */
 void DrawLabel(const Row &r, const char *label, float valueW)
@@ -108,16 +115,17 @@ void DrawLabel(const Row &r, const char *label, float valueW)
     float room = F.colW - pad * 2.0f - (valueW > 0.0f ? valueW + pad : 0.0f);
     char text[200];
     _snprintf_s(text, sizeof text, _TRUNCATE, "%s", label);
-    if (TextSize(F.row, F.rowSize, text).x > room) {
+    Upper(text);
+    if (TextSize(F.title, F.rowSize, text).x > room) {
         size_t n = strlen(text);
         while (n > 1) {
             --n;
             while (n > 1 && (text[n] & 0xC0) == 0x80) --n;   /* whole UTF-8 characters */
             _snprintf_s(text + n, sizeof text - n, _TRUNCATE, "\xE2\x80\xA6");
-            if (TextSize(F.row, F.rowSize, text).x <= room) break;
+            if (TextSize(F.title, F.rowSize, text).x <= room) break;
         }
     }
-    F.dl->AddText(F.row, F.rowSize, ImVec2(F.x0 + pad, r.y + (F.rowH - F.rowSize) * 0.5f - F.rowSize * 0.04f),
+    F.dl->AddText(F.title, F.rowSize, ImVec2(F.x0 + pad, r.y + (F.rowH - F.rowSize) * 0.5f - F.rowSize * 0.04f),
                   col, text);
 }
 
@@ -127,13 +135,14 @@ void ValueText(char *out, size_t n, const char *value, bool arrows)
     if (!value) { out[0] = 0; return; }
     if (arrows) _snprintf_s(out, n, _TRUNCATE, "<   %s   >", value);
     else _snprintf_s(out, n, _TRUNCATE, "%s", value);
+    Upper(out);
 }
 float ValueWidth(const char *value, bool arrows)
 {
     char text[160];
     if (!value) return 0.0f;
     ValueText(text, sizeof text, value, arrows);
-    return TextSize(F.row, F.rowSize, text).x;
+    return TextSize(F.title, F.rowSize, text).x;
 }
 
 /* "<  value  >" at the right end. Returns -1 / +1 when its left / right
@@ -144,10 +153,10 @@ int DrawValue(const Row &r, const char *value, bool arrows)
     ImU32 col = !r.enabled ? kDisabled : r.selected ? kValueSel : kValue;
     char text[160];
     ValueText(text, sizeof text, value, arrows);
-    ImVec2 sz = TextSize(F.row, F.rowSize, text);
+    ImVec2 sz = TextSize(F.title, F.rowSize, text);
     float pad = F.rowSize * 0.6f;
     float x = F.x0 + F.colW - pad - sz.x;
-    F.dl->AddText(F.row, F.rowSize, ImVec2(x, r.y + (F.rowH - F.rowSize) * 0.5f - F.rowSize * 0.04f), col, text);
+    F.dl->AddText(F.title, F.rowSize, ImVec2(x, r.y + (F.rowH - F.rowSize) * 0.5f - F.rowSize * 0.04f), col, text);
     if (arrows && r.enabled && F.clicked && r.hovered && F.mouse.x >= x - pad)
         return F.mouse.x < x + sz.x * 0.5f ? -1 : +1;
     return 0;
@@ -197,7 +206,7 @@ void Begin(State &st, const char *title, const char *section)
     F.titleSize = F.rowSize * 2.3f;
     F.rowH = F.rowSize * 1.7f;
     F.x0 = o.x + F.W * 0.07f;
-    F.colW = F.W * 0.46f;
+    F.colW = F.W * 0.50f;
     if (F.colW < F.rowSize * 20.0f) F.colW = F.rowSize * 20.0f;
     if (F.colW > F.W - F.W * 0.14f) F.colW = F.W - F.W * 0.14f;
 

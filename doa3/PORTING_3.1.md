@@ -5200,3 +5200,10 @@ recomps, black instead of their colours, DOA3-style blue selection).
   not reach the game.
 - The menu was checked on Linux by rendering its ImGui draw data in software
   over a game screenshot (1920x1080): Main, Display and Game screens.
+
+## 1.0.4.2
+
+Menu look (Matt): the title is "DEAD OR ALIVE 3"; the bottom line is only
+the version ("v1.0.4.2"); row labels and values are capitals in Poppins
+Bold Italic (the title's font) at the row size. The column is half the
+window wide so the longest dip switch fits at 16:9.
