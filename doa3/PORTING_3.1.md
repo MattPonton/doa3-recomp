@@ -5239,3 +5239,19 @@ Debug frame advance (1) keeps the old rule.
 Menu (Matt): the main list keeps its own style, capitals in Poppins Bold
 Italic, while the settings screens' rows stay normal case in Bold
 (pm::Begin's new `main` flag, set only by DrawMainScreen).
+
+## 1.0.4.6
+
+Bug report: a Survival opponent (Danger Zone) in Zack's costume 3 reflected
+the default Beach picture instead of the stage. Matt: only possible with the
+random costume dip switches, which let 0x76B30's CPU pick (modes 3 Time
+Attack and 5 Survival) choose any unlocked costume; the game itself gives an
+opponent costume 1 (2 for a mirror match), and a player-chosen costume 3
+reflects the stage correctly. So the stage capture into 0x028D4600 is set up
+for the fighters chosen before the run, and an opponent who joins later in
+that costume is not covered. From the 3.1 XBE's tables (0x29C728 /
+0x29C790): Zack is character 0 and his slots map to costumes 0, 1, 2, 3
+(no alternates), so costume 3 is costume 0x02. The CPU pick now skips
+(0x00, 0x02) like a mirror-match clash (another try, else the game's own
+choice). Making a late joiner's suit work would mean finding where the game
+decides to set up that capture; not done.
