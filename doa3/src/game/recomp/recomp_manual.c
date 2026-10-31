@@ -582,84 +582,50 @@ void sub_001DC8E0(void)
  * that his metallic suit (character 0, costume 0x02) reflects. The task
  * loop 0x1C60AB calls it for both fighters every frame (through 0x1C5F54),
  * and it only renders when something changed:
- *   - 0x596A37 dropped to 0 (a fight's setup finished; 0x9B36A8 is last
- *     frame's "it was 0"),
+ *   - 0x596A37 dropped to 0 (0x9B36A8 is last frame's "it was 0"); it is a
+ *     fight phase, 0 for a moment at the start of a fight only,
  *   - 0x5C93AA rose (0x9B3710 is last frame's copy),
  *   - 0xC59865 changed (0x9B36A0 is last frame's copy),
  *   - or, in Team Battle only (mode 0x5A2858 == 10), a side's fighter
  *     changed (0x9B3717 / 0x9B371B).
- * A Survival opponent joins with none of these, so his suit kept the
- * picture of whatever was rendered before (the Beach by default). In
- * Survival (mode 5), when the fighter in a slot changes during a fight,
- * keep asking for the capture until it happens, by making last frame's
- * copy of 0xC59865 differ for this call only (the loop overwrites the
- * copy after the call anyway). */
+ * Then it checks the slot's loaded model (0x861E0: 0x5B20B2 + slot*6).
+ * A Survival opponent joins in the middle of the fight with 0x596A37 at 1
+ * or 2 and none of the others, in the other slot (1 after 3, Matt's
+ * 1.0.4.13 log), so his suit kept whatever picture that slot had (the Beach
+ * by default). In Survival, a Zack in costume 3 in a slot that has not been
+ * captured for his place in the queue is captured: make last frame's copy
+ * of 0xC59865 differ for this call only (the loop rewrites the copy right
+ * after), every frame until the capture happens (the model check may
+ * hold it back for a while). */
 void sub_001C1D0F_gen(void);
 void sub_001C1D0F(void)
 {
-    static uint32_t s_key[4], s_need[4];
-    static int s_valid[4];
+    static uint32_t s_done[4];      /* 1 + key of the last capture in each slot */
     uint32_t ch = MEM8(esp + 4), costume = MEM8(esp + 8), slot = MEM8(esp + 12);
     uint32_t mode = MEM8(0x5A2858u), before = g_doa3_offrt_sets, saved = 0;
+    uint32_t key = 1u + ((MEM8(0x596ADCu) << 16) | (ch << 8) | costume);
     int force = 0;
     if (mode != 5 || slot >= 4) {
-        s_valid[0] = s_valid[1] = s_valid[2] = s_valid[3] = 0;
-        s_need[0] = s_need[1] = s_need[2] = s_need[3] = 0;
-    } else if (MEM8(0x596A37u)) {
-        s_valid[slot] = 0;      /* a fight being set up: the game captures after it */
-        s_need[slot] = 0;
-    } else {
-        /* The opponent's place in the Survival queue is part of the key, so
-         * a second Zack in costume 3 is captured again too. */
-        uint32_t key = (MEM8(0x596ADCu) << 16) | (ch << 8) | costume;
-        if (s_valid[slot] && s_key[slot] != key) s_need[slot] = 1;
-        s_key[slot] = key;
-        s_valid[slot] = 1;
-        if (s_need[slot]) {
-            if (ch == 0x00 && costume == 0x02) force = 1;
-            else s_need[slot] = 0;
-        }
-    }
-    if (force) {
+        s_done[0] = s_done[1] = s_done[2] = s_done[3] = 0;
+    } else if (ch == 0x00 && costume == 0x02 && s_done[slot] != key) {
+        force = 1;
         saved = MEM8(0x9B36A0u);
         MEM8(0x9B36A0u) = (uint8_t)(MEM8(0xC59865u) ^ 1u);
     }
     sub_001C1D0F_gen();
     if (force) MEM8(0x9B36A0u) = (uint8_t)saved;
-    if (mode == 5 && slot < 4) {
-        /* 1.0.4.13 (temporary): 1.0.4.12 logged no [REFL] for Matt's
-         * Survival Zack. Log this call's inputs and the gate's state
-         * whenever they change. 0x5B20B2 + slot*6 is the slot's loaded
-         * model (byte 0 must be 0, +3 the character, +4 the costume) that
-         * the capture checks (0x861E0); 0x598E80 must be nonzero. */
-        extern unsigned g_doa3_frames_presented;
-        static uint32_t s_last[4][3];
-        static int s_logged;
-        uint32_t t = 0x5B20B2u + slot * 6u;
-        uint32_t a = (ch << 24) | (costume << 16) | (MEM8(0x596A37u) << 8) | MEM8(0x9B36A8u);
-        uint32_t b = (MEM8(0x598E80u) << 24) | (MEM8(t) << 16) | (MEM8(t + 3) << 8) | MEM8(t + 4);
-        uint32_t c = (MEM8(0x596ADCu) << 24) | (s_valid[slot] << 16) | (s_need[slot] << 8) |
-                     (force << 4) | (g_doa3_offrt_sets != before);
-        if ((a != s_last[slot][0] || b != s_last[slot][1] || c != s_last[slot][2]) && s_logged < 300) {
-            s_logged++;
-            s_last[slot][0] = a; s_last[slot][1] = b; s_last[slot][2] = c;
-            fprintf(stderr, "[REFLGATE] frame %u slot %u: char %02X costume %02X queue %u | 596A37 %u 9B36A8 %u"
-                    " 5C93AA %u/%u C59865 %u/%u | 598E80 %u model %02X %02X %02X | valid %u need %u force %u captured %u\n",
-                    g_doa3_frames_presented, slot, ch, costume, MEM8(0x596ADCu), MEM8(0x596A37u), MEM8(0x9B36A8u),
-                    MEM8(0x5C93AAu), MEM8(0x9B3710u), MEM8(0xC59865u), MEM8(0x9B36A0u),
-                    MEM8(0x598E80u), MEM8(t), MEM8(t + 3), MEM8(t + 4),
-                    s_valid[slot], s_need[slot], force, g_doa3_offrt_sets != before);
-            fflush(stderr);
-        }
-    }
-    if (g_doa3_offrt_sets != before && slot < 4) {
+    if (g_doa3_offrt_sets != before && slot < 4 && mode == 5) {
         if (force) {
             extern unsigned g_doa3_frames_presented;
-            fprintf(stderr, "[REFL] frame %u: Survival opponent %u, Zack costume 3 in slot %u: stage reflection captured\n",
-                    g_doa3_frames_presented, MEM8(0x596ADCu), slot);
-            fflush(stderr);
+            static int s_log;
+            if (s_log < 32) {
+                s_log++;
+                fprintf(stderr, "[REFL] frame %u: Survival opponent %u, Zack costume 3 in slot %u: stage reflection captured\n",
+                        g_doa3_frames_presented, MEM8(0x596ADCu), slot);
+                fflush(stderr);
+            }
         }
-        s_need[slot] = 0;
+        s_done[slot] = key;
     }
     if (g_fib_slice_due) xbox_fiber_timeslice();
 }

@@ -5346,3 +5346,18 @@ slot's loaded-model entry 0x5B20B2 + slot*6 that the capture checks through
 0x861E0 (byte 0 must be 0, +3/+4 the character and costume), 0x598E80, and
 the override's own state. No lines at all would mean the call doesn't
 happen in Survival.
+
+## 1.0.4.14
+
+Matt's 1.0.4.13 run ([REFLGATE]): 0x596A37 is a fight phase, not a setup
+flag. It was 5 at frame 1104, 0 for one frame at 1106 (the original capture
+for his own Zack in slot 0), then 1 and 2 for the rest of the run. The next
+opponent (Zack, costume 0x02) came in at frame 2437 in slot 1 (the first
+opponent was in slot 3) with 0x596A37 at 2, and the slot's model entry
+already matched (00 00 02). 1.0.4.12 only forced the capture while
+0x596A37 was 0, so it never did.
+
+Now the override forces the capture for a Survival Zack in costume 0x02
+whenever his slot has not been captured for (queue position, character,
+costume), whatever the phase, until a SetRenderTarget shows it happened.
+The [REFLGATE] logging is removed; [REFL] stays (32 lines at most).
