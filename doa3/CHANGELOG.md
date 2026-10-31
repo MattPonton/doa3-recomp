@@ -10,10 +10,9 @@
 - **Pause while this menu is open**, on the Game screen (off by default).
 - After closing the menu, the button or key still held when it closed no
   longer reaches the game.
-- With the random costume dip switches on, a Survival opponent is no longer
-  given Zack's costume 3 (the metallic suit), whose reflection showed the
-  Beach instead of the stage. The game never gives an opponent that costume
-  itself; you can still choose it.
+- Zack's costume 3 (the metallic suit) now reflects the stage when he joins
+  Survival as a later opponent (with the random costume dip switches on); it
+  showed the Beach.
 
 ## 1.0.3 — 2026-10-30
 

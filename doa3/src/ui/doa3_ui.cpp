@@ -1725,6 +1725,7 @@ void DrawPauseMenu()
 
 /* ── C API ─────────────────────────────────────────────────────────────── */
 
+static void LoadMenuSettings(void);
 extern "C" int doa3_ui_init(void)
 {
     if (g_ready) return 1;
@@ -1746,9 +1747,7 @@ extern "C" int doa3_ui_init(void)
     g_base_style = ImGui::GetStyle();
     {   char v[8];
         g_debug_tab = GetEnvironmentVariableA("DOA3_DEBUG", v, sizeof v) > 0 && v[0] == '1'; }
-    g_pause_in_menu = GetPrivateProfileIntA("General", "PauseInMenu", 0, doa3_settings_ini_path()) != 0;
-    g_menu_scale = (int)GetPrivateProfileIntA("General", "MenuScale", 100, doa3_settings_ini_path());
-    if (g_menu_scale < 100 || g_menu_scale > 250) g_menu_scale = 100;
+    LoadMenuSettings();
 
     if (!ImGui_ImplWin32_Init(hwnd)) { ImGui::DestroyContext(); return 0; }
     if (!ImGui_ImplDX11_Init(dev, ctx)) {
@@ -1773,8 +1772,23 @@ extern "C" void doa3_ui_shutdown(void)
 
 extern "C" int doa3_ui_visible(void) { return g_visible ? 1 : 0; }
 
+/* [General] PauseInMenu and MenuScale, read once. The first Esc press
+ * toggles the menu before doa3_ui_init has run (that waits for the first
+ * frame with something to draw), so the toggle reads them too: until 1.0.4.12
+ * the first opening never paused. */
+static void LoadMenuSettings(void)
+{
+    static bool s_loaded;
+    if (s_loaded) return;
+    s_loaded = true;
+    g_pause_in_menu = GetPrivateProfileIntA("General", "PauseInMenu", 0, doa3_settings_ini_path()) != 0;
+    g_menu_scale = (int)GetPrivateProfileIntA("General", "MenuScale", 100, doa3_settings_ini_path());
+    if (g_menu_scale < 100 || g_menu_scale > 250) g_menu_scale = 100;
+}
+
 extern "C" void doa3_ui_toggle(void)
 {
+    LoadMenuSettings();
     if (g_visible && g_screen_dirty) SaveScreen(g_screen);   /* closed from a list screen */
     g_screen_dirty = false;
     g_visible = !g_visible;

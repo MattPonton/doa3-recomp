@@ -5307,3 +5307,30 @@ frames, as RVAs for DOA3.map). 1.0.4.10's run, same pattern: Team Battle
 SetRenderTarget into 02D6C600 at frame 2443 and 0369C600 at 3269, each on
 the frame the costume-3 Zack entered; Survival's Zack at frame 6050, no
 SetRenderTarget at all.
+
+## 1.0.4.12
+
+1.0.4.11's host stacks symbolized: both Team Battle captures come from
+sub_001C1D0F (+0x11d9) <- sub_001C5F54 <- sub_001C60AB, the task loop on
+fiber 0x1C6690. That loop calls 0x1C5F54 every frame, which calls
+sub_001C1D0F(character, costume, slot) for each side's record (0x59CF58 +
+side*0x68: +1, +2, +3). sub_001C1D0F returns at once unless character 0,
+costume 0x02, then renders only on an edge: 0x596A37 falling (0x9B36A8),
+0x5C93AA rising (0x9B3710), 0xC59865 changing (0x9B36A0), or -- only when
+0x5A2858 == 10, Team Battle -- a side's slot changing (0x9B3717/0x9B371B,
+set by 0x1C5F54 from 0x9B3716 vs 0x59CF5B). Survival's next opponent comes
+in with none of these, so the suit keeps the old picture.
+
+Fix: sub_001C1D0F is an override (removed from recomp_probes.c). In mode 5
+it remembers each slot's (queue position 0x596ADC, character, costume)
+while 0x596A37 is 0; when that changes and the new fighter is Zack in
+costume 0x02, it sets 0x9B36A0 to differ from 0xC59865 for that one call
+(the loop rewrites 0x9B36A0 right after), every frame until a capture
+happens (counted by the SetRenderTarget hook's new g_doa3_offrt_sets). Logs
+"[REFL]" when it does. The Survival exclusion in 0x76B30 is gone and the
+[RTTCALL] logging removed; DOA3_TEST_SURVIVAL_ZACK stays until this is
+confirmed.
+
+Pause in menu: [General] PauseInMenu was read in doa3_ui_init, which runs
+on the first frame with something to draw, after the first toggle had
+already decided not to pause. Both now call LoadMenuSettings (once).

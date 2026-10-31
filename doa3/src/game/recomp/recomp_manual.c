@@ -537,6 +537,9 @@ uint32_t doa3_aa_resolve_source(void)
  * device's own back/display buffers (the stage reflection targets), so the
  * translator sends those to an offscreen host target and later draws that
  * sample them read it. 3.0's equivalent hook is sub_001B1350. */
+/* Offscreen SetRenderTarget calls so far (sub_001C1D0F below tells from it
+ * whether a reflection capture happened). */
+static unsigned g_doa3_offrt_sets;
 void sub_001DC8E0_gen(void);
 void sub_001DC8E0(void)
 {
@@ -562,30 +565,7 @@ void sub_001DC8E0(void)
     if (dev && arg >= 0x1000 && arg < 0x08000000u &&
         arg != MEM32(dev + 0x207C) && arg != MEM32(dev + 0x2080) && arg != MEM32(dev + 0x2084)) {
         uint32_t data = MEM32(arg + 4) & 0x03FFFFFFu;
-        {   /* 1.0.4.9 (temporary, Zack costume 3 in Survival): who renders
-             * into an offscreen surface (the reflection captures). The guest stack holds no return addresses (the lifter pushes
-             * 0), so record the host call stack: each recompiled function
-             * is a host function, and DOA3.map turns the RVAs back into
-             * sub_XXXXXXXX names. */
-            extern unsigned g_doa3_frames_presented;
-            static uint32_t s_seen[96];
-            static int s_n;
-            void *frames[40];
-            USHORT n = RtlCaptureStackBackTrace(1, 40, frames, NULL);
-            uintptr_t base = (uintptr_t)GetModuleHandleA(NULL);
-            uint32_t key = data, i;
-            int k;
-            for (i = 0; i < n; i++) key = key * 31u + (uint32_t)((uintptr_t)frames[i] - base);
-            for (k = 0; k < s_n && s_seen[k] != key; k++) {}
-            if (k == s_n && s_n < 96) {   /* each surface + call chain once */
-                s_seen[s_n++] = key;
-                fprintf(stderr, "[RTTCALL] frame %u: SetRenderTarget %08X (data %08X) host rva",
-                        g_doa3_frames_presented, arg, data);
-                for (i = 0; i < n; i++) fprintf(stderr, " %X", (unsigned)((uintptr_t)frames[i] - base));
-                fprintf(stderr, "\n");
-                fflush(stderr);
-            }
-        }
+        g_doa3_offrt_sets++;
         int k, seen = 0;
         for (k = 0; k < g_doa3_offrt_n; k++) if (g_doa3_offrt_offs[k] == data) seen = 1;
         if (!seen && data && g_doa3_offrt_n < 64) {
@@ -595,6 +575,67 @@ void sub_001DC8E0(void)
                     g_doa3_offrt_n, arg, data, (sz & 0xFFFu) + 1, ((sz >> 12) & 0xFFFu) + 1, MEM32(arg + 0xC));
         }
     }
+}
+
+/* Zack's costume 3 reflection capture (1.0.4). sub_001C1D0F(character,
+ * costume, slot) renders the stage into the 256x256 picture 0x5A2B30[slot]
+ * that his metallic suit (character 0, costume 0x02) reflects. The task
+ * loop 0x1C60AB calls it for both fighters every frame (through 0x1C5F54),
+ * and it only renders when something changed:
+ *   - 0x596A37 dropped to 0 (a fight's setup finished; 0x9B36A8 is last
+ *     frame's "it was 0"),
+ *   - 0x5C93AA rose (0x9B3710 is last frame's copy),
+ *   - 0xC59865 changed (0x9B36A0 is last frame's copy),
+ *   - or, in Team Battle only (mode 0x5A2858 == 10), a side's fighter
+ *     changed (0x9B3717 / 0x9B371B).
+ * A Survival opponent joins with none of these, so his suit kept the
+ * picture of whatever was rendered before (the Beach by default). In
+ * Survival (mode 5), when the fighter in a slot changes during a fight,
+ * keep asking for the capture until it happens, by making last frame's
+ * copy of 0xC59865 differ for this call only (the loop overwrites the
+ * copy after the call anyway). */
+void sub_001C1D0F_gen(void);
+void sub_001C1D0F(void)
+{
+    static uint32_t s_key[4], s_need[4];
+    static int s_valid[4];
+    uint32_t ch = MEM8(esp + 4), costume = MEM8(esp + 8), slot = MEM8(esp + 12);
+    uint32_t mode = MEM8(0x5A2858u), before = g_doa3_offrt_sets, saved = 0;
+    int force = 0;
+    if (mode != 5 || slot >= 4) {
+        s_valid[0] = s_valid[1] = s_valid[2] = s_valid[3] = 0;
+        s_need[0] = s_need[1] = s_need[2] = s_need[3] = 0;
+    } else if (MEM8(0x596A37u)) {
+        s_valid[slot] = 0;      /* a fight being set up: the game captures after it */
+        s_need[slot] = 0;
+    } else {
+        /* The opponent's place in the Survival queue is part of the key, so
+         * a second Zack in costume 3 is captured again too. */
+        uint32_t key = (MEM8(0x596ADCu) << 16) | (ch << 8) | costume;
+        if (s_valid[slot] && s_key[slot] != key) s_need[slot] = 1;
+        s_key[slot] = key;
+        s_valid[slot] = 1;
+        if (s_need[slot]) {
+            if (ch == 0x00 && costume == 0x02) force = 1;
+            else s_need[slot] = 0;
+        }
+    }
+    if (force) {
+        saved = MEM8(0x9B36A0u);
+        MEM8(0x9B36A0u) = (uint8_t)(MEM8(0xC59865u) ^ 1u);
+    }
+    sub_001C1D0F_gen();
+    if (force) MEM8(0x9B36A0u) = (uint8_t)saved;
+    if (g_doa3_offrt_sets != before && slot < 4) {
+        if (force) {
+            extern unsigned g_doa3_frames_presented;
+            fprintf(stderr, "[REFL] frame %u: Survival opponent %u, Zack costume 3 in slot %u: stage reflection captured\n",
+                    g_doa3_frames_presented, MEM8(0x596ADCu), slot);
+            fflush(stderr);
+        }
+        s_need[slot] = 0;
+    }
+    if (g_fib_slice_due) xbox_fiber_timeslice();
 }
 #else
 int doa3_guest_display_size(unsigned *w, unsigned *h) { (void)w; (void)h; return 0; }
@@ -990,15 +1031,6 @@ void sub_00076B30(void)
                         costume = MEM8(ct + idx);
                     }
                 }
-                /* 1.0.4: in Survival, never Zack's costume 3 (character 0,
-                 * costume 0x02, the metallic suit). It reflects a picture of
-                 * the stage the game renders when the stage is set up; a
-                 * Survival opponent joins without a stage change, so his
-                 * suit showed the default Beach picture. Time Attack sets
-                 * the stage up for each fight, so it is left alone. The
-                 * game itself never gives a CPU opponent this costume
-                 * (costume 1, or 2 for the mirror match). */
-                if (mode == 5 && ch == 0x00 && costume == 0x02 && !test_survival_zack()) continue;
                 for (p = 0; p < 2; p++)
                     if (MEM8(0x59CF58 + p * 0x68) == 1 && MEM8(0x59CF59 + p * 0x68) == ch &&
                         MEM8(0x59CF5A + p * 0x68) == costume) break;
