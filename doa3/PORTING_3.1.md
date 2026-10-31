@@ -5255,3 +5255,10 @@ that costume is not covered. From the 3.1 XBE's tables (0x29C728 /
 (0x00, 0x02) like a mirror-match clash (another try, else the game's own
 choice). Making a late joiner's suit work would mean finding where the game
 decides to set up that capture; not done.
+
+## 1.0.4.7
+
+The 1.0.4.6 exclusion is Survival only (mode 5). Matt: Time Attack sets the
+stage up for each fight, as if the opponent had been chosen at Character
+Select, so its capture covers the opponent; Survival brings opponents in
+without a stage change.

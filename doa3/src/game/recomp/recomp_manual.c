@@ -955,14 +955,15 @@ void sub_00076B30(void)
                         costume = MEM8(ct + idx);
                     }
                 }
-                /* 1.0.4: never Zack's costume 3 (character 0, costume 0x02,
-                 * the metallic suit). It reflects a picture of the stage the
-                 * game renders when a fight is set up for the fighters chosen
-                 * before it; an opponent who joins later (Survival, Time
-                 * Attack) is not in that set, so his suit showed the default
-                 * Beach picture. The game itself never gives a CPU opponent
-                 * this costume (costume 1, or 2 for the mirror match). */
-                if (ch == 0x00 && costume == 0x02) continue;
+                /* 1.0.4: in Survival, never Zack's costume 3 (character 0,
+                 * costume 0x02, the metallic suit). It reflects a picture of
+                 * the stage the game renders when the stage is set up; a
+                 * Survival opponent joins without a stage change, so his
+                 * suit showed the default Beach picture. Time Attack sets
+                 * the stage up for each fight, so it is left alone. The
+                 * game itself never gives a CPU opponent this costume
+                 * (costume 1, or 2 for the mirror match). */
+                if (mode == 5 && ch == 0x00 && costume == 0x02) continue;
                 for (p = 0; p < 2; p++)
                     if (MEM8(0x59CF58 + p * 0x68) == 1 && MEM8(0x59CF59 + p * 0x68) == ch &&
                         MEM8(0x59CF5A + p * 0x68) == costume) break;
