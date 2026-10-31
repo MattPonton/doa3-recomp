@@ -88,7 +88,7 @@ when you move the mouse.
 ### Game
 
 - **Pause while this menu is open** (off by default): holds the game and its
-  sound while the menu is open. Never during online play or a movie.
+  sound while the menu is open, movies included. Never during online play.
 - **Check for updates at boot** (on by default): asks GitHub whether a newer
   release exists and shows a short notice over the game if so; **Open the
   release page** appears when there is one. Nothing is downloaded or

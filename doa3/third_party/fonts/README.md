@@ -1,6 +1,6 @@
 # Fonts
 
-The Esc menu (src/ui/pause_menu.cpp) uses **Poppins** Medium, Bold and Bold Italic
+The Esc menu (src/ui/pause_menu.cpp) uses **Poppins** Medium, Medium Italic, Bold and Bold Italic
 by the Poppins Project Authors (https://github.com/itfoundry/Poppins), under
 the SIL Open Font License 1.1 (OFL.txt).
 

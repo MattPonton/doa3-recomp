@@ -14,6 +14,7 @@ namespace {
 ImFont *g_title_font = nullptr;   /* Poppins Bold Italic: the title and the screen name */
 ImFont *g_label_font = nullptr;   /* Poppins Bold: row labels and values */
 ImFont *g_row_font   = nullptr;   /* Poppins Medium: help, notes, hints */
+ImFont *g_head_font  = nullptr;   /* Poppins Medium Italic: group headings */
 
 /* Colours. Black gradient over the game, blue selection like the game's own
  * menus. */
@@ -41,7 +42,7 @@ const ImU32 kStatus     = IM_COL32(150, 196, 255, 255);
 struct Frame {
     State *st = nullptr;
     ImDrawList *dl = nullptr;
-    ImFont *row = nullptr, *title = nullptr, *label = nullptr;
+    ImFont *row = nullptr, *title = nullptr, *label = nullptr, *head = nullptr;
     float W = 0, H = 0, x0 = 0, colW = 0;
     float rowSize = 0, textSize = 0, titleSize = 0, rowH = 0;
     float listTop = 0, listBottom = 0;
@@ -100,14 +101,14 @@ Row BeginRow(const char *help, bool enabled)
     return r;
 }
 
-/* Labels and values are drawn in capitals (ASCII letters; the fonts are
- * Latin subsets). */
+/* Headings and the screen name are drawn in capitals (ASCII letters; the
+ * fonts are Latin subsets). */
 void Upper(char *t)
 {
     for (; *t; ++t) if (*t >= 'a' && *t <= 'z') *t = (char)(*t - 'a' + 'A');
 }
 
-/* The label in capitals. One too long for the room left by the value is
+/* The label. One too long for the room left by the value is
  * cut at the edge; while its row is selected it scrolls left like a
  * ticker (a pause at each end) to show the rest. */
 void DrawLabel(const Row &r, const char *label, float valueW)
@@ -118,7 +119,6 @@ void DrawLabel(const Row &r, const char *label, float valueW)
     float room = F.colW - pad * 2.0f - (valueW > 0.0f ? valueW + pad : 0.0f);
     char text[200];
     _snprintf_s(text, sizeof text, _TRUNCATE, "%s", label);
-    Upper(text);
     float width = TextSize(F.label, F.rowSize, text).x;
     float x = F.x0 + pad, y = r.y + (F.rowH - F.rowSize) * 0.5f - F.rowSize * 0.04f;
     if (width <= room) {
@@ -147,7 +147,6 @@ void ValueText(char *out, size_t n, const char *value, bool arrows)
     if (!value) { out[0] = 0; return; }
     if (arrows) _snprintf_s(out, n, _TRUNCATE, "<   %s   >", value);
     else _snprintf_s(out, n, _TRUNCATE, "%s", value);
-    Upper(out);
 }
 float ValueWidth(const char *value, bool arrows)
 {
@@ -186,6 +185,9 @@ void AddFonts(ImFontAtlas *atlas)
     _snprintf_s(cfg.Name, sizeof cfg.Name, _TRUNCATE, "Poppins Bold");
     g_label_font = atlas->AddFontFromMemoryTTF((void *)k_font_poppins_bold, (int)sizeof k_font_poppins_bold,
                                                24.0f, &cfg);
+    _snprintf_s(cfg.Name, sizeof cfg.Name, _TRUNCATE, "Poppins Medium Italic");
+    g_head_font = atlas->AddFontFromMemoryTTF((void *)k_font_poppins_medium_italic,
+                                              (int)sizeof k_font_poppins_medium_italic, 24.0f, &cfg);
     _snprintf_s(cfg.Name, sizeof cfg.Name, _TRUNCATE, "Poppins Bold Italic");
     g_title_font = atlas->AddFontFromMemoryTTF((void *)k_font_poppins_bold_italic,
                                                (int)sizeof k_font_poppins_bold_italic, 48.0f, &cfg);
@@ -212,6 +214,7 @@ void Begin(State &st, const char *title, const char *section)
     F.row = g_row_font ? g_row_font : ImGui::GetFont();
     F.title = g_title_font ? g_title_font : F.row;
     F.label = g_label_font ? g_label_font : F.row;
+    F.head = g_head_font ? g_head_font : F.row;
     F.W = vp->Size.x; F.H = vp->Size.y;
     ImVec2 o = vp->Pos;
 
@@ -253,6 +256,9 @@ void Begin(State &st, const char *title, const char *section)
     } else y += F.textSize * 0.4f;
     F.listTop = y;
     F.listBottom = o.y + F.H * 0.72f;
+    /* a whole number of rows, so none shows cut in half at the bottom */
+    if (F.listBottom - F.listTop > F.rowH)
+        F.listBottom = F.listTop + floorf((F.listBottom - F.listTop) / F.rowH) * F.rowH;
     F.dl->PushClipRect(ImVec2(o.x, F.listTop), ImVec2(o.x + F.W, F.listBottom), true);
 
     /* Input. */
@@ -333,10 +339,15 @@ bool Step(const char *label, int &value, int lo, int hi, int step, const char *f
 
 void Heading(const char *text)
 {
-    float h = F.rowH * 0.95f;
+    /* capitals, medium italic, between the rows and the screen name in size */
+    char t[96];
+    _snprintf_s(t, sizeof t, _TRUNCATE, "%s", text);
+    Upper(t);
+    float size = F.rowSize * 1.1f;
+    float h = F.rowH * 1.05f;
     float y = F.listTop + F.cy - F.st->scroll;
     if (y + h > F.listTop && y < F.listBottom)
-        F.dl->AddText(F.row, F.textSize, ImVec2(F.x0, y + h - F.textSize * 1.25f), kHeading, text);
+        F.dl->AddText(F.head, size, ImVec2(F.x0, y + h - size * 1.3f), kHeading, t);
     F.cy += h;
 }
 

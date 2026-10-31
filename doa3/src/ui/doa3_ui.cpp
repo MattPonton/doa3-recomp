@@ -1443,7 +1443,7 @@ void SetMenuPause(bool on)
 {
     if (on && !g_menu_paused && !g_doa3_frame_pause && !netplay_active()) {
         InterlockedExchange(&g_doa3_frame_steps, 0);
-        InterlockedExchange(&g_doa3_frame_pause, 1);
+        InterlockedExchange(&g_doa3_frame_pause, 2);   /* 2: the menu's hold (also over a movie) */
         g_menu_paused = true;
     } else if (!on && g_menu_paused) {
         InterlockedExchange(&g_doa3_frame_pause, 0);
@@ -1630,8 +1630,8 @@ void DrawGameScreen()
     pm::Begin(g_pm_game, kMenuTitle, "Game");
     if (g_doa3_folder_write_error) pm::Note(kFolderWarning, IM_COL32(255, 140, 115, 255));
     if (pm::Toggle("Pause while this menu is open", g_pause_in_menu,
-                   "Holds the game (and its sound) while this menu is open. Never during online play or "
-                   "a movie.")) {
+                   "Holds the game (and its sound) while this menu is open, movies included. Never "
+                   "during online play.")) {
         SetMenuPause(g_pause_in_menu);
         g_screen_dirty = true;
     }

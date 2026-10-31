@@ -5218,3 +5218,18 @@ cut at the edge instead of ending in an ellipsis, and while it is selected
 it scrolls left like a ticker: 1.2 s still, then 3 row-heights per second
 to its end, 1.2 s still, and again (State keeps when that row was
 selected).
+
+## 1.0.4.4
+
+Menu (Matt): row labels and values are back in normal case (still Poppins
+Bold, upright); group headings ("UPDATES", "DIP SWITCHES") are capitals in
+Poppins Medium Italic (new subset) at 1.1x the row size, between the rows
+and the screen name (1.2x). The list area is a whole number of rows tall, so
+no row is drawn cut in half above the help line.
+
+"Pause while this menu is open" did nothing at the game's menus: they play
+movies behind them (the Mode Select beach is one), and the frame-advance
+hold refuses to stop a movie and clears the request. The menu's hold now
+sets g_doa3_frame_pause to 2, which doa3_frame_pause_point also honours over
+a movie (the guest's clocks and the APU output stand still while held); the
+Debug frame advance (1) keeps the old rule.

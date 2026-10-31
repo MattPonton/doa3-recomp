@@ -2602,7 +2602,11 @@ static void doa3_frame_pause_point(void)
         Sleep((DWORD)g_doa3_frame_slow_ms);
     }
     if (!g_doa3_frame_pause) return;
-    if (netplay_active() || doa3_movie_host_owns_screen()) {
+    /* 1.0.4: 2 = the Esc menu's "Pause while this menu is open", which may
+     * also hold a movie (the game's menus play movies behind them; the
+     * guest's clocks and sound stand still, so it resumes in step). Frame
+     * advance (1) still never stops a movie. */
+    if (netplay_active() || (doa3_movie_host_owns_screen() && g_doa3_frame_pause != 2)) {
         InterlockedExchange(&g_doa3_frame_pause, 0);
         InterlockedExchange(&g_doa3_frame_steps, 0);
         return;
