@@ -182,7 +182,7 @@ void pad_mapping_set_type(int p, int type)
 }
 
 /* 1.0.4: after the Escape menu closes, a player's input stays neutral until
- * everything they hold is let go, so the A / Enter that chose Resume (or a
+ * everything they hold is let go, so the B / Enter that closed it (or a
  * held stick) does not reach the game as a fresh press. */
 static unsigned g_release_wait;
 void pad_mapping_set_menu_open(int open)

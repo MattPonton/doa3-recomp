@@ -5207,3 +5207,14 @@ Menu look (Matt): the title is "DEAD OR ALIVE 3"; the bottom line is only
 the version ("v1.0.4.2"); row labels and values are capitals in Poppins
 Bold Italic (the title's font) at the row size. The column is half the
 window wide so the longest dip switch fits at 16:9.
+
+## 1.0.4.3
+
+Menu (Matt): the screen's name under the title is in capitals, Bold Italic,
+1.2x the row size; rows use Poppins Bold (upright; third_party/fonts gains
+the Bold subset); Resume is gone from Main (the game keeps running, so it
+read as a pause; Esc / B close the menu). A label too long for its row is
+cut at the edge instead of ending in an ellipsis, and while it is selected
+it scrolls left like a ticker: 1.2 s still, then 3 row-heights per second
+to its end, 1.2 s still, and again (State keeps when that row was
+selected).

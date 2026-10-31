@@ -18,9 +18,11 @@ namespace pm {
 void AddFonts(ImFontAtlas *atlas);
 
 struct State {
-    int   selected = 0;
-    float scroll   = 0.0f;
-    void  Reset() { selected = 0; scroll = 0.0f; }
+    int    selected = 0;
+    float  scroll   = 0.0f;
+    int    tickerRow = -1;      /* the selected row the ticker is timing */
+    double tickerStart = 0.0;   /* when it was selected */
+    void  Reset() { selected = 0; scroll = 0.0f; tickerRow = -1; }
 };
 
 /* title: large heading ("MENU"); section: the line under it ("Display"). */

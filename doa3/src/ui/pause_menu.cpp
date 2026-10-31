@@ -3,6 +3,7 @@
 #include "menu_fonts.h"
 
 #include <float.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include <vector>
@@ -10,8 +11,9 @@
 namespace pm {
 namespace {
 
-ImFont *g_title_font = nullptr;   /* Poppins Bold Italic */
-ImFont *g_row_font   = nullptr;   /* Poppins Medium */
+ImFont *g_title_font = nullptr;   /* Poppins Bold Italic: the title and the screen name */
+ImFont *g_label_font = nullptr;   /* Poppins Bold: row labels and values */
+ImFont *g_row_font   = nullptr;   /* Poppins Medium: help, notes, hints */
 
 /* Colours. Black gradient over the game, blue selection like the game's own
  * menus. */
@@ -23,7 +25,7 @@ const ImU32 kSelRight   = IM_COL32(8, 30, 110, 40);
 const ImU32 kRuleLeft   = IM_COL32(52, 128, 255, 255);
 const ImU32 kRuleRight  = IM_COL32(52, 128, 255, 0);
 const ImU32 kTitle      = IM_COL32(255, 255, 255, 255);
-const ImU32 kSection    = IM_COL32(150, 172, 210, 255);
+const ImU32 kSection    = IM_COL32(196, 214, 244, 255);
 const ImU32 kText       = IM_COL32(214, 220, 232, 255);
 const ImU32 kTextSel    = IM_COL32(255, 255, 255, 255);
 const ImU32 kValue      = IM_COL32(118, 170, 255, 255);
@@ -39,7 +41,7 @@ const ImU32 kStatus     = IM_COL32(150, 196, 255, 255);
 struct Frame {
     State *st = nullptr;
     ImDrawList *dl = nullptr;
-    ImFont *row = nullptr, *title = nullptr;
+    ImFont *row = nullptr, *title = nullptr, *label = nullptr;
     float W = 0, H = 0, x0 = 0, colW = 0;
     float rowSize = 0, textSize = 0, titleSize = 0, rowH = 0;
     float listTop = 0, listBottom = 0;
@@ -105,8 +107,9 @@ void Upper(char *t)
     for (; *t; ++t) if (*t >= 'a' && *t <= 'z') *t = (char)(*t - 'a' + 'A');
 }
 
-/* The label, shortened with an ellipsis if it would run into the value
- * (valueW: the value's width, 0 for none). */
+/* The label in capitals. One too long for the room left by the value is
+ * cut at the edge; while its row is selected it scrolls left like a
+ * ticker (a pause at each end) to show the rest. */
 void DrawLabel(const Row &r, const char *label, float valueW)
 {
     if (!r.visible) return;
@@ -116,17 +119,26 @@ void DrawLabel(const Row &r, const char *label, float valueW)
     char text[200];
     _snprintf_s(text, sizeof text, _TRUNCATE, "%s", label);
     Upper(text);
-    if (TextSize(F.title, F.rowSize, text).x > room) {
-        size_t n = strlen(text);
-        while (n > 1) {
-            --n;
-            while (n > 1 && (text[n] & 0xC0) == 0x80) --n;   /* whole UTF-8 characters */
-            _snprintf_s(text + n, sizeof text - n, _TRUNCATE, "\xE2\x80\xA6");
-            if (TextSize(F.title, F.rowSize, text).x <= room) break;
-        }
+    float width = TextSize(F.label, F.rowSize, text).x;
+    float x = F.x0 + pad, y = r.y + (F.rowH - F.rowSize) * 0.5f - F.rowSize * 0.04f;
+    if (width <= room) {
+        F.dl->AddText(F.label, F.rowSize, ImVec2(x, y), col, text);
+        return;
     }
-    F.dl->AddText(F.title, F.rowSize, ImVec2(F.x0 + pad, r.y + (F.rowH - F.rowSize) * 0.5f - F.rowSize * 0.04f),
-                  col, text);
+    float shift = 0.0f;
+    if (r.selected) {
+        State &st = *F.st;
+        double now = ImGui::GetTime();
+        if (st.tickerRow != r.idx) { st.tickerRow = r.idx; st.tickerStart = now; }
+        const double hold = 1.2;                                   /* seconds at each end */
+        float over = width - room, speed = F.rowSize * 3.0f;      /* pixels per second */
+        double run = over / speed, cycle = hold + run + hold;
+        double t = fmod(now - st.tickerStart, cycle);
+        shift = t < hold ? 0.0f : t < hold + run ? (float)((t - hold) * speed) : over;
+    }
+    F.dl->PushClipRect(ImVec2(x, r.y), ImVec2(x + room, r.y + F.rowH), true);
+    F.dl->AddText(F.label, F.rowSize, ImVec2(x - shift, y), col, text);
+    F.dl->PopClipRect();
 }
 
 /* The value text as drawn ("<   value   >" with arrows). */
@@ -142,7 +154,7 @@ float ValueWidth(const char *value, bool arrows)
     char text[160];
     if (!value) return 0.0f;
     ValueText(text, sizeof text, value, arrows);
-    return TextSize(F.title, F.rowSize, text).x;
+    return TextSize(F.label, F.rowSize, text).x;
 }
 
 /* "<  value  >" at the right end. Returns -1 / +1 when its left / right
@@ -153,10 +165,10 @@ int DrawValue(const Row &r, const char *value, bool arrows)
     ImU32 col = !r.enabled ? kDisabled : r.selected ? kValueSel : kValue;
     char text[160];
     ValueText(text, sizeof text, value, arrows);
-    ImVec2 sz = TextSize(F.title, F.rowSize, text);
+    ImVec2 sz = TextSize(F.label, F.rowSize, text);
     float pad = F.rowSize * 0.6f;
     float x = F.x0 + F.colW - pad - sz.x;
-    F.dl->AddText(F.title, F.rowSize, ImVec2(x, r.y + (F.rowH - F.rowSize) * 0.5f - F.rowSize * 0.04f), col, text);
+    F.dl->AddText(F.label, F.rowSize, ImVec2(x, r.y + (F.rowH - F.rowSize) * 0.5f - F.rowSize * 0.04f), col, text);
     if (arrows && r.enabled && F.clicked && r.hovered && F.mouse.x >= x - pad)
         return F.mouse.x < x + sz.x * 0.5f ? -1 : +1;
     return 0;
@@ -171,6 +183,9 @@ void AddFonts(ImFontAtlas *atlas)
     _snprintf_s(cfg.Name, sizeof cfg.Name, _TRUNCATE, "Poppins Medium");
     g_row_font = atlas->AddFontFromMemoryTTF((void *)k_font_poppins_medium, (int)sizeof k_font_poppins_medium,
                                              24.0f, &cfg);
+    _snprintf_s(cfg.Name, sizeof cfg.Name, _TRUNCATE, "Poppins Bold");
+    g_label_font = atlas->AddFontFromMemoryTTF((void *)k_font_poppins_bold, (int)sizeof k_font_poppins_bold,
+                                               24.0f, &cfg);
     _snprintf_s(cfg.Name, sizeof cfg.Name, _TRUNCATE, "Poppins Bold Italic");
     g_title_font = atlas->AddFontFromMemoryTTF((void *)k_font_poppins_bold_italic,
                                                (int)sizeof k_font_poppins_bold_italic, 48.0f, &cfg);
@@ -196,6 +211,7 @@ void Begin(State &st, const char *title, const char *section)
     F.dl = ImGui::GetWindowDrawList();
     F.row = g_row_font ? g_row_font : ImGui::GetFont();
     F.title = g_title_font ? g_title_font : F.row;
+    F.label = g_label_font ? g_label_font : F.row;
     F.W = vp->Size.x; F.H = vp->Size.y;
     ImVec2 o = vp->Pos;
 
@@ -225,8 +241,15 @@ void Begin(State &st, const char *title, const char *section)
                                   kRuleLeft, kRuleRight, kRuleRight, kRuleLeft);
     y += rule + F.textSize * 0.4f;
     if (section && section[0]) {
-        F.dl->AddText(F.row, F.textSize, ImVec2(F.x0, y), kSection, section);
-        y += F.textSize * 1.4f;
+        /* the screen's name: capitals, bold italic, a little larger than
+         * the rows */
+        char name[64];
+        _snprintf_s(name, sizeof name, _TRUNCATE, "%s", section);
+        Upper(name);
+        float size = F.rowSize * 1.2f;
+        y += F.textSize * 0.2f;
+        F.dl->AddText(F.title, size, ImVec2(F.x0, y), kSection, name);
+        y += size * 1.45f;
     } else y += F.textSize * 0.4f;
     F.listTop = y;
     F.listBottom = o.y + F.H * 0.72f;

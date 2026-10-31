@@ -2,14 +2,14 @@
 
 ## 1.0.4 — not yet released
 
-- New Escape menu: a list over the game (Resume, Display, Sound, Game,
-  Controls, Photo Mode, Sparring, Quit) that works with the keyboard, a
+- New Escape menu: a list over the game (Display, Sound, Game, Controls,
+  Photo Mode, Sparring, Quit) that works with the keyboard, a
   controller or the mouse. Settings apply at once and are saved when you leave
   a screen. Controls, Photo Mode and Sparring still open in the old window for
   now.
 - **Pause while this menu is open**, on the Game screen (off by default).
-- After closing the menu, the button or key that closed it no longer reaches
-  the game.
+- After closing the menu, the button or key still held when it closed no
+  longer reaches the game.
 
 ## 1.0.3 — 2026-10-30
 

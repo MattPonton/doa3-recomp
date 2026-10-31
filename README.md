@@ -74,8 +74,8 @@ Files the port keeps next to `DOA3.exe`:
 ## Settings (Escape menu)
 
 Press **Escape** (or **L3 + R3** on a controller) at any time to open the
-menu: a list over the game with **Resume**, **Display**, **Sound**, **Game**,
-**Controls**, **Photo Mode**, **Sparring** and **Quit**. Use the arrow keys
+menu: a list over the game with **Display**, **Sound**, **Game**,
+**Controls**, **Photo Mode**, **Sparring** and **Quit**; Escape closes it. Use the arrow keys
 or the d-pad to choose, **Left / Right** to change a setting, **Enter / A** to
 select and **Escape / B** to go back; the mouse works too. The line under
 the list explains the selected setting. Changes apply immediately and are

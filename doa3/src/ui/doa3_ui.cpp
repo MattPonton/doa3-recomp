@@ -1510,7 +1510,6 @@ void DrawMainScreen()
 {
     pm::Begin(g_pm_main, kMenuTitle, nullptr);
     if (g_doa3_folder_write_error) pm::Note(kFolderWarning, IM_COL32(255, 140, 115, 255));
-    if (pm::Action("Resume", "Back to the game.")) { doa3_ui_toggle(); }
     if (pm::Action("Display", "Window type, picture shape, internal resolution and the performance overlay."))
         OpenScreen(SCR_DISPLAY, g_pm_display);
     if (pm::Action("Sound", "Overall volume, the game's music, effects and voice levels, and streamer mode."))
@@ -1779,7 +1778,7 @@ extern "C" void doa3_ui_toggle(void)
     if (g_visible && g_screen_dirty) SaveScreen(g_screen);   /* closed from a list screen */
     g_screen_dirty = false;
     g_visible = !g_visible;
-    /* 1.0.4: always opens on the main list, with Resume selected. */
+    /* 1.0.4: always opens on the main list, at its first row. */
     g_screen = SCR_MAIN;
     g_pm_main.Reset();
     SetMenuPause(g_visible && g_pause_in_menu);
