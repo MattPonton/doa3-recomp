@@ -601,8 +601,9 @@ void sub_001C1D0F_gen(void);
 void sub_001C1D0F(void)
 {
     static uint32_t s_done[4];      /* 1 + key of the last capture in each slot */
+    static uint32_t s_fight[4];     /* 1 + key of the last capture in the fight phase */
     uint32_t ch = MEM8(esp + 4), costume = MEM8(esp + 8), slot = MEM8(esp + 12);
-    uint32_t mode = MEM8(0x5A2858u), before = g_doa3_offrt_sets, saved = 0;
+    uint32_t mode = MEM8(0x5A2858u), phase = MEM8(0x596A37u), before = g_doa3_offrt_sets, saved = 0;
     uint32_t key, side, human = 0;
     int force = 0;
     /* A human's slot keeps its fighter from one opponent to the next, so
@@ -615,7 +616,14 @@ void sub_001C1D0F(void)
     key = 1u + (((human ? 0xFFu : MEM8(0x596ADCu)) << 16) | (ch << 8) | costume);
     if (mode != 5 || slot >= 4) {
         s_done[0] = s_done[1] = s_done[2] = s_done[3] = 0;
-    } else if (ch == 0x00 && costume == 0x02 && s_done[slot] != key) {
+        s_fight[0] = s_fight[1] = s_fight[2] = s_fight[3] = 0;
+    } else if (ch == 0x00 && costume == 0x02 &&
+               (s_done[slot] != key || (!human && phase == 1 && s_fight[slot] != key))) {
+        /* A joining opponent is captured as he comes in (0x596A37 is 2,
+         * the KO phase) and once more when the fight resumes (1): a
+         * capture taken while the stage is still in its KO effects (Matt,
+         * 1.0.4.15: a wall explosion finishing the previous opponent) came
+         * out white. */
         force = 1;
         saved = MEM8(0x9B36A0u);
         MEM8(0x9B36A0u) = (uint8_t)(MEM8(0xC59865u) ^ 1u);
@@ -628,12 +636,13 @@ void sub_001C1D0F(void)
             static int s_log;
             if (s_log < 32) {
                 s_log++;
-                fprintf(stderr, "[REFL] frame %u: Survival opponent %u, Zack costume 3 in slot %u: stage reflection captured\n",
-                        g_doa3_frames_presented, MEM8(0x596ADCu), slot);
+                fprintf(stderr, "[REFL] frame %u: Survival opponent %u, Zack costume 3 in slot %u (phase %u): stage reflection captured\n",
+                        g_doa3_frames_presented, MEM8(0x596ADCu), slot, phase);
                 fflush(stderr);
             }
         }
         s_done[slot] = key;
+        if (phase == 1) s_fight[slot] = key;
     }
     if (g_fib_slice_due) xbox_fiber_timeslice();
 }

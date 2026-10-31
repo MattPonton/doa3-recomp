@@ -5374,3 +5374,16 @@ without the queue position, so only the joining fighter's slot is
 captured. Normal play doesn't produce this case (0x76B30 rerolls a
 mirror match in the same outfit, and the game never picks costume 0x02
 itself).
+
+## 1.0.4.16
+
+Matt, 1.0.4.15: his own costume-3 Zack kept his picture and a joining one
+was right after a plain KO, but after he finished the previous opponent
+with a Danger Zone wall explosion the joining Zack came out white (capture
+at frame 5724: 418 draws, 63 wrote pixels, 164133 pixels; the good one at
+2811: 160 / 89 / 98624; the white ones in 1.0.4.14 were 442 / 69 / 167260
+and 465 / 82 / 169801). From the 1.0.4.13 [REFLGATE] run, 0x596A37 is 0
+for the intro, 1 during the fight and 2 in the KO phase, when the next
+Survival opponent joins. So a CPU slot's Zack is now captured on joining
+and once more on the first frame of phase 1 (s_fight). The [REFL] line
+gives the phase.
