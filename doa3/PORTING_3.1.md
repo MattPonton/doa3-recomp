@@ -5274,3 +5274,17 @@ and gives a Survival Zack costume 0x02 regardless of the dip switches
 stage picture into 0x0369C600 when a costume-3 Zack joins in Team Battle
 (frame 46909) and in mode 3 (frame 13821); Survival (mode 5) is untested.
 To be removed once that is known.
+
+## 1.0.4.9
+
+Survival test (1.0.4.8, DOA3_TEST_SURVIVAL_ZACK): the second opponent was
+Zack in costume 0x02 ("fighting ... P2 character 00 costume 02" at frame
+4016) and no [RTT] pass followed: Survival does not render the stage picture
+for a late opponent, while Team Battle (frame 46909) and Time Attack (13821)
+do, on the frame after the fighter's entry. Matt's screenshot shows the
+default (Beach) map on him.
+
+To find what starts that capture: the D3DDevice_SetRenderTarget hook
+(sub_001DC8E0) logs, for 256x256 targets (at most 48 lines), the frame and
+the guest return addresses on the stack that follow a call instruction
+("[RTTCALL]"). Temporary.

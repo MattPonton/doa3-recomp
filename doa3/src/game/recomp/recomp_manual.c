@@ -562,6 +562,30 @@ void sub_001DC8E0(void)
     if (dev && arg >= 0x1000 && arg < 0x08000000u &&
         arg != MEM32(dev + 0x207C) && arg != MEM32(dev + 0x2080) && arg != MEM32(dev + 0x2084)) {
         uint32_t data = MEM32(arg + 4) & 0x03FFFFFFu;
+        {   /* 1.0.4.9 (temporary, Zack costume 3 in Survival): who renders
+             * into a 256x256 surface (the reflection captures). Logs the
+             * guest return addresses on the stack, keeping only those that
+             * follow a call instruction. */
+            extern unsigned g_doa3_frames_presented;
+            uint32_t sz = MEM32(arg + 0x10);
+            static int s_n;
+            if ((sz & 0xFFFu) == 255 && ((sz >> 12) & 0xFFFu) == 255 && s_n < 48) {
+                uint32_t i, found = 0, sp = esp;
+                s_n++;
+                fprintf(stderr, "[RTTCALL] frame %u: SetRenderTarget %08X (data %08X) from",
+                        g_doa3_frames_presented, arg, data);
+                for (i = 0; i < 0x180 && found < 14; i += 4) {
+                    uint32_t v = MEM32(sp + i);
+                    if (v < 0x11005 || v >= 0x230000) continue;
+                    if (MEM8(v - 5) == 0xE8 || MEM8(v - 2) == 0xFF || MEM8(v - 3) == 0xFF || MEM8(v - 6) == 0xFF) {
+                        fprintf(stderr, " %06X", v);
+                        found++;
+                    }
+                }
+                fprintf(stderr, "\n");
+                fflush(stderr);
+            }
+        }
         int k, seen = 0;
         for (k = 0; k < g_doa3_offrt_n; k++) if (g_doa3_offrt_offs[k] == data) seen = 1;
         if (!seen && data && g_doa3_offrt_n < 64) {
