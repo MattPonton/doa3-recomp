@@ -5458,3 +5458,12 @@ over 90 ms (State::nudgeRow/nudgeStart). The pointer hides
 changes, selects, goes back or clears in the list; while hidden it neither
 selects the row under it nor clicks, and it comes back after 0.2 s of
 movement (a pause over 0.1 s starts the count again).
+
+## 1.0.4.22
+
+Controls: "Screenshot key" is the third row (a pm::Binding; Enter starts
+g_screenshot_listening, which the window procedure resolves as before;
+Delete / X sets F12; the list is blocked while it listens), then a
+"Players" heading over the Player rows (MenuBack from a player screen
+selects row 3 + player). Photo Mode's classic tab keeps "Take screenshot"
+and shows the key, without its own assignment buttons.

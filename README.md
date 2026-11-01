@@ -126,7 +126,10 @@ effect immediately and are saved in the `[DipSwitches]` section of
 - **Capture gameplay input in menu** (on by default): while the menu is
   open, controllers operate the menu and the game sees no input. Turn it off
   to keep playing behind the menu.
-- **Player 1–4**: each row shows the device that player uses and
+- **Screenshot key** (F12 by default): select it, then press the key to use
+  (Escape cancels); **Delete** / **X** puts it back to F12. L3 + RB on a
+  controller also takes a screenshot.
+- **Players** — **Player 1–4**: each row shows the device that player uses and
   opens that player's screen:
   - **Input device** opens the list of devices (Automatic, None, Keyboard and
     each connected controller, numbered per model when more than one of a
@@ -185,8 +188,8 @@ times; **Classic menu size** scales the Photo Mode and Sparring window
   camera** returns to the game's view.
 - **Hide Player 1 / Player 2 / UI**: hide either fighter or the game's HUD and
   menus (Escape always opens this menu so you can bring them back).
-- **Screenshots**: a hotkey (F12 by default, reassignable) saves a PNG at the
-  render resolution, without this menu, to `Screenshots\`. A short notice in
+- **Screenshots**: a hotkey (F12 by default, set in **Controls**) saves a PNG
+  at the render resolution, without this menu, to `Screenshots\`. A short notice in
   the corner confirms it was saved (it is never in the picture).
 
 ### Sparring

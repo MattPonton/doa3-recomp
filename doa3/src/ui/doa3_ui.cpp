@@ -1211,20 +1211,10 @@ void DrawPhotoModeSection()
         PadBinding key = { PADSRC_KEY, debug_screenshot_key_get() };
         char name[80];
         pad_binding_label(key, name, sizeof(name));
-        ImGui::Text("Screenshot hotkey: %s", name);
-        if (ImGui::Button(g_screenshot_listening ? "Press a key (Esc cancels)" : "Assign screenshot hotkey")) {
-            g_screenshot_listening = !g_screenshot_listening;
-            g_listening = -1;
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Default: F12")) {
-            debug_screenshot_key_set(VK_F12); g_screenshot_listening = false;
-            SetStatus(debug_screenshot_key_save() ? "Screenshot key saved" : "Key changed; could not save settings");
-        }
+        ImGui::Text("Screenshot key: %s (change it in Controls)", name);
         if (ImGui::Button("Take screenshot")) d3d8_screenshot_request();
         ImGui::TextWrapped("%s", d3d8_screenshot_status());
-        HelpMarker("Captures the game at its render resolution without this settings menu. Use a key that is "
-                   "not assigned to fighter or camera controls. Hotkey changes save automatically.");
+        HelpMarker("Captures the game at its render resolution without this settings menu.");
     }
 }
 
@@ -1514,7 +1504,7 @@ void MenuBack()
     if (g_screen_dirty) SaveScreen(g_screen);
     g_screen_dirty = false;
     g_screen = g_screen == SCR_PLAYER ? SCR_CONTROLS : SCR_MAIN;
-    if (g_screen == SCR_CONTROLS) g_pm_controls.selected = 2 + g_input_player;
+    if (g_screen == SCR_CONTROLS) g_pm_controls.selected = 3 + g_input_player;   /* its Player row */
     g_listening = -1;
     g_armed = false;
     g_screenshot_listening = false;
@@ -1799,6 +1789,9 @@ void OpenPlayerScreen(int player)
 
 void DrawControlsScreen()
 {
+    /* the screenshot key is captured by the window procedure; meanwhile
+     * the list ignores the controller and mouse */
+    pm::SetBlocked(g_screenshot_listening);
     pm::Begin(g_pm_controls, kMenuTitle, "Controls");
     bool focus_only = pad_mapping_focus_only() != 0;
     if (pm::Toggle("Input only when focused", focus_only,
@@ -1815,6 +1808,26 @@ void DrawControlsScreen()
         pad_mapping_set_capture_menu(capture_menu);
         g_screen_dirty = true;
     }
+    {   /* 1.0.4: moved here from Photo Mode */
+        PadBinding key = { PADSRC_KEY, debug_screenshot_key_get() };
+        char name[80];
+        if (g_screenshot_listening) _snprintf_s(name, sizeof name, _TRUNCATE, "Press a key");
+        else pad_binding_label(key, name, sizeof name);
+        bool clear = false;
+        if (pm::Binding("Screenshot key", name, g_screenshot_listening,
+                        "Saves a picture of the game (without this menu) to the Screenshots folder. Enter / A, "
+                        "then press the key; Esc cancels. Delete / X puts it back to F12. On a controller, "
+                        "L3 + RB takes one too.", clear)) {
+            g_screenshot_listening = true;
+            g_listening = -1;
+            SetStatus("Press a key for screenshots (Esc cancels)");
+        }
+        if (clear) {
+            debug_screenshot_key_set(VK_F12);
+            SetStatus(debug_screenshot_key_save() ? "Screenshot key saved" : "Key changed; could not save settings");
+        }
+    }
+    pm::Heading("Players");
     for (int p = 0; p < 4; ++p) {
         char label[32], value[96];
         _snprintf_s(label, sizeof label, _TRUNCATE, "Player %d", p + 1);
@@ -1972,7 +1985,7 @@ void DrawDeviceScreen()
 
 void DrawPauseMenu()
 {
-    pm::SetBlocked(false);   /* only the player screen blocks, while capturing */
+    pm::SetBlocked(false);   /* only Controls and the player screen block, while capturing */
     switch (g_screen) {
     case SCR_MAIN:    DrawMainScreen(); break;
     case SCR_DISPLAY: DrawDisplayScreen(); break;
