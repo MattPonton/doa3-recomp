@@ -35,6 +35,15 @@ bool Choice(const char *label, int &index, const char *const *names, int count,
             const char *help, bool enabled = true);
 bool Step(const char *label, int &value, int lo, int hi, int step, const char *fmt,
           const char *help, bool enabled = true);
+/* A control's binding: the value is drawn without arrows (in the status
+ * color while listening). Returns true when activated; clear is set when
+ * Delete / X is pressed on it or it is right-clicked. */
+bool Binding(const char *label, const char *value, bool listening, const char *help, bool &clear);
+/* While on (a binding is being captured), the list ignores the keyboard,
+ * controller and mouse. Call before Begin; it stays until turned off. */
+void SetBlocked(bool on);
+/* One more button hint after the usual ones, for this frame (after Begin). */
+void Hint(const char *key, const char *action);
 void Heading(const char *text);
 void Note(const char *text, ImU32 color = 0);
 /* B / Backspace was pressed this frame (Esc is handled by the window

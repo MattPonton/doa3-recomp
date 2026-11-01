@@ -5412,3 +5412,30 @@ the held frame. Display's window type, aspect ratio, internal resolution
 and Reset to defaults now call MenuPauseRefresh, which grants the hold two
 frame steps (g_doa3_frame_steps = 2; the render thread is a frame behind)
 so the picture is redrawn with the new setting, then holds again.
+
+## 1.0.4.19
+
+Controls moved to the list menu (Matt's layout, with two changes):
+SCR_CONTROLS (Input only when focused, "Capture gameplay input in menu",
+then "Player N controller" rows whose value is the device in use), each
+opening SCR_PLAYER ("PLAYER N CONTROLLER CONFIGURATION": Input device,
+Xbox controller type, a heading per control group, one pm::Binding row per
+control with readable names (CtlName), Reset to defaults, Back).
+
+- Input device is not a Left/Right choice: scrolling through it would call
+  pad_mapping_set_device on each controller passed, which takes it from
+  another player. It opens SCR_DEVICE, a list (Automatic, None, Keyboard,
+  connected controllers) showing "Current" or which player has each; only
+  choosing applies.
+- No Save button: like the other screens, changes apply at once and
+  doa3_input.ini is written on leaving the player's screen (SaveScreen).
+
+Capturing: pm::SetBlocked keeps the list from reacting to any input while a
+row listens; the row arms only once the pad buttons/sticks on the player's
+controller and Enter / Space / the left mouse button are released (the A or
+Enter that chose the row would otherwise bind itself), and after a capture
+the list stays blocked until the captured key or control is let go
+(g_bind_release). Delete / X / right-click clears a binding; Esc cancels
+(wndproc, as before). CaptureBinding's pad half is now CapturePad.
+
+Sound: the game's Music / Sound effects / Voice values show a % sign.

@@ -80,7 +80,7 @@ or the d-pad to choose, **Left / Right** to change a setting, **Enter / A** to
 select and **Escape / B** to go back; the mouse works too. The line under
 the list explains the selected setting. Changes apply immediately and are
 saved when you leave the screen; each screen has **Reset to defaults**.
-**Controls**, **Photo Mode** and **Sparring** still open in a window with
+**Photo Mode** and **Sparring** still open in a window with
 tabs; close it (or press Escape / B) to return to the list. While the menu is
 closed, the mouse pointer hides after a second without moving and comes back
 when you move the mouse.
@@ -123,21 +123,29 @@ effect immediately and are saved in the `[DipSwitches]` section of
 ### Controls
 
 - **Input only when focused**: ignore input while another window is active.
-- **Capture gameplay input in Escape menu** (on by default): while the menu is
-  open, controllers drive the menu and the game sees no input. Turn it off to
-  keep playing behind the menu.
-- **Player 1–4** tabs: choose a device (Automatic, keyboard or a specific
-  controller) and the Xbox controller type, then click a row to rebind it.
-  The device list shows only connected controllers, numbered per model
-  when more than one of a kind is connected.
-  Right-click a binding to clear it. Player 1 defaults to Automatic; Players
-  2–4 default to None until assigned. A controller's **Reset to defaults**
-  puts White on LB and Black on RB. With **Keyboard** chosen, **Reset to
-  defaults** loads a keyboard layout: W / A / S / D for the directional pad,
-  Enter and Backspace for Start and Back, K / L over M / comma for X / Y over
-  A / B, semicolon for Black, J for White, N and period for the left and right
-  triggers, T / G / F / H for the left stick and the arrow keys for the right
-  stick.
+- **Capture gameplay input in menu** (on by default): while the menu is
+  open, controllers operate the menu and the game sees no input. Turn it off
+  to keep playing behind the menu.
+- **Player 1–4 controller**: each row shows the device that player uses and
+  opens that player's screen:
+  - **Input device** opens the list of devices (Automatic, None, Keyboard and
+    each connected controller, numbered per model when more than one of a
+    kind is connected). It shows which player has each controller; choosing
+    one another player chose moves it to this player and leaves that player
+    with None. Player 1 defaults to Automatic; Players 2–4 default to None.
+  - **Xbox controller type**: Duke, Controller S or Fight Stick.
+  - One row per control: select it, then press the key or control to use
+    (Escape cancels). **Delete** / **X** or a right-click clears a binding.
+  - **Reset to defaults** resets this player's bindings. A controller's
+    defaults put White on LB and Black on RB. With **Keyboard** chosen, it
+    loads a keyboard layout: W / A / S / D for the directional pad, Enter and
+    Backspace for Start and Back, K / L over M / comma for X / Y over A / B,
+    semicolon for Black, J for White, N and period for the left and right
+    triggers, T / G / F / H for the left stick and the arrow keys for the
+    right stick.
+
+  Changes apply at once and are saved to `doa3_input.ini` when you leave the
+  player's screen.
 
 **Controller shortcuts** (any connected controller, Xbox names; PlayStation:
 L3 / R3 / L1 / R1 / Triangle):
@@ -145,7 +153,7 @@ L3 / R3 / L1 / R1 / Triangle):
 | Buttons | Does |
 | --- | --- |
 | L3 + R3 | Open or close the Escape menu |
-| LB / RB | Previous / next tab, in the Controls, Photo Mode and Sparring window |
+| LB / RB | Previous / next tab, in the Photo Mode and Sparring window |
 | L3 + RB | Take a screenshot |
 | L3 + Y | Show or hide the performance overlay |
 
@@ -156,8 +164,8 @@ game as usual.
 
 **Window type** (windowed / borderless fullscreen), **Aspect ratio** and
 **Internal resolution**; **Performance overlay** shows frame rate and frame
-times; **Classic menu size** scales the Controls, Photo Mode and Sparring
-window (100–250 %).
+times; **Classic menu size** scales the Photo Mode and Sparring window
+(100–250 %).
 
 ### Sound
 

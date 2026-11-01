@@ -62,9 +62,15 @@ int g_tab_current = 0, g_tab_request = -1;
 /* 1.0.4: the list menu (pause_menu.cpp). The screens not yet moved to it
  * open the tabbed window on their tab (SCR_CLASSIC); leaving it comes back
  * to the list. */
-enum MenuScreen { SCR_MAIN, SCR_DISPLAY, SCR_SOUND, SCR_GAME, SCR_QUIT, SCR_CLASSIC };
+enum MenuScreen { SCR_MAIN, SCR_DISPLAY, SCR_SOUND, SCR_GAME, SCR_QUIT, SCR_CLASSIC,
+                  SCR_CONTROLS, SCR_PLAYER, SCR_DEVICE };
 MenuScreen g_screen = SCR_MAIN;
-pm::State g_pm_main, g_pm_display, g_pm_sound, g_pm_game, g_pm_quit;
+pm::State g_pm_main, g_pm_display, g_pm_sound, g_pm_game, g_pm_quit,
+          g_pm_controls, g_pm_player, g_pm_device;
+/* 1.0.4: after a binding is captured, the list ignores input until the
+ * captured key or control is let go (so a held d-pad or A does not also
+ * move the selection or start listening again). */
+PadBinding g_bind_release = { 0, 0 };
 bool g_screen_dirty = false;      /* a setting on this screen changed: save on Back */
 /* 1.0.4: "Pause the game while this menu is open" ([General] PauseInMenu),
  * through the frame-advance hold (recomp_manual.c). */
@@ -216,6 +222,7 @@ void UpdateGamepadNavigation()
  * Returns true when a source was pressed. A key arrives via the wndproc (so we
  * get a real VK rather than translating back out of ImGuiKey); controller
  * sources are polled here. */
+bool CapturePad(PadBinding &out);
 bool CaptureBinding(PadBinding &out)
 {
     int device = pad_mapping_device(g_input_player);
@@ -227,7 +234,12 @@ bool CaptureBinding(PadBinding &out)
         return true;
     }
     g_pending_vk = 0;
+    return CapturePad(out);
+}
 
+/* The first control held on this player's controller, if any. */
+bool CapturePad(PadBinding &out)
+{
     XINPUT_STATE xi;
     int assigned = xbox_InputAssignedSlot(g_input_player);
     for (DWORD port = 0; port < XBOX_HOST_CONTROLLERS; ++port) {
@@ -1474,6 +1486,9 @@ void SaveScreen(MenuScreen scr)
     case SCR_SOUND:
         ok = audio_settings_save();
         break;
+    case SCR_CONTROLS: case SCR_PLAYER: case SCR_DEVICE:
+        if (!pad_mapping_save(NULL)) { SetStatus("Could not write doa3_input.ini"); return; }
+        break;
     case SCR_GAME:
         ok = doa3_log_save();
         ok = update_check_save() && ok;
@@ -1492,9 +1507,14 @@ void SaveScreen(MenuScreen scr)
 void MenuBack()
 {
     if (g_screen == SCR_MAIN) { doa3_ui_toggle(); return; }
+    /* The device list goes back to its player's screen (saving later),
+     * a player's screen to Controls, and the other screens to the main
+     * list; changes are saved on leaving a screen for its parent. */
+    if (g_screen == SCR_DEVICE) { g_screen = SCR_PLAYER; return; }
     if (g_screen_dirty) SaveScreen(g_screen);
     g_screen_dirty = false;
-    g_screen = SCR_MAIN;
+    g_screen = g_screen == SCR_PLAYER ? SCR_CONTROLS : SCR_MAIN;
+    if (g_screen == SCR_CONTROLS) g_pm_controls.selected = 2 + g_input_player;
     g_listening = -1;
     g_armed = false;
     g_screenshot_listening = false;
@@ -1526,7 +1546,7 @@ void DrawMainScreen()
     if (pm::Action("Game", "Pausing, update checks, dip switches and log files."))
         OpenScreen(SCR_GAME, g_pm_game);
     if (pm::Action("Controls", "Each player's controller, keys and buttons."))
-        OpenClassic(1);
+        OpenScreen(SCR_CONTROLS, g_pm_controls);
     if (pm::Action("Photo Mode", "Free camera, hiding the fighters and the game's screens, and screenshots."))
         OpenClassic(4);
     if (pm::Action("Sparring", training_available()
@@ -1580,7 +1600,7 @@ void DrawDisplayScreen()
         TogglePerformanceOverlay();
     int ms = g_menu_scale;
     if (pm::Step("Classic menu size", ms, 100, 250, 25, "%d%%",
-                 "The size of the Controls, Photo Mode and Sparring windows and their text.")) {
+                 "The size of the Photo Mode and Sparring windows and their text.")) {
         g_menu_scale = ms;
         g_screen_dirty = true;
     }
@@ -1612,7 +1632,7 @@ void DrawSoundScreen()
     const bool ready = game_audio_available() != 0;
     for (int ch = 0; ch < 3; ++ch) {
         int v = game_audio_get(ch);
-        if (pm::Step(kChannel[ch], v, 0, 100, 5, "%d",
+        if (pm::Step(kChannel[ch], v, 0, 100, 5, "%d%%",
                      ready ? "The same setting as the game's Options > Audio Setting. It is kept in the game's "
                              "save the next time the game saves (leaving Options, or after the credits)."
                            : "Available once the game has loaded its save.",
@@ -1722,14 +1742,242 @@ void DrawQuitScreen()
     pm::End(g_status, kMenuVersion);
 }
 
+
+/* ── Controls (1.0.4) ─────────────────────────────────────────────────────
+ * Controls: the two input policies, then one row per player that opens the
+ * player's screen (its value is the device the player uses). The player's
+ * screen: input device (opens a list, so looking through the devices never
+ * takes one from another player), Xbox controller type, one row per
+ * control, Reset to defaults and Back. Changes apply at once and are saved
+ * to doa3_input.ini on leaving, like the other screens. */
+
+/* The device a player uses, as a label: "Keyboard", "None", "PS5 controller 1",
+ * or "Automatic (Xbox controller 1)". */
+static void PlayerDeviceLabel(int player, char *out, size_t n)
+{
+    DWORD physical = xbox_InputPhysicalMask();
+    int dev = pad_mapping_device(player), slot = xbox_InputAssignedSlot(player);
+    char pad[64] = "";
+    if (slot >= 0) ControllerLabel(slot, physical, pad, sizeof pad);
+    if (dev == PAD_DEVICE_KEYBOARD) _snprintf_s(out, n, _TRUNCATE, "Keyboard");
+    else if (dev == PAD_DEVICE_NONE) _snprintf_s(out, n, _TRUNCATE, "None");
+    else if (dev == PAD_DEVICE_AUTO) {
+        if (slot >= 0) _snprintf_s(out, n, _TRUNCATE, "Automatic (%s)", pad);
+        else if (player == 0) _snprintf_s(out, n, _TRUNCATE, "Automatic (keyboard)");
+        else _snprintf_s(out, n, _TRUNCATE, "Automatic (none connected)");
+    } else {
+        ControllerLabel(dev, physical, pad, sizeof pad);
+        _snprintf_s(out, n, _TRUNCATE, "%s", pad);
+    }
+}
+
+/* A control's name on the player screen (the .ini keys are terse). */
+static const char *CtlName(int ctl)
+{
+    static const char *const names[][2] = {
+        { "DPadUp", "Up" }, { "DPadDown", "Down" }, { "DPadLeft", "Left" }, { "DPadRight", "Right" },
+        { "LThumb", "Left stick press" }, { "RThumb", "Right stick press" },
+        { "LT", "Left trigger" }, { "RT", "Right trigger" },
+        { "LX-", "Left stick left" }, { "LX+", "Left stick right" },
+        { "LY-", "Left stick down" }, { "LY+", "Left stick up" },
+        { "RX-", "Right stick left" }, { "RX+", "Right stick right" },
+        { "RY-", "Right stick down" }, { "RY+", "Right stick up" },
+    };
+    const char *key = pad_ctl_key(ctl);
+    for (const auto &n : names) if (strcmp(n[0], key) == 0) return n[1];
+    return key;
+}
+
+void OpenPlayerScreen(int player)
+{
+    g_input_player = player;
+    g_listening = -1; g_armed = false; g_pending_vk = 0;
+    g_bind_release.kind = PADSRC_NONE;
+    g_screen = SCR_PLAYER;
+    g_pm_player.Reset();
+}
+
+void DrawControlsScreen()
+{
+    pm::Begin(g_pm_controls, kMenuTitle, "Controls");
+    bool focus_only = pad_mapping_focus_only() != 0;
+    if (pm::Toggle("Input only when focused", focus_only,
+                   "On: the game ignores the keyboard and controllers while another app is in front. "
+                   "Off: it keeps reading them. For all players.")) {
+        pad_mapping_set_focus_only(focus_only);
+        g_screen_dirty = true;
+    }
+    bool capture_menu = pad_mapping_capture_menu() != 0;
+    if (pm::Toggle("Capture gameplay input in menu", capture_menu,
+                   "On: while this menu is open, controllers operate it and the game doesn't see them. "
+                   "Off: controllers keep playing the game and don't operate the menu (use the mouse or "
+                   "keyboard). For all players.")) {
+        pad_mapping_set_capture_menu(capture_menu);
+        g_screen_dirty = true;
+    }
+    for (int p = 0; p < 4; ++p) {
+        char label[32], value[96];
+        _snprintf_s(label, sizeof label, _TRUNCATE, "Player %d controller", p + 1);
+        PlayerDeviceLabel(p, value, sizeof value);
+        if (pm::Action(label, "The device this player uses, its controller type, and its keys and buttons.",
+                       true, value))
+            OpenPlayerScreen(p);
+    }
+    if (pm::Action("Back", "Keeps your changes and goes back.") || pm::BackPressed()) MenuBack();
+    pm::End(g_status, kMenuVersion);
+}
+
+void DrawPlayerScreen()
+{
+    static const char *const kTypes[] = { "Duke", "Controller S", "Fight Stick" };
+    PadMapping *m = pad_mapping_get_player(g_input_player);
+    char section[48];
+    _snprintf_s(section, sizeof section, _TRUNCATE, "Player %d controller configuration", g_input_player + 1);
+
+    /* Capturing: arm once everything that started it is let go (the A or
+     * Enter that selected the row would otherwise bind itself), then take
+     * the first key or control. Afterwards, wait for it to be let go. */
+    if (g_listening >= 0) {
+        PadBinding held;
+        if (!g_armed) {
+            if (!CapturePad(held) && !(GetAsyncKeyState(VK_RETURN) & 0x8000) &&
+                !(GetAsyncKeyState(VK_SPACE) & 0x8000) && !(GetAsyncKeyState(VK_LBUTTON) & 0x8000)) {
+                g_armed = true;
+                g_pending_vk = 0;
+            }
+        } else if (CaptureBinding(held)) {
+            m->b[g_listening] = held;
+            char lbl[96], msg[160];
+            pad_binding_label(held, lbl, sizeof lbl);
+            _snprintf_s(msg, sizeof msg, _TRUNCATE, "%s bound to %s", CtlName(g_listening), lbl);
+            SetStatus(msg);
+            g_listening = -1;
+            g_armed = false;
+            g_bind_release = held;
+            g_screen_dirty = true;
+        }
+    }
+    if (g_bind_release.kind != PADSRC_NONE) {
+        PadBinding held;
+        bool down = g_bind_release.kind == PADSRC_KEY ? (GetAsyncKeyState(g_bind_release.code) & 0x8000) != 0
+                                                      : CapturePad(held);
+        if (!down) g_bind_release.kind = PADSRC_NONE;
+    }
+    pm::SetBlocked(g_listening >= 0 || g_bind_release.kind != PADSRC_NONE);
+
+    pm::Begin(g_pm_player, kMenuTitle, section);
+    char device[96];
+    PlayerDeviceLabel(g_input_player, device, sizeof device);
+    if (pm::Action("Input device", "Automatic uses a free controller (and, for Player 1, the keyboard). Opens "
+                   "the list of devices; choosing one another player has moves it to this player.",
+                   true, device)) {
+        g_screen = SCR_DEVICE;
+        g_pm_device.Reset();
+    }
+    int type = pad_mapping_type(g_input_player);
+    if (pm::Choice("Xbox controller type", type, kTypes, PAD_TYPE_COUNT,
+                   "The kind of Xbox controller the game sees plugged in for this player.")) {
+        pad_mapping_set_type(g_input_player, type);
+        g_screen_dirty = true;
+    }
+    const char *group = nullptr;
+    for (int row = 0; row < PADCTL_COUNT; ++row) {
+        const int i = pad_ctl_display_order(row);
+        const char *g = pad_ctl_group(i);
+        if (!group || strcmp(g, group) != 0) { group = g; pm::Heading(g); }
+        char value[96];
+        const bool listening = g_listening == i;
+        if (listening) _snprintf_s(value, sizeof value, _TRUNCATE, "%s", g_armed ? "Press an input" : "...");
+        else pad_binding_label(m->b[i], value, sizeof value);
+        bool clear = false;
+        if (pm::Binding(CtlName(i), value, listening,
+                        "Enter / A, then press the key or control to use. Delete / X clears it; Esc cancels.",
+                        clear)) {
+            g_listening = i;
+            g_armed = false;
+            g_pending_vk = 0;
+            char msg[96];
+            _snprintf_s(msg, sizeof msg, _TRUNCATE, "Press an input for %s (Esc cancels)", CtlName(i));
+            SetStatus(msg);
+        }
+        if (clear) {
+            m->b[i].kind = PADSRC_NONE; m->b[i].code = 0;
+            g_screen_dirty = true;
+        }
+    }
+    if (pm::Action("Reset to defaults", "This player's keys and buttons go back to the defaults. The input "
+                   "device and controller type stay as they are.")) {
+        pad_mapping_reset_player(g_input_player);
+        g_listening = -1;
+        g_screen_dirty = true;
+        SetStatus("This player's bindings reset to defaults");
+    }
+    if (pm::Action("Back", "Keeps your changes and goes back.") || pm::BackPressed()) MenuBack();
+    pm::Hint("Delete / X", "clear");
+    pm::End(g_status, kMenuVersion);
+}
+
+void DrawDeviceScreen()
+{
+    DWORD physical = xbox_InputPhysicalMask();
+    char section[48];
+    _snprintf_s(section, sizeof section, _TRUNCATE, "Player %d input device", g_input_player + 1);
+    pm::Begin(g_pm_device, kMenuTitle, section);
+    const int cur = pad_mapping_device(g_input_player);
+    auto pick = [&](int dev, const char *label, const char *help) {
+        /* the value: this player's current choice, or who else has it */
+        char value[48] = "";
+        if (dev == cur) _snprintf_s(value, sizeof value, _TRUNCATE, "Current");
+        else if (dev >= 0)
+            for (int p = 0; p < 4; ++p) {
+                if (p == g_input_player) continue;
+                if (pad_mapping_device(p) == dev) {
+                    _snprintf_s(value, sizeof value, _TRUNCATE, "Player %d", p + 1);
+                    break;
+                }
+                if (pad_mapping_device(p) == PAD_DEVICE_AUTO && xbox_InputAssignedSlot(p) == dev) {
+                    _snprintf_s(value, sizeof value, _TRUNCATE, "Player %d (automatic)", p + 1);
+                    break;
+                }
+            }
+        if (!pm::Action(label, help, true, value[0] ? value : nullptr)) return;
+        if (dev != cur) {
+            pad_mapping_set_device(g_input_player, dev);
+            g_screen_dirty = true;
+            SetStatus("Input device changed");
+        }
+        g_screen = SCR_PLAYER;
+    };
+    pick(PAD_DEVICE_AUTO, "Automatic", "A controller no other player has chosen (and, for Player 1, the keyboard).");
+    pick(PAD_DEVICE_NONE, "None", "This player has no input.");
+    pick(PAD_DEVICE_KEYBOARD, "Keyboard", "The keyboard keys bound on this player's screen.");
+    int shown = 0;
+    for (int i = 0; i < XBOX_HOST_CONTROLLERS; ++i) {
+        /* connected controllers, and this player's choice even when unplugged */
+        if (!(physical & (1u << i)) && i != cur) continue;
+        char label[64];
+        ControllerLabel(i, physical, label, sizeof label);
+        pick(i, label, "Choosing a controller another player chose moves it to this player, and that "
+                       "player's device becomes None.");
+        ++shown;
+    }
+    if (!shown) pm::Note("No controllers connected.");
+    if (pm::Action("Back", "Keeps the current device and goes back.") || pm::BackPressed()) MenuBack();
+    pm::End(g_status, kMenuVersion);
+}
+
 void DrawPauseMenu()
 {
+    pm::SetBlocked(false);   /* only the player screen blocks, while capturing */
     switch (g_screen) {
     case SCR_MAIN:    DrawMainScreen(); break;
     case SCR_DISPLAY: DrawDisplayScreen(); break;
     case SCR_SOUND:   DrawSoundScreen(); break;
     case SCR_GAME:    DrawGameScreen(); break;
     case SCR_QUIT:    DrawQuitScreen(); break;
+    case SCR_CONTROLS: DrawControlsScreen(); break;
+    case SCR_PLAYER:  DrawPlayerScreen(); break;
+    case SCR_DEVICE:  DrawDeviceScreen(); break;
     case SCR_CLASSIC: DrawMenu(); break;
     }
 }

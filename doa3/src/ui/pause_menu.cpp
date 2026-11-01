@@ -53,9 +53,13 @@ struct Frame {
     std::vector<bool>  rowEnabled;
     const char *help = nullptr;         /* the selected row's help */
     bool up = false, down = false, left = false, right = false, activate = false, back = false;
-    bool mouseMoved = false, clicked = false;
+    bool clear = false;                 /* Delete / X / right click */
+    bool mouseMoved = false, clicked = false, rightClicked = false;
+    const char *hintKey = nullptr, *hintAction = nullptr;   /* one extra button hint */
     ImVec2 mouse;
 } F;
+
+bool g_blocked = false;   /* SetBlocked: the screen is capturing input */
 
 bool Pressed(ImGuiKey a, ImGuiKey b = ImGuiKey_None, ImGuiKey c = ImGuiKey_None)
 {
@@ -280,11 +284,36 @@ void Begin(State &st, const char *title, const char *section, bool main)
     F.activate = ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false) ||
                  ImGui::IsKeyPressed(ImGuiKey_Space, false) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceDown, false);
     F.back     = ImGui::IsKeyPressed(ImGuiKey_Backspace, false) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false);
+    F.clear    = ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceLeft, false);
     F.mouse = io.MousePos;
     F.mouseMoved = io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f;
     F.clicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
-    if (io.MouseWheel != 0.0f && F.mouse.x < F.x0 + F.colW + F.rowSize)
+    F.rightClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Right);
+    if (g_blocked) {
+        F.up = F.down = F.left = F.right = F.activate = F.back = F.clear = false;
+        F.mouseMoved = F.clicked = F.rightClicked = false;
+    } else if (io.MouseWheel != 0.0f && F.mouse.x < F.x0 + F.colW + F.rowSize)
         st.scroll -= io.MouseWheel * F.rowH * 2.0f;
+}
+
+void SetBlocked(bool on) { g_blocked = on; }
+
+void Hint(const char *key, const char *action) { F.hintKey = key; F.hintAction = action; }
+
+bool Binding(const char *label, const char *value, bool listening, const char *help, bool &clear)
+{
+    Row r = BeginRow(help, true);
+    DrawLabel(r, label, ValueWidth(value, false));
+    if (listening && r.visible) {
+        /* the value in the status color while it waits for an input */
+        ImVec2 sz = TextSize(F.label, F.rowSize, value);
+        float pad = F.rowSize * 0.6f;
+        F.dl->AddText(F.label, F.rowSize, ImVec2(F.x0 + F.colW - pad - sz.x,
+                      r.y + (F.rowH - F.rowSize) * 0.5f - F.rowSize * 0.04f), kStatus, value);
+    } else DrawValue(r, value, false);
+    clear = (r.selected && F.clear) || (r.hovered && F.rightClicked);
+    if (r.hovered && F.clicked) return true;
+    return r.selected && F.activate;
 }
 
 bool Action(const char *label, const char *help, bool enabled, const char *value)
@@ -438,12 +467,14 @@ void End(const char *status, const char *version)
             { "Enter / A", "select" }, { "Esc / B", "back" },
         };
         float x = F.x0, s = F.textSize * 0.9f;
-        for (const auto &h : hints) {
-            F.dl->AddText(F.row, s, ImVec2(x, by - s), kHintKey, h[0]);
-            x += TextSize(F.row, s, h[0]).x + s * 0.35f;
-            F.dl->AddText(F.row, s, ImVec2(x, by - s), kHintAction, h[1]);
-            x += TextSize(F.row, s, h[1]).x + s * 1.2f;
-        }
+        auto hint = [&](const char *key, const char *action) {
+            F.dl->AddText(F.row, s, ImVec2(x, by - s), kHintKey, key);
+            x += TextSize(F.row, s, key).x + s * 0.35f;
+            F.dl->AddText(F.row, s, ImVec2(x, by - s), kHintAction, action);
+            x += TextSize(F.row, s, action).x + s * 1.2f;
+        };
+        for (const auto &h : hints) hint(h[0], h[1]);
+        if (F.hintKey) hint(F.hintKey, F.hintAction);
         by -= s * 1.7f;
     }
     if (status && status[0] && by - F.textSize > y)
