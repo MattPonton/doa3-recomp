@@ -5399,3 +5399,16 @@ capture, phase 2 now recaptures him every 8 frames (s_when).
 The DOA3_TEST_SURVIVAL_ZACK test aid is removed (0x76B30 back to the
 random costume pick alone, which now may give a Survival opponent Zack's
 costume 3 again).
+
+## 1.0.4.18
+
+Esc menu on wide windows (Matt, 21:9 and 32:9 screenshots): the list's
+layout now uses a centered 16:9 area at most (pause_menu.cpp Begin: lw =
+min(W, H*16/9)); the background is opaque left of that area and at the
+gradient's clear end right of it.
+
+With "Pause while this menu is open", changing the aspect ratio stretched
+the held frame. Display's window type, aspect ratio, internal resolution
+and Reset to defaults now call MenuPauseRefresh, which grants the hold two
+frame steps (g_doa3_frame_steps = 2; the render thread is a frame behind)
+so the picture is redrawn with the new setting, then holds again.

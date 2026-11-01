@@ -1451,6 +1451,15 @@ void SetMenuPause(bool on)
     }
 }
 
+/* With the menu's pause on, a held frame is shown as it was drawn, so a new
+ * picture shape or resolution would only stretch it. Let the game run two
+ * more frames (the second shows the first finished with the new setting,
+ * as the render thread works one frame behind) and hold again. */
+void MenuPauseRefresh()
+{
+    if (g_menu_paused && g_doa3_frame_pause == 2) InterlockedExchange(&g_doa3_frame_steps, 2);
+}
+
 void SaveScreen(MenuScreen scr)
 {
     int ok = 1;
@@ -1546,12 +1555,14 @@ void DrawDisplayScreen()
     if (pm::Choice("Window type", wm, kWindow, 2,
                    "A normal window, or borderless fullscreen covering the screen the window is on.")) {
         video_set_window_mode(wm);
+        MenuPauseRefresh();
         g_screen_dirty = true;
     }
     int ar = video_get_aspect();
     if (pm::Choice("Aspect ratio", ar, kAspect, VIDEO_ASPECT_COUNT,
                    "The shape of the picture. 4:3 is the original; the wide shapes show more of each scene.")) {
         video_set_aspect(ar);
+        MenuPauseRefresh();
         g_screen_dirty = true;
     }
     int sc = video_get_scale() - 1;
@@ -1559,6 +1570,7 @@ void DrawDisplayScreen()
                    "How sharp the 3D is. 1x is the Xbox's own resolution; higher is sharper and needs a "
                    "faster graphics card.")) {
         video_set_scale(sc + 1);
+        MenuPauseRefresh();
         g_screen_dirty = true;
     }
     bool perf = PerformanceOverlayEnabled();
@@ -1576,6 +1588,7 @@ void DrawDisplayScreen()
         video_set_window_mode(VIDEO_BORDERLESS);
         video_set_aspect(VIDEO_ASPECT_16_9);
         video_set_scale(3);
+        MenuPauseRefresh();
         g_menu_scale = 100;
         ResetPerformanceOverlay();
         g_screen_dirty = true;

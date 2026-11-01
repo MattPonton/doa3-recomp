@@ -228,16 +228,23 @@ void Begin(State &st, const char *title, const char *section, bool main)
     F.textSize  = F.rowSize * 0.8f;
     F.titleSize = F.rowSize * 2.3f;
     F.rowH = F.rowSize * 1.7f;
-    F.x0 = o.x + F.W * 0.07f;
-    F.colW = F.W * 0.50f;
+    /* The layout uses a centered 16:9 area at most, so on a 21:9 or 32:9
+     * window the list stays near the middle of the screen. */
+    float lw = F.W < F.H * (16.0f / 9.0f) ? F.W : F.H * (16.0f / 9.0f);
+    float lx = o.x + (F.W - lw) * 0.5f;
+    F.x0 = lx + lw * 0.07f;
+    F.colW = lw * 0.50f;
     if (F.colW < F.rowSize * 20.0f) F.colW = F.rowSize * 20.0f;
-    if (F.colW > F.W - F.W * 0.14f) F.colW = F.W - F.W * 0.14f;
+    if (F.colW > lw - lw * 0.14f) F.colW = lw - lw * 0.14f;
 
     /* Background: black, opaque on the left and fading toward the right so
-     * the game shows through. */
-    float mid = o.x + F.W * 0.55f;
-    F.dl->AddRectFilledMultiColor(o, ImVec2(mid, o.y + F.H), kBgLeft, kBgMid, kBgMid, kBgLeft);
-    F.dl->AddRectFilledMultiColor(ImVec2(mid, o.y), ImVec2(o.x + F.W, o.y + F.H), kBgMid, kBgRight, kBgRight, kBgMid);
+     * the game shows through. Left of the 16:9 area it is opaque; right of
+     * it, as clear as the gradient's end. */
+    float mid = lx + lw * 0.55f;
+    if (lx > o.x) F.dl->AddRectFilled(o, ImVec2(lx, o.y + F.H), kBgLeft);
+    F.dl->AddRectFilledMultiColor(ImVec2(lx, o.y), ImVec2(mid, o.y + F.H), kBgLeft, kBgMid, kBgMid, kBgLeft);
+    F.dl->AddRectFilledMultiColor(ImVec2(mid, o.y), ImVec2(lx + lw, o.y + F.H), kBgMid, kBgRight, kBgRight, kBgMid);
+    if (lx + lw < o.x + F.W) F.dl->AddRectFilled(ImVec2(lx + lw, o.y), ImVec2(o.x + F.W, o.y + F.H), kBgRight);
 
     /* Title, its rule, and the section under it. */
     float y = o.y + F.H * 0.07f;
