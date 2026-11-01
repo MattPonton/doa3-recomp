@@ -2932,9 +2932,11 @@ void sub_001E27C0(void)
             if (want) {
                 s_frames_done = s_frames_presented = (LONG)s_frames_submitted;
                 s_buf_frame[0] = s_buf_frame[1] = -1;
-                fprintf(stderr, "[ASYNC] render thread takes over at frame %u\n", g_doa3_frames_presented);
+                fprintf(stderr, "[ASYNC] render thread takes over at frame %u (walked to %08X, cursor %08X)\n",
+                        g_doa3_frames_presented, s_pb4134_parsed, cursor);
             } else
-                fprintf(stderr, "[ASYNC] back to translating at kick-off (frame %u)\n", g_doa3_frames_presented);
+                fprintf(stderr, "[ASYNC] back to translating at kick-off (frame %u, walked to %08X, cursor %08X)\n",
+                        g_doa3_frames_presented, s_pb4134_parsed, cursor);
         }
     }
     if (s_async_active) {

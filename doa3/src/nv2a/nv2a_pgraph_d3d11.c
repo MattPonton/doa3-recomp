@@ -5937,7 +5937,13 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
      * the last real one. */
     case NV097_SET_SURFACE_CLIP_HORIZONTAL:
     case NV097_SET_SURFACE_CLIP_VERTICAL:
-        if ((param >> 16) == 0 || (param >> 16) > 4096 || (param & 0xFFFFu) > 4096) {
+        /* 1.0.4.24: osricen's second log had a clip of about 2102 x 8378
+         * (scissor 1170x110): the width passed the size test. Surfaces are
+         * whole multiples of 8 pixels (720, 1440, 640, 480, 960, 256), so a
+         * size that is not is refused too. The first 16 different clips
+         * accepted are logged ([SURFCLIP]) to confirm that. */
+        if ((param >> 16) == 0 || (param >> 16) > 4096 || ((param >> 16) & 7u) ||
+            (param & 0xFFFFu) > 4096) {
             static unsigned s_bad;
             if (s_bad < 6) {
                 s_bad++;
@@ -5946,6 +5952,18 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
                         param, g_pg.frame);
             }
             return 1;
+        }
+        {   static uint32_t s_seen[16];
+            static unsigned s_n;
+            uint32_t key = param ^ (method == NV097_SET_SURFACE_CLIP_VERTICAL ? 0x80000000u : 0u);
+            unsigned k;
+            for (k = 0; k < s_n && s_seen[k] != key; k++) {}
+            if (k == s_n && s_n < 16) {
+                s_seen[s_n++] = key;
+                fprintf(stderr, "[SURFCLIP] %s %u at %u (frame %u)\n",
+                        method == NV097_SET_SURFACE_CLIP_HORIZONTAL ? "width" : "height",
+                        param >> 16, param & 0xFFFFu, g_pg.frame);
+            }
         }
         if (method == NV097_SET_SURFACE_CLIP_HORIZONTAL) g_pg.surface_clip_h = param;
         else g_pg.surface_clip_v = param;

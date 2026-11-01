@@ -5498,3 +5498,27 @@ Not found yet: why the walk lost its place. Meanwhile:
   either side ([PBDESYNC], with the thread and span).
 - The first 16 calls followed by a translating walk are logged with their
   target's first words ([PBCALL]).
+
+## 1.0.4.24
+
+osricen's second report (1.0.3; doa3_log.txt, mtrace_manual_94297,
+aa_94297.bmp): Theater, a few movies started and skipped, the forest stage
+behind the main menu flickered, then black on the main menu. Capture all
+zero again; 520 draws, scissor (0,0)-(1170,110), window clip 0..719 x
+0..479, so the surface clip was about 2102 x 8378. zf normal this time.
+
+Both reports start right after a movie: "[ASYNC] render thread takes over"
+at 100684 (Story ending) and at 92242 (the last of nine Theater movies
+this session, each a back-to-synchronous / takeover pair), then the first
+unknown control words of the session (here 9, 57, 889, 894, 949 in the
+following 10-second lines) and calls (8, 16, 18, 22). The earlier
+takeovers of the same session were clean.
+
+The 2102 width passed 1.0.4.23's size test. SET_SURFACE_CLIP now also
+needs a multiple of 8 (every surface DOA3 uses is), and the first 16
+different clips accepted are logged ([SURFCLIP]) to confirm the set. The
+[ASYNC] switch lines give the walk position and the cursor.
+
+Suggested test for osricen on 1.0.3: DOA3_ASYNC_GPU=0 (translate at
+kick-off, no render thread) with the same Theater steps. If it never
+happens that way, the render thread / takeover is the place to look.
