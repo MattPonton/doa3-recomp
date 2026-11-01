@@ -732,15 +732,16 @@ void ds_listener_set_velocity(float x, float y, float z)
 /* DSI3DL2LISTENER: lRoom, lRoomHF, flRoomRolloffFactor, flDecayTime,
  * flDecayHFRatio, lReflections, flReflectionsDelay, lReverb, flReverbDelay,
  * flDiffusion, flDensity (both %), flHFReference. EAX reverb is the same
- * model (I3DL2 level 2), with four corrections fitted to the hardware
+ * model (I3DL2 level 2), with three corrections fitted to the hardware
  * recordings in Cmp/ (Ayane's taunt in 12 areas, 7 rooms, against the dry
  * clip): the console's tail rings 4.3x longer than flDecayTime, its late
  * reverb is 6.2 dB louder and its early reflections 11 dB quieter than
- * EAX's for the same values, and its high frequencies hold up longer
- * (flDecayHFRatio 1.54x, which the recorded rooms take to EAX's 2.0 limit).
+ * EAX's for the same values. flDecayHFRatio is as given: the tail's
+ * spectrum up to 16 kHz matches the recordings within 1 dB with it, where
+ * the earlier 1.54x left 4-12 kHz 3-4 dB too bright, heard as hiss (the
+ * console's reverb runs at 24 kHz, so its tail has little above 8 kHz).
  * Pre-delays are as given. See PORTING_3.1.md. */
 #define I3DL2_DECAY_SCALE    4.3f
-#define I3DL2_HFRATIO_SCALE  1.54f
 #define I3DL2_LATE_MB        620
 #define I3DL2_REFLECTIONS_MB (-1100)
 
@@ -754,7 +755,7 @@ void ds_set_i3dl2(const uint32_t raw[12])
         alEffectf(s_reverb, AL_EAXREVERB_GAINHF, clampf(mb_to_gain((int32_t)raw[1]), 0.0f, 1.0f));
         alEffectf(s_reverb, AL_EAXREVERB_ROOM_ROLLOFF_FACTOR, clampf(f[2], 0.0f, 10.0f));
         alEffectf(s_reverb, AL_EAXREVERB_DECAY_TIME, clampf(f[3] * I3DL2_DECAY_SCALE, 0.1f, 20.0f));
-        alEffectf(s_reverb, AL_EAXREVERB_DECAY_HFRATIO, clampf(f[4] * I3DL2_HFRATIO_SCALE, 0.1f, 2.0f));
+        alEffectf(s_reverb, AL_EAXREVERB_DECAY_HFRATIO, clampf(f[4], 0.1f, 2.0f));
         alEffectf(s_reverb, AL_EAXREVERB_REFLECTIONS_GAIN,
                   clampf(powf(10.0f, (float)((int32_t)raw[5] + I3DL2_REFLECTIONS_MB) / 2000.0f), 0.0f, 3.16f));
         alEffectf(s_reverb, AL_EAXREVERB_REFLECTIONS_DELAY, clampf(f[6], 0.0f, 0.3f));

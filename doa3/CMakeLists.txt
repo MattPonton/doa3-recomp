@@ -15,6 +15,21 @@ endif()
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+# Link-time code generation (MSVC /GL + /LTCG) for Release: every target,
+# OpenAL Soft included, so inlining crosses the static libraries into
+# DOA3.exe. Float semantics stay /fp:precise. Off by default: the link's
+# code generation over the recompiled code takes a very long time.
+option(DOA3_LTCG "Link-time code generation in Release builds" OFF)
+if(DOA3_LTCG)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT _ipo_ok OUTPUT _ipo_msg LANGUAGES C CXX)
+    if(_ipo_ok)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+    else()
+        message(WARNING "DOA3_LTCG: link-time code generation unavailable: ${_ipo_msg}")
+    endif()
+endif()
+
 # Common definitions
 add_compile_definitions(
     WIN32_LEAN_AND_MEAN
