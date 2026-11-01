@@ -5467,3 +5467,34 @@ Delete / X sets F12; the list is blocked while it listens), then a
 "Players" heading over the Player rows (MenuBack from a player screen
 selects row 3 + player). Photo Mode's classic tab keeps "Take screenshot"
 and shows the key, without its own assignment buttons.
+
+## 1.0.4.23
+
+osricen's black screen (issue #9; his 1.0.3 log "261031 2207", trace
+mtrace_manual_102417 and aa_102417.bmp, in release/black-screen). The
+capture is all zero. Every one of the frame's 575 draws has rt 0, viewport
+3416x1920 and scissor (0,0)-(50,57): nv_apply_window_clip scales the window
+clip (0..719 x 0..479, fine) by the back buffer over SET_SURFACE_CLIP, and
+the surface clip held 0xBF08xxxx / 0x3F08xxxx (the high halves of -0.53125
+and 0.53125), so 720 * 3416 / 0xBF08 = 50 and 480 * 1920 / 0x3F08 = 57.
+The draws also carry zf=4E004D.
+
+The log has where it came from: after ~101,600 frames (Story ending movie,
+then Options), "[PB] control words so far: jump 83376 call 8 return 0
+unknown 21" -- the first calls and unknown words of the session -- and one
+[BADZFUNC] at frame 101801 whose method history is a single incrementing
+run 0x024C..0x0354 of index pairs (00050004, 00070006, ...) and an embedded
+0x40081800 header: the walk read a data region as a method header. The
+same kind of garbage depth func was in Matt's 0.1.8 sound-test traces, and
+osricen's first report was in the sound test. The game sets the surface
+clip only with a render target, so the bad value stayed.
+
+Not found yet: why the walk lost its place. Meanwhile:
+- SET_SURFACE_CLIP_H/V with an empty or >4096 size or a >4096 offset is
+  ignored ([BADCLIP], 6 lines); SET_DEPTH_FUNC outside 0x200..0x207 is
+  ignored (still logged by [BADZFUNC]).
+- After an unknown control word, the rest of that span is walked for the
+  frame end only, not translated; the first 8 are logged with 16 words
+  either side ([PBDESYNC], with the thread and span).
+- The first 16 calls followed by a translating walk are logged with their
+  target's first words ([PBCALL]).

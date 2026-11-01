@@ -2000,6 +2000,36 @@ static int s_pb4134_flip;     /* a FLIP_STALL went by: the frame is complete */
  * the ring itself (the wrap back to its start) ends this span, KickOff picks
  * the ring up from its start next time. */
 static unsigned s_pb_ctl[4], s_pb_ctl_logged;
+/* 1.0.4: osricen's black screen (issue #9, 1.0.3 log and trace). After an
+ * hour and a half, in Options, the walk met its first calls and unknown
+ * control words ("call 8 ... unknown 21") and translated a run of index
+ * data as methods 0x024C-0x0354: SET_DEPTH_FUNC 0x004E004D ([BADZFUNC]) and
+ * SET_SURFACE_CLIP 0xBF08xxxx / 0x3F08xxxx (floats), which the game sets
+ * only with a render target. Every later draw was scissored to 50x57 host
+ * pixels and the screen stayed black with the game running. Matt's 0.1.8
+ * sound test traces showed the same kind of garbage depth func.
+ * Until the cause of the lost place is found: once a span shows an unknown
+ * control word, the rest of it is walked for the frame end only, not
+ * translated, and the first few are logged with the words around them
+ * ([PBDESYNC]); the translator also refuses impossible surface clips and
+ * depth functions (nv2a_pgraph_d3d11.c). Calls are logged too ([PBCALL]):
+ * this session had none until then. */
+static void pb_desync_log(const char *what, uint32_t at, uint32_t from, uint32_t to,
+                          uint32_t ring_lo, uint32_t ring_hi, int in_call)
+{
+    extern unsigned g_doa3_frames_presented;
+    static unsigned s_n;
+    uint32_t a;
+    if (s_n >= 8) return;
+    s_n++;
+    fprintf(stderr, "[PBDESYNC] frame %u thread %lu: %s at %08X (span %08X-%08X, ring %08X-%08X, in call %d); words from %08X:",
+            g_doa3_frames_presented, GetCurrentThreadId(), what, at, from, to, ring_lo, ring_hi, in_call,
+            at >= 0x1040 ? at - 0x40 : at);
+    for (a = at >= 0x1040 ? at - 0x40 : at; a < at + 0x40 && a < 0x08000000u; a += 4)
+        fprintf(stderr, "%s%08X", a == at ? " [" : " ", MEM32(a));
+    fprintf(stderr, " ]\n");
+    fflush(stderr);
+}
 static void pb4134_translate_span(uint32_t from, uint32_t to, int translate, uint32_t ring_lo,
                                   uint32_t ring_hi, int *flip)
 {
@@ -2030,9 +2060,16 @@ static void pb4134_translate_span(uint32_t from, uint32_t to, int translate, uin
         }
         if ((word & 3u) == 2u) {                                                /* call */
             s_pb_ctl[1]++;
-            if (s_pb_ctl_logged < 24) {
-                s_pb_ctl_logged++;
-                fprintf(stderr, "[PB] call at %08X -> %08X\n", pos - 4, word & 0x07FFFFFCu);
+            if (translate) {
+                static unsigned s_calls;
+                if (s_calls < 16) {
+                    uint32_t t = word & 0x07FFFFFCu;
+                    s_calls++;
+                    fprintf(stderr, "[PBCALL] at %08X -> %08X (span %08X-%08X, in call %d): %08X %08X %08X %08X\n",
+                            pos - 4, t, from, to, in_call,
+                            t >= 0x1000 ? MEM32(t) : 0, t >= 0x1000 ? MEM32(t + 4) : 0,
+                            t >= 0x1000 ? MEM32(t + 8) : 0, t >= 0x1000 ? MEM32(t + 12) : 0);
+                }
             }
             if (in_call) break;                     /* the NV2A has one return slot */
             ret_to = pos; in_call = 1;
@@ -2060,6 +2097,10 @@ static void pb4134_translate_span(uint32_t from, uint32_t to, int translate, uin
                 (void)i;
             } else {
                 s_pb_ctl[3]++;                       /* unknown control word */
+                if (translate) {
+                    pb_desync_log("unknown control word", pos - 4, from, to, ring_lo, ring_hi, in_call);
+                    translate = 0;                   /* the rest: frame end only */
+                }
             }
         }
     }

@@ -5723,7 +5723,9 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
         return 1;
 
     case NV097_SET_DEPTH_FUNC:
-        g_pg.depth_func = param;
+        /* 1.0.4: not a compare function (logged as [BADZFUNC]): keep the
+         * last real one */
+        if (param >= 0x200 && param <= 0x207) g_pg.depth_func = param;
         return 1;
 
     case NV097_SET_DEPTH_MASK:
@@ -5929,12 +5931,24 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
         g_pg.window_clip_v[(method - NV097_SET_WINDOW_CLIP_VERTICAL) >> 2] = param;
         return 1;
 
+    /* 1.0.4: a clip no surface can have (wider or taller than 4096, or
+     * empty) is a word of data read as a method (osricen's black screen:
+     * 0xBF08xxxx / 0x3F08xxxx left every draw scissored to a corner); keep
+     * the last real one. */
     case NV097_SET_SURFACE_CLIP_HORIZONTAL:
-        g_pg.surface_clip_h = param;
-        return 1;
-
     case NV097_SET_SURFACE_CLIP_VERTICAL:
-        g_pg.surface_clip_v = param;
+        if ((param >> 16) == 0 || (param >> 16) > 4096 || (param & 0xFFFFu) > 4096) {
+            static unsigned s_bad;
+            if (s_bad < 6) {
+                s_bad++;
+                fprintf(stderr, "[BADCLIP] SET_SURFACE_CLIP_%s %08X ignored at frame %u\n",
+                        method == NV097_SET_SURFACE_CLIP_HORIZONTAL ? "HORIZONTAL" : "VERTICAL",
+                        param, g_pg.frame);
+            }
+            return 1;
+        }
+        if (method == NV097_SET_SURFACE_CLIP_HORIZONTAL) g_pg.surface_clip_h = param;
+        else g_pg.surface_clip_v = param;
         return 1;
 
     /* DOA3 DIAG: colour surface offset/format/pitch (0x0210/0x0208/0x020C),

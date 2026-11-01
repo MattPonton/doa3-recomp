@@ -11,6 +11,9 @@
 - **Pause while this menu is open**, on the Game screen (off by default).
 - After closing the menu, the button or key still held when it closed no
   longer reaches the game.
+- A rare black screen after a long session (the game kept running, with
+  sound, behind a black picture) should no longer stay: the graphics
+  translator now ignores the impossible settings that caused it.
 - Zack's costume 3 (the metallic suit) now reflects the stage when he joins
   Survival as a later opponent (with the random costume dip switches on); it
   showed the Beach.
