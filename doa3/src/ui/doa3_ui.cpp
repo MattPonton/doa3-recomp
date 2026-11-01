@@ -1905,6 +1905,7 @@ void DrawPlayerScreen()
             g_screen_dirty = true;
         }
     }
+    pm::Separator();
     if (pm::Action("Reset to defaults", "This player's keys and buttons go back to the defaults. The input "
                    "device and controller type stay as they are.")) {
         pad_mapping_reset_player(g_input_player);
@@ -1912,7 +1913,10 @@ void DrawPlayerScreen()
         g_screen_dirty = true;
         SetStatus("This player's bindings reset to defaults");
     }
-    if (pm::Action("Back", "Keeps your changes and goes back.") || pm::BackPressed()) MenuBack();
+    if (pm::Action("Save", "Saves this player's controls and goes back to Controls.")) {
+        g_screen_dirty = true;   /* write the file even when nothing changed */
+        MenuBack();
+    } else if (pm::BackPressed()) MenuBack();
     pm::Hint("Delete / X", "clear");
     pm::End(g_status, kMenuVersion);
 }

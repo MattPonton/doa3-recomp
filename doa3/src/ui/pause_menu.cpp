@@ -25,6 +25,8 @@ const ImU32 kSelLeft    = IM_COL32(28, 104, 236, 240);
 const ImU32 kSelRight   = IM_COL32(8, 30, 110, 40);
 const ImU32 kRuleLeft   = IM_COL32(52, 128, 255, 255);
 const ImU32 kRuleRight  = IM_COL32(52, 128, 255, 0);
+const ImU32 kSeparatorLeft  = IM_COL32(120, 150, 200, 150);
+const ImU32 kSeparatorRight = IM_COL32(120, 150, 200, 0);
 const ImU32 kTitle      = IM_COL32(255, 255, 255, 255);
 const ImU32 kSection    = IM_COL32(196, 214, 244, 255);
 const ImU32 kText       = IM_COL32(214, 220, 232, 255);
@@ -169,12 +171,21 @@ int DrawValue(const Row &r, const char *value, bool arrows)
 {
     if (!r.visible || !value) return 0;
     ImU32 col = !r.enabled ? kDisabled : r.selected ? kValueSel : kValue;
+    /* the arrows in the label's color, only the value in the value color */
+    ImU32 acol = !r.enabled ? kDisabled : r.selected ? kTextSel : kText;
     char text[160];
     ValueText(text, sizeof text, value, arrows);
     ImVec2 sz = TextSize(F.label, F.rowSize, text);
     float pad = F.rowSize * 0.6f;
     float x = F.x0 + F.colW - pad - sz.x;
-    F.dl->AddText(F.label, F.rowSize, ImVec2(x, r.y + (F.rowH - F.rowSize) * 0.5f - F.rowSize * 0.04f), col, text);
+    float ty = r.y + (F.rowH - F.rowSize) * 0.5f - F.rowSize * 0.04f;
+    if (arrows) {
+        const char *open = "<   ", *close = "   >";
+        float wo = TextSize(F.label, F.rowSize, open).x, wv = TextSize(F.label, F.rowSize, value).x;
+        F.dl->AddText(F.label, F.rowSize, ImVec2(x, ty), acol, open);
+        F.dl->AddText(F.label, F.rowSize, ImVec2(x + wo, ty), col, value);
+        F.dl->AddText(F.label, F.rowSize, ImVec2(x + wo + wv, ty), acol, close);
+    } else F.dl->AddText(F.label, F.rowSize, ImVec2(x, ty), col, text);
     if (arrows && r.enabled && F.clicked && r.hovered && F.mouse.x >= x - pad)
         return F.mouse.x < x + sz.x * 0.5f ? -1 : +1;
     return 0;
@@ -388,6 +399,17 @@ void Heading(const char *text)
     float y = F.listTop + F.cy - F.st->scroll;
     if (y + h > F.listTop && y < F.listBottom)
         F.dl->AddText(F.head, size, ImVec2(F.x0, y + h - size * 1.3f), kHeading, t);
+    F.cy += h;
+}
+
+void Separator()
+{
+    /* a thin rule across the column, with some space around it */
+    float h = F.rowH * 0.7f;
+    float y = F.listTop + F.cy - F.st->scroll + h * 0.5f;
+    if (y > F.listTop && y < F.listBottom)
+        F.dl->AddRectFilledMultiColor(ImVec2(F.x0, y), ImVec2(F.x0 + F.colW, y + 1.0f),
+                                      kSeparatorLeft, kSeparatorRight, kSeparatorRight, kSeparatorLeft);
     F.cy += h;
 }
 

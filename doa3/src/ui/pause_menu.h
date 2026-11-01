@@ -45,6 +45,8 @@ void SetBlocked(bool on);
 /* One more button hint after the usual ones, for this frame (after Begin). */
 void Hint(const char *key, const char *action);
 void Heading(const char *text);
+/* A thin rule between groups of rows (e.g. before Reset to defaults). */
+void Separator();
 void Note(const char *text, ImU32 color = 0);
 /* B / Backspace was pressed this frame (Esc is handled by the window
  * procedure). */

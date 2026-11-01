@@ -5439,3 +5439,11 @@ the list stays blocked until the captured key or control is let go
 (wndproc, as before). CaptureBinding's pad half is now CapturePad.
 
 Sound: the game's Music / Sound effects / Voice values show a % sign.
+
+## 1.0.4.20
+
+Menu polish (Matt): a Choice / Toggle / Step value's arrows are drawn in
+the label's color, only the value in the value color. pm::Separator (a thin
+rule) sets Reset to defaults and the last row apart from the bindings on
+the player screen, whose Back is now Save (always writes doa3_input.ini,
+then back to Controls; Esc / B still save only when something changed).

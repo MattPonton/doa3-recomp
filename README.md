@@ -144,8 +144,8 @@ effect immediately and are saved in the `[DipSwitches]` section of
     triggers, T / G / F / H for the left stick and the arrow keys for the
     right stick.
 
-  Changes apply at once and are saved to `doa3_input.ini` when you leave the
-  player's screen.
+  Changes apply at once and are saved to `doa3_input.ini` with **Save** (or
+  when you leave the player's screen with Escape / B).
 
 **Controller shortcuts** (any connected controller, Xbox names; PlayStation:
 L3 / R3 / L1 / R1 / Triangle):
