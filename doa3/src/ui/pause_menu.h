@@ -22,7 +22,9 @@ struct State {
     float  scroll   = 0.0f;
     int    tickerRow = -1;      /* the selected row the ticker is timing */
     double tickerStart = 0.0;   /* when it was selected */
-    void  Reset() { selected = 0; scroll = 0.0f; tickerRow = -1; }
+    int    nudgeRow = -1;       /* the selected row whose label slides right */
+    double nudgeStart = 0.0;
+    void  Reset() { selected = 0; scroll = 0.0f; tickerRow = -1; nudgeRow = -1; }
 };
 
 /* title: large heading ("MENU"); section: the line under it ("Display"). */

@@ -1817,7 +1817,7 @@ void DrawControlsScreen()
     }
     for (int p = 0; p < 4; ++p) {
         char label[32], value[96];
-        _snprintf_s(label, sizeof label, _TRUNCATE, "Player %d controller", p + 1);
+        _snprintf_s(label, sizeof label, _TRUNCATE, "Player %d", p + 1);
         PlayerDeviceLabel(p, value, sizeof value);
         if (pm::Action(label, "The device this player uses, its controller type, and its keys and buttons.",
                        true, value))
@@ -1832,7 +1832,7 @@ void DrawPlayerScreen()
     static const char *const kTypes[] = { "Duke", "Controller S", "Fight Stick" };
     PadMapping *m = pad_mapping_get_player(g_input_player);
     char section[48];
-    _snprintf_s(section, sizeof section, _TRUNCATE, "Player %d controller configuration", g_input_player + 1);
+    _snprintf_s(section, sizeof section, _TRUNCATE, "Controls > Player %d", g_input_player + 1);
 
     /* Capturing: arm once everything that started it is let go (the A or
      * Enter that selected the row would otherwise bind itself), then take
@@ -1925,7 +1925,7 @@ void DrawDeviceScreen()
 {
     DWORD physical = xbox_InputPhysicalMask();
     char section[48];
-    _snprintf_s(section, sizeof section, _TRUNCATE, "Player %d input device", g_input_player + 1);
+    _snprintf_s(section, sizeof section, _TRUNCATE, "Controls > Player %d > Input device", g_input_player + 1);
     pm::Begin(g_pm_device, kMenuTitle, section);
     const int cur = pad_mapping_device(g_input_player);
     auto pick = [&](int dev, const char *label, const char *help) {

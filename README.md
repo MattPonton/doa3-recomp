@@ -126,7 +126,7 @@ effect immediately and are saved in the `[DipSwitches]` section of
 - **Capture gameplay input in menu** (on by default): while the menu is
   open, controllers operate the menu and the game sees no input. Turn it off
   to keep playing behind the menu.
-- **Player 1–4 controller**: each row shows the device that player uses and
+- **Player 1–4**: each row shows the device that player uses and
   opens that player's screen:
   - **Input device** opens the list of devices (Automatic, None, Keyboard and
     each connected controller, numbered per model when more than one of a

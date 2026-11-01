@@ -5447,3 +5447,14 @@ the label's color, only the value in the value color. pm::Separator (a thin
 rule) sets Reset to defaults and the last row apart from the bindings on
 the player screen, whose Back is now Save (always writes doa3_input.ini,
 then back to Controls; Esc / B still save only when something changed).
+
+## 1.0.4.21
+
+Menu (Matt): Controls' rows are "Player N"; the player screen's heading is
+"CONTROLS > PLAYER N" and the device list's "CONTROLS > PLAYER N > INPUT
+DEVICE". The selected row's label slides right by 0.45 of the text size
+over 90 ms (State::nudgeRow/nudgeStart). The pointer hides
+(ImGuiMouseCursor_None) as soon as the keyboard or a controller moves,
+changes, selects, goes back or clears in the list; while hidden it neither
+selects the row under it nor clicks, and it comes back after 0.2 s of
+movement (a pause over 0.1 s starts the count again).

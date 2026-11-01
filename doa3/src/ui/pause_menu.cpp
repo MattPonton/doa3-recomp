@@ -62,6 +62,11 @@ struct Frame {
 } F;
 
 bool g_blocked = false;   /* SetBlocked: the screen is capturing input */
+/* The pointer hides when the keyboard or a controller moves around the
+ * list, and comes back once the mouse has moved for 0.2 s; while hidden,
+ * it neither selects the row under it nor clicks. */
+bool   g_mouse_hidden = false;
+double g_move_streak = 0.0, g_move_last = -1.0;
 
 bool Pressed(ImGuiKey a, ImGuiKey b = ImGuiKey_None, ImGuiKey c = ImGuiKey_None)
 {
@@ -123,7 +128,18 @@ void DrawLabel(const Row &r, const char *label, float valueW)
     if (!r.visible) return;
     ImU32 col = !r.enabled ? kDisabled : r.selected ? kTextSel : kText;
     float pad = F.rowSize * 0.6f;
-    float room = F.colW - pad * 2.0f - (valueW > 0.0f ? valueW + pad : 0.0f);
+    /* The selected row's label slides a little to the right (over 90 ms),
+     * so moving the selection feels like pressing the row. */
+    if (r.selected && r.enabled) {
+        State &st = *F.st;
+        double now = ImGui::GetTime();
+        if (st.nudgeRow != r.idx) { st.nudgeRow = r.idx; st.nudgeStart = now; }
+        float t = (float)((now - st.nudgeStart) / 0.09);
+        if (t > 1.0f) t = 1.0f;
+        t = 1.0f - (1.0f - t) * (1.0f - t);                       /* ease out */
+        pad += F.rowSize * 0.45f * t;
+    }
+    float room = F.colW - F.rowSize * 0.6f - pad - (valueW > 0.0f ? valueW + F.rowSize * 0.6f : 0.0f);
     char text[200];
     _snprintf_s(text, sizeof text, _TRUNCATE, "%s", label);
     ImFont *font = F.label;
@@ -300,6 +316,20 @@ void Begin(State &st, const char *title, const char *section, bool main)
     F.mouseMoved = io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f;
     F.clicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
     F.rightClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Right);
+    {
+        double now = ImGui::GetTime();
+        if (F.up || F.down || F.left || F.right || F.activate || F.back || F.clear) g_mouse_hidden = true;
+        if (F.mouseMoved) {
+            if (g_move_last < 0.0 || now - g_move_last > 0.1) g_move_streak = now;   /* a new movement */
+            g_move_last = now;
+            if (g_mouse_hidden && now - g_move_streak >= 0.2) g_mouse_hidden = false;
+        }
+        if (g_mouse_hidden) {
+            F.mouseMoved = F.clicked = F.rightClicked = false;
+            F.mouse = ImVec2(-FLT_MAX, -FLT_MAX);
+            ImGui::SetMouseCursor(ImGuiMouseCursor_None);
+        }
+    }
     if (g_blocked) {
         F.up = F.down = F.left = F.right = F.activate = F.back = F.clear = false;
         F.mouseMoved = F.clicked = F.rightClicked = false;
