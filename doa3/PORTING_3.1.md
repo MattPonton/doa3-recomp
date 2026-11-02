@@ -6612,3 +6612,22 @@ Memory, for the record: the console has 64 MB. The port maps a 128 MB guest
 space: the low heap runs to 80 MB (xbox_memory_layout.h: the game needs
 ~53 MB here against the console's ~50, and cxbx grants it ~62) and 48 MB
 high; the game uses about 50 MB of it.
+
+### 1.0.4-rollback.43: cross-PC determinism, first steps
+
+Direction (Matt, after vf3-recomp's netplay README): no state is sent;
+both players boot the same build and game files on the controlled clock
+with a fixed netplay save profile and play through the menus in lockstep
+(rollback only in fights); spectators replay the input log from boot,
+fast-forwarded. Matt's DET_BOOT runs matched launch to launch on his PC;
+the open question is another PC.
+
+- Static C runtime (/MT, CMAKE_MSVC_RUNTIME_LIBRARY): the recompiled
+  code's x87 transcendental ops call the CRT's sin, cos, tan, atan2, log,
+  pow (sqrt is exact). With the DLL runtime those come from Windows'
+  ucrtbase.dll, which differs between Windows versions; linked in, every
+  PC runs the same code. FMA3 paths were already off (main.c).
+- DOA3_DET_HASH=n (DOA3_DET_HASH.bat, n = 60): with DOA3_DET_BOOT, every
+  n frames a [DET-HASH] line: XXH3 of all guest RAM, then of each 8 MB
+  slice. Two PCs, no input; the first differing line gives the frame and
+  the slices.

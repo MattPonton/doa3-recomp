@@ -2977,6 +2977,28 @@ static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
                 fprintf(stderr, "[DET-BOOT] frame %d: RAM written to %s\n", s_dump_frame, f ? name : "(failed)");
                 fflush(stderr);
             }
+            {   /* rollback.43, DOA3_DET_HASH=n (frames, e.g. 60): every n
+                 * frames on the controlled clock from boot, a hash of the whole
+                 * guest RAM and of each 8 MB slice. Two PCs run the same build
+                 * with no input; the first line that differs gives the frame,
+                 * and the slices where it is. */
+                static int s_hash_every = -1;
+                if (s_hash_every < 0) { const char *e = getenv("DOA3_DET_HASH"); s_hash_every = e ? atoi(e) : 0; }
+                if (s_hash_every > 0 && g_doa3_frames_presented % (unsigned)s_hash_every == 0) {
+                    extern void *xbox_GetMemoryBase(void);
+                    extern size_t xbox_GetMemorySize(void);
+                    extern unsigned long long doa3_hash_bytes(const void *data, size_t bytes);
+                    const unsigned char *ram = (const unsigned char *)xbox_GetMemoryBase();
+                    size_t size = xbox_GetMemorySize(), slice = 8u << 20, at;
+                    char line[512]; int n;
+                    n = snprintf(line, sizeof line, "[DET-HASH] frame %u: %016llX |", g_doa3_frames_presented,
+                                 doa3_hash_bytes(ram, size));
+                    for (at = 0; at < size && n < (int)sizeof line - 12; at += slice)
+                        n += snprintf(line + n, sizeof line - n, " %08X",
+                                      (unsigned)doa3_hash_bytes(ram + at, size - at < slice ? size - at : slice));
+                    fprintf(stderr, "%s\n", line);
+                }
+            }
         }
     }
     if (!async_frame) {

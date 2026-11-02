@@ -7,6 +7,12 @@
 #include "../../third_party/xxhash.h"
 #include <stdio.h>
 #include <windows.h>
+/* rollback.43: plain hash for the cross-machine determinism log
+ * ([DET-HASH], recomp_manual.c). */
+unsigned long long doa3_hash_bytes(const void *data, size_t bytes)
+{
+    return (unsigned long long)XXH3_64bits(data, bytes);
+}
 /* doa3.1-rollback.10 diagnostic (DOA3_ROLLBACK_REPLAY_PROFILE=1): where a
  * capture or restore spends its time, per step and per part. */
 static const char *const s_prof_part[DOA3_CP_PARTS]={"files","ram","heap","fibers","clock",

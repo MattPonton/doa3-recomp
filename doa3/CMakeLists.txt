@@ -12,6 +12,15 @@ if(MSVC AND POLICY CMP0184)
     endforeach()
 endif()
 
+# rollback.43: the C runtime is linked into the exe (/MT), so the math
+# functions the recompiled code calls for the x87's fsin/fcos/fpatan/...
+# are the same code on every PC; with the DLL runtime they come from
+# Windows' ucrtbase.dll, which differs between Windows versions. (FMA3 paths
+# are already off: _set_FMA3_enable(0) in main.c.)
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
