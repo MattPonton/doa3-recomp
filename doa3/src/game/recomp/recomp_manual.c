@@ -131,6 +131,10 @@ void sub_000691F0_gen(void);
 void sub_000E8030(void) { if (!xbox_fiber_run_restorable_task(0xE8030)) sub_000E8030_gen(); }
 void sub_00049790(void) { if (!xbox_fiber_run_restorable_task(0x49790)) sub_00049790_gen(); }
 void sub_000691F0(void) { if (!xbox_fiber_run_restorable_task(0x691F0)) sub_000691F0_gen(); }
+/* rollback.42: blocked save states at the title / menus (rb38); three
+ * frame yields, so its continuation records which one it stopped at. */
+void sub_000851A0_gen(void);
+void sub_000851A0(void) { if (!xbox_fiber_run_restorable_task(0x851A0)) sub_000851A0_gen(); }
 
 /* Observe the actual collision pass after its existing game logic completes.
  * The helper never touches guest registers, x87 state, or guest memory. */

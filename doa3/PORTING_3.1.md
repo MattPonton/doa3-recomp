@@ -6584,3 +6584,31 @@ Survival reflection) into the rollback branch. Version 1.0.4-rollback.40
 rb40 did not compile: doa3.1's new code in nv2a_pgraph_d3d11.c (the inline
 rectangle-coverage draw's stats, the [BADCLIP]/[SURFCLIP] logs) used
 g_pg.stats / g_pg.frame, which this branch keeps in g_pg_host.
+
+### 1.0.4-rollback.42: task 0x851A0 converted (save states toward character select)
+
+Matt: netplay sessions start at character select of the chosen mode; each
+player has the starting state locally (nothing large is sent). rb38's log
+named the two game tasks that block a save at the title, menus and
+character select: bodies 0x523D0 and 0x851A0.
+
+0x851A0 is a root task with three direct frame yields (sub_001C65D8), all
+plain root-scope statements, two indirect calls that do not yield in the
+direct graph (a native suspension there still invalidates the checkpoint, as
+for the other tasks), and 23 C locals. rollback_tasks.py gains
+transform_multi (MULTI_YIELD = {0x851A0: 3}): each yield saves the locals
+and records its index (task->resume 1..3); resume switches to the matching
+label. doa3_rollback_task_resume_max() gives each task's highest resume
+point (1 for the single-yield ones); the step and checkpoint checks use it
+instead of "resume == 1". The task is the 16th in DOA3_RB_TASK_ROUTINES,
+with the usual hook in recomp_manual.c and an overrides entry (its
+generated body renamed sub_000851A0_gen). Single-yield output is unchanged.
+
+0x523D0 (the title / menu flow, alive into Story) is next: its direct
+suspension graph is 25 routines with an indirect call in 0x52660 and a jump
+table in 0x523F0, which the nested generator has to be taught.
+
+Memory, for the record: the console has 64 MB. The port maps a 128 MB guest
+space: the low heap runs to 80 MB (xbox_memory_layout.h: the game needs
+~53 MB here against the console's ~50, and cxbx grants it ~62) and 48 MB
+high; the game uses about 50 MB of it.

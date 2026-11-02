@@ -69,6 +69,7 @@
 0x00087420  # Opt-in restorable main game flow with nested waits
 0x000E8030  # Opt-in restorable stage/display-state task
 0x00049790  # Opt-in restorable per-player display task
+0x000851A0  # Opt-in restorable task (title / menu side task, three frame yields; rollback.42)
 0x000691F0  # Opt-in restorable scene/display-state task
 0x001926F0  # Opt-in CRI vsync worker outer continuation
 0x00192760  # Opt-in CRI playback worker outer continuation

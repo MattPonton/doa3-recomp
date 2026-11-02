@@ -19,7 +19,11 @@ except ImportError:
     from rollback_match import generate_match, suspension_graph, ROOTS as NESTED_ROOTS
 
 # Dispatcher order is part of the consecutive-capture contract.
-TASKS = (0x87420, 0x72070, 0x54110, 0xBE4A0, 0x11110, 0xB4720, 0xA00D0, 0x98DB0, 0x7F470, 0x235B0, 0x1C60AB, 0xE8030, 0x49790, 0x691F0, 0xBB500)
+TASKS = (0x87420, 0x72070, 0x54110, 0xBE4A0, 0x11110, 0xB4720, 0xA00D0, 0x98DB0, 0x7F470, 0x235B0, 0x1C60AB, 0xE8030, 0x49790, 0x691F0, 0xBB500,
+         0x851A0)
+# rollback.42: root tasks with several direct frame yields, each at root
+# scope; the continuation records which one it stopped at (resume 1..n).
+MULTI_YIELD = {0x851A0: 3}
 YIELD = "sub_001C65D8(); /* call 0x001C65D8 */"
 
 
@@ -60,6 +64,8 @@ def source_digest(directory):
 
 
 def transform(va, body):
+    if va in MULTI_YIELD:
+        return transform_multi(va, body, MULTI_YIELD[va])
     if body.count(YIELD) != 1:
         raise ValueError(f"{va:08X}: expected exactly one direct frame yield")
     first = re.search(r"^loc_[0-9A-F]+: ;", body, re.M)
@@ -97,6 +103,62 @@ def transform(va, body):
     suspend += "    task->resume = 1;\n    task->yielded = 1;\n    return;\nrollback_resume: ;"
     code = code.replace(YIELD, suspend)
     return f"static void step_{va:08X}(Doa3RollbackTask *task)\n{{{declarations}{resume}\n{code}}}\n"
+
+
+def parse_locals(va, declarations):
+    names = []
+    for line in declarations.splitlines():
+        clean = re.sub(r"/\*.*?\*/", "", line).strip()
+        if not clean or clean.startswith("#define") or clean == "ebp = g_seh_ebp;":
+            continue
+        match = re.fullmatch(r"(uint32_t|int) (.*);", clean)
+        if not match:
+            raise ValueError(f"{va:08X}: unsupported local declaration {clean!r}")
+        for part in match[2].split(","):
+            name = re.fullmatch(r"\s*([A-Za-z_]\w*)(?:\s*=\s*(0|g_seh_ebp))?\s*", part)
+            if not name:
+                raise ValueError(f"unsupported local {part!r}")
+            if name[2] == "g_seh_ebp" and (name[1] != "ebp" or match[1] != "uint32_t"):
+                raise ValueError(f"unsupported frame initializer {part!r}")
+            names.append((name[1], match[1]))
+    if len(names) > 32:
+        raise ValueError("too many continuation locals")
+    return names
+
+
+def transform_multi(va, body, expected):
+    """Several direct yields: each must be a root-scope statement (four
+    spaces, no open brace before it), so the C locals are all that is live."""
+    if body.count(YIELD) != expected:
+        raise ValueError(f"{va:08X}: expected {expected} direct frame yields, found {body.count(YIELD)}")
+    first = re.search(r"^loc_[0-9A-F]+: ;", body, re.M)
+    if not first:
+        raise ValueError("missing entry label")
+    declarations, code = body[:first.start()], body[first.start():]
+    names = parse_locals(va, declarations)
+    if re.search(r"^    (?:uint\w*_t|int|float|double|void|char) \w", code, re.M):
+        raise ValueError("unexpected root-scope local after entry")
+    out, index = [], 0
+    for line in code.splitlines(keepends=True):
+        if YIELD not in line:
+            out.append(line)
+            continue
+        if line != "    PUSH32(esp, 0); " + YIELD + "\n":
+            raise ValueError(f"{va:08X}: yield is not a plain root-scope call: {line!r}")
+        clean = re.sub(r"/\*.*?\*/|//[^\n]*", "", "".join(out), flags=re.S)
+        if clean.count("{") != clean.count("}"):
+            raise ValueError(f"{va:08X}: yield inside an instruction block")
+        index += 1
+        suspend = "    PUSH32(esp, 0); doa3_rollback_task_sleep();\n"
+        suspend += "".join(f"    task->locals[{i}] = (uint32_t){name};\n" for i, (name, _) in enumerate(names))
+        suspend += f"    task->resume = {index};\n    task->yielded = 1;\n    return;\nrollback_resume_{index}: ;\n"
+        out.append(suspend)
+    resume = "    if (task->resume) {\n"
+    resume += "".join(f"        {name} = ({kind})task->locals[{i}];\n" for i, (name, kind) in enumerate(names))
+    resume += "        switch (task->resume) {\n"
+    resume += "".join(f"        case {i}: goto rollback_resume_{i};\n" for i in range(1, index + 1))
+    resume += "        default: return;\n        }\n    }\n"
+    return f"static void step_{va:08X}(Doa3RollbackTask *task)\n{{{declarations}{resume}\n{''.join(out)}}}\n"
 
 
 def validate_task_hooks(manual_source, generated_overrides, overrides):
@@ -170,14 +232,19 @@ def generate(directory):
     result += "".join(f"    case 0x{va:08X}u:\n" for va in TASKS)
     result += "        return 1;\n    }\n#endif\n    return 0;\n}\n"
     result += "int doa3_rollback_task_step(uint32_t routine, Doa3RollbackTask *task)\n{\n"
-    result += "    if (!task || task->resume > 1) return 0;\n    task->yielded = 0;\n"
+    result += "    if (!task || task->resume > doa3_rollback_task_resume_max(routine)) return 0;\n    task->yielded = 0;\n"
     result += "#ifdef DOA3_XBE_ID_3_1\n    switch (routine) {\n"
     result += "".join(f"    case 0x{va:08X}u: step_{va:08X}(task); return task->yielded == 1;\n" for va in TASKS)
     result += "    }\n#endif\n    return 0;\n}\n"
+    result += "uint32_t doa3_rollback_task_resume_max(uint32_t routine)\n{\n"
+    result += "#ifdef DOA3_XBE_ID_3_1\n    switch (routine) {\n"
+    result += "".join(f"    case 0x{va:08X}u: return {n};\n" for va, n in sorted(MULTI_YIELD.items()))
+    result += "    }\n#endif\n    return 1;\n}\n"
     result += """
 int doa3_rollback_task_checkpoint_valid(uint32_t routine,const Doa3RollbackTask *task)
 {
-    if (!task || task->resume!=1 || task->yielded!=1 || !doa3_rollback_task_supported(routine)) return 0;
+    if (!task || task->resume<1 || task->resume>doa3_rollback_task_resume_max(routine) ||
+        task->yielded!=1 || !doa3_rollback_task_supported(routine)) return 0;
 #ifdef DOA3_XBE_ID_3_1
     if (routine==0x72070 || routine==0x87420) {
         Doa3NestedStack checked;
