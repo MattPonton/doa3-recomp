@@ -63,10 +63,10 @@ int g_tab_current = 0, g_tab_request = -1;
  * open the tabbed window on their tab (SCR_CLASSIC); leaving it comes back
  * to the list. */
 enum MenuScreen { SCR_MAIN, SCR_DISPLAY, SCR_SOUND, SCR_GAME, SCR_QUIT, SCR_CLASSIC,
-                  SCR_CONTROLS, SCR_PLAYER, SCR_DEVICE, SCR_PHOTO };
+                  SCR_CONTROLS, SCR_PLAYER, SCR_DEVICE, SCR_PHOTO, SCR_SPARRING };
 MenuScreen g_screen = SCR_MAIN;
 pm::State g_pm_main, g_pm_display, g_pm_sound, g_pm_game, g_pm_quit,
-          g_pm_controls, g_pm_player, g_pm_device, g_pm_photo;
+          g_pm_controls, g_pm_player, g_pm_device, g_pm_photo, g_pm_sparring;
 /* 1.0.4: after a binding is captured, the list ignores input until the
  * captured key or control is let go (so a held d-pad or A does not also
  * move the selection or start listening again). */
@@ -1543,7 +1543,7 @@ void DrawMainScreen()
                    ? "Dummy recording and playback, and move information, for Sparring."
                    : "Dummy recording and playback, and move information. Available in an offline Sparring fight.",
                    training_available() != 0))
-        OpenClassic(5);
+        OpenScreen(SCR_SPARRING, g_pm_sparring);
     if (g_debug_tab && pm::Action("Debug", "Developer tools."))
         OpenClassic(6);
     if (pm::Action("Quit", "Close Dead or Alive 3.")) {
@@ -1589,12 +1589,13 @@ void DrawDisplayScreen()
                    "For this session only."))
         TogglePerformanceOverlay();
     int ms = g_menu_scale;
-    if (pm::Step("Classic menu size", ms, 100, 250, 25, "%d%%",
-                 "The size of the Sparring window and its text.")) {
+    /* 1.0.4.26: only the Debug tab still uses the classic window */
+    if (g_debug_tab && pm::Step("Classic menu size", ms, 100, 250, 25, "%d%%",
+                 "The size of the classic window (the Debug tab) and its text.")) {
         g_menu_scale = ms;
         g_screen_dirty = true;
     }
-    if (pm::Action("Reset to defaults", "Borderless fullscreen, 16:9, 3x, classic menus at 100%.")) {
+    if (pm::Action("Reset to defaults", "Borderless fullscreen, 16:9, 3x.")) {
         video_set_window_mode(VIDEO_BORDERLESS);
         video_set_aspect(VIDEO_ASPECT_16_9);
         video_set_scale(3);
@@ -2045,6 +2046,129 @@ void DrawPhotoScreen()
     pm::End(g_status, kMenuVersion);
 }
 
+/* ── Sparring (1.0.4) ───────────────────────────────────────────────────
+ * The classic tab's rows, one per line; everything lasts for the session. */
+void DrawSparringScreen()
+{
+    static int slot = 0;
+    static bool loop = false;
+    pm::Begin(g_pm_sparring, kMenuTitle, "Sparring");
+    if (!training_available()) {
+        pm::Note("Available only in an offline Sparring fight.");
+        if (pm::Action("Back", "Goes back.") || pm::BackPressed()) MenuBack();
+        pm::End(g_status, kMenuVersion);
+        return;
+    }
+    const bool online = netplay_active() != 0;
+    {
+        unsigned flags = combat_debug_flags();
+        bool frames = (flags & COMBAT_FRAMES) != 0;
+        if (pm::Toggle("Show Move Info", frames,
+                       "Each attack's base startup (first active frame), active duration and recovery, beside "
+                       "the observed strike frames: blue startup, red active, yellow recovery, gray missing "
+                       "samples. Cancels shorten the observation, not the base timing. Hit/block advantage is "
+                       "not measured yet.", !online))
+            combat_debug_set_flags(frames ? (flags | COMBAT_FRAMES) : (flags & ~COMBAT_FRAMES));
+    }
+
+    pm::Heading("Dummy recording");
+    TrainingStatus status;
+    training_status(&status);
+    char slots[3][32];
+    const char *slot_names[3];
+    for (int i = 0; i < 3; ++i) {
+        _snprintf_s(slots[i], sizeof slots[i], _TRUNCATE, "%d   (%.1f / %.0f s)", i + 1,
+                    status.length[i] / 60.0f, TRAINING_MAX_FRAMES / 60.0f);
+        slot_names[i] = slots[i];
+    }
+    pm::Choice("Slot", slot, slot_names, 3,
+               "Each slot holds up to 10 seconds, for this Sparring session. Recording again replaces it.");
+    pm::Toggle("Loop playback", loop, "Play the slot over and over until Escape.");
+    const bool ready = training_can_record() != 0;
+    const char *why = "Enter a solo Sparring fight, close the game's pause menu, and turn off Exercise and the "
+                      "free camera to record or play.";
+    if (pm::Action("Record dummy", ready ? "You control the dummy until Escape; its inputs go into the slot. "
+                   "Directions replay relative to the dummy's facing; positions are not reset." : why, ready) &&
+        training_start(TRAINING_RECORD, slot, 0))
+        doa3_ui_toggle();
+    if (pm::Action("Play", ready ? "The dummy plays the slot back (Escape stops it)." : why,
+                   ready && status.length[slot] != 0) &&
+        training_start(TRAINING_PLAY, slot, loop))
+        doa3_ui_toggle();
+    if (pm::Action("Clear slot", "Empties the slot.", status.length[slot] != 0)) training_clear(slot);
+    if (!ready) pm::Note("Not available right now.");
+
+    {   /* Second controller drives the dummy (0.1.12) */
+        int enabled = 0, port = 1;
+        training_control_get(&enabled, &port);
+        int human = training_human_port();
+        bool tag = training_control_partner() != 0;
+        const char *who = tag ? "Partner" : "Dummy";
+        const char *cpu = tag ? "your controller" : "CPU";
+        pm::Heading("Second controller");
+        bool on = enabled != 0;
+        if (pm::Toggle(tag ? "Controller controls your tag partner" : "Controller controls the dummy", on,
+                       tag ? "Tag Sparring: the chosen controller plays your tag partner while it is on point; "
+                             "you play the other member. It goes back to your controller when that controller "
+                             "is unplugged."
+                           : "The chosen controller plays the dummy. It goes back to the CPU when that "
+                             "controller is unplugged, and while a recording plays or records."))
+            training_control_set(on ? 1 : 0, port);
+        char ports[4][48];
+        const char *port_names[4];
+        for (int p = 0; p < 4; ++p) {
+            _snprintf_s(ports[p], sizeof ports[p], _TRUNCATE, "Player %d%s", p + 1,
+                        p == human ? " (yours)" : training_port_connected(p) ? "" : " (not connected)");
+            port_names[p] = ports[p];
+        }
+        int pick = port;
+        if (pm::Choice("Controller", pick, port_names, 4,
+                       "Which player's controller (as set in Controls). Your own is skipped.")) {
+            if (pick == human) pick = (pick + (pick == (port + 1) % 4 ? 1 : 3)) % 4;
+            training_control_set(enabled, pick);
+        }
+        char line[96];
+        if (!enabled) _snprintf_s(line, sizeof line, _TRUNCATE, "%s: %s", who, cpu);
+        else if (training_control_active()) _snprintf_s(line, sizeof line, _TRUNCATE, "%s: Player %d controller", who, port + 1);
+        else if (port == human) _snprintf_s(line, sizeof line, _TRUNCATE, "%s: %s (that is your own controller)", who, cpu);
+        else if (!training_port_connected(port)) _snprintf_s(line, sizeof line, _TRUNCATE, "%s: %s (no controller there)", who, cpu);
+        else if (tag) _snprintf_s(line, sizeof line, _TRUNCATE, "Partner: your controller until the fight is running");
+        else _snprintf_s(line, sizeof line, _TRUNCATE, "Dummy: CPU until the fight is running and this menu is closed");
+        pm::Note(line);
+    }
+
+    pm::Heading("Stagger Escape");
+    {
+        static const char *kStaggerHelp =
+            "Holds how quickly the fighter recovers from a critical stun. Each input in a critical stun or "
+            "guard break adds 3% (up to 100%) and every idle frame takes 1%; 0% plays the stun at normal "
+            "speed, 100% at double. Hold sets the value at the start of every frame, and that frame's input "
+            "applies on top.";
+        int human = HumanSide();
+        char now[96];
+        _snprintf_s(now, sizeof now, _TRUNCATE, "Now: Fighter 1 %.0f%%, Fighter 2 %.0f%%",
+                    (training_stagger_get(0) - 1.0f) * 100.0f, (training_stagger_get(1) - 1.0f) * 100.0f);
+        for (int side = 0; side < 2; ++side) {
+            int hold = 0; float value = 1.0f;
+            training_stagger_hold_get(side, &hold, &value);
+            const char *tagname = side == human ? " (you)" : human >= 0 ? " (dummy)" : "";
+            char label[48];
+            _snprintf_s(label, sizeof label, _TRUNCATE, "Hold Fighter %d%s", side + 1, tagname);
+            bool h = hold != 0;
+            if (pm::Toggle(label, h, kStaggerHelp)) training_stagger_hold(side, h ? 1 : 0, value);
+            _snprintf_s(label, sizeof label, _TRUNCATE, "Fighter %d%s value", side + 1, tagname);
+            int pct = (int)((value - 1.0f) * 100.0f + 0.5f);
+            if (pm::Step(label, pct, 0, 100, 5, "%d%%", kStaggerHelp))
+                training_stagger_hold(side, hold, 1.0f + pct / 100.0f);
+        }
+        pm::Note(now);
+    }
+    pm::Separator();
+    if (pm::Action("Back", "Goes back. These settings last for this Sparring session.") || pm::BackPressed())
+        MenuBack();
+    pm::End(g_status, kMenuVersion);
+}
+
 void DrawPauseMenu()
 {
     pm::SetBlocked(false);   /* only Controls and the player screen block, while capturing */
@@ -2058,6 +2182,7 @@ void DrawPauseMenu()
     case SCR_PLAYER:  DrawPlayerScreen(); break;
     case SCR_DEVICE:  DrawDeviceScreen(); break;
     case SCR_PHOTO:   DrawPhotoScreen(); break;
+    case SCR_SPARRING: DrawSparringScreen(); break;
     case SCR_CLASSIC: DrawMenu(); break;
     }
 }

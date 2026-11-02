@@ -5533,3 +5533,16 @@ settings are session-only, as on the classic tab (whose Save only wrote
 AutoCapture and the screenshot key), so the screen saves nothing. The
 camera and fighter rows are disabled online. Only Sparring (and Debug)
 still open the classic window.
+
+## 1.0.4.26
+
+Sparring moved to the list menu (SCR_SPARRING), the classic tab's rows one
+per line: Show Move Info; Dummy recording (Slot 1-3 as a Choice whose names
+carry each slot's length, Loop playback, Record dummy, Play, Clear slot,
+and a note when recording isn't possible); Second controller (the toggle,
+the port as a Choice that skips your own, the status line); Stagger Escape
+(Hold Fighter N, its value 0-100 % in steps of 5, and a "Now:" line), Back.
+Record and Play close the menu with doa3_ui_toggle (which also lifts the
+menu pause) instead of clearing g_visible by hand. Session-only, as before.
+Only the Debug tab still opens the classic window, so Display's "Classic
+menu size" row shows only with the Debug tab on.

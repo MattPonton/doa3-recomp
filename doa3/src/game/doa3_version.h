@@ -20,7 +20,7 @@
 #define DOA3_VER_MAJOR  1
 #define DOA3_VER_MINOR  0
 #define DOA3_VER_UPDATE 4
-#define DOA3_VER_BUILD  25
+#define DOA3_VER_BUILD  26
 #define DOA3_VER_STR    "1.0.4"
-#define DOA3_VER_FULL_STR "1.0.4.25"
+#define DOA3_VER_FULL_STR "1.0.4.26"
 #endif

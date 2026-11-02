@@ -80,8 +80,7 @@ or the d-pad to choose, **Left / Right** to change a setting, **Enter / A** to
 select and **Escape / B** to go back; the mouse works too. The line under
 the list explains the selected setting. Changes apply immediately and are
 saved when you leave the screen; each screen has **Reset to defaults**.
-**Sparring** still opens in a window with
-tabs; close it (or press Escape / B) to return to the list. While the menu is
+While the menu is
 closed, the mouse pointer hides after a second without moving and comes back
 when you move the mouse.
 
@@ -156,7 +155,6 @@ L3 / R3 / L1 / R1 / Triangle):
 | Buttons | Does |
 | --- | --- |
 | L3 + R3 | Open or close the Escape menu |
-| LB / RB | Previous / next tab, in the Sparring window |
 | L3 + RB | Take a screenshot |
 | L3 + Y | Show or hide the performance overlay |
 
@@ -167,8 +165,7 @@ game as usual.
 
 **Window type** (windowed / borderless fullscreen), **Aspect ratio** and
 **Internal resolution**; **Performance overlay** shows frame rate and frame
-times; **Classic menu size** scales the Sparring window
-(100–250 %).
+times.
 
 ### Sound
 
@@ -200,7 +197,7 @@ Available in offline Sparring only (grayed out elsewhere).
 
 **Show Move Info** displays each attack's startup, active and recovery frames.
 
-**Dummy input recording**: three slots record up to ten seconds of dummy input
+**Dummy recording**: three slots record up to ten seconds of dummy input
 each; play a slot once or on a loop. **Record dummy** temporarily gives you
 control of the dummy with your normal bindings; **Escape** finishes the
 recording or stops playback. Directions play back relative to the dummy's
@@ -216,8 +213,8 @@ players share a team in Tag Battle, so two people can practice tag combos
 together.
 
 **Stagger Escape** shows each fighter's critical-stun mash value as 0–100 %
-(how fast a critical stun or guard break plays out). **Hold** fixes the value
-at the start of every frame, for the human player or the dummy, CPU or not.
+(how fast a critical stun or guard break plays out). **Hold Fighter 1 / 2**
+fixes the value (set on the row under it) at the start of every frame, for the human player or the dummy, CPU or not.
 
 Online play from the original port is not available in this version.
 
