@@ -1,10 +1,10 @@
 /* Production checkpoint domains together, in a private owner-thread harness.
- * Task/stream service bodies are fixtures; scheduler, clock, APC, file cursor
- * and APU processing are real. This neither launches nor rewinds DOA3. */
-#include "apu_chip.h"
-#include "apu_replay.h"
-#ifdef DOA3_CP_LIVE_AUDIO
-#include "checkpoint_live_audio.h"
+ * Task/stream service bodies and the audio domain are fixtures; scheduler,
+ * clock, APC and file cursor are real. This neither launches nor rewinds DOA3. */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#ifdef DOA3_CP_TRIAL
 #include "game/rollback_trial.h"
 #endif
 #include "online/rollback_checkpoint.h"
@@ -27,9 +27,6 @@
 #include "guest_memory_fixture.h"
 #define CHECK(x) do { if(!(x)) { fprintf(stderr,"line %d: %s\n",__LINE__,#x);exit(1); } } while(0)
 #define RAM_BYTES (128u*1024u*1024u)
-uint8_t *g_apu_ram_ptr;
-struct McpxApuDebug g_dbg;
-int g_dbg_voice_monitor=-1;
 unsigned g_doa3_frames_presented;
 uint32_t g_eax,g_ecx,g_edx,g_esp,g_ebx,g_esi,g_edi,g_seh_ebp;
 double g_fp_stack[8];int g_fp_top;
@@ -114,6 +111,10 @@ static void worker_entry(void) {
 typedef void (*recomp_func_t)(void);
 recomp_func_t recomp_lookup(uint32_t va) { if(va==0x18C690) return worker_entry;CHECK(va==0x1000);return task_entry; }
 recomp_func_t recomp_lookup_manual(uint32_t va) { (void)va;return NULL; }
+/* The audio domain: plain words the frames advance, as the DirectSound
+ * snapshot is (dsound_hle.c), checked like any other part. */
+typedef struct { uint32_t frames,waits,samples; } AudioFixture;
+typedef struct { uint32_t samples; } AudioOut;
 typedef struct World World;
 typedef struct { World *world;unsigned id; } Part;
 struct World {
@@ -121,22 +122,37 @@ struct World {
     XboxInterruptState interrupts;
     XboxHeapCheckpoint *heap;
     XboxStreamFiles *files;
-    ApuReplay *audio;
+    AudioFixture audio;
     Nv2aFrontend *gpu;
     HANDLE file;
     Part parts[DOA3_CP_PARTS];
     int held,task,fail_restore;
 };
+#ifdef DOA3_CP_TRIAL
+/* The audio pin and replay gate the trial controller drives (as the fight
+ * checkpoint drives ds_rollback_acquire / ds_replay_*), with the real clock pin. */
+static int audio_pin,audio_gate,deny_pin;
+static int fixture_live_acquire(void){
+    if(!xbox_det_checkpoint_acquire())return 0;
+    if(deny_pin || audio_pin){CHECK(xbox_det_checkpoint_release());return 0;}
+    audio_pin=1;return 1;
+}
+static void fixture_live_release(void){CHECK(audio_pin);audio_pin=0;CHECK(xbox_det_checkpoint_release());}
+static int fixture_live_can_restore(void *p){(void)p;return audio_pin && audio_gate;}
+static void fixture_live_begin(void){CHECK(fixture_live_acquire());CHECK(!audio_gate);audio_gate=1;fixture_live_release();}
+static void fixture_live_end(int cancel){(void)cancel;CHECK(fixture_live_acquire());CHECK(audio_gate);audio_gate=0;fixture_live_release();}
+static void fixture_live_deny_pin(int deny){deny_pin=deny;}
+#endif
 static int acquire(void *v) {
     World *w=v;if(w->held || !g_xbox_det_active || !xbox_fiber_is_primary()) return 0;
-#ifdef DOA3_CP_LIVE_AUDIO
+#ifdef DOA3_CP_TRIAL
     if(!fixture_live_acquire())return 0;
 #endif
     w->held=1;return 1;
 }
 static void release(void *v) {
     World *w=v;CHECK(w->held);
-#ifdef DOA3_CP_LIVE_AUDIO
+#ifdef DOA3_CP_TRIAL
     fixture_live_release();
 #endif
     w->held=0;
@@ -153,7 +169,7 @@ static int capture(void *v,void *out,size_t n) {
     case DOA3_CP_COMPLETIONS:return xbox_apc_capture(&w->apc,out,n);
     case DOA3_CP_INTERRUPTS:return xbox_interrupt_capture(&w->interrupts,xbox_det_epoch(),out,n);
     case DOA3_CP_GPU_FRONTEND:return nv2a_frontend_capture(w->gpu,xbox_det_epoch(),out,n);
-    case DOA3_CP_AUDIO:return apu_replay_capture(w->audio,out,n);
+    case DOA3_CP_AUDIO:CHECK(n==sizeof(w->audio));memcpy(out,&w->audio,n);return 1;
     case DOA3_CP_INPUT:return doa3_xpp_capture(out,n);
     default:return 0;
     }
@@ -169,7 +185,7 @@ static int validate(void *v,const void *saved,size_t n) {
     case DOA3_CP_COMPLETIONS:return xbox_apc_validate(&w->apc,saved,n);
     case DOA3_CP_INTERRUPTS:return xbox_interrupt_validate(&w->interrupts,xbox_det_epoch(),saved,n);
     case DOA3_CP_GPU_FRONTEND:return nv2a_frontend_validate(w->gpu,xbox_det_epoch(),saved,n);
-    case DOA3_CP_AUDIO:return apu_replay_validate(w->audio,saved,n);
+    case DOA3_CP_AUDIO:return n==sizeof(w->audio) && ((const AudioFixture *)saved)->samples==((const AudioFixture *)saved)->frames*800u;
     case DOA3_CP_INPUT:return doa3_xpp_validate(saved,n);
     default:return 0;
     }
@@ -185,7 +201,7 @@ static int restore_domain(void *v,const void *saved,size_t n) {
     case DOA3_CP_COMPLETIONS:return xbox_apc_restore(&w->apc,saved,n);
     case DOA3_CP_INTERRUPTS:return xbox_interrupt_restore(&w->interrupts,xbox_det_epoch(),saved,n);
     case DOA3_CP_GPU_FRONTEND:return nv2a_frontend_restore(w->gpu,xbox_det_epoch(),saved,n);
-    case DOA3_CP_AUDIO:return apu_replay_restore(w->audio,saved,n);
+    case DOA3_CP_AUDIO:memcpy(&w->audio,saved,n);return 1;
     case DOA3_CP_INPUT:return doa3_xpp_restore(saved,n);
     default:return 0;
     }
@@ -199,7 +215,7 @@ static int restore(void *v,const void *saved,size_t n) {
 }
 static uint32_t gpu_read(void *v,uint32_t address) { (void)v;CHECK(address<=RAM_BYTES-4 && !(address&3));return WORD(address); }
 static void gpu_write(void *v,uint32_t address,uint32_t value) { (void)v;CHECK(address<=RAM_BYTES-4 && !(address&3));WORD(address)=value; }
-static void advance(World *w,unsigned frame,ApuReplayOutput *out) {
+static void advance(World *w,unsigned frame,AudioOut *out) {
     CHECK(!w->held);xbox_det_frame();xbox_det_on_kernel_call(219);
     /* Cross the real QPC hot-poll threshold inside the recorded window. */
     for(unsigned poll=0;poll<12;++poll){
@@ -242,8 +258,8 @@ static void advance(World *w,unsigned frame,ApuReplayOutput *out) {
     CHECK(nv2a_frontend_targets(w->gpu,0x604000,0x603000,gpu_read,NULL));
     xbox_fiber_switch_direct(w->task);
     for(unsigned i=0;i<4;++i) CHECK(xbox_fiber_run_thread(0xBEEF9001+i));
-    if(frame%2) { ApuReplayOutput wait;CHECK(apu_replay_wait(w->audio,&wait));WORD(0x600030)+=wait.samples; }
-    CHECK(apu_replay_frame(w->audio,out));WORD(0x600034)+=apu_replay_take_irq(w->audio);
+    if(frame%2) { ++w->audio.waits;WORD(0x600030)+=w->audio.samples; }
+    ++w->audio.frames;w->audio.samples+=800;out->samples=w->audio.samples;WORD(0x600034)+=w->audio.waits;
 #ifdef DOA3_CP_RENDERER
     fixture_renderer_advance(frame,WORD(0x600010));
 #endif
@@ -265,7 +281,7 @@ static int observe_state(World *w,Doa3CheckpointSession *session,uint64_t frame,
     unsigned char *p=out;size_t used=sizeof(frame);int ok=1;
     if(!acquire(w))return 0;
     memset(out,0,n);memcpy(p,&frame,sizeof(frame));
-    const size_t sizes[DOA3_CP_PARTS]={xbox_stream_files_size(w->files),RAM_BYTES,xbox_heap_checkpoint_size(),xbox_fiber_converted_snapshot_size(),sizeof(xbox_det_checkpoint),sizeof(XboxApcSnapshot),sizeof(XboxInterruptSnapshot),nv2a_frontend_checkpoint_size(),apu_replay_snapshot_size(),sizeof(Doa3XppSnapshot)};
+    const size_t sizes[DOA3_CP_PARTS]={xbox_stream_files_size(w->files),RAM_BYTES,xbox_heap_checkpoint_size(),xbox_fiber_converted_snapshot_size(),sizeof(xbox_det_checkpoint),sizeof(XboxApcSnapshot),sizeof(XboxInterruptSnapshot),nv2a_frontend_checkpoint_size(),sizeof(AudioFixture),sizeof(Doa3XppSnapshot)};
     for(unsigned i=0;i<DOA3_CP_PARTS && ok;++i){
         CHECK(used+sizes[i]<=n);ok=capture(&w->parts[i],p+used,sizes[i]);used+=sizes[i];
     }
@@ -284,10 +300,10 @@ static int restore_state(Doa3CheckpointSession *session,const void *raw,size_t n
     (void)owned;return doa3_checkpoint_restore(session,raw,n,frame);
 #endif
 }
-#ifdef DOA3_CP_LIVE_AUDIO
+#ifdef DOA3_CP_TRIAL
 typedef struct {
     World *world;Doa3CheckpointSession *session;size_t bytes;void *scratch;
-    uint64_t first_hash,*hashes;ApuReplayOutput *out;int held,fail_verify,corrupt_pixels;
+    uint64_t first_hash,*hashes;AudioOut *out;int held,fail_verify,corrupt_pixels;
 } TrialFixture;
 static int trial_enter(void *v){TrialFixture *f=v;CHECK(!f->held);f->held=1;return 1;}
 static void trial_leave(void *v){TrialFixture *f=v;CHECK(f->held);f->held=0;}
@@ -308,7 +324,7 @@ static int trial_verify(void *v,uint64_t frame){
 }
 #endif
 int main(int argc,char **argv) {
-    CHECK(argc==1 || argc==3);
+    CHECK(argc==1 || argc==2);
     SetEnvironmentVariableA("DOA3_MIX_TRACE",NULL);
     _putenv_s("DOA3_ROLLBACK_WORKERS","1");_putenv_s("DOA3_ROLLBACK_STREAM_WORKERS","1");
     _putenv_s("DOA3_RUMBLE_TRACE","");
@@ -316,19 +332,8 @@ int main(int argc,char **argv) {
     World w={0};w.fail_restore=-1;xbox_apc_reset(&w.apc);
     CHECK(xbox_interrupt_reset(&w.interrupts));
     xbox_interrupt_register(&w.interrupts,(XboxIsrEntry){0x600060,0x1000,0x600064});
-    MCPXAPUState *d=calloc(1,sizeof(*d));CHECK(d);
-    d->regs[NV_PAPU_VPVADDR]=0x100000;d->regs[NV_PAPU_FENADDR]=0x40000;
-    d->regs[NV_PAPU_TVL2D]=5;d->regs[NV_PAPU_TVL3D]=d->regs[NV_PAPU_TVLMP]=0xFFFF;
-    d->regs[NV_PAPU_SECTL]=NV_PAPU_SECTL_XCNTMODE;
-    d->regs[NV_PAPU_IEN]=NV_PAPU_ISTS_GINTSTS|NV_PAPU_ISTS_FETINTSTS;
-    d->regs[NV_PAPU_FETFORCE1]=NV_PAPU_FETFORCE1_SE2FE_IDLE_VOICE;
-    WORD(0x100000+5*NV_PAVS_SIZE+NV_PAVS_VOICE_TAR_PITCH_LINK)=0xFFFF;
-    for(unsigned i=0;i<MCPX_HW_MAX_VOICES;++i) d->vp.filters[i].voice=(uint16_t)i;
-    size_t command_n=apu_rollback_size();void *command=malloc(command_n);CHECK(command);
-    ApuRollbackClock apu_clock={1234,0,0,0};CHECK(apu_rollback_export(d,&apu_clock,command,command_n));
-    if(argc==3) { read_seed(argv[1],ram,RAM_BYTES);read_seed(argv[2],command,command_n); }
-    w.audio=apu_replay_create(ram,RAM_BYTES);CHECK(w.audio && apu_replay_seed(w.audio,command,command_n));
-    free(command);free(d);WORD(0x40C718)=0;
+    if(argc==2) read_seed(argv[1],ram,RAM_BYTES);
+    WORD(0x40C718)=0;
     memset(ram+0x600040,0,24);w.heap=xbox_heap_checkpoint_create();CHECK(w.heap);
     Nv2aQueueState gpu_seed={0};gpu_seed.submission=(Nv2aSubmissionState)NV2A_SUBMISSION_INITIAL;
     Nv2aQueueSnapshot gpu_image;CHECK(nv2a_queue_export(&gpu_seed,&gpu_image,sizeof(gpu_image)));
@@ -348,13 +353,13 @@ int main(int argc,char **argv) {
     const uint32_t routines[]={0x1926B0,0x1926F0,0x192760,0x1927D0};
     for(unsigned i=0;i<4;++i) { CHECK(xbox_fiber_spawn(0x18C690,routines[i],0,0xBEEF9001+i,0));CHECK(xbox_fiber_run_thread(0xBEEF9001+i)); }
     Doa3CheckpointConfig config={0};config.context=&w;config.acquire=acquire;config.release=release;config.epoch=epoch;
-    size_t sizes[DOA3_CP_PARTS]={xbox_stream_files_size(w.files),RAM_BYTES,xbox_heap_checkpoint_size(),xbox_fiber_converted_snapshot_size(),sizeof(xbox_det_checkpoint),sizeof(XboxApcSnapshot),sizeof(XboxInterruptSnapshot),nv2a_frontend_checkpoint_size(),apu_replay_snapshot_size(),sizeof(Doa3XppSnapshot)};
+    size_t sizes[DOA3_CP_PARTS]={xbox_stream_files_size(w.files),RAM_BYTES,xbox_heap_checkpoint_size(),xbox_fiber_converted_snapshot_size(),sizeof(xbox_det_checkpoint),sizeof(XboxApcSnapshot),sizeof(XboxInterruptSnapshot),nv2a_frontend_checkpoint_size(),sizeof(AudioFixture),sizeof(Doa3XppSnapshot)};
     for(unsigned i=0;i<DOA3_CP_PARTS;++i) { w.parts[i]=(Part){&w,i};config.parts[i]=(Doa3CheckpointPart){&w.parts[i],sizes[i],capture,validate,restore}; }
     Doa3CheckpointPart input_part=config.parts[DOA3_CP_INPUT];
     memset(&config.parts[DOA3_CP_INPUT],0,sizeof(input_part));
     CHECK(!doa3_checkpoint_create(&config)); /* input bookkeeping cannot be omitted */
     config.parts[DOA3_CP_INPUT]=input_part;
-#ifdef DOA3_CP_LIVE_AUDIO
+#ifdef DOA3_CP_TRIAL
     config.parts[DOA3_CP_AUDIO].can_restore=fixture_live_can_restore;
 #endif
 #ifdef DOA3_CP_RENDERER
@@ -367,9 +372,9 @@ int main(int argc,char **argv) {
     n+=20*sizeof(uint64_t); /* observation appends pixel hashes */
 #endif
     void *saved=malloc(n),*expected=malloc(n),*actual=malloc(n);CHECK(saved && expected && actual);
-    ApuReplayOutput warm,a[16],b[16];advance(&w,1,&warm);advance(&w,2,&warm);
+    AudioOut warm,a[16],b[16];advance(&w,1,&warm);advance(&w,2,&warm);
     CHECK(w.apc.count==2 && w.interrupts.dpc_count==2 && observe_state(&w,session,2,saved,n));
-#ifdef DOA3_CP_LIVE_AUDIO
+#ifdef DOA3_CP_TRIAL
     Doa3CheckpointImage *start=doa3_checkpoint_image_capture(session,2);CHECK(start);
 #else
     Doa3CheckpointImage *start=NULL;
@@ -390,8 +395,7 @@ int main(int argc,char **argv) {
     CHECK(fixture_renderer_images()==2);
 #endif
     unsigned reads=host_reads,metadata=host_metadata,rumble=host_rumble;host_disconnected=1;
-#ifdef DOA3_CP_LIVE_AUDIO
-    unsigned sent=fixture_live_submissions(),queries=fixture_live_queue_queries();CHECK(sent);
+#ifdef DOA3_CP_TRIAL
     uint64_t rejected_frame=999;
     CHECK(!restore_state(session,saved,n,start,&rejected_frame) && rejected_frame==999);
     CHECK(!doa3_checkpoint_poisoned(session)); /* output gate preflight rejects before any restore */
@@ -403,7 +407,7 @@ int main(int argc,char **argv) {
     Doa3ReplayTrial *trial=doa3_trial_create(&trial_config);CHECK(trial);
 #endif
     for(unsigned replay=0;replay<3;++replay) {
-#ifdef DOA3_CP_LIVE_AUDIO
+#ifdef DOA3_CP_TRIAL
         CHECK(doa3_trial_run(trial,start,2,18)==1);
         Doa3TrialReport report;CHECK(doa3_trial_report(trial,&report));
         CHECK(report.advanced==16 && report.reason==DOA3_TRIAL_OK && !report.fatal && !report.recovered);
@@ -420,16 +424,14 @@ int main(int argc,char **argv) {
 #ifdef DOA3_CP_RENDERER
         CHECK(doa3_checkpoint_image_matches(session,finish,&exact)==1);
 #endif
-#ifdef DOA3_CP_LIVE_AUDIO
-        CHECK(fixture_live_submissions()==sent && fixture_live_queue_queries()==queries);
+#ifdef DOA3_CP_TRIAL
 #endif
     }
-#ifdef DOA3_CP_LIVE_AUDIO
+#ifdef DOA3_CP_TRIAL
     trial_fixture.fail_verify=5;CHECK(doa3_trial_run(trial,start,2,18)==0);
     Doa3TrialReport recovery;CHECK(doa3_trial_report(trial,&recovery));
     CHECK(recovery.recovered && !recovery.fatal && recovery.advanced==3 && recovery.reason==DOA3_TRIAL_VERIFY);
     CHECK(!memcmp(expected,actual,n) && !trial_fixture.held);
-    CHECK(fixture_live_submissions()==sent && fixture_live_queue_queries()==queries);
     CHECK(host_reads==reads && host_metadata==metadata && host_rumble==rumble);
 #ifdef DOA3_CP_RENDERER
     /* Corrupt only GPU pixels. The ordinary verifier must detect it, then the
@@ -443,27 +445,26 @@ int main(int argc,char **argv) {
     CHECK(doa3_trial_report(trial,&recovery));
     CHECK(recovery.recovered && !recovery.fatal && recovery.advanced==0 && recovery.reason==DOA3_TRIAL_RESTORE);
     CHECK(!memcmp(expected,actual,n) && fixture_renderer_images()==2);
-    CHECK(fixture_live_submissions()==sent && fixture_live_queue_queries()==queries);
     CHECK(host_reads==reads && host_metadata==metadata && host_rumble==rumble);
 #endif
     CHECK(doa3_trial_destroy(trial));
 #endif
     /* Failure after each real domain applies must recover the entire before-image. */
     for(unsigned i=0;i<DOA3_CP_PARTS;++i) {
-#ifdef DOA3_CP_LIVE_AUDIO
+#ifdef DOA3_CP_TRIAL
         fixture_live_begin();
 #endif
         uint64_t frame=999;w.fail_restore=(int)i;
         CHECK(!restore_state(session,saved,n,start,&frame) && frame==999);
         CHECK(!doa3_checkpoint_poisoned(session));
         CHECK(observe_state(&w,session,18,actual,n) && !memcmp(expected,actual,n));
-#ifdef DOA3_CP_LIVE_AUDIO
+#ifdef DOA3_CP_TRIAL
         fixture_live_end(1);
 #endif
     }
     /* A bad recorded-input call after mutation must remain gated, then allow
      * restoration of the original end-state without touching physical input. */
-#ifdef DOA3_CP_LIVE_AUDIO
+#ifdef DOA3_CP_TRIAL
     fixture_live_begin();
 #endif
     CHECK(restore_state(session,saved,n,start,NULL)==1);
@@ -474,11 +475,11 @@ int main(int argc,char **argv) {
     CHECK(doa3_input_tape_abort(tape));mismatch_rumble=0;
     CHECK(observe_state(&w,session,18,actual,n) && !memcmp(expected,actual,n));
     CHECK(host_reads==reads && host_metadata==metadata && host_rumble==rumble);
-#ifdef DOA3_CP_LIVE_AUDIO
-    fixture_live_end(1);CHECK(fixture_live_submissions()==sent && fixture_live_queue_queries()==queries);
+#ifdef DOA3_CP_TRIAL
+    fixture_live_end(1);
 #endif
     /* In-flight interrupt delivery forbids the entire transaction. */
-#ifdef DOA3_CP_LIVE_AUDIO
+#ifdef DOA3_CP_TRIAL
     fixture_live_begin();
 #endif
     CHECK(xbox_interrupt_begin(&w.interrupts));
@@ -489,14 +490,12 @@ int main(int argc,char **argv) {
     xbox_apc_reset(&w.apc);CHECK(observe_state(&w,session,18,expected,n));
     CHECK(!restore_state(session,saved,n,start,NULL));
     CHECK(observe_state(&w,session,18,actual,n) && !memcmp(expected,actual,n));
-    unsigned nonzero=0;for(unsigned i=0;i<16;++i) for(unsigned j=0;j<a[i].samples;++j) nonzero+=a[i].pcm[j][0]!=0 || a[i].pcm[j][1]!=0;
-#ifdef DOA3_CP_LIVE_AUDIO
+#ifdef DOA3_CP_TRIAL
     fixture_live_end(1);
 #endif
-    if(argc==3) CHECK(nonzero);
-    printf("Coordinated replay: three 16-frame replays match every frame's complete checkpoint hash and final bytes: 128 MiB RAM, allocator, five fibers, clock, file cursor, completions/interrupts, GPU frontend, private APU/PCM (%u nonzero samples), XPP. Actual guest input overrides make zero replay hardware calls. A mismatched-input replay recovers the original end-state.\n",nonzero);
-#ifdef DOA3_CP_LIVE_AUDIO
-    puts("Production audio variant: real clock/APU fences, output-gate preflight, staged PCM restore, all-domain compensation; zero replay submissions or queue waits. Transport and game task bodies remain fixtures.");
+    puts("Coordinated replay: three 16-frame replays match every frame's complete checkpoint hash and final bytes: 128 MiB RAM, allocator, five fibers, clock, file cursor, completions/interrupts, GPU frontend, audio, XPP. Actual guest input overrides make zero replay hardware calls. A mismatched-input replay recovers the original end-state.");
+#ifdef DOA3_CP_TRIAL
+    puts("Trial variant: real clock pin with the audio pin and replay gate, gate preflight, all-domain compensation. Game task bodies remain fixtures.");
 #endif
 #ifdef DOA3_CP_RENDERER
     puts("Combined CPU/audio/WARP trial: every frame matches state and GPU pixel hashes; pixel divergence and post-renderer-restore failure recover the original full end-state. No live fight is replayed.");
@@ -508,7 +507,7 @@ int main(int argc,char **argv) {
 #ifdef DOA3_CP_RENDERER
     fixture_renderer_shutdown();
 #endif
-    nv2a_frontend_destroy(w.gpu);xbox_heap_checkpoint_destroy(w.heap);xbox_stream_files_destroy(w.files);CloseHandle(w.file);CHECK(DeleteFileW(path));apu_replay_destroy(w.audio);
+    nv2a_frontend_destroy(w.gpu);xbox_heap_checkpoint_destroy(w.heap);xbox_stream_files_destroy(w.files);CloseHandle(w.file);CHECK(DeleteFileW(path));
     /* Fibers still point into private RAM; process exit owns their teardown. */
     return 0;
 }

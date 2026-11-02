@@ -7,7 +7,7 @@ size_t rb_gpu_size(void);
 int rb_gpu_load(const void *snapshot,size_t bytes);
 int rb_gpu_save(void *snapshot,size_t bytes);
 uintptr_t rb_gpu_pointer(uint32_t address);
-/* Unrelated exceptions return CONTINUE_SEARCH so APU can handle its range. */
+/* Unrelated exceptions return CONTINUE_SEARCH. */
 int rb_gpu_exception(EXCEPTION_POINTERS *exception);
 const char *rb_gpu_error(void);
 uint32_t rb_gpu_error_address(void);

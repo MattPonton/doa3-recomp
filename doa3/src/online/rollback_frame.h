@@ -8,7 +8,7 @@
  * record[8] = kind, frame, slot, routine, changed pages, presents, mode, phase;
  * followed by 400 kernel counters, then (page index, 4096 bytes) per page.
  * An all-zero record marks successful completion. No footer on failure.
- * Async APU/clock writers remain active: these are observed boundary deltas,
+ * Async audio/clock writers remain active: these are observed boundary deltas,
  * not a claim that every change was made by the named task. */
 #define DOA3_RBF_MAGIC 0x31464252u
 #define DOA3_RBF_VERSION 2u

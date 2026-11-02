@@ -9,7 +9,7 @@ unsigned g_doa3_frames_presented;
 int doa3_native_frame_active(void){return replay;}
 void pgraph_d3d11_flush(void){++flushed;}
 void doa3_native_frame_flip(void){CHECK(flushed && !present);++flip;}
-void doa3_apu_deliver_irq(void){CHECK(flip);++irq;eax=77;}
+void doa3_deliver_dpcs(void){CHECK(flip);++irq;eax=77;}
 void d3d8_ReplayFrameComplete(void){CHECK(irq);++history;}
 void doa3_present_frame(void){++present;}
 void doa3_frame_monitor(unsigned f){(void)f;++monitor;}

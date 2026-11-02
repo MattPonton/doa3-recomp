@@ -1,6 +1,7 @@
 #include "game_audio.h"
 #include "audio_settings.h"
 #include "recomp/recomp_types.h"
+#include "audio/dsound_hle.h"
 #include "recomp/gen/xbe_layout.h"   /* DOA3_XBE_ID_JAPAN */
 #include <windows.h>
 #include <stdio.h>
@@ -138,7 +139,6 @@ void game_audio_bgm_watch_enter(uint32_t va, int *depth)
 void game_audio_bgm_watch_leave(uint32_t va, int depth, unsigned before)
 {
     extern unsigned g_doa3_frames_presented;
-    extern volatile int g_apu_det;
     extern volatile int g_xbox_det_active;
     int f = bw_fiber(), i, lo;
     uint32_t a = g_bgm_watch_adxt;
@@ -151,7 +151,7 @@ void game_audio_bgm_watch_leave(uint32_t va, int depth, unsigned before)
     if (s_bw_lines >= 60) return;
     s_bw_lines++;
     fprintf(stderr, "[BGM-WATCH] frame %u: player %08X state %u -> %u in %08X (fiber %d, rollback clock %s); called from:",
-            g_doa3_frames_presented, a, before, after, va, f, (g_apu_det || g_xbox_det_active) ? "ON" : "off");
+            g_doa3_frames_presented, a, before, after, va, f, (ds_det_active() || g_xbox_det_active) ? "ON" : "off");
     lo = depth > 24 ? depth - 24 : 0;
     for (i = (depth < BW_DEPTH ? depth : BW_DEPTH) - 1; i >= lo; i--) fprintf(stderr, " %08X", s_bw_stk[f][i]);
     fprintf(stderr, "\n");
@@ -229,7 +229,6 @@ void game_audio_bgm_watch(void)
 {
     extern unsigned g_doa3_frames_presented;
     mem_watch_frame();
-    extern volatile int g_apu_det;
     extern volatile int g_xbox_det_active;
     static uint32_t s_last[GA_BGM_COUNT][3]; static int s_init; static unsigned s_lines;
     unsigned c;
@@ -239,7 +238,7 @@ void game_audio_bgm_watch(void)
         if (s_init && (h != s_last[c][0] || ch != s_last[c][1] || st != s_last[c][2]) && s_lines < 80) {
             s_lines++;
             fprintf(stderr, "[BGM] frame %u: channel %u player %08X channel-state %u player-state %u (rollback clock %s)\n",
-                    g_doa3_frames_presented, c, h, ch, st, (g_apu_det || g_xbox_det_active) ? "ON" : "off");
+                    g_doa3_frames_presented, c, h, ch, st, (ds_det_active() || g_xbox_det_active) ? "ON" : "off");
             fflush(stderr);
         }
         s_last[c][0] = h; s_last[c][1] = ch; s_last[c][2] = st;
@@ -260,10 +259,9 @@ void game_audio_bgm_watch(void)
             s_bw_seen = st0;
             g_bgm_watch_adxt = h0;
             {   /* every frame for 40 frames after the clock changes, else once a second */
-                extern volatile int g_apu_det;
                 extern volatile int g_xbox_det_active;
                 static int s_det = -1; static unsigned s_trace, s_n, s_errlines;
-                int det = (g_apu_det || g_xbox_det_active) ? 1 : 0;
+                int det = (ds_det_active() || g_xbox_det_active) ? 1 : 0;
                 if (det != s_det) { s_trace = 40; s_det = det; }
                 if ((s_trace || !(s_n % 60)) && s_errlines < 200) {
                     s_errlines++;

@@ -9,7 +9,7 @@ typedef void (*recomp_func_t)(void);
 static XboxInterruptState state;
 static uint32_t ram[0x1000],esp=0x3000;
 static unsigned char irql;
-static int pending,callback_count;
+static int callback_count;
 static uint32_t order[16];
 unsigned g_doa3_frames_presented;
 #define MEM32(va) ram[(va)/4]
@@ -26,18 +26,15 @@ int xbox_kernel_pop_dpc(uint32_t *dpc,uint32_t *a1,uint32_t *a2) {
 }
 unsigned char xbox_current_irql(void) { return irql; }
 unsigned char xbox_set_irql(unsigned char v) { unsigned char old=irql;irql=v;return old; }
-int mcpx_apu_take_irq(void) { int old=pending;pending=0;return old; }
-void doa3_apu_deliver_irq(void);
+void doa3_deliver_dpcs(void);
 static void callback_guard(void) {
     XboxInterruptSnapshot p;CHECK(!xbox_interrupt_capture(&state,1,&p,sizeof(p)));
     CHECK(!xbox_interrupt_reset(&state) && !xbox_interrupt_begin(&state));
-    CHECK(state.delivering);doa3_apu_deliver_irq();CHECK(state.delivering);
+    CHECK(state.delivering);doa3_deliver_dpcs();CHECK(state.delivering);
 }
-static void isr_callback(void) {
-    callback_guard();CHECK(irql==0x0B && MEM32(esp+4)==0x1100 && MEM32(esp+8)==0x1200);
-    CHECK(callback_count<16);order[callback_count++]=1;
-    CHECK(xbox_interrupt_push(&state,(XboxDpcEntry){0x1000,17,23}));
-}
+/* Registered (KeInitializeInterrupt still records it) but never called:
+ * nothing raises the interrupt now that DirectSound is high level. */
+static void isr_callback(void) { fprintf(stderr,"ISR delivered\n");exit(1); }
 static void dpc_callback(void) {
     callback_guard();CHECK(irql==2 && MEM32(esp+8)==0x1300);
     uint32_t dpc=MEM32(esp+4);CHECK(callback_count<16);order[callback_count++]=dpc;
@@ -71,13 +68,15 @@ int main(void) {
     xbox_interrupt_register(&state,(XboxIsrEntry){0x1100,DOA3_SEC_DSOUND_VA+4,0x1200});
     MEM32(0x100C)=MEM32(0x102C)=DOA3_SEC_DSOUND_VA+8;MEM32(0x1010)=MEM32(0x1030)=0x1300;
     XboxInterruptSnapshot saved,actual,bad;CHECK(xbox_interrupt_capture(&state,1,&saved,sizeof(saved)));
-    /* Original delivery body: masked IRQ stays pending, reentry denied, ISR
-     * precedes FIFO DPCs, and callbacks can enqueue more work for this drain. */
-    pending=1;irql=2;doa3_apu_deliver_irq();CHECK(pending && !callback_count);
-    irql=0;doa3_apu_deliver_irq();CHECK(!pending && irql==0 && esp==0x3000 && callback_count==3);
-    CHECK(order[0]==1 && order[1]==0x1000 && order[2]==0x1020 && !state.delivering);
+    /* Production delivery body: raised IRQL leaves DPCs queued, reentry is
+     * denied, DPCs run FIFO at DISPATCH_LEVEL, and a DPC can queue more work
+     * for this drain. */
+    CHECK(xbox_interrupt_push(&state,(XboxDpcEntry){0x1000,17,23}));
+    irql=2;doa3_deliver_dpcs();CHECK(!callback_count && state.dpc_count==1);
+    irql=0;doa3_deliver_dpcs();CHECK(irql==0 && esp==0x3000 && callback_count==2);
+    CHECK(order[0]==0x1000 && order[1]==0x1020 && !state.delivering);
     CHECK(xbox_interrupt_capture(&state,1,&actual,sizeof(actual)) && !memcmp(&saved,&actual,sizeof(saved)));
-    doa3_apu_deliver_irq();CHECK(callback_count==3 && !state.delivering);
+    doa3_deliver_dpcs();CHECK(callback_count==2 && !state.delivering);
     CHECK(xbox_interrupt_push(&state,(XboxDpcEntry){0x1000,17,23}));
     CHECK(!xbox_interrupt_push(&state,(XboxDpcEntry){0x1000,999,999}));
     CHECK(xbox_interrupt_push(&state,(XboxDpcEntry){0x1020,31,37}));
@@ -114,5 +113,5 @@ int main(void) {
     CHECK(xbox_interrupt_reset(&state));
     for(unsigned i=0;i<5;++i) xbox_interrupt_register(&state,(XboxIsrEntry){i+1,2,3});
     CHECK(state.tainted && !xbox_interrupt_capture(&state,1,&actual,sizeof(actual)));
-    puts("Interrupt checkpoint: callback order/reentry/masking verified with production delivery body; replay, malformed/stale images and overflow guards pass.");return 0;
+    puts("Interrupt checkpoint: DPC order/reentry/masking verified with production delivery body; replay, malformed/stale images and overflow guards pass.");return 0;
 }

@@ -1,7 +1,7 @@
 """Build an offline, isolated interpreter of the current translated fight code.
 
-No live game or audio-output runtime is linked. The production APU command
-backend runs only against a private captured instance. Unknown calls, host overrides, guest clocks,
+No live game or audio-output runtime is linked. DirectSound is host code
+(recomp_dsound.c) and is not modelled. Unknown calls, host overrides, guest clocks,
 out-of-range memory and excessive execution abort the sample; none is stubbed
 as success. The direct-call closure is conservative; indirect targets outside
 it are reported for audit rather than silently added.
@@ -26,17 +26,10 @@ NATIVE_CAMERA = {0x29E30}
 # 9DC20 initializes cubic interpolation coefficients from signed keyframe
 # tangents, duration and endpoint values. It is a leaf using only guest
 # memory/registers and x87 arithmetic; no host services or clocks are called.
-# 1F3660 is the indirect HRTF table selector at guest pointer 20BEA4.
-# It quantizes angles, reads guest tables, and writes two guest filter pointers;
-# its only direct helper is the guest float-to-int routine 1F3006. It neither
-# advances audio nor invokes device/host services. Replay the actual body.
-INDIRECT_ROOTS = {0x9DB70,0x9DC20,0x9DCC0,0x9DCF0,0x1F3660}
-# The seven callbacks installed at 20BE88..20BEA0 by 1F1307 compute
-# listener-relative position, HRTF angles, distance/cone attenuation, filtering,
-# and Doppler pitch. Their generated bodies and math helpers access only guest
-# vectors/tables and x87 state. 1F3204 calls the audited HRTF selector above.
-# Preserve the actual calculations, including all guest stack writes.
-INDIRECT_ROOTS |= {0x1F31B8,0x1F3204,0x1F3354,0x1F33C6,0x1F345D,0x1F34EB,0x1F35C2}
+# The DSOUND library's own callbacks (HRTF selection, 3D calculations, voice
+# AddRef/format) were roots while it ran; DirectSound is host code now and
+# none of them is reached.
+INDIRECT_ROOTS = {0x9DB70,0x9DC20,0x9DCC0,0x9DCF0}
 # E8030's captured scene callback: a leaf writing guest bytes [ECX+4]=0
 # and [ECX+5]=1. It has no rendering, clock, or native service interaction.
 INDIRECT_ROOTS |= {0xEA070}
@@ -54,9 +47,7 @@ INDIRECT_ROOTS |= {0xEA630}
 # EAF70 is the indirect scene-effects callback installed at C58A8C; execute
 # its actual guest render-state/geometry dispatch and direct-call closure.
 # Neither inclusion bypasses native graphics/flip guards or unknown callbacks.
-# 1F12D7 is a leaf audio-object AddRef: increments [argument+4], returns that
-# count in EAX and consumes its stack argument. It has no host audio effects.
-INDIRECT_ROOTS |= {0xE9710,0xEAF70,0x1F12D7}
+INDIRECT_ROOTS |= {0xE9710,0xEAF70}
 # The runtime wraps this original guest body with the shared host target tracker.
 # It requires a schema-4 snapshot and the explicit submission-stream profile.
 INDIRECT_ROOTS |= {0x1DC8E0}
@@ -64,16 +55,10 @@ INDIRECT_ROOTS |= {0x1DC8E0}
 # a nearest intersection through 2BB70 (the sibling of E9710). E69E0 is a leaf
 # iterator over guest effects entries, copying four words and an opacity value
 # into guest render constants. Neither owns native rendering resources.
-# 1F1816 is the guarded audio AddRef variant: execute its guest lock/status
-# logic and real refcount increment, retaining the existing kernel-call guards.
-# Its critical-section callbacks are NOT replaced with invented success here.
-INDIRECT_ROOTS |= {0xE97F0,0xE69E0,0x1F1816}
+INDIRECT_ROOTS |= {0xE97F0,0xE69E0}
 # Next captured dispatches: F5B90 returns the guest float at 250ED0; 51830
-# projects a guest position and clamps its height using DBFF0. 1F4A7D derives
-# voice format/channel flags from the guest descriptor and may write APU
-# methods 202F8/20304. Replay that actual body through the private captured APU
-# backend; unknown lock/service calls and unsupported MMIO still fail closed.
-INDIRECT_ROOTS |= {0xF5B90,0x51830,0x1F4A7D}
+# projects a guest position and clamps its height using DBFF0.
+INDIRECT_ROOTS |= {0xF5B90,0x51830}
 # Captured scene predicates/dispatch: 36C00's real guest body returns EAX=1
 # and pops its return address; 118FB0 is an exact tail wrapper for E73D0.
 # Include the bodies rather than special-casing their observed results.
@@ -152,6 +137,9 @@ def generate(gen, out):
             bodies[int(m[1],16)] = m[2]
     manual_source = (gen.parent / "recomp_manual.c").read_text()
     manual = {int(x,16) for x in re.findall(r"^void sub_([0-9A-F]{8})\(void\)", manual_source, re.M)}
+    # DirectSound's entry points are host code too: a sample reaching one stops.
+    dsound_source = (gen.parent / "recomp_dsound.c").read_text()
+    manual |= {int(x,16) for x in re.findall(r"^void sub_([0-9A-F]{8})\(void\)", dsound_source, re.M)}
     # A frame yield is translated explicitly. All other yields must abort.
     blocked = (manual - OBSERVERS - NATIVE_CAMERA - set(TASKS)) | NATIVE_BOUNDARIES | {0x1C65D8,0x1C64B7,0x1C64C7}
     selected = set(TASKS) | INDIRECT_ROOTS

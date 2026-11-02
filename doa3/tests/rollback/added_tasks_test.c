@@ -1,4 +1,4 @@
-/* Root conversion equivalence, not a replacement for live helper/APU replay. */
+/* Root conversion equivalence, not a replacement for live helper/audio replay. */
 #include <windows.h>
 #define RECOMP_GENERATED_CODE
 #include "recomp_types.h"

@@ -52,8 +52,10 @@ endif()
 # Explicit continuations for the opt-in rollback task experiment. Generate from
 # the current translated bodies, so future recompilation cannot leave stale code.
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
-file(GLOB ROLLBACK_HOST_MODEL CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/apu/*.[ch]")
-list(APPEND ROLLBACK_HOST_MODEL "${CMAKE_SOURCE_DIR}/src/kernel/kernel_rtl.c"
+set(ROLLBACK_HOST_MODEL "${CMAKE_SOURCE_DIR}/src/audio/dsound_hle.c"
+    "${CMAKE_SOURCE_DIR}/src/audio/dsound_hle.h"
+    "${CMAKE_SOURCE_DIR}/src/game/recomp/recomp_dsound.c"
+    "${CMAKE_SOURCE_DIR}/src/kernel/kernel_rtl.c"
     "${CMAKE_SOURCE_DIR}/src/nv2a/nv2a_queue.h" "${CMAKE_SOURCE_DIR}/src/nv2a/nv2a_core.c"
     "${CMAKE_SOURCE_DIR}/src/nv2a/nv2a_submission.h"
     "${CMAKE_SOURCE_DIR}/src/nv2a/nv2a_geometry_cache.h"
@@ -122,8 +124,6 @@ list(APPEND ROLLBACK_HOST_MODEL "${CMAKE_SOURCE_DIR}/src/kernel/kernel_rtl.c"
     "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_nested.py"
     "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_match.py")
 set(ROLLBACK_TASK_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/rollback_tasks.generated.c")
-list(APPEND ROLLBACK_HOST_MODEL
-    "${CMAKE_SOURCE_DIR}/src/apu/apu_live_checkpoint.inc")
 add_custom_command(OUTPUT "${ROLLBACK_TASK_SOURCE}"
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_tasks.py"
             --gen "${CMAKE_CURRENT_SOURCE_DIR}/recomp/gen" --output "${ROLLBACK_TASK_SOURCE}"
@@ -180,6 +180,7 @@ set(GAME_SOURCES
     dip_switches.c           # quality-of-life toggles, default off (General tab)
     xiso_extract.c           # first-run install of the game files from a disc image
     recomp/recomp_manual.c
+    recomp/recomp_dsound.c   # DirectSound entry points -> src/audio/dsound_hle.c
     burnout_compat_stubs.c   # inert stubs for burnout-only symbols the nv2a srcs need
     ${NV2A_SOURCES}
     ${RECOMP_GEN_SOURCES}
@@ -193,7 +194,6 @@ target_link_libraries(doa3 PRIVATE
     d3d8_compat
     dsound_compat
     input_compat
-    apu_emu
     doa3_ui
     doa3_online
 )
@@ -242,6 +242,7 @@ if(MSVC)
     # Generated/recompiled code is mechanical: silence its warnings, and allow
     # the huge translation units (/bigobj).
     set_source_files_properties(${RECOMP_GEN_SOURCES} ${ROLLBACK_TASK_SOURCE} recomp/recomp_manual.c
+        recomp/recomp_dsound.c
         PROPERTIES COMPILE_FLAGS "/w /bigobj")
     # NV2A emulation (from xemu) — silence its warnings too.
     set_source_files_properties(${NV2A_SOURCES} PROPERTIES COMPILE_FLAGS "/w")

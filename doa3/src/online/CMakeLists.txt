@@ -62,7 +62,6 @@ add_library(doa3_online STATIC
     ${ROLLBACK_LOOP_SOURCE}
     "${CMAKE_CURRENT_BINARY_DIR}/rollback_loop_input.generated.c"
     "${CMAKE_CURRENT_BINARY_DIR}/rollback_loop_time.generated.c"
-    "${CMAKE_CURRENT_BINARY_DIR}/rollback_audio_service.generated.c"
     ../nv2a/nv2a_frontend.c
     rollback_nested.c
     netplay_session.c
@@ -86,18 +85,6 @@ add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/rollback_loop_time.genera
         "${CMAKE_SOURCE_DIR}/src/game/recomp/gen/recomp_0002.c"
         "${CMAKE_SOURCE_DIR}/src/game/recomp/gen/recomp_0006.c"
         "${CMAKE_SOURCE_DIR}/src/game/recomp/recomp_manual.c" VERBATIM)
-
-add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/rollback_audio_service.generated.c"
-    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_audio_service.py"
-        "${CMAKE_CURRENT_BINARY_DIR}/rollback_audio_service.generated.c"
-    DEPENDS "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_audio_service.py"
-        "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_audio_sync.py"
-        "${CMAKE_SOURCE_DIR}/src/kernel/kernel_bridge.c"
-        "${CMAKE_SOURCE_DIR}/src/kernel/kernel_hal.c"
-        "${CMAKE_SOURCE_DIR}/src/kernel/kernel_rtl.c"
-        "${CMAKE_SOURCE_DIR}/tools/recomp/rollback_loop_input.py"
-        "${CMAKE_SOURCE_DIR}/src/game/rollback_audio_service.inc"
-        "${CMAKE_SOURCE_DIR}/src/game/recomp/gen/recomp_0010.c" VERBATIM)
 
 target_include_directories(doa3_online
     PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}

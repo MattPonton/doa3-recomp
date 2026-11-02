@@ -31,7 +31,7 @@ int xbox_interrupt_pop(XboxInterruptState *,XboxDpcEntry *);
 int xbox_interrupt_begin(XboxInterruptState *);
 void xbox_interrupt_end(XboxInterruptState *);
 /* Require all writers pinned and no delivery in progress. No callbacks run.
- * Pair restore with RAM, fibers, APU and other host state. Local blobs only. */
+ * Pair restore with RAM, fibers, audio and other host state. Local blobs only. */
 int xbox_interrupt_capture(const XboxInterruptState *,uint64_t epoch,void *,size_t);
 int xbox_interrupt_validate(const XboxInterruptState *,uint64_t epoch,const void *,size_t);
 int xbox_interrupt_restore(XboxInterruptState *,uint64_t epoch,const void *,size_t);

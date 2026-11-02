@@ -5,6 +5,7 @@
 #include "recomp/recomp_types.h"
 #include "d3d/d3d8_nv2aff.h"
 #include "nv2a/nv2a_pgraph_d3d11.h"
+#include "audio/dsound_hle.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,9 +20,7 @@
 HELPERS(DECLARE)
 #undef DECLARE
 static LONGLONG ticks(void){LARGE_INTEGER t;QueryPerformanceCounter(&t);return t.QuadPart;}
-extern volatile int g_apu_det;
 extern unsigned g_doa3_frames_presented;
-void mcpx_apu_det_frame(void);
 static int active;
 static int skip_guest_render;
 static uint64_t guest_skipped;
@@ -126,7 +125,7 @@ int doa3_native_frame_run(void *context){
        (f->suppress_host_draws && (f->skip_intermediate_preparation || f->skip_intermediate_guest_render)) ||
        count>DOA3_NATIVE_REPLAY_MAX_FRAMES ||
        !xbox_kernel_replay_owned() || !xbox_kernel_replay_healthy() ||
-       !g_apu_det)return 0;
+       !ds_det_active())return 0;
     uint64_t first=f->loop->intervals;
     if((first!=0 && !f->on_frame) || !doa3_input_tape_can_replay(f->tape,first+1,count) ||
        !xbox_kernel_replay_frame_budget(count) || !doa3_input_tape_replay(f->tape,first+1))return 0;
@@ -160,7 +159,7 @@ int doa3_native_frame_run(void *context){
           pgraph_d3d11_invalidate_guest_uploads();
       previous_hidden=hidden;
       if(frame && !doa3_input_tape_replay(f->tape,first+frame+1))goto done;
-      xbox_det_frame();mcpx_apu_det_frame();
+      xbox_det_frame();ds_det_frame();
       LONGLONG frame_started=ticks();
       unsigned previous_flips=flips;int completed=0;
       for(unsigned calls=0;calls<=DOA3_LOOP_MAX_CALLS;++calls){

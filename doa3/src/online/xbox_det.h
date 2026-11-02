@@ -53,7 +53,7 @@ void     xbox_det_frame(void);
 uint64_t xbox_det_frames(void);
 
 /* Local rollback checkpoint for the clock subsystem ONLY. This does not save
- * fiber continuations, APU state, guest memory or kernel handles. Capture and
+ * fiber continuations, audio state, guest memory or kernel handles. Capture and
  * restore on the game thread at a quiescent boundary, alongside those systems.
  * Valid only within the same active session; never send this struct to a peer.
  * Session bases/frequency are immutable, host clock offsets and the diagnostic

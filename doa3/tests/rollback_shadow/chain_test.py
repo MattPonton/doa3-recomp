@@ -7,7 +7,6 @@ import tempfile
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]/"tools/recomp"))
 from rollback_tasks import TASKS
-apu=b""
 gpu_mode=len(sys.argv)>2 and sys.argv[2]=="--gpu"
 nested_mode=gpu_mode or (len(sys.argv)>2 and sys.argv[2]=="--nested")
 GPU_BYTES=33344
@@ -16,8 +15,8 @@ GPU_BYTES=33344
 def fixture(bad=None):
     pages={}; prior={}; states={}; total=0; gpu_total=0; pfifo_total=0
     nested_bytes=16+16*264 if nested_mode else 0
-    output=bytearray(struct.pack("<8I",0x31434252,5 if gpu_mode else 4 if nested_mode else 3 if apu else 2,128*1024*1024,0,0,0,264+nested_bytes+len(apu)+(GPU_BYTES if gpu_mode else 0),len(TASKS)*6)+bytes(32))
-    if gpu_mode: output.extend(struct.pack("<2I",len(apu),GPU_BYTES))
+    output=bytearray(struct.pack("<8I",0x31434252,5 if gpu_mode else 4 if nested_mode else 2,128*1024*1024,0,0,0,264+nested_bytes+(GPU_BYTES if gpu_mode else 0),len(TASKS)*6)+bytes(32))
+    if gpu_mode: output.extend(struct.pack("<2I",0,GPU_BYTES))
 
     def put(address,value):
         page=pages.setdefault(address//4096,bytearray(4096))
@@ -35,14 +34,6 @@ def fixture(bad=None):
             output.extend(struct.pack("<66I",va,2,*([0]*64)))
             output.extend(struct.pack("<66I",0x85820,1,*child))
             output.extend(bytes(14*264))
-        if apu:
-            payload=bytearray(apu)
-            # CommandImage v1 begins with four u32 fields, then clock.base.
-            # This clock changes between tasks as a recorded external input.
-            clock=frame*100+regs[8]
-            if bad=="apu_result" and kind==2 and n==10: clock+=1
-            struct.pack_into("<Q",payload,16,clock)
-            output.extend(payload)
         if gpu_mode:
             values=[gpu_total,gpu_total]+[0]*60+[0,regs[8]]
             if bad=="gpu_result" and kind==2 and n==10: values[1]^=1
@@ -81,10 +72,6 @@ def fixture(bad=None):
 
 with tempfile.TemporaryDirectory() as directory:
     path=Path(directory)/"chain.rbc"
-    if len(sys.argv)>2 and not nested_mode:
-        blob=Path(directory)/"apu.bin"
-        subprocess.run([sys.argv[2],"--snapshot",str(blob)],check=True,capture_output=True,timeout=30)
-        apu=blob.read_bytes()
     def run(data,code,message):
         path.write_bytes(data)
         result=subprocess.run([sys.argv[1],str(path),"--chain"],capture_output=True,text=True,timeout=90)
@@ -105,11 +92,8 @@ with tempfile.TemporaryDirectory() as directory:
         run(bad,1,"invalid_gpu_snapshot")
         # GPU payload truncation before the first page delta is rejected.
         run(fixture()[:72+16+4504+GPU_BYTES-1],2,"nonconsecutive")
-    if apu:
-        run(fixture("apu_result"),1,"CHAIN DIFFERENT")
-    else:
-        run(fixture("continuation"),1,"continuation gap")
-        run(fixture("frame"),2,"nonconsecutive")
-        run(fixture("result"),1,"CHAIN DIFFERENT")
-        run(fixture()[:-16],2,"nonconsecutive")
+    run(fixture("continuation"),1,"continuation gap")
+    run(fixture("frame"),2,"nonconsecutive")
+    run(fixture("result"),1,"CHAIN DIFFERENT")
+    run(fixture()[:-16],2,"nonconsecutive")
 print("Chain checkpoint rewind, carried task state, external inputs, and missing/corrupt updates verified.")

@@ -10,9 +10,11 @@
 #include <string.h>
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"line %d: %s\n",__LINE__,#x);exit(1);}}while(0)
 ptrdiff_t g_xbox_mem_offset;
-volatile int g_xbox_det_active,g_apu_det;
+volatile int g_xbox_det_active;
+static int audio_det;
+int ds_det_active(void){return audio_det;}
 unsigned g_doa3_frames_presented;
-static unsigned begins,ends,advances,apu_advances,captures,checks,recorded;
+static unsigned begins,ends,advances,audio_advances,captures,checks,recorded;
 static int primary=1,training=TRAINING_IDLE,active_tape,fail_end,deny_endpoint;
 static unsigned ready_after=1;
 static unsigned expected_window=1;
@@ -75,17 +77,16 @@ int xbox_fiber_is_primary(void){return primary;}
 int doa3_rollback_tasks_enabled(void){return 1;}
 void training_status(TrainingStatus *s){memset(s,0,sizeof(*s));s->mode=training;}
 void xbox_det_current_bases(xbox_det_bases *b){memset(b,0,sizeof(*b));}
-void xbox_det_begin(const xbox_det_bases *b){(void)b;CHECK(!g_xbox_det_active);++begins;g_xbox_det_active=1;advances=apu_advances=captures=recorded=0;}
+void xbox_det_begin(const xbox_det_bases *b){(void)b;CHECK(!g_xbox_det_active);++begins;g_xbox_det_active=1;advances=audio_advances=captures=recorded=0;}
 uint32_t xbox_det_epoch(void){return 7;}
-void xbox_det_end(void){CHECK(g_xbox_det_active && !g_apu_det && !fixture.used && !input.used);++ends;g_xbox_det_active=0;}
+void xbox_det_end(void){CHECK(g_xbox_det_active && !audio_det && !fixture.used && !input.used);++ends;g_xbox_det_active=0;}
 void xbox_det_frame(void){CHECK(g_xbox_det_active && ((!active_tape && !captures) || (advances==ready_after+recorded && active_tape && captures==1)));++advances;}
-void mcpx_apu_det_frame(void){CHECK(g_apu_det && advances==apu_advances+1);++apu_advances;}
-uint64_t mcpx_apu_xgscnt_now(void){return 0;}
-void mcpx_apu_det_begin(uint64_t base){(void)base;CHECK(g_xbox_det_active && !g_apu_det);g_apu_det=1;}
-void mcpx_apu_det_end(void){CHECK(g_apu_det);g_apu_det=0;}
+void ds_det_frame(void){CHECK(audio_det && advances==audio_advances+1);++audio_advances;}
+int ds_det_begin(void){CHECK(g_xbox_det_active && !audio_det);audio_det=1;return 1;}
+void ds_det_end(void){CHECK(audio_det);audio_det=0;}
 void doa3_loop_init(Doa3LoopState *s){memset(s,0,sizeof(*s));s->schema=DOA3_LOOP_SCHEMA;}
 Doa3FightCheckpoint *doa3_fight_checkpoint_create(Doa3LoopState *s){
-    CHECK(g_xbox_det_active && g_apu_det && !fixture.used && s->schema==DOA3_LOOP_SCHEMA);
+    CHECK(g_xbox_det_active && audio_det && !fixture.used && s->schema==DOA3_LOOP_SCHEMA);
     token=s;fixture.used=1;return &fixture;
 }
 Doa3CheckpointSession *doa3_fight_checkpoint_session(Doa3FightCheckpoint *s){CHECK(s==&fixture && s->used);return (void *)s;}
@@ -98,7 +99,7 @@ Doa3CheckpointImage *doa3_checkpoint_image_capture(Doa3CheckpointSession *s,uint
 int doa3_fight_checkpoint_rewind_check(Doa3FightCheckpoint *s,const Doa3CheckpointImage *a,uint64_t first,
     const Doa3CheckpointImage *b,uint64_t last,Doa3CheckpointComparison *d){
     CHECK(s==&fixture && a==&images[0] && b==&images[1] && first==0 && last==expected_window);
-    CHECK(!active_tape && recorded==expected_window && token->intervals==expected_window && advances==ready_after+expected_window && apu_advances==advances);
+    CHECK(!active_tape && recorded==expected_window && token->intervals==expected_window && advances==ready_after+expected_window && audio_advances==advances);
     memset(d,0,sizeof(*d));++checks;return !compare_failure && checks!=fail_on_check;
 }
 Doa3InputTape *doa3_input_tape_create(unsigned n){CHECK(n==expected_window && captures==1);input.used=1;return &input;}
@@ -160,7 +161,7 @@ int main(int argc,char **argv){
                 }
                 ++g_doa3_frames_presented;frames(1);
             }
-            CHECK(ends==trial && !active_tape && !audit_active && !g_xbox_det_active && !g_apu_det && !fixture.used);
+            CHECK(ends==trial && !active_tape && !audit_active && !g_xbox_det_active && !audio_det && !fixture.used);
             CHECK(!forced_uploads && !forced_scalar && !forced_geometry);
         }
         CHECK(checks==(repeat ? (mismatch ? (trials-1)*repetitions+2:trials*repetitions):trials-(transition || input_fail)));
@@ -172,17 +173,17 @@ int main(int argc,char **argv){
     frames(90);ram[0x596AA5]=1;frames(1);ram[0x596AA5]=0;
     frames(119);CHECK(!begins);frames(1);
     if(disabled || conflict){CHECK(!begins && !advances);puts("Window probe disabled/conflict gate passed");return 0;}
-    CHECK(begins==1 && !ends && advances==1 && apu_advances==1 && !active_tape && !captures && !checks);
+    CHECK(begins==1 && !ends && advances==1 && audio_advances==1 && !active_tape && !captures && !checks);
     if(timeout){frames(120);CHECK(ends==1 && advances==120 && !captures && !checks && !g_xbox_det_active);return 0;}
     for(unsigned i=1;i<ready_after;++i){frames(1);CHECK(!captures && !active_tape && !checks);}
     frames(1);
-    CHECK(advances==ready_after+1 && apu_advances==advances && active_tape && captures==1);
+    CHECK(advances==ready_after+1 && audio_advances==advances && active_tape && captures==1);
     if(transition)ram[0x5A2858]=2;
     if(!bad_present)++g_doa3_frames_presented;
     frames(1);
     CHECK(checks==(!fail_end && !deny_endpoint && !transition && !bad_present && !audit_reject && !audit_invalid));
     CHECK(!audit_active);if(audit_reject || audit_invalid)CHECK(captures==1);
-    CHECK(ends==1 && !g_apu_det && !g_xbox_det_active && !active_tape && !fixture.used && !input.used);
+    CHECK(ends==1 && !audio_det && !g_xbox_det_active && !active_tape && !fixture.used && !input.used);
     frames(300);CHECK(begins==1 && advances==ready_after+1);
     guest_memory_fixture_free(ram);puts("Window probe: two boundaries, one clock tick, input order, eligibility and cleanup passed");return 0;
 }

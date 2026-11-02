@@ -8,10 +8,10 @@
 ptrdiff_t g_xbox_mem_offset;
 uint32_t g_eax,g_ecx,g_edx,g_esp,g_ebx,g_esi,g_edi,g_seh_ebp;
 double g_fp_stack[8];int g_fp_top;
-volatile int g_apu_det=1;
+int ds_det_active(void){return 1;}
 unsigned g_doa3_frames_presented=101;
 static int tape,healthy=1,owned=1,primary=1,fail_stop,deny_input,bad_flip;
-static unsigned calls,clock_steps,apu_steps;
+static unsigned calls,clock_steps,audio_steps;
 static unsigned expected_frames=1,replayed,ended;
 static unsigned fail_frame;
 static int suppressed,expected_suppressed;
@@ -53,7 +53,7 @@ int doa3_input_tape_replay_ready(const Doa3InputTape *p){return p && tape && !de
 int doa3_input_tape_end(Doa3InputTape *p){CHECK(p && tape);tape=0;++ended;return 1;}
 int doa3_input_tape_abort(Doa3InputTape *p){CHECK(p);tape=0;return 1;}
 void xbox_det_frame(void){CHECK(tape && fail_stop && doa3_native_frame_active());++clock_steps;}
-void mcpx_apu_det_frame(void){++apu_steps;}
+void ds_det_frame(void){++audio_steps;}
 static void helper(unsigned routine){
     CHECK(suppressed==expected_suppressed);
     CHECK(prep_suppressed==((expected_prep || expected_guest) && replayed<expected_frames));
@@ -83,7 +83,7 @@ int main(void){
         else CHECK(tape); /* failure keeps input gate through recovery */
         doa3_input_tape_abort(frame.tape);
     }
-    CHECK(clock_steps==3 && apu_steps==3);
+    CHECK(clock_steps==3 && audio_steps==3);
     deny_input=bad_flip=0;expected_frames=frame.frames=2;
     for(unsigned mode=0;mode<2;++mode){
         doa3_loop_init(&loop);g_esp=0x100000;calls=tape=replayed=ended=0;fail_frame=mode ? 2:0;
@@ -92,7 +92,7 @@ int main(void){
         CHECK(loop.intervals==(mode ? 1:2) && !doa3_native_frame_active() && !fail_stop);
         CHECK(tape==(int)mode);doa3_input_tape_abort(frame.tape);
     }
-    CHECK(clock_steps==7 && apu_steps==7);
+    CHECK(clock_steps==7 && audio_steps==7);
     for(unsigned n=4;n<=8;n*=2){
       expected_suppressed=frame.suppress_host_draws=1;
       expected_frames=frame.frames=n;
@@ -100,7 +100,7 @@ int main(void){
         doa3_loop_init(&loop);g_esp=0x100000;calls=tape=replayed=ended=0;fail_frame=mode ? n:0;
         unsigned before=clock_steps;
         CHECK(doa3_native_frame_run(&frame)==!mode);
-        CHECK(clock_steps==before+n && apu_steps==clock_steps && replayed==n && ended==n-mode);
+        CHECK(clock_steps==before+n && audio_steps==clock_steps && replayed==n && ended==n-mode);
         CHECK(loop.intervals==n-mode && !doa3_native_frame_active() && !fail_stop && g_doa3_frames_presented==101);
         CHECK(tape==(int)mode && !suppressed);doa3_input_tape_abort(frame.tape);
       }

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(audio_capture_test C)
 enable_testing()
-set(SOURCE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../src/apu/apu_xaudio2.c")
+set(SOURCE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../src/audio/oal_output.c")
 file(READ "${SOURCE_PATH}" SOURCE)
 string(FIND "${SOURCE}" "#define MIX_RING_FRAMES" BEGIN)
 string(FIND "${SOURCE}" "/* Submit a buffer of mixed samples" END)

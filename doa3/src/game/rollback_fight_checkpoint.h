@@ -3,7 +3,7 @@
 #include "rollback_loop.h"
 #include "online/rollback_checkpoint.h"
 /* Production binding for the first loaded-fight local trial. Caller owns the
- * deterministic clock/APU sessions, parked outer loop, and exclusion of UI,
+ * deterministic clock/audio sessions, parked outer loop, and exclusion of UI,
  * device/configuration, movie, topology and other external writers throughout
  * the window. This object does not provide frame advancement or enable replay.
  * Create/destroy at the same passive primary boundary in the same session.

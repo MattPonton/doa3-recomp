@@ -9,7 +9,8 @@
 ptrdiff_t g_xbox_mem_offset;
 uint32_t g_esp;
 unsigned g_doa3_frames_presented;
-volatile int g_xbox_det_active,g_apu_det;
+volatile int g_xbox_det_active;
+int ds_det_active(void){return 0;}
 const unsigned char doa3_rollback_source_digest[32]={0};
 static unsigned char *memory;
 static unsigned counts[400];
@@ -70,7 +71,7 @@ int main(int argc,char **argv)
         }
         doa3_rollback_frame_boundary(0x1C650C,0);
     }
-    CHECK(!g_xbox_det_active && !g_apu_det);
+    CHECK(!g_xbox_det_active && !ds_det_active());
     file=fopen(argv[1],"rb"); CHECK(file); fclose(file);
     guest_memory_fixture_free(memory);
     return 0;

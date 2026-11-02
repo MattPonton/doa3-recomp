@@ -4,9 +4,11 @@
 /* Local diagnostic format, little endian. Not a portable save or net snapshot.
  * Every byte of the base guest mapping is included through 4 KB page deltas. */
 #define DOA3_RBC_MAGIC 0x31434252u
-#define DOA3_RBC_VERSION 5u
-/* v5 follows the source digest with APU/GPU payload sizes (two u32s).
- * Records contain task state, optional APU, optional USER queue, then pages. */
+#define DOA3_RBC_VERSION 6u
+/* v5 follows the source digest with audio/GPU payload sizes (two u32s).
+ * Records contain task state, optional audio, optional USER queue, then pages.
+ * v6: the audio payload is the DirectSound snapshot (ds_rollback_capture),
+ * no longer the APU command image. */
 /* v4 appends the explicit nested call stack to each task-state record. */
 /* v2 record word 3 is the presentation counter at the task boundary. */
 #define DOA3_RBC_PAGE 4096u

@@ -35,7 +35,7 @@ int xbox_fiber_task_restore(const void *saved, size_t bytes);
  * watchdog, two vblank workers and the file worker at its self-suspend wait.
  * Requires deterministic-clock ownership and a primary dispatcher boundary.
  * Returns total converted fibers. Includes worker rotation/idle scheduling;
- * caller still owns RAM, clocks, kernel objects, APU and file state. Unconverted
+ * caller still owns RAM, clocks, kernel objects, audio and file state. Unconverted
  * worker execution/wakes, nested native worker waits and topology changes
  * invalidate the whole checkpoint.
  * Validates everything before changing any fiber. Never serializes a C stack. */

@@ -1,5 +1,5 @@
 /* Opt-in, read-only audit of complete dispatcher passes and the gap between
- * them. Never restores RAM or changes the clock, APU, inputs or task ordering. */
+ * them. Never restores RAM or changes the clock, audio, inputs or task ordering. */
 #include "online/rollback_frame.h"
 #include "online/rollback_capture.h"
 #include "online/xbox_det.h"
@@ -9,12 +9,12 @@
 #include "rollback_input_tape.h"
 #include "rollback_fight_checkpoint.h"
 #include "nv2a/nv2a_pgraph_d3d11.h"
+#include "audio/dsound_hle.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 extern unsigned g_doa3_frames_presented;
-extern volatile int g_apu_det;
 void xbox_kernel_copy_counts(uint32_t counts[DOA3_RBF_KERNEL_COUNTS]);
 static int enabled=-1, active, pending, failed;
 static unsigned warmup, frame, slot, routine, task_count;
@@ -43,7 +43,7 @@ static int eligible(void)
 {
     TrainingStatus status;
     if (MEM8(0x5A2858)!=7 || MEM8(0x596A37)!=1 || MEM8(0x596AA5) ||
-        g_xbox_det_active || g_apu_det) return 0;
+        g_xbox_det_active || ds_det_active()) return 0;
     training_status(&status);
     return status.mode==TRAINING_IDLE;
 }

@@ -459,7 +459,7 @@ static void DrawPlayerControls()
 
 extern "C" volatile LONG g_doa3_trace_request;   /* recomp_manual.c */
 extern "C" int g_doa3_state_request, g_doa3_state_status;
-extern "C" void apu_mix_dump_now(void);   /* apu_xaudio2.c, F10 */   /* rollback_fight_window.c, DOA3_STATE_TEST */
+/* rollback_fight_window.c, DOA3_STATE_TEST */
 extern "C" volatile LONG g_doa3_texdump_request;  /* nv2a_pgraph_d3d11.c */
 
 void DrawControlsSection()
@@ -2392,10 +2392,6 @@ extern "C" int doa3_ui_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         }
         /* rollback.33: save state test hotkeys, F5 save / F9 load, while the
          * test is running (DOA3_STATE_TEST). */
-        if (msg == WM_KEYDOWN && wp == VK_F10) {   /* rollback.39: dump the last 30 s of audio */
-            apu_mix_dump_now();
-            return 1;
-        }
         if (msg == WM_KEYDOWN && g_doa3_state_status == 2 && (wp == VK_F5 || wp == VK_F9)) {
             g_doa3_state_request = wp == VK_F5 ? 1 : 2;
             return 1;

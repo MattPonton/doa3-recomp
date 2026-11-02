@@ -727,19 +727,7 @@ void xbox_fiber_frame_report(unsigned frame, double frame_ms)
                 fprintf(stderr, " #%d(%08X/%08X) %.1fms x%u", i, g_fib[i].ctx1,
                         g_fib[i].task_routine ? g_fib[i].task_routine : g_fib[i].start_routine, ms, runs);
         }
-        {
-            extern volatile long long g_apu_det_ticks, g_apu_det_max_ticks;
-            extern volatile unsigned g_apu_det_frames;
-            fprintf(stderr, " | APU chip on this thread %.1fms in %u chip frames (longest %.2fms)",
-                    1000.0 * (double)g_apu_det_ticks / (double)s_qpf, g_apu_det_frames,
-                    1000.0 * (double)g_apu_det_max_ticks / (double)s_qpf);
-        }
         fprintf(stderr, "\n");
-    }
-    {
-        extern volatile long long g_apu_det_ticks, g_apu_det_max_ticks;
-        extern volatile unsigned g_apu_det_frames;
-        g_apu_det_ticks = g_apu_det_max_ticks = 0; g_apu_det_frames = 0;
     }
     for (i = 0; i < MAX_FIBERS; i++) { s_ticks[i] = g_fib_ticks[i]; s_runs[i] = g_fib_runs[i]; }
 }

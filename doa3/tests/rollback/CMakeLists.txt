@@ -126,44 +126,6 @@ if(WIN32)
         "${CMAKE_CURRENT_BINARY_DIR}/session_codec_types.generated.inc" "${CMAKE_CURRENT_BINARY_DIR}/session_codec.generated.inc")
     target_include_directories(rollback_session_codec_test PRIVATE ../../src "${CMAKE_CURRENT_BINARY_DIR}")
     add_test(NAME rollback_session_codec COMMAND rollback_session_codec_test)
-    foreach(kind IN ITEMS production reference)
-        if(kind STREQUAL "production")
-            set(audio_output "${CMAKE_CURRENT_BINARY_DIR}/rollback_audio_service.generated.c")
-            set(audio_args)
-        else()
-            set(audio_output "${CMAKE_CURRENT_BINARY_DIR}/audio_service_reference.generated.inc")
-            set(audio_args --fixture)
-        endif()
-        add_custom_command(OUTPUT "${audio_output}"
-            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../../tools/recomp/rollback_audio_service.py"
-                "${audio_output}" ${audio_args}
-            DEPENDS ../../tools/recomp/rollback_audio_service.py ../../tools/recomp/rollback_loop_input.py
-                ../../tools/recomp/rollback_audio_sync.py ../../src/kernel/kernel_bridge.c
-                ../../src/kernel/kernel_hal.c ../../src/kernel/kernel_rtl.c
-                ../../src/game/recomp/gen/recomp_0010.c ../../src/game/rollback_audio_service.inc VERBATIM)
-    endforeach()
-    add_executable(rollback_audio_service_test audio_service_test.c ../../src/game/rollback_input_tape.c
-        "${CMAKE_CURRENT_BINARY_DIR}/rollback_loop.generated.c"
-        "${CMAKE_CURRENT_BINARY_DIR}/rollback_audio_service.generated.c"
-        "${CMAKE_CURRENT_BINARY_DIR}/audio_service_reference.generated.inc")
-    target_include_directories(rollback_audio_service_test PRIVATE ../../src ../../src/game/recomp/gen "${CMAKE_CURRENT_BINARY_DIR}")
-    add_test(NAME rollback_audio_service COMMAND rollback_audio_service_test)
-    add_test(NAME rollback_audio_service_source_guard COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/audio_service_generator_test.py")
-    set_tests_properties(rollback_audio_service PROPERTIES TIMEOUT 45)
-    add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/audio_sync_endpoints.generated.inc"
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../../tools/recomp/rollback_audio_sync.py"
-            "${CMAKE_CURRENT_BINARY_DIR}/audio_sync_endpoints.generated.inc"
-        DEPENDS ../../tools/recomp/rollback_audio_sync.py ../../src/kernel/kernel_bridge.c
-            ../../src/kernel/kernel_hal.c ../../src/kernel/kernel_rtl.c VERBATIM)
-    add_executable(rollback_audio_sync_test audio_sync_test.c ../../src/game/rollback_input_tape.c
-        ../../src/kernel/kernel_replay.c ../../src/online/xbox_det.c
-        "${CMAKE_CURRENT_BINARY_DIR}/rollback_loop.generated.c"
-        "${CMAKE_CURRENT_BINARY_DIR}/rollback_audio_service.generated.c"
-        "${CMAKE_CURRENT_BINARY_DIR}/audio_service_reference.generated.inc"
-        "${CMAKE_CURRENT_BINARY_DIR}/audio_sync_endpoints.generated.inc")
-    target_include_directories(rollback_audio_sync_test PRIVATE ../../src ../../src/game/recomp/gen "${CMAKE_CURRENT_BINARY_DIR}")
-    add_test(NAME rollback_audio_sync COMMAND rollback_audio_sync_test)
-    set_tests_properties(rollback_audio_sync PROPERTIES TIMEOUT 180)
     add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/pipeline.generated.inc"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/generate_pipeline_fixture.py"
             "${CMAKE_CURRENT_BINARY_DIR}/pipeline.generated.inc"
@@ -341,78 +303,42 @@ if(WIN32)
     add_executable(rollback_submission_test submission_test.c)
     target_include_directories(rollback_submission_test PRIVATE ../../src/nv2a)
     add_test(NAME rollback_submission COMMAND rollback_submission_test)
-    add_library(apu_command_fixture STATIC ../../src/apu/apu_rollback.c ../../src/apu/apu_vp.c)
-    target_include_directories(apu_command_fixture PUBLIC ../../src/apu ../../src/nv2a)
-    target_compile_definitions(apu_command_fixture PRIVATE _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES)
-    if(MSVC)
-        target_compile_options(apu_command_fixture PRIVATE /Gy)
-    endif()
-    add_executable(apu_snapshot_test apu_snapshot_test.c)
-    target_link_libraries(apu_snapshot_test PRIVATE apu_command_fixture)
-    target_compile_definitions(apu_snapshot_test PRIVATE _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES)
-    add_test(NAME rollback_apu_snapshot COMMAND apu_snapshot_test)
-    add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/apu_live.generated.inc"
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/generate_apu_live_fixture.py"
-            "${CMAKE_CURRENT_BINARY_DIR}/apu_live.generated.inc"
-        DEPENDS generate_apu_live_fixture.py ../../src/apu/apu_core.c VERBATIM)
-    add_executable(apu_live_test apu_live_test.c ../../src/apu/apu_dsp.c
-        "${CMAKE_CURRENT_BINARY_DIR}/apu_live.generated.inc")
-    target_include_directories(apu_live_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
-    target_link_libraries(apu_live_test PRIVATE apu_command_fixture winmm)
-    target_compile_definitions(apu_live_test PRIVATE _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES)
-    add_test(NAME rollback_apu_live_processing COMMAND apu_live_test)
-    set_tests_properties(rollback_apu_live_processing PROPERTIES TIMEOUT 30)
-    add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/apu_ownership.generated.inc"
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/generate_apu_ownership_fixture.py"
-            "${CMAKE_CURRENT_BINARY_DIR}/apu_ownership.generated.inc"
-        DEPENDS generate_apu_ownership_fixture.py ../../src/apu/apu_core.c VERBATIM)
-    add_executable(apu_ownership_test apu_ownership_test.c ../../src/online/xbox_det.c
-        ../../src/game/rollback_ownership.c "${CMAKE_CURRENT_BINARY_DIR}/apu_ownership.generated.inc")
-    target_include_directories(apu_ownership_test PRIVATE ../../src ../../src/game/recomp/gen "${CMAKE_CURRENT_BINARY_DIR}")
-    target_link_libraries(apu_ownership_test PRIVATE apu_command_fixture)
-    target_compile_definitions(apu_ownership_test PRIVATE _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES)
-    add_test(NAME rollback_apu_ownership COMMAND apu_ownership_test)
-    add_test(NAME rollback_apu_processing_audit COMMAND apu_ownership_test processing)
-    set_tests_properties(rollback_apu_processing_audit PROPERTIES TIMEOUT 20
-        PASS_REGULAR_EXPRESSION "ROLLBACK-AUDIO-PROCESSING.*passed")
-    set_tests_properties(rollback_apu_ownership PROPERTIES TIMEOUT 20)
-    add_test(NAME rollback_render_capture_ownership COMMAND apu_ownership_test renderer)
-    add_test(NAME rollback_render_capture_mismatch COMMAND apu_ownership_test renderer-mismatch)
+    add_executable(rollback_ownership_audit_test ownership_audit_test.c ../../src/online/xbox_det.c
+        ../../src/game/rollback_ownership.c)
+    target_include_directories(rollback_ownership_audit_test PRIVATE ../../src ../../src/game/recomp/gen)
+    target_compile_definitions(rollback_ownership_audit_test PRIVATE _CRT_SECURE_NO_WARNINGS)
+    add_test(NAME rollback_ownership_audit COMMAND rollback_ownership_audit_test)
+    add_test(NAME rollback_render_capture_ownership COMMAND rollback_ownership_audit_test renderer)
+    add_test(NAME rollback_render_capture_mismatch COMMAND rollback_ownership_audit_test renderer-mismatch)
+    set_tests_properties(rollback_ownership_audit PROPERTIES TIMEOUT 20
+        PASS_REGULAR_EXPRESSION "ROLLBACK-OWNERSHIP.*passed")
     set_tests_properties(rollback_render_capture_ownership PROPERTIES TIMEOUT 20
         PASS_REGULAR_EXPRESSION "ROLLBACK-OWNERSHIP.*passed")
     set_tests_properties(rollback_render_capture_mismatch PROPERTIES TIMEOUT 20
         PASS_REGULAR_EXPRESSION "ROLLBACK-OWNERSHIP.*rejected")
-    add_executable(apu_replay_test apu_replay_test.c ../../src/apu/apu_replay.c ../../src/apu/apu_dsp.c)
-    target_link_libraries(apu_replay_test PRIVATE apu_command_fixture)
-    target_compile_definitions(apu_replay_test PRIVATE DOA3_APU_OFFLINE _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES)
-    add_test(NAME rollback_apu_replay COMMAND apu_replay_test)
-    set_tests_properties(rollback_apu_replay PROPERTIES TIMEOUT 60)
     add_executable(rollback_checkpoint_integration_test checkpoint_integration_test.c
         ../../src/game/rollback_input.c ../../src/game/rollback_input_tape.c
         "${CMAKE_CURRENT_BINARY_DIR}/input_bridge.generated.inc"
         ../../src/online/rollback_checkpoint.c ../../src/online/xbox_det.c
         ../../src/kernel/xbox_fiber.c ../../src/kernel/kernel_apc.c ../../src/kernel/kernel_stream.c ../../src/kernel/xbox_heap.c ../../src/kernel/kernel_interrupt.c
-        ../../src/apu/apu_replay.c ../../src/apu/apu_dsp.c ../../src/nv2a/nv2a_frontend.c)
-    target_link_libraries(rollback_checkpoint_integration_test PRIVATE apu_command_fixture)
+        ../../src/nv2a/nv2a_frontend.c)
     target_include_directories(rollback_checkpoint_integration_test PRIVATE ../../src ../../src/online ../../src/game/recomp/gen "${CMAKE_CURRENT_BINARY_DIR}")
-    target_compile_definitions(rollback_checkpoint_integration_test PRIVATE DOA3_APU_OFFLINE _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES)
+    target_compile_definitions(rollback_checkpoint_integration_test PRIVATE _CRT_SECURE_NO_WARNINGS)
     add_test(NAME rollback_checkpoint_integration COMMAND rollback_checkpoint_integration_test)
     set_tests_properties(rollback_checkpoint_integration PROPERTIES TIMEOUT 90)
-    add_executable(rollback_checkpoint_live_audio_test checkpoint_integration_test.c checkpoint_live_audio.c
+    add_executable(rollback_checkpoint_trial_test checkpoint_integration_test.c
         ../../src/game/rollback_trial.c
         ../../src/kernel/kernel_replay.c
-        "${CMAKE_CURRENT_BINARY_DIR}/apu_live.generated.inc"
         "${CMAKE_CURRENT_BINARY_DIR}/input_bridge.generated.inc"
         ../../src/game/rollback_input.c ../../src/game/rollback_input_tape.c
         ../../src/online/rollback_checkpoint.c ../../src/online/xbox_det.c
         ../../src/kernel/xbox_fiber.c ../../src/kernel/kernel_apc.c ../../src/kernel/kernel_stream.c ../../src/kernel/xbox_heap.c ../../src/kernel/kernel_interrupt.c
-        ../../src/apu/apu_dsp.c ../../src/nv2a/nv2a_frontend.c)
-    target_link_libraries(rollback_checkpoint_live_audio_test PRIVATE apu_command_fixture winmm)
-    target_include_directories(rollback_checkpoint_live_audio_test PRIVATE ../../src ../../src/online ../../src/game/recomp/gen "${CMAKE_CURRENT_BINARY_DIR}")
-    target_compile_definitions(rollback_checkpoint_live_audio_test PRIVATE DOA3_CP_LIVE_AUDIO _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES)
-    add_test(NAME rollback_checkpoint_live_audio COMMAND rollback_checkpoint_live_audio_test)
-    set_tests_properties(rollback_checkpoint_live_audio PROPERTIES TIMEOUT 120)
-    add_executable(rollback_checkpoint_render_audio_test checkpoint_integration_test.c checkpoint_live_audio.c checkpoint_renderer.c
+        ../../src/nv2a/nv2a_frontend.c)
+        target_include_directories(rollback_checkpoint_trial_test PRIVATE ../../src ../../src/online ../../src/game/recomp/gen "${CMAKE_CURRENT_BINARY_DIR}")
+    target_compile_definitions(rollback_checkpoint_trial_test PRIVATE DOA3_CP_TRIAL _CRT_SECURE_NO_WARNINGS)
+    add_test(NAME rollback_checkpoint_trial COMMAND rollback_checkpoint_trial_test)
+    set_tests_properties(rollback_checkpoint_trial PROPERTIES TIMEOUT 120)
+    add_executable(rollback_checkpoint_render_trial_test checkpoint_integration_test.c checkpoint_renderer.c
         ../../src/nv2a/nv2a_pgraph_state.c ../../src/nv2a/nv2a_renderer_checkpoint.c
         ../../src/d3d/d3d8_replay_images.c ../../src/d3d/d3d8_resources.c
         ../../src/d3d/d3d8_shaders.c ../../src/d3d/d3d8_states.c
@@ -421,17 +347,16 @@ if(WIN32)
         "${CMAKE_CURRENT_BINARY_DIR}/texture_restore.generated.inc"
         ../../src/game/rollback_trial.c
         ../../src/kernel/kernel_replay.c
-        "${CMAKE_CURRENT_BINARY_DIR}/apu_live.generated.inc"
         "${CMAKE_CURRENT_BINARY_DIR}/input_bridge.generated.inc"
         ../../src/game/rollback_input.c ../../src/game/rollback_input_tape.c
         ../../src/online/rollback_checkpoint.c ../../src/online/xbox_det.c
         ../../src/kernel/xbox_fiber.c ../../src/kernel/kernel_apc.c ../../src/kernel/kernel_stream.c ../../src/kernel/xbox_heap.c ../../src/kernel/kernel_interrupt.c
-        ../../src/apu/apu_dsp.c ../../src/nv2a/nv2a_frontend.c)
-    target_link_libraries(rollback_checkpoint_render_audio_test PRIVATE apu_command_fixture winmm d3d11 d3dcompiler dxguid)
-    target_include_directories(rollback_checkpoint_render_audio_test PRIVATE ../../src ../../src/d3d ../../src/online ../../src/game/recomp/gen "${CMAKE_CURRENT_BINARY_DIR}")
-    target_compile_definitions(rollback_checkpoint_render_audio_test PRIVATE DOA3_CP_LIVE_AUDIO DOA3_CP_RENDERER _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES)
-    add_test(NAME rollback_checkpoint_render_audio COMMAND rollback_checkpoint_render_audio_test)
-    set_tests_properties(rollback_checkpoint_render_audio PROPERTIES TIMEOUT 180)
+        ../../src/nv2a/nv2a_frontend.c)
+    target_link_libraries(rollback_checkpoint_render_trial_test PRIVATE d3d11 d3dcompiler dxguid)
+    target_include_directories(rollback_checkpoint_render_trial_test PRIVATE ../../src ../../src/d3d ../../src/online ../../src/game/recomp/gen "${CMAKE_CURRENT_BINARY_DIR}")
+    target_compile_definitions(rollback_checkpoint_render_trial_test PRIVATE DOA3_CP_TRIAL DOA3_CP_RENDERER _CRT_SECURE_NO_WARNINGS)
+    add_test(NAME rollback_checkpoint_render_trial COMMAND rollback_checkpoint_render_trial_test)
+    set_tests_properties(rollback_checkpoint_render_trial PROPERTIES TIMEOUT 180)
     add_executable(rollback_capture_test rollback_capture_test.c ../../src/game/rollback_capture.c)
     target_include_directories(rollback_capture_test PRIVATE ../../src ../../src/online
         ../../src/game ../../src/game/recomp/gen)
@@ -440,8 +365,8 @@ if(WIN32)
     set_tests_properties(rollback_capture PROPERTIES TIMEOUT 60)
     add_test(NAME rollback_capture_contiguous COMMAND rollback_capture_test "${CMAKE_CURRENT_BINARY_DIR}/capture-contiguous-test.rbc" contiguous)
     set_tests_properties(rollback_capture_contiguous PROPERTIES TIMEOUT 60)
-    add_test(NAME rollback_capture_apu COMMAND rollback_capture_test "${CMAKE_CURRENT_BINARY_DIR}/capture-apu-test.rbc" apu)
-    set_tests_properties(rollback_capture_apu PROPERTIES TIMEOUT 60)
+    add_test(NAME rollback_capture_audio COMMAND rollback_capture_test "${CMAKE_CURRENT_BINARY_DIR}/capture-audio-test.rbc" audio)
+    set_tests_properties(rollback_capture_audio PROPERTIES TIMEOUT 60)
     add_test(NAME rollback_capture_gpu COMMAND rollback_capture_test "${CMAKE_CURRENT_BINARY_DIR}/capture-gpu-test.rbc" gpu)
     set_tests_properties(rollback_capture_gpu PROPERTIES TIMEOUT 60)
     add_test(NAME rollback_capture_cancel COMMAND rollback_capture_test "${CMAKE_CURRENT_BINARY_DIR}/capture-cancel-test.rbc" cancel)

@@ -405,10 +405,11 @@ static void bridge_NtWaitForSingleObject(void)
 }
 
 /* ── KeInitializeInterrupt (ordinal 109) / KeInsertQueueDpc (119) ──
- * The DirectSound driver's interrupt path. KeInitializeInterrupt records
- * the KINTERRUPT's service routine + context; KeInsertQueueDpc queues the
- * DPC (routine/context live in the KDPC written by KeInitializeDpc). The
- * game thread drains both from doa3_apu_deliver_irq once per frame. */
+ * KeInitializeInterrupt records the KINTERRUPT's service routine + context;
+ * KeInsertQueueDpc queues the DPC (routine/context live in the KDPC written
+ * by KeInitializeDpc). The game thread runs queued DPCs from
+ * doa3_deliver_dpcs once per frame. (Their user was the recompiled
+ * DirectSound driver, now replaced by recomp_dsound.c.) */
 static XboxInterruptState s_interrupts;
 
 static void bridge_KeInitializeInterrupt(void)
@@ -846,9 +847,8 @@ static void bridge_NtCreateEvent(void)
 /* ── KeSynchronizeExecution (ordinal 153) ─────────────────
  * BOOLEAN KeSynchronizeExecution(PKINTERRUPT, PKSYNCHRONIZE_ROUTINE, PVOID ctx):
  * runs the routine with the interrupt masked and returns its result. The
- * interrupt service routine here only ever runs from the game thread
- * (doa3_apu_deliver_irq), so nothing can preempt the routine and a plain guest
- * call is the whole job. DirectSound's completion DPC (0x1C8D05) uses this to
+ * guest code here only ever runs on the game thread, so nothing can preempt
+ * the routine and a plain guest call is the whole job. DirectSound's completion DPC (0x1C8D05) uses this to
  * collect the ISR's status bits (0x1C8478); with no bridge it got 0 and never
  * drained a finished buffer, so every one-shot sound effect kept its slot. */
 static void bridge_KeSynchronizeExecution(void)
@@ -936,11 +936,8 @@ static void bridge_KeWaitForSingleObject(void)
             xbox_fiber_block(XBOX_DET_VBLANK_KEY);
         else
 #endif
-        if (g_xbox_det_active && (xbox_fiber_is_primary() || xbox_fiber_is_coroutine())) {
-            extern unsigned g_doa3_det_game_vblank_waits;   /* rollback.38 KO audio trace */
-            ++g_doa3_det_game_vblank_waits;
+        if (g_xbox_det_active && (xbox_fiber_is_primary() || xbox_fiber_is_coroutine()))
             xbox_fiber_run_workers_idle(1024);
-        }
         else xbox_fiber_yield();
         BRIDGE_MEM32(obj + 4) = 0;
         /* Run the CRI server pump on each vblank wait: on hardware the ADXM
@@ -3236,8 +3233,6 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
 
 static bridge_func_t g_slot_bridges[XBOX_KERNEL_THUNK_TABLE_SIZE];
 static int g_slot_arg_bytes[XBOX_KERNEL_THUNK_TABLE_SIZE];
-
-#include "kernel_audio_sync.inc"
 
 /* Current dispatching slot */
 static int g_kernel_dispatch_slot = -1;

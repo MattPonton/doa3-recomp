@@ -31,12 +31,11 @@ def source_digest(directory):
     digest = hashlib.sha256()
     files = sorted(directory.glob("recomp_*.c")) + [directory / "xbe_layout.h",
         directory.parent / "recomp_types.h", directory.parent / "recomp_manual.c", Path(__file__)]
-    # Host adapters and the APU snapshot ABI must agree with the capture too.
+    # Host adapters and the DirectSound snapshot ABI must agree with the capture too.
     root=directory.parents[2]
     files += [root/"kernel"/name for name in ("kernel_rtl.c","kernel_hal.c","kernel_bridge.c","xbox_fiber.c","xbox_fiber.h","kernel_apc.c","kernel_apc.h","kernel_interrupt.c","kernel_interrupt.h","kernel_stream.c","kernel_stream.h","xbox_heap.c","xbox_heap.h","xbox_memory_layout.c","xbox_memory_layout.h")]
-    files += [root/"apu"/name for name in ("apu_core.c","apu_vp.c","apu_state.h","apu_regs.h",
-        "apu_shim.h","apu_mmio_hook.c","apu_rollback.c","apu_rollback.h","apu_chip.h",
-        "apu_live_checkpoint.inc","apu_live_checkpoint.h","apu_dsp.c","apu_xaudio2.c","apu_xaudio2.h")]
+    files += [root/"audio"/name for name in ("dsound_hle.c","dsound_hle.h")]
+    files += [directory.parent/"recomp_dsound.c"]
     files += [root/"online/rollback_capture.h", root/"online/rollback_frame.h", root/"game/rollback_frame.c"]
     files += [root/"game/rollback_ownership.c"]
     files += [root/"game/rollback_state_audit.c", root/"game/rollback_state_audit.h"]

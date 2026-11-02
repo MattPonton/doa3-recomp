@@ -43,7 +43,7 @@ int xbox_kernel_replay_begin(void){
 int xbox_kernel_replay_end(int cancelled){(void)cancelled;CHECK(guard && !gate);guard=0;return 1;}
 int xbox_det_checkpoint_acquire(void){if(clock_pin || !primary)return 0;clock_pin=1;++clock_acquisitions;return 1;}
 int xbox_det_checkpoint_release(void){CHECK(clock_pin);clock_pin=0;return 1;}
-int mcpx_apu_rollback_acquire(void){
+int ds_rollback_acquire(void){
     ++audio_attempts;
     if(transient_audio_denials){
         --transient_audio_denials;
@@ -52,10 +52,11 @@ int mcpx_apu_rollback_acquire(void){
     }
     if(!clock_pin || audio_pin || deny_audio)return 0;audio_pin=1;return 1;
 }
-int mcpx_apu_rollback_release(void){CHECK(audio_pin);audio_pin=0;return 1;}
-int mcpx_apu_processing_can_restore(void){return audio_pin && gate;}
-int mcpx_apu_replay_begin(void){CHECK(clock_pin && audio_pin && !gate);if(deny_gate)return 0;gate=1;return 1;}
-int mcpx_apu_replay_end(int cancel){(void)cancel;CHECK(clock_pin && audio_pin && gate);gate=0;return 1;}
+int ds_rollback_release(void){CHECK(audio_pin);audio_pin=0;return 1;}
+int ds_rollback_can_restore(void){return audio_pin && gate;}
+int ds_replay_begin(void){CHECK(clock_pin && audio_pin && !gate);if(deny_gate)return 0;gate=1;return 1;}
+int ds_replay_end(int cancel){(void)cancel;CHECK(clock_pin && audio_pin && gate);gate=0;return 1;}
+int ds_replay_commit(void){CHECK(clock_pin && audio_pin && gate);gate=0;return 1;}
 int xbox_stream_file_checkpoint_begin(void){if(files)return 0;files=1;return 1;}
 void xbox_stream_file_checkpoint_end(void){CHECK(files);files=0;}
 size_t xbox_stream_file_checkpoint_size(void){return 8;}
@@ -64,7 +65,7 @@ void xbox_heap_checkpoint_destroy(XboxHeapCheckpoint *h){CHECK(h==&heap || !h);}
 size_t xbox_heap_checkpoint_size(void){return 8;}
 size_t xbox_fiber_converted_snapshot_size(void){return 8;}
 size_t xbox_stream_completion_snapshot_size(void){return 8;}
-size_t mcpx_apu_processing_size(void){return 8;}
+size_t ds_rollback_size(void){return 8;}
 static int capture(unsigned i,void *out,size_t n){
     CHECK(clock_pin && audio_pin && n>=4);++captures;
     /* Model another host thread winning every subsequent try-lock once the
@@ -90,7 +91,7 @@ ENDPOINT(xbox_fiber_converted,DOA3_CP_FIBERS)
 ENDPOINT(xbox_stream_completion,DOA3_CP_COMPLETIONS)
 ENDPOINT(xbox_kernel_interrupt,DOA3_CP_INTERRUPTS)
 ENDPOINT(doa3_gpu_frontend,DOA3_CP_GPU_FRONTEND)
-ENDPOINT(mcpx_apu_processing,DOA3_CP_AUDIO)
+ENDPOINT(ds_rollback,DOA3_CP_AUDIO)
 ENDPOINT(doa3_xpp,DOA3_CP_INPUT)
 int xbox_heap_checkpoint_capture(XboxHeapCheckpoint *h,void *p,size_t n){CHECK(h==&heap);return capture(DOA3_CP_HEAP,p,n);}
 int xbox_heap_checkpoint_validate(XboxHeapCheckpoint *h,const void *p,size_t n){CHECK(h==&heap);return validate(p,n);}

@@ -1,6 +1,5 @@
 /* Offline only: no live game, input, networking, audio output or renderer. */
 #include "shadow_types.h"
-#include "shadow_apu.h"
 #include "shadow_gpu.h"
 #include <windows.h>
 #include <stdio.h>
@@ -16,7 +15,7 @@ double g_fp_stack[8];
 int rb_native_camera;
 static int rb_submission_stream;
 static unsigned char *memory;
-static size_t memory_bytes, image_bytes, apu_bytes, gpu_bytes, capture_state_bytes;
+static size_t memory_bytes, image_bytes, gpu_bytes, capture_state_bytes;
 static jmp_buf escape;
 static const char *failure;
 static uint32_t failure_value, budget;
@@ -46,11 +45,6 @@ uintptr_t rb_ptr(uint32_t address, size_t bytes)
         uintptr_t mapped=rb_gpu_pointer(va);
         if(mapped) return mapped;
         rb_abort("graphics_state_requires_snapshot",address);
-    }
-    if (va>=0xFE800000u && va<0xFE880000u) {
-        uintptr_t mapped=rb_apu_pointer(va);
-        if(mapped) return mapped;
-        rb_abort("apu_mmio_requires_snapshot",address);
     }
     if (bytes>memory_bytes || va>memory_bytes-bytes) rb_abort("outside_guest_memory",address);
     return (uintptr_t)(memory+va);
@@ -89,15 +83,6 @@ void rb_call(uint32_t va)
         if(!rb_gpu_submit(g_ecx,submission_read,submission_write,NULL))
             rb_abort(rb_gpu_error() ? rb_gpu_error() : "graphics_submission_requires_snapshot",va);
         g_esp+=4; return;
-    }
-    /* Exact inactive path of the manual voice-retirement wait. An active
-     * retirement requires APU IRQ/service state, which is not captured yet:
-     * fail there rather than fabricate completion or touch live audio. */
-    if (va==0x1F5157) {
-        uint16_t flags;
-        memcpy(&flags,(const void *)rb_ptr(g_ecx+0x12,2),2);
-        if ((flags&0x8001u)==0x8001u) rb_abort("audio_retirement_requires_apu",g_ecx);
-        (void)rb_ptr(g_esp,4); g_esp+=4; return;
     }
     if ((va & 0xFF000000u)==0xFE000000u) {
         uint32_t offset=va-0xFE000000u, ordinal;
@@ -175,23 +160,21 @@ static void save_state(Doa3RollbackCaptureState *s)
 static int replay_exception(EXCEPTION_POINTERS *e)
 {
     int gpu=rb_gpu_exception(e);
-    return gpu!=EXCEPTION_CONTINUE_SEARCH ? gpu : rb_apu_exception(e);
+    return gpu!=EXCEPTION_CONTINUE_SEARCH ? gpu : EXCEPTION_EXECUTE_HANDLER;
 }
 static int execute(uint32_t routine,Doa3RollbackCaptureState *state)
 {
     failure=NULL; failure_value=0; budget=2000000; trace_count=0; guest_site=0;
     load_state(state);
-    if(!rb_apu_load(memory,memory+memory_bytes,apu_bytes)) { failure="invalid_apu_snapshot"; return 0; }
-    if(!rb_gpu_load(memory+memory_bytes+apu_bytes,gpu_bytes)) { failure="invalid_gpu_snapshot"; return 0; }
+    if(!rb_gpu_load(memory+memory_bytes,gpu_bytes)) { failure="invalid_gpu_snapshot"; return 0; }
     if (setjmp(escape)) return 0;
     __try { rb_step(routine,&state->task); }
     __except(replay_exception(GetExceptionInformation())) {
-        failure=rb_gpu_error() ? rb_gpu_error() : rb_apu_error() ? rb_apu_error() : "native_exception";
+        failure=rb_gpu_error() ? rb_gpu_error() : "native_exception";
         failure_value=rb_gpu_error() ? rb_gpu_error_address() : GetExceptionCode(); return 0;
     }
     if (state->task.resume!=1 || state->task.yielded!=1) { failure="missing_yield"; return 0; }
-    if(!rb_apu_save(memory+memory_bytes,apu_bytes)) { failure="apu_export_failed"; return 0; }
-    if(!rb_gpu_save(memory+memory_bytes+apu_bytes,gpu_bytes)) { failure="gpu_export_failed"; return 0; }
+    if(!rb_gpu_save(memory+memory_bytes,gpu_bytes)) { failure="gpu_export_failed"; return 0; }
     save_state(state); return 1;
 }
 static int read_exact(FILE *f,void *out,size_t bytes) { return fread(out,1,bytes,f)==bytes; }
@@ -201,8 +184,7 @@ static int read_record(FILE *f,uint32_t h[4],Doa3RollbackCaptureState *state,uns
     if (!h[0]) return (h[1]||h[2]||h[3]||fgetc(f)!=EOF) ? -1 : 0;
     memset(state,0,sizeof(*state));
     if (h[0]>2 || h[2]>memory_bytes/4096 || (capture_version==1 && h[3]) || !read_exact(f,state,capture_state_bytes)) return -1;
-    if(apu_bytes && !read_exact(f,image+memory_bytes,apu_bytes)) return -1;
-    if(gpu_bytes && !read_exact(f,image+memory_bytes+apu_bytes,gpu_bytes)) return -1;
+    if(gpu_bytes && !read_exact(f,image+memory_bytes,gpu_bytes)) return -1;
     uint32_t last=0;
     for (uint32_t i=0;i<h[2];++i) {
         uint32_t page;
@@ -329,8 +311,7 @@ int main(int argc,char **argv)
         fprintf(stderr,"Invalid capture header\n"); if(f)fclose(f); return 2;
     }
     capture_state_bytes=header[1]>=4 ? sizeof(Doa3RollbackCaptureState) : 264u;
-    if(header[1]<5 && header[6]!=capture_state_bytes && (header[1]<3 || !rb_apu_size() ||
-       header[6]!=capture_state_bytes+rb_apu_size())) {
+    if(header[1]<5 && header[6]!=capture_state_bytes) {
         fprintf(stderr,"Invalid capture header\n"); fclose(f); return 2;
     }
     unsigned char digest[32];
@@ -340,15 +321,15 @@ int main(int argc,char **argv)
     if(header[1]>=5) {
         uint32_t payloads[2];
         if(!read_exact(f,payloads,sizeof(payloads)) ||
-           (payloads[0] && (!rb_apu_size() || payloads[0]!=rb_apu_size())) ||
+           payloads[0] ||   /* audio (DirectSound) is not modelled */
            (payloads[1] && (!rb_gpu_size() || payloads[1]!=rb_gpu_size())) ||
            header[6]!=capture_state_bytes+(size_t)payloads[0]+payloads[1]) {
             fprintf(stderr,"Invalid capture payload sizes\n"); fclose(f); return 2;
         }
-        apu_bytes=payloads[0]; gpu_bytes=payloads[1];
-    } else apu_bytes=header[6]-capture_state_bytes;
+        gpu_bytes=payloads[1];
+    }
     memory_bytes=header[2];
-    image_bytes=memory_bytes+apu_bytes+gpu_bytes; g_xbox_mem_offset=header[3]; capture_version=header[1];
+    image_bytes=memory_bytes+gpu_bytes; g_xbox_mem_offset=header[3]; capture_version=header[1];
     if(chain) { int result=check_chain(f,header[7]); fclose(f); return result; }
     unsigned char *recorded=calloc(1,image_bytes), *before=malloc(image_bytes), *first=malloc(image_bytes);
     memory=malloc(image_bytes);

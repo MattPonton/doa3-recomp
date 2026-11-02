@@ -52,9 +52,5 @@ with tempfile.TemporaryDirectory() as directory:
     run(0xFE000000,1,"outside_guest_memory",128*1024*1024-4)
     run(0xFE00001C,1,"outside_guest_memory",128*1024*1024-12)
     run(0xFE000020,1,"outside_guest_memory",128*1024*1024-4)
-    for flags in (0,1,0x8000):
-        run(0x1F5157,0,"matched=1 blocked=0 diverged=0",voice_flags=flags)
-    run(0x1F5157,1,"audio_retirement_requires_apu",voice_flags=0x8001)
-    run(0xFE820010,1,"apu_mmio_requires_snapshot")
     run(0xFD800044,1,"graphics_state_requires_snapshot")
-print("Kernel ABI/IRQL, page-lock ABI/identity address, inactive audio wait, bounds and unsupported host-effect rejection verified.")
+print("Kernel ABI/IRQL, page-lock ABI/identity address, bounds and unsupported host-effect rejection verified.")

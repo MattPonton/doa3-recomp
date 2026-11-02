@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
-/* The UI writes this while the APU and movie threads read it. */
+/* The UI writes this while the mixer and movie threads read it. */
 static volatile LONG g_volume = 80;   /* 1.0.2: 80% on a first boot (100% was loud) */
 /* Streamer mode: the game thread (game_audio.c) reads it every frame. */
 static volatile LONG g_streamer_mode = 0;

@@ -12,15 +12,11 @@
 #include "nv2a/nv2a_pgraph_d3d11.h"
 #include "recomp/recomp_types.h"
 #include "training_dummy.h"
+#include "audio/dsound_hle.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-extern volatile int g_apu_det;
 extern unsigned g_doa3_frames_presented;
-void mcpx_apu_det_begin(uint64_t);
-void mcpx_apu_det_end(void);
-void mcpx_apu_det_frame(void);
-uint64_t mcpx_apu_xgscnt_now(void);
 static int enabled=-1,recording,settling,replay,auditing,combat,long_window;
 static unsigned warmup,presented,settle_frames;
 static unsigned trial,window=1,completed;
@@ -87,7 +83,7 @@ static void finish(int success){
     tape=NULL;
     if(fight && !doa3_fight_checkpoint_destroy(fight))fatal("checkpoint cleanup");
     fight=NULL;start=NULL;recording=settling=enabled=0;
-    if(g_apu_det)mcpx_apu_det_end();
+    if(ds_det_active())ds_det_end();
     if(g_xbox_det_active)xbox_det_end();
     if(combat){
         fprintf(stderr,"[ROLLBACK-COMBAT] trial=%u frames=%u result=%s\n",trial,window,success ? ((render_ab || prep_ab || guest_ab) ? "state-matched (render A/B)":"matched"):"stopped");
@@ -134,7 +130,7 @@ static void sync_stop(const char *why){
     if(sync_state==2)doa3_fight_lean_end();
     if(sync_fight && !doa3_fight_checkpoint_destroy(sync_fight))fatal("sync checkpoint cleanup");
     sync_fight=NULL;
-    if(g_apu_det)mcpx_apu_det_end();
+    if(ds_det_active())ds_det_end();
     if(g_xbox_det_active)xbox_det_end();
     fprintf(stderr,"[ROLLBACK-SYNC] stopped (%s) after %u frames: %llu rollbacks, %llu with differences\n",
         why,sync_frames,sync_total_rollbacks,sync_total_mismatches);
@@ -144,21 +140,21 @@ static void sync_stop(const char *why){
 static void sync_boundary(void){
     if(doa3_native_frame_active())return;   /* never inside a resimulation */
     if(sync_state==0){
-        if(!eligible() || g_xbox_det_active || g_apu_det){sync_warm=0;return;}
+        if(!eligible() || g_xbox_det_active || ds_det_active()){sync_warm=0;return;}
         if(++sync_warm<120)return;
         xbox_det_bases bases;xbox_det_current_bases(&bases);xbox_det_begin(&bases);
-        sync_epoch=xbox_det_epoch();mcpx_apu_det_begin(mcpx_apu_xgscnt_now());
-        if(!g_apu_det){fprintf(stderr,"[ROLLBACK-SYNC] refused: audio clock ownership\n");xbox_det_end();sync_mode=0;return;}
+        sync_epoch=xbox_det_epoch();
+        if(!ds_det_begin()){fprintf(stderr,"[ROLLBACK-SYNC] refused: audio clock ownership\n");xbox_det_end();sync_mode=0;return;}
         sync_state=1;sync_settle=0;
         fprintf(stderr,"[ROLLBACK-SYNC] settling workers into controlled-clock waits\n");
-        xbox_det_frame();mcpx_apu_det_frame();return;
+        xbox_det_frame();ds_det_frame();return;
     }
-    if(!g_xbox_det_active || !g_apu_det || xbox_det_epoch()!=sync_epoch || !xbox_fiber_is_primary())fatal("sync clock ownership changed");
+    if(!g_xbox_det_active || !ds_det_active() || xbox_det_epoch()!=sync_epoch || !xbox_fiber_is_primary())fatal("sync clock ownership changed");
     if(sync_state==1){
         if(!eligible()){sync_stop("mode changed while settling");return;}
         if(!xbox_fiber_converted_clock_ready()){
             if(++sync_settle>=240){sync_stop("workers did not settle");sync_mode=0;return;}
-            xbox_det_frame();mcpx_apu_det_frame();return;
+            xbox_det_frame();ds_det_frame();return;
         }
         doa3_loop_init(&loop);
         sync_fight=doa3_fight_checkpoint_create(&loop);
@@ -176,7 +172,7 @@ static void sync_boundary(void){
         fprintf(stderr,"[ROLLBACK-SYNC] running: rollback %u frame(s) every %u frame(s), logic-only resimulation; "
             "every %u-th rollback renders its last frame and is compared with the native state\n",sync_depth,sync_every,sync_compare);
         sync_compares=0;sync_frame_ms_sum=0;sync_last_qpc=0;
-        xbox_det_frame();mcpx_apu_det_frame();return;
+        xbox_det_frame();ds_det_frame();return;
     }
     /* sync_state 2: one native frame (id loop.intervals+1) just ran. */
     if(!eligible()){sync_stop("left solo Sparring");return;}
@@ -235,7 +231,7 @@ static void sync_boundary(void){
     }
     sync_auditing=xbox_kernel_replay_audit_begin();
     if(!sync_auditing || !doa3_input_tape_record(sync_tape,id+1)){sync_stop("input/audit restart refused");return;}
-    xbox_det_frame();mcpx_apu_det_frame();
+    xbox_det_frame();ds_det_frame();
 }
 /* ---- rollback.31: save state test (DOA3_STATE_TEST=1) ---------------------
  * First step toward the netplay state: a full in-memory snapshot of a
@@ -260,7 +256,7 @@ static void state_stop(const char *why){
     state_image=NULL;
     if(state_fight && !doa3_fight_checkpoint_destroy(state_fight))fatal("state checkpoint cleanup");
     state_fight=NULL;
-    if(g_apu_det)mcpx_apu_det_end();
+    if(ds_det_active())ds_det_end();
     if(g_xbox_det_active)xbox_det_end();
     {extern int g_doa3_pace_det;g_doa3_pace_det=0;}
     fprintf(stderr,"[STATE] stopped (%s): %u loads, %u differed from the saved image\n",why,state_loads,state_bad);
@@ -298,7 +294,7 @@ static void state_load(void){
  * "[ROLLBACK-CHECKPOINT] capture refused: ..."), for example while a task
  * that is not restorable is running; play goes on regardless. */
 static void state_boundary_anywhere(void){
-    if(!g_xbox_det_active || !g_apu_det || !xbox_fiber_is_primary())return;
+    if(!g_xbox_det_active || !ds_det_active() || !xbox_fiber_is_primary())return;
     if(g_doa3_state_status!=2){
         g_doa3_state_status=2;
         fprintf(stderr,"[STATE] save states available everywhere (controlled clock from boot): F5 saves, F9 loads\n");
@@ -325,22 +321,22 @@ static void state_boundary_anywhere(void){
 static void state_boundary(void){
     if(g_doa3_det_boot){state_boundary_anywhere();return;}
     if(state_phase==0){
-        if(!eligible() || g_xbox_det_active || g_apu_det){state_warm=0;return;}
+        if(!eligible() || g_xbox_det_active || ds_det_active()){state_warm=0;return;}
         if(++state_warm<120)return;
         xbox_det_bases bases;xbox_det_current_bases(&bases);xbox_det_begin(&bases);
-        state_epoch=xbox_det_epoch();mcpx_apu_det_begin(mcpx_apu_xgscnt_now());
-        if(!g_apu_det){fprintf(stderr,"[STATE] refused: audio clock ownership\n");xbox_det_end();state_mode=0;return;}
+        state_epoch=xbox_det_epoch();
+        if(!ds_det_begin()){fprintf(stderr,"[STATE] refused: audio clock ownership\n");xbox_det_end();state_mode=0;return;}
         {extern int g_doa3_pace_det;g_doa3_pace_det=1;}
         state_phase=1;state_settle=0;g_doa3_state_status=1;
         fprintf(stderr,"[STATE] controlled clock on; settling workers\n");
-        xbox_det_frame();mcpx_apu_det_frame();return;
+        xbox_det_frame();ds_det_frame();return;
     }
-    if(!g_xbox_det_active || !g_apu_det || xbox_det_epoch()!=state_epoch || !xbox_fiber_is_primary())fatal("state clock ownership changed");
+    if(!g_xbox_det_active || !ds_det_active() || xbox_det_epoch()!=state_epoch || !xbox_fiber_is_primary())fatal("state clock ownership changed");
     if(state_phase==1){
         if(!eligible()){state_stop("mode changed while settling");return;}
         if(!xbox_fiber_converted_clock_ready()){
             if(++state_settle>=240){state_stop("workers did not settle");state_mode=0;return;}
-            xbox_det_frame();mcpx_apu_det_frame();return;
+            xbox_det_frame();ds_det_frame();return;
         }
         doa3_loop_init(&loop);
         state_fight=doa3_fight_checkpoint_create(&loop);
@@ -349,7 +345,7 @@ static void state_boundary(void){
         /* rollback.34: nothing is saved until F5 / Save state. */
         g_doa3_state_status=2;
         fprintf(stderr,"[STATE] running: load every %u frames (0 = only on request)\n",state_every);
-        xbox_det_frame();mcpx_apu_det_frame();return;
+        xbox_det_frame();ds_det_frame();return;
     }
     /* state_phase 2: one native frame just ran. */
     if(!eligible() && !MEM8(0x596AA5)){state_stop("left solo Sparring");return;}
@@ -360,7 +356,7 @@ static void state_boundary(void){
         if(req==1)state_save();
         else if((req==2 && state_image) || (state_every && state_since>=state_every))state_load();
     }
-    xbox_det_frame();mcpx_apu_det_frame();
+    xbox_det_frame();ds_det_frame();
 }
 
 /* rollback.22 diagnostic, DOA3_RAM_DUMP=1: the whole guest RAM, once, at
@@ -461,15 +457,15 @@ void doa3_fight_window_probe_boundary(void){
     }
     if(!enabled)return;
     if(settling){
-        if(!g_xbox_det_active || !g_apu_det || xbox_det_epoch()!=epoch || !xbox_fiber_is_primary())fatal("settling ownership changed");
+        if(!g_xbox_det_active || !ds_det_active() || xbox_det_epoch()!=epoch || !xbox_fiber_is_primary())fatal("settling ownership changed");
         if(!eligible()){fprintf(stderr,"[ROLLBACK-WINDOW] refused: mode changed during clock handoff\n");finish(0);return;}
         {   /* doa3.1-rollback, DOA3_ROLLBACK_CLOCK_ONLY=1: five seconds under the
-             * controlled clock/APU stepping, then back, with no checkpoint,
+             * controlled clock/audio stepping, then back, with no checkpoint,
              * restore or replay -- isolates the music cut-out. Runs once. */
             static int clock_only=-1;
             if(clock_only<0)clock_only=armed("DOA3_ROLLBACK_CLOCK_ONLY");
             if(clock_only){
-                if(++settle_frames<300){xbox_det_frame();mcpx_apu_det_frame();return;}
+                if(++settle_frames<300){xbox_det_frame();ds_det_frame();return;}
                 fprintf(stderr,"[ROLLBACK-CLOCK] 300 frames under the controlled clock, no checkpoint or replay; back to the normal clock\n");
                 combat=0;finish(1);return;
             }
@@ -478,14 +474,14 @@ void doa3_fight_window_probe_boundary(void){
             if(++settle_frames>=120){
                 fprintf(stderr,"[ROLLBACK-WINDOW] refused: worker/combat readiness exceeded 120 intervals\n");finish(0);return;
             }
-            xbox_det_frame();mcpx_apu_det_frame();return;
+            xbox_det_frame();ds_det_frame();return;
         }
         settling=0;
         fprintf(stderr,"[ROLLBACK-WINDOW] deterministic worker parks verified after %u intervals\n",settle_frames+1);
         goto capture_start;
     }
     if(recording){
-        if(!g_xbox_det_active || !g_apu_det || xbox_det_epoch()!=epoch || !xbox_fiber_is_primary())fatal("session ownership changed");
+        if(!g_xbox_det_active || !ds_det_active() || xbox_det_epoch()!=epoch || !xbox_fiber_is_primary())fatal("session ownership changed");
         int input_ok=doa3_input_tape_end(tape);
         ++completed;
         if(!input_ok || !eligible() || g_doa3_frames_presented-presented!=completed){
@@ -495,7 +491,7 @@ void doa3_fight_window_probe_boundary(void){
         if(delta_test_on){extern void doa3_fight_checkpoint_delta_boundary(unsigned);doa3_fight_checkpoint_delta_boundary(completed);}
         if(completed<window){
             if(!doa3_input_tape_record(tape,completed+1)){finish(0);return;}
-            xbox_det_frame();mcpx_apu_det_frame();return;
+            xbox_det_frame();ds_det_frame();return;
         }
         if(auditing){
             XboxKernelReplayAudit audit;
@@ -609,21 +605,21 @@ void doa3_fight_window_probe_boundary(void){
         g_doa3_logic_only_arm=0;
         finish(result==1 || ((render_ab || prep_ab || guest_ab) && (result==2 || result==3)));return;
     }
-    if(!eligible() || g_xbox_det_active || g_apu_det){warmup=0;return;}
+    if(!eligible() || g_xbox_det_active || ds_det_active()){warmup=0;return;}
     if(warmup<(combat ? 480u:120u))++warmup;
     if(warmup<(combat ? 480u:120u) || (combat && !attacking()))return;
     ++trial;window=long_window ? (trial>3 ? 8:4):(combat && trial>3 ? 2:1);completed=0;
     doa3_loop_init(&loop);
     xbox_det_bases bases;xbox_det_current_bases(&bases);xbox_det_begin(&bases);
-    epoch=xbox_det_epoch();mcpx_apu_det_begin(mcpx_apu_xgscnt_now());
-    if(!g_apu_det){fprintf(stderr,"[ROLLBACK-WINDOW] refused: audio clock ownership\n");finish(0);return;}
+    epoch=xbox_det_epoch();
+    if(!ds_det_begin()){fprintf(stderr,"[ROLLBACK-WINDOW] refused: audio clock ownership\n");finish(0);return;}
     /* Vblank workers enter a different native park when the clock changes:
      * ordinary play blocks on B1A4B1A4, controlled time cooperatively yields.
      * Let that handoff finish BEFORE keeping an image. The scheduler must
      * continue rejecting snapshots across different native park sites. */
     settling=1;settle_frames=0;
     fprintf(stderr,"[ROLLBACK-WINDOW] settling native workers into controlled-clock waits\n");
-    xbox_det_frame();mcpx_apu_det_frame();return;
+    xbox_det_frame();ds_det_frame();return;
 capture_start:
     capture_started=GetTickCount64();combat_state("start");
     fight=doa3_fight_checkpoint_create(&loop);
@@ -641,7 +637,7 @@ capture_start:
     }
     recording=1;presented=g_doa3_frames_presented;
     fprintf(stderr,"[ROLLBACK-WINDOW] start captured; recording %u native intervals\n",window);
-    /* Same fixed-rate clock/APU progression as the deterministic session. The
+    /* Same fixed-rate clock/audio progression as the deterministic session. The
      * original native game runs once between this and the next A64B0 hook. */
-    xbox_det_frame();mcpx_apu_det_frame();
+    xbox_det_frame();ds_det_frame();
 }

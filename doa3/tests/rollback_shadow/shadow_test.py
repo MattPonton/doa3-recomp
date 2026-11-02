@@ -84,30 +84,15 @@ with tempfile.TemporaryDirectory() as temp:
     run(bad,2,"sources differ")
     run(header+struct.pack("<4I",1,0x7F470,1,0)+state(regs)+struct.pack("<I",32768),2,"Truncated or invalid")
     run(header+record(2,0x7F470,post,{}),2,"Truncated or invalid")
-    # A real serialized APU image travels through the production reader and
-    # isolated import/export even when this paused guest task issues no audio.
-    apu_path=Path(temp)/"apu.bin"
-    subprocess.run([sys.argv[3],"--snapshot",str(apu_path)],check=True,capture_output=True,timeout=30)
-    apu=apu_path.read_bytes()
-    apu_header=struct.pack("<8I",0x31434252,3,128*1024*1024,0,0,0,264+len(apu),1)+digest
-    def apu_record(kind,registers,changes,payload):
-        rec=record(kind,0x7F470,registers,changes)
-        return rec[:280]+payload+rec[280:]
-    apu_valid=(apu_header+apu_record(1,regs,pages,apu)+apu_record(2,post,{},apu)+bytes(16))
-    run(apu_valid,0,"matched=1 blocked=0 diverged=0")
-    bad=bytearray(apu); bad[4]^=1
-    run(apu_header+apu_record(1,regs,pages,bad)+apu_record(2,post,{},apu)+bytes(16),1,"invalid_apu_snapshot")
-    run(apu_header+apu_record(1,regs,pages,apu)+apu_record(2,post,{},bad)+bytes(16),1,"diverged=1")
-    run(apu_valid[:64+280+len(apu)-1],2,"Truncated or invalid")
     # Production v4 reader + actual nested match task. This resumed path calls
     # 72F50 and returns to 72070, then yields; the selected state avoids setup IO.
     nested=struct.pack("<4I",2,1,2,0)+struct.pack("<66I",0x72070,1,*([0]*64))+bytes(15*264)
     state_bytes=264+len(nested)
-    v4_header=struct.pack("<8I",0x31434252,4,128*1024*1024,0,0,0,state_bytes+len(apu),1)+digest
+    v4_header=struct.pack("<8I",0x31434252,4,128*1024*1024,0,0,0,state_bytes,1)+digest
     put(0x5B1424,7)
     def v4_record(kind,registers,changes,stack=nested):
         rec=record(kind,0x72070,registers,changes)
-        return rec[:280]+stack+apu+rec[280:]
+        return rec[:280]+stack+rec[280:]
     v4=v4_header+v4_record(1,regs,pages)+v4_record(2,post,{})+bytes(16)
     run(v4,0,"matched=1 blocked=0 diverged=0")
     corrupt=bytearray(nested); struct.pack_into("<I",corrupt,20,99999)
@@ -116,10 +101,10 @@ with tempfile.TemporaryDirectory() as temp:
     run(v4[:64+280+len(nested)-1],2,"Truncated or invalid")
     # v5 carries both captured devices, preserving all serialized bytes.
     gpu=struct.pack("<8260I",4,0,*range(8258))+bytes(40+264)
-    v5_header=struct.pack("<8I",0x31434252,5,128*1024*1024,0,0,0,state_bytes+len(apu)+len(gpu),1)+digest+struct.pack("<2I",len(apu),len(gpu))
+    v5_header=struct.pack("<8I",0x31434252,5,128*1024*1024,0,0,0,state_bytes+len(gpu),1)+digest+struct.pack("<2I",0,len(gpu))
     def v5_record(kind,registers,changes,payload=gpu):
         rec=v4_record(kind,registers,changes)
-        split=16+state_bytes+len(apu)
+        split=16+state_bytes
         return rec[:split]+payload+rec[split:]
     v5=v5_header+v5_record(1,regs,pages)+v5_record(2,post,{})+bytes(16)
     run(v5,0,"matched=1 blocked=0 diverged=0")

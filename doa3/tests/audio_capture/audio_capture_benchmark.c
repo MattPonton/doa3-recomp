@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#define XA2_CHANNELS 2
+#define OUT_CHANNELS 2
 int doa3_auto_capture_enabled(void) { return 1; }
 FILE *doa3_diag_fopen(const char *name,const char *mode) { (void)name; (void)mode; return NULL; }
 #include "capture_full.h"

@@ -21,7 +21,7 @@ def patch_audio_wait(source):
 
 # rollback.29: the other two CRI voice waits have the same shape as 199E20 --
 # poll the DirectSound buffer status (1F1E79/1F1E95) until it stops or an
-# RDTSC deadline (0xC75620) passes. The APU only steps once per controlled
+# RDTSC deadline (0xC75620) passes. The voice cursors only step once per controlled
 # frame, so inside a frame the status never changes, and the frozen
 # timestamp never reaches the deadline; DOA3_DET_BOOT hung in 199B60 at the
 # end of the Team NINJA movie. Same fixed per-iteration progress.

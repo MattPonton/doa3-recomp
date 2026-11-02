@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#define XA2_CHANNELS 2
+#define OUT_CHANNELS 2
 #define CHECK(x) do { if (!(x)) { fprintf(stderr,"line %d: %s\n",__LINE__,#x); exit(1); } } while(0)
 static int enabled=1;
 static HANDLE writing, resume;
@@ -41,20 +41,20 @@ int main(void)
     for(unsigned i=0;i<127;i++) {
         snapshot[i*2]=reference[((pos+i)%127)*2]; snapshot[i*2+1]=reference[((pos+i)%127)*2+1];
     }
-    apu_mix_dump("test"); CHECK(s_dump_thread);
+    audio_mix_dump("test"); CHECK(s_dump_thread);
     CHECK(WaitForSingleObject(writing,5000)==WAIT_OBJECT_0);
     /* A stalled disk writer must not own the mixer lock or grow the queue. */
     CHECK(TryAcquireSRWLockExclusive(&s_ring_lock)); ReleaseSRWLockExclusive(&s_ring_lock);
     mix_ring_push(samples,100);
-    apu_mix_dump("busy"); CHECK(s_dumps==1);
+    audio_mix_dump("busy"); CHECK(s_dumps==1);
     enabled=0;
     SetEvent(resume);
-    apu_mix_dump("exit"); CHECK(!s_dump_thread && s_dumps==1);
-    file=fopen("apu_mix_test.wav","rb"); CHECK(file);
+    audio_mix_dump("exit"); CHECK(!s_dump_thread && s_dumps==1);
+    file=fopen("audio_mix_test.wav","rb"); CHECK(file);
     CHECK(fread(header,1,44,file)==44 && !memcmp(header,"RIFF",4) && header[10]==sizeof actual);
     CHECK(fread(actual,1,sizeof actual,file)==sizeof actual && fgetc(file)==EOF);
     CHECK(!memcmp(actual,snapshot,sizeof actual));
-    fclose(file); remove("apu_mix_test.wav");
+    fclose(file); remove("audio_mix_test.wav");
     free(s_ring); CloseHandle(writing); CloseHandle(resume);
     puts("Audio ring wrap, oversized batches, snapshot order and stalled-writer isolation pass");
     return 0;

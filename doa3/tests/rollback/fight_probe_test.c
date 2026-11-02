@@ -7,7 +7,9 @@
 #include <string.h>
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"line %d: %s\n",__LINE__,#x);exit(1);}}while(0)
 ptrdiff_t g_xbox_mem_offset;
-volatile int g_xbox_det_active,g_apu_det;
+volatile int g_xbox_det_active;
+static int audio_det;
+int ds_det_active(void){return audio_det;}
 static unsigned attempts,starts,ends;
 static int primary=1,training=TRAINING_IDLE;
 int xbox_fiber_is_primary(void){return primary;}
@@ -15,13 +17,12 @@ int doa3_rollback_tasks_enabled(void){return 1;}
 void training_status(TrainingStatus *s){memset(s,0,sizeof(*s));s->mode=training;}
 void xbox_det_current_bases(xbox_det_bases *b){memset(b,0,sizeof(*b));}
 void xbox_det_begin(const xbox_det_bases *b){(void)b;CHECK(!g_xbox_det_active);++starts;g_xbox_det_active=1;}
-void xbox_det_end(void){CHECK(g_xbox_det_active && !g_apu_det);++ends;g_xbox_det_active=0;}
-uint64_t mcpx_apu_xgscnt_now(void){return 0;}
-void mcpx_apu_det_begin(uint64_t base){(void)base;CHECK(g_xbox_det_active && !g_apu_det);g_apu_det=1;}
-void mcpx_apu_det_end(void){CHECK(g_apu_det);g_apu_det=0;}
+void xbox_det_end(void){CHECK(g_xbox_det_active && !audio_det);++ends;g_xbox_det_active=0;}
+int ds_det_begin(void){CHECK(g_xbox_det_active && !audio_det);audio_det=1;return 1;}
+void ds_det_end(void){CHECK(audio_det);audio_det=0;}
 void doa3_loop_init(Doa3LoopState *s){memset(s,0,sizeof(*s));s->schema=DOA3_LOOP_SCHEMA;}
 int doa3_fight_checkpoint_roundtrip(Doa3LoopState *s,Doa3CheckpointComparison *d){
-    CHECK(s->schema==DOA3_LOOP_SCHEMA && !s->resume && primary && g_xbox_det_active && g_apu_det);
+    CHECK(s->schema==DOA3_LOOP_SCHEMA && !s->resume && primary && g_xbox_det_active && audio_det);
     memset(d,0,sizeof(*d));++attempts;return 1;
 }
 static void frames(unsigned n){while(n--)doa3_fight_checkpoint_probe_boundary();}
@@ -34,6 +35,6 @@ int main(int argc,char **argv){
     primary=0;frames(130);primary=1;CHECK(!attempts);
     frames(90);ram[0x596AA5]=1;frames(1);ram[0x596AA5]=0;
     frames(119);CHECK(!attempts);frames(1);CHECK(attempts==(unsigned)enabled);
-    frames(300);CHECK(attempts==(unsigned)enabled && starts==attempts && ends==attempts && !g_xbox_det_active && !g_apu_det);
+    frames(300);CHECK(attempts==(unsigned)enabled && starts==attempts && ends==attempts && !g_xbox_det_active && !audio_det);
     guest_memory_fixture_free(ram);puts("Live checkpoint probe: opt-in, conflict/eligibility gates, warmup reset and exactly-once execution passed");return 0;
 }

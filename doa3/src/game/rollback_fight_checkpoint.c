@@ -9,8 +9,7 @@
 #include "kernel/kernel_interrupt.h"
 #include "kernel/kernel_replay.h"
 #include "online/xbox_det.h"
-#include "apu/apu_rollback.h"
-#include "apu/apu_live_checkpoint.h"
+#include "audio/dsound_hle.h"
 #include "nv2a/nv2a_queue.h"
 #include "nv2a/nv2a_renderer_checkpoint.h"
 #include <stdlib.h>
@@ -49,7 +48,7 @@ static int acquire_impl(void *v,int report){
     if(!xbox_det_checkpoint_acquire()){
         if(report)fprintf(stderr,"[ROLLBACK-CHECKPOINT] acquire refused: clock pin\n");return 0;
     }
-    if(!mcpx_apu_rollback_acquire()){
+    if(!ds_rollback_acquire()){
         if(report)fprintf(stderr,"[ROLLBACK-CHECKPOINT] acquire refused: audio pin\n");
         xbox_det_checkpoint_release();return 0;
     }
@@ -74,7 +73,7 @@ static int acquire_before_rewind(Doa3FightCheckpoint *s){
 static void release(void *v){
     Doa3FightCheckpoint *s=v;s->held=0;
     if(s->roundtrip_pinned)return;
-    mcpx_apu_rollback_release();xbox_det_checkpoint_release();
+    ds_rollback_release();xbox_det_checkpoint_release();
 }
 static uint64_t epoch(void *v){Doa3FightCheckpoint *s=v;return context(s)?s->epoch:0;}
 static void cpu_capture(FightCpu *p,Doa3LoopState *loop){
@@ -99,7 +98,7 @@ static int capture_part(void *v,void *out,size_t n){
     case DOA3_CP_COMPLETIONS:return xbox_stream_completion_capture(out,n);
     case DOA3_CP_INTERRUPTS:return xbox_kernel_interrupt_capture(out,n);
     case DOA3_CP_GPU_FRONTEND:return doa3_gpu_frontend_capture(out,n);
-    case DOA3_CP_AUDIO:return mcpx_apu_processing_capture(out,n);
+    case DOA3_CP_AUDIO:return ds_rollback_capture(out,n);
     case DOA3_CP_INPUT:return doa3_xpp_capture(out,n);
     default:return 0;
     }
@@ -121,7 +120,7 @@ static int validate_part(void *v,const void *in,size_t n){
     case DOA3_CP_COMPLETIONS:return xbox_stream_completion_validate(in,n);
     case DOA3_CP_INTERRUPTS:return xbox_kernel_interrupt_validate(in,n);
     case DOA3_CP_GPU_FRONTEND:return doa3_gpu_frontend_validate(in,n);
-    case DOA3_CP_AUDIO:return mcpx_apu_processing_validate(in,n);
+    case DOA3_CP_AUDIO:return ds_rollback_validate(in,n);
     case DOA3_CP_INPUT:return doa3_xpp_validate(in,n);
     default:return 0;
     }
@@ -132,7 +131,7 @@ static int validate(void *v,const void *in,size_t n){
     return result;
 }
 static int can_restore(void *v){
-    Binding *b=v;return b->owner->held && xbox_kernel_replay_owned() && mcpx_apu_processing_can_restore();
+    Binding *b=v;return b->owner->held && xbox_kernel_replay_owned() && ds_rollback_can_restore();
 }
 static int restore(void *v,const void *in,size_t n){
     Binding *b=v;Doa3FightCheckpoint *s=b->owner;if(!can_restore(v))return 0;
@@ -145,7 +144,7 @@ static int restore(void *v,const void *in,size_t n){
     case DOA3_CP_COMPLETIONS:return xbox_stream_completion_restore(in,n);
     case DOA3_CP_INTERRUPTS:return xbox_kernel_interrupt_restore(in,n);
     case DOA3_CP_GPU_FRONTEND:return doa3_gpu_frontend_restore(in,n);
-    case DOA3_CP_AUDIO:return mcpx_apu_processing_restore(in,n);
+    case DOA3_CP_AUDIO:return ds_rollback_restore(in,n);
     case DOA3_CP_INPUT:return doa3_xpp_restore(in,n);
     default:return 0;
     }
@@ -171,7 +170,7 @@ Doa3FightCheckpoint *doa3_fight_checkpoint_create(Doa3LoopState *loop){
     size_t sizes[]={s->full ? xbox_stream_file_full_size():xbox_stream_file_checkpoint_size(),sizeof(FightCpu)+s->ram_bytes,
         xbox_heap_checkpoint_size(),xbox_fiber_converted_snapshot_size(),sizeof(xbox_det_checkpoint),
         xbox_stream_completion_snapshot_size(),sizeof(XboxInterruptSnapshot),sizeof(Nv2aQueueSnapshot),
-        mcpx_apu_processing_size(),sizeof(Doa3XppSnapshot)};
+        ds_rollback_size(),sizeof(Doa3XppSnapshot)};
     for(unsigned i=0;i<DOA3_CP_PARTS;++i){s->bindings[i]=(Binding){s,i};c.parts[i]=(Doa3CheckpointPart){&s->bindings[i],sizes[i],capture,validate,restore,can_restore};}
     c.renderer=s->full ? nv2a_renderer_checkpoint_resource_full(&s->renderer):nv2a_renderer_checkpoint_resource(&s->renderer);
     s->session=doa3_checkpoint_create(&c);if(!s->session)goto fail;
@@ -193,7 +192,7 @@ int doa3_fight_checkpoint_roundtrip(Doa3LoopState *loop,Doa3CheckpointComparison
     if(!comparison)return 0;
     Doa3FightCheckpoint *s=doa3_fight_checkpoint_create(loop);if(!s)return 0;
     /* The kernel guard itself briefly takes the clock pin; open it before
-     * retaining the transaction's nonrecursive clock/APU pins. */
+     * retaining the transaction's nonrecursive clock/audio pins. */
     if(!xbox_kernel_replay_begin()){
         if(!doa3_fight_checkpoint_destroy(s)){fatal_state=s;return -1;}
         return 0;
@@ -213,7 +212,7 @@ int doa3_fight_checkpoint_roundtrip(Doa3LoopState *loop,Doa3CheckpointComparison
     stage="audio gate acquire";
     if(!acquire(s))goto done;
     stage="audio gate begin";
-    gated=mcpx_apu_replay_begin();release(s);if(!gated)goto done;
+    gated=ds_replay_begin();release(s);if(!gated)goto done;
     uint64_t frame=UINT64_MAX;
     int restored=doa3_checkpoint_image_restore(s->session,image,&frame);
     /* Even a compensated refusal must be independently verified before the
@@ -240,7 +239,7 @@ int doa3_fight_checkpoint_roundtrip(Doa3LoopState *loop,Doa3CheckpointComparison
     stage="audio gate end acquire";
     if(!acquire(s))goto fatal;
     stage="audio gate end";
-    int ended=mcpx_apu_replay_end(!result);release(s);if(!ended)goto fatal;gated=0;
+    int ended=ds_replay_end(!result);release(s);if(!ended)goto fatal;gated=0;
 done:
     if(!result)fprintf(stderr,"[ROLLBACK-CHECKPOINT] safely refused at %s\n",stage);
     stage="image discard";
@@ -248,7 +247,7 @@ done:
     stage="kernel guard end";
     if(guarding && !xbox_kernel_replay_end(!result))goto fatal;
     s->roundtrip_pinned=0;
-    mcpx_apu_rollback_release();xbox_det_checkpoint_release();
+    ds_rollback_release();xbox_det_checkpoint_release();
     stage="binding destroy";
     if(!doa3_fight_checkpoint_destroy(s))goto fatal;
     return result;
@@ -511,7 +510,7 @@ static int visit(Doa3FightCheckpoint *s,
     if(doa3_checkpoint_image_matches(s->session,end,difference)!=1)goto done;
     stage="audio gate";
     if(!acquire(s))goto done;
-    gated=mcpx_apu_replay_begin();release(s);if(!gated)goto done;
+    gated=ds_replay_begin();release(s);if(!gated)goto done;
     stage="earlier restore";
     t=diagnostic_ms();
     int restored=doa3_checkpoint_image_restore(s->session,start,&frame);
@@ -525,9 +524,9 @@ static int visit(Doa3FightCheckpoint *s,
     }
     restore_ms=diagnostic_ms()-t;
     if(result && advance){
-        /* Workers and APU stepping require unpinned clock/audio state. The
+        /* Workers and audio stepping require unpinned clock/audio state. The
          * output gate and kernel guard remain owned throughout execution. */
-        s->roundtrip_pinned=0;mcpx_apu_rollback_release();xbox_det_checkpoint_release();
+        s->roundtrip_pinned=0;ds_rollback_release();xbox_det_checkpoint_release();
         stage="native interval";
         t=diagnostic_ms();
         result=advance(advance_context);
@@ -583,13 +582,13 @@ static int visit(Doa3FightCheckpoint *s,
     recovery_ms=diagnostic_ms()-t;
     stage="audio gate end";
     if(!acquire(s))goto fatal;
-    int ended=mcpx_apu_replay_end(!result);release(s);if(!ended)goto fatal;gated=0;
+    int ended=ds_replay_end(!result);release(s);if(!ended)goto fatal;gated=0;
 done:
     if(!result)fprintf(stderr,"[ROLLBACK-WINDOW] refused or recovered at stage=%s\n",stage);
     if(advance)fprintf(stderr,"[ROLLBACK-TIMING] frames=%llu restore_start_ms=%.3f replay_ms=%.3f compare_end_ms=%.3f recover_end_ms=%.3f\n",
         (unsigned long long)(last-first),restore_ms,replay_ms,compare_ms,recovery_ms);
     if(!xbox_kernel_replay_end(!result))goto fatal;
-    s->roundtrip_pinned=0;mcpx_apu_rollback_release();xbox_det_checkpoint_release();
+    s->roundtrip_pinned=0;ds_rollback_release();xbox_det_checkpoint_release();
     return result;
 fatal:
     fprintf(stderr,"[ROLLBACK-WINDOW] fatal stage=%s audio_gate=%d\n",stage,gated);fflush(stderr);
@@ -616,7 +615,7 @@ int doa3_fight_checkpoint_load(Doa3FightCheckpoint *s,const Doa3CheckpointImage 
     const char *stage="audio gate";
     int result=0,gated=0;uint64_t frame=UINT64_MAX;
     if(!acquire(s))goto done;
-    gated=mcpx_apu_replay_begin();release(s);if(!gated)goto done;
+    gated=ds_replay_begin();release(s);if(!gated)goto done;
     stage="restore";
     double t=diagnostic_ms();
     int restored=doa3_checkpoint_image_restore(s->session,image,&frame);
@@ -640,12 +639,12 @@ int doa3_fight_checkpoint_load(Doa3FightCheckpoint *s,const Doa3CheckpointImage 
     /* rollback.32: a load ends at a different audio state than the gate
      * began with, by design: commit it (end() demands the same state). A
      * refused load was compensated back to the start: end() as usual. */
-    {int ended=result ? mcpx_apu_replay_commit():mcpx_apu_replay_end(1);release(s);if(!ended){stage="audio gate end";goto fatal;}}
+    {int ended=result ? ds_replay_commit():ds_replay_end(1);release(s);if(!ended){stage="audio gate end";goto fatal;}}
     gated=0;
 done:
     if(!result)fprintf(stderr,"[STATE] load refused at %s\n",stage);
     if(!xbox_kernel_replay_end(!result))goto fatal;
-    s->roundtrip_pinned=0;mcpx_apu_rollback_release();xbox_det_checkpoint_release();
+    s->roundtrip_pinned=0;ds_rollback_release();xbox_det_checkpoint_release();
     return result;
 fatal:
     fprintf(stderr,"[STATE] FATAL at %s (audio gate %d); state uncertain\n",stage,gated);fflush(stderr);
@@ -706,7 +705,7 @@ int doa3_fight_lean_begin(Doa3FightCheckpoint *s)
     size_t sizes[]={xbox_stream_file_checkpoint_size(),sizeof(FightCpu),
         xbox_heap_checkpoint_size(),xbox_fiber_converted_snapshot_size(),sizeof(xbox_det_checkpoint),
         xbox_stream_completion_snapshot_size(),sizeof(XboxInterruptSnapshot),sizeof(Nv2aQueueSnapshot),
-        mcpx_apu_processing_size(),sizeof(Doa3XppSnapshot)};
+        ds_rollback_size(),sizeof(Doa3XppSnapshot)};
     lean_bytes=0;
     for(unsigned i=0;i<DOA3_CP_PARTS;++i){lean_size[i]=sizes[i];lean_off[i]=lean_bytes;lean_bytes+=(sizes[i]+15)&~(size_t)15;}
     for(unsigned i=0;i<LEAN_RING;++i){free(lean[i].buf);lean[i].buf=malloc(lean_bytes);lean[i].valid=0;if(!lean[i].buf)return 0;}
@@ -868,15 +867,15 @@ int doa3_fight_lean_rollback(Doa3FightCheckpoint *s,unsigned back,int (*advance)
     s->roundtrip_pinned=1;release(s);
     int gated=0,result=0;
     if(!acquire_patient(s))goto fatal;
-    gated=mcpx_apu_replay_begin();release(s);
-    if(!gated){s->roundtrip_pinned=0;mcpx_apu_rollback_release();xbox_det_checkpoint_release();
+    gated=ds_replay_begin();release(s);
+    if(!gated){s->roundtrip_pinned=0;ds_rollback_release();xbox_det_checkpoint_release();
         return xbox_kernel_replay_end(1) ? 0:-1;}
     double t0=now_ms();
     if(!acquire_patient(s))goto fatal;
     int restored=lean_restore(s,target->buf,back);release(s);
     if(!restored)goto fatal;   /* partially restored: no safe way back */
     double t1=now_ms();
-    s->roundtrip_pinned=0;mcpx_apu_rollback_release();xbox_det_checkpoint_release();
+    s->roundtrip_pinned=0;ds_rollback_release();xbox_det_checkpoint_release();
     result=advance(ctx);
     double t2=now_ms();
     if(!acquire_patient(s))goto fatal;
@@ -886,9 +885,9 @@ int doa3_fight_lean_rollback(Doa3FightCheckpoint *s,unsigned back,int (*advance)
         if(unexplained)*unexplained=odd;
     }
     if(!acquire_patient(s))goto fatal;
-    int ended=mcpx_apu_replay_end(!result);release(s);if(!ended)goto fatal;
+    int ended=ds_replay_end(!result);release(s);if(!ended)goto fatal;
     if(!xbox_kernel_replay_end(!result))goto fatal;
-    s->roundtrip_pinned=0;mcpx_apu_rollback_release();xbox_det_checkpoint_release();
+    s->roundtrip_pinned=0;ds_rollback_release();xbox_det_checkpoint_release();
     if(ms_restore)*ms_restore=t1-t0;
     if(ms_replay)*ms_replay=t2-t1;
     if(!result){fprintf(stderr,"[ROLLBACK-SYNC] FATAL: resimulation did not complete after the state was restored\n");fflush(stderr);abort();}

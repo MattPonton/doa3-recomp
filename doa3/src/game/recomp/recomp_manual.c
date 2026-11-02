@@ -34,8 +34,8 @@
 #include "../debug_settings.h"
 #include "../dip_switches.h"
 #include "../game_audio.h"
+#include "audio/dsound_hle.h"
 
-#include "apu/apu_irq.h"
 #include "../../perf_capture.h"
 #include "nv2a/nv2a_submission.h"
 #include "nv2a/nv2a_pgraph_d3d11.h"
@@ -263,61 +263,26 @@ void recomp_itail_fail_log(uint32_t va)
     }
 }
 
-void doa3_apu_deliver_irq(void)
+/* Run the DPCs guest code queued with KeInsertQueueDpc (kernel_bridge.c),
+ * once per frame from the present, at DISPATCH_LEVEL as on the Xbox. Raised
+ * IRQL masks them: they wait until the code that raised it lowers it. (The
+ * APU interrupt that used to come through here went with the APU: DirectSound
+ * is high level now, recomp_dsound.c.) */
+void doa3_deliver_dpcs(void)
 {
-    typedef struct MCPXAPUState MCPXAPUState;
-    extern MCPXAPUState *g_apu_state;
-    extern uint64_t mcpx_apu_mmio_read(MCPXAPUState *, uint64_t, unsigned int);
-    extern int mcpx_apu_take_irq(void);
-    extern int xbox_kernel_get_isr(int, uint32_t *, uint32_t *, uint32_t *);
     extern int xbox_kernel_pop_dpc(uint32_t *, uint32_t *, uint32_t *);
     extern recomp_func_t recomp_lookup(uint32_t xbox_va);
     extern recomp_func_t recomp_lookup_manual(uint32_t xbox_va);
-    static unsigned s_isr_calls = 0, s_dpc_calls = 0;
     extern int xbox_kernel_interrupt_begin(void);
     extern void xbox_kernel_interrupt_end(void);
-    uint32_t obj, routine, ctx, dpc, a1, a2;
-    int i;
     extern unsigned char xbox_current_irql(void);
     extern unsigned char xbox_set_irql(unsigned char irql);
+    uint32_t dpc, a1, a2;
     unsigned char irql0;
-    /* Raised IRQL masks the APU interrupt and DPCs, as on the Xbox's one CPU:
-     * leave the interrupt pending until the code that raised it lowers it. */
-    {   extern unsigned g_doa3_frames_presented;
-        static unsigned s_masked, s_warned;
-        if (xbox_current_irql() >= 2) {
-            if (++s_masked == 120 && s_warned++ < 4) {
-                fprintf(stderr, "[IRQL] APU interrupt masked for 120 presents: IRQL %u left raised (frame %u)\n",
-                        xbox_current_irql(), g_doa3_frames_presented);
-                fflush(stderr);
-            }
-            return;
-        }
-        s_masked = 0;
-    }
-    if (!xbox_kernel_interrupt_begin()) return;
-    if (!mcpx_apu_take_irq()) { xbox_kernel_interrupt_end(); return; }
-    irql0 = xbox_set_irql(0x0B);    /* the APU's DIRQL (HalGetInterruptVector) */
-    for (i = 0; xbox_kernel_get_isr(i, &obj, &routine, &ctx); i++) {
-        recomp_func_t fn;
-        if (routine < DOA3_SEC_DSOUND_VA || routine >= DOA3_SEC_DSOUND_END) continue;  /* was 3.0's 0x001C0000..0x001E0000 */
-        fn = recomp_lookup_manual(routine);
-        if (!fn) fn = recomp_lookup(routine);
-        if (!fn) continue;
-        {
-            uint32_t saved_esp = esp;
-            PUSH32(esp, ctx);
-            PUSH32(esp, obj);
-            PUSH32(esp, 0);           /* dummy return address */
-            fn();
-            esp = saved_esp;
-        }
-        s_isr_calls++;
-        if (s_isr_calls <= 5 || (s_isr_calls % 500) == 0) {
-            
-        }
-    }
-    xbox_set_irql(2);               /* DPCs run at DISPATCH_LEVEL */
+    /* Not nested in itself; the in-delivery flag is part of the interrupt
+     * checkpoint (kernel_interrupt.c), so a rollback restores it too. */
+    if (xbox_current_irql() >= 2 || !xbox_kernel_interrupt_begin()) return;
+    irql0 = xbox_set_irql(2);
     while (xbox_kernel_pop_dpc(&dpc, &a1, &a2)) {
         uint32_t droutine = MEM32(dpc + 12), dctx = MEM32(dpc + 16);
         recomp_func_t fn = recomp_lookup_manual(droutine);
@@ -333,17 +298,12 @@ void doa3_apu_deliver_irq(void)
             fn();
             esp = saved_esp;
         }
-        s_dpc_calls++;
-        if (s_dpc_calls <= 5 || (s_dpc_calls % 500) == 0) {
-            
-        }
     }
     xbox_set_irql(irql0);
     xbox_kernel_interrupt_end();
 }
 
 volatile int g_doa3_post_movie = 0;
-unsigned g_doa3_det_game_vblank_waits, g_doa3_det_chip_steps;   /* rollback.38 KO audio trace */
 
 uint64_t doa3_guest_rdtsc(void)
 {
@@ -2422,16 +2382,17 @@ static void d3d4134_pace(void)
     }
     period = s_qpf / 60;
     if (det) {
-        /* rollback.35: on the controlled clock the game frame also makes the
-         * audio (25 chip frames = 800 samples per frame), so the frame rate
-         * must follow the sound card's clock, not just QPC: the two drift
-         * apart, and the audio queue then drains (gaps) or fills (drops).
-         * Keep 2-4 output buffers (43-85 ms) queued by running frames 2 %
-         * slower or faster. Wall-clock only; no guest-visible effect. */
-        extern int xa2_queued(void);
-        int q = xa2_queued();
-        if (q > 4) period += period / 50;
-        else if (q >= 0 && q < 2) period -= period / 50;
+        /* rollback.35: on the controlled clock the voice cursors the game sees
+         * advance 800 samples per frame while the voices it hears run on the
+         * sound card's clock, so the frame rate must follow that clock, not
+         * just QPC: the two drift apart, and CRI's streams, written ahead of
+         * the cursor the game sees, then run dry or get overwritten while
+         * heard. Keep the heard voices within two frames of it by running
+         * frames 2 % slower or faster. Wall-clock only; no guest-visible
+         * effect. */
+        int lead = ds_det_lead();
+        if (lead > 1600) period -= period / 50;
+        else if (lead < -1600) period += period / 50;
     }
     QueryPerformanceCounter(&now);
     if (!s_next) s_next = now.QuadPart;
@@ -2812,7 +2773,7 @@ static void damage_trace_frame(void)
 /* 1.0.2: Debug > Frame advance. At the end of a frame (after it was shown)
  * the game thread is held while g_doa3_frame_pause is set; each step lets
  * one more frame run. While held, the window is redrawn with the last
- * finished frame and the overlay, messages are pumped, the APU output is
+ * finished frame and the overlay, messages are pumped, the audio output is
  * silent (audio_apply_volume) and the watchdog stays quiet. With "trace
  * each step", the stepped frame is traced: the trace is armed here for the
  * next frame, as doa3_mtrace_frame does at a frame end. Never during online
@@ -2925,47 +2886,25 @@ static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
         pgraph_d3d11_flush();
         ++g_doa3_frames_presented;
         doa3_native_frame_flip();
-        doa3_apu_deliver_irq();
+        doa3_deliver_dpcs();
         d3d8_ReplayFrameComplete();
         goto frame_callback;
     }
     {   /* rollback.26, DOA3_DET_BOOT: one controlled-clock frame per
-         * presented frame; the APU steps on the controlled clock from the
-         * first frame that has a chip. DOA3_RAM_DUMP_FRAME=n dumps guest RAM
-         * at that frame (doa3_ram_frame_<n>.bin). */
+         * presented frame, with DirectSound's game-visible voice cursors on the
+         * same clock (ds_det_*). DOA3_RAM_DUMP_FRAME=n dumps guest RAM at that
+         * frame (doa3_ram_frame_<n>.bin). */
         extern int g_doa3_det_boot;
-        extern volatile int g_apu_det;
-        extern void mcpx_apu_det_begin(uint64_t);
-        extern void mcpx_apu_det_frame(void);
         extern void xbox_det_frame(void);
-        extern void *mcpx_apu_state_ptr(void);
-        {   /* rollback.38: per-frame audio trace through KO/slow motion on the
-             * controlled clock (Genra's KO stutters only there): the game
-             * thread's vblank waits, extra chip steps for guest chip waits,
-             * CRI vsync-server ticks and the XA2 queue, every frame while the
-             * fight phase is 2 (KO), at most 900 lines. */
-            extern unsigned g_rollback_stream_worker_steps[3];
-            extern int xa2_queued(void);
-            static unsigned s_lines, s_w, s_s, s_t0, s_t1, s_t2;
-            if (g_xbox_det_active && MEM8(0x596A37) == 2 && s_lines < 900) {
-                ++s_lines;
-                fprintf(stderr, "[KO-AUDIO] frame %u: game vblank waits %u, chip steps %u, vsync ticks %u, playback ticks %u, file ticks %u, xa2 queue %d\n",
-                        g_doa3_frames_presented, g_doa3_det_game_vblank_waits - s_w, g_doa3_det_chip_steps - s_s,
-                        g_rollback_stream_worker_steps[0] - s_t0, g_rollback_stream_worker_steps[1] - s_t1,
-                        g_rollback_stream_worker_steps[2] - s_t2, xa2_queued());
-            }
-            s_w = g_doa3_det_game_vblank_waits; s_s = g_doa3_det_chip_steps;
-            s_t0 = g_rollback_stream_worker_steps[0]; s_t1 = g_rollback_stream_worker_steps[1]; s_t2 = g_rollback_stream_worker_steps[2];
-        }
         if (g_doa3_det_boot) {
             static int s_dump_frame = -1;
-            if (!g_apu_det && mcpx_apu_state_ptr()) {
-                mcpx_apu_det_begin(0);
-                fprintf(stderr, "[DET-BOOT] frame %u: APU on the controlled clock%s\n",
-                        g_doa3_frames_presented, g_apu_det ? "" : " REFUSED");
+            if (!ds_det_active()) {
+                int ok = ds_det_begin();
+                fprintf(stderr, "[DET-BOOT] frame %u: DirectSound on the controlled clock%s\n",
+                        g_doa3_frames_presented, ok ? "" : " REFUSED");
             }
             xbox_det_frame();
-            if (g_apu_det) mcpx_apu_det_frame();
+            ds_det_frame();
             if (s_dump_frame < 0) { const char *e = getenv("DOA3_RAM_DUMP_FRAME"); s_dump_frame = e ? atoi(e) : 0; }
             if (s_dump_frame > 0 && g_doa3_frames_presented + 1 == (unsigned)s_dump_frame) {
                 extern void *xbox_GetMemoryBase(void);
@@ -3528,35 +3467,6 @@ void sub_001907A0(void)
  * file name), ret 0. */
 void sub_000A5C60(void) { eax = 0; esp += 4; }
 
-/* IDirectSound_SetI3DL2Listener(pDS, pParams, dwApply), stdcall 12 (0.0.170).
- * The room reverb runs on the console's GP DSP, which is not emulated; hand
- * the parameters to the host reverb (apu_dsp.c). The game takes them from a
- * table at 0x2D3EB8 (the standard I3DL2 presets, then its own rooms from
- * 0x2D4338), index in 0x7FE2F0; 0x2D4308 (index 23) is "no reverb". */
-void sub_001F2A27_gen(void);
-void sub_001F2A27(void)
-{
-    extern void apu_reverb_set_i3dl2(const uint32_t raw[12]);
-    uint32_t p = MEM32(esp + 8);
-    if (p >= 0x10000u && p < 0x08000000u - 48u) {
-        static unsigned s_logged;
-        uint32_t raw[12];
-        int i;
-        for (i = 0; i < 12; i++) raw[i] = MEM32(p + 4u * (uint32_t)i);
-        apu_reverb_set_i3dl2(raw);
-        if (s_logged < 200) {
-            float f[12];
-            s_logged++;
-            memcpy(f, raw, sizeof f);
-            fprintf(stderr, "[I3DL2] params %08X (table index %d): room %d roomHF %d decay %.3f hfratio %.3f "
-                    "reflections %d delay %.3f reverb %d delay %.3f diffusion %.0f density %.0f hf %.0f\n",
-                    p, (p >= 0x2D3EB8u && (p - 0x2D3EB8u) % 0x30u == 0) ? (int)((p - 0x2D3EB8u) / 0x30u) : -1,
-                    (int)raw[0], (int)raw[1], f[3], f[4], (int)raw[5], f[6], (int)raw[7], f[8], f[9], f[10], f[11]);
-        }
-    }
-    sub_001F2A27_gen();
-}
-
 /* CRT memcpy/memmove (0x1B73D0 and 0x1B7CB0, the same two copies 3.0 has at
  * 0x18DF40/0x18EE90): the trailing-byte dispatch is an intra-function jump
  * table the lifter cannot follow, so copies lost their tail bytes. Native
@@ -3706,85 +3616,6 @@ void sub_0019A330(void)
         fflush(stderr);
     }
     sub_0019A330_gen();
-}
-
-/* DirectSound's voice retire wait (0x1F5157, ecx = voice): if the voice
- * is active (+0x12 bit 0), spin until the APU interrupt's DPC has retired it
- * (+0x12 bit 0x8000 clear). On the Xbox the interrupt arrives during the
- * spin. Here nothing interrupts recompiled code, and fix_selfspins had
- * removed the loop, so a voice was destroyed while still linked into the
- * APU's active list (+0x6C4): its node stayed there with the destructed
- * object's base vtable 0x218090, the DPC then called slot 0x14 (AddRef) on
- * it every interrupt, and when its memory was reused the list looped onto
- * itself -- the crash at the end of mv_op.sfd. Deliver the interrupt from
- * inside the wait, as 3.0 does (doa3_apu_wait_retire), keeping the guest
- * registers. */
-void sub_001F5157(void)
-{
-    extern int mcpx_apu_poll_idle(void);
-    uint32_t v = ecx;
-    uint32_t r_eax = eax, r_ecx = ecx, r_edx = edx, r_ebx = ebx, r_esi = esi,
-             r_edi = edi, r_esp = esp, r_seh = g_seh_ebp;
-    DWORD t0 = GetTickCount(), tlog = 0;
-    static int s_n;
-    static int s_perf = -1;
-    LARGE_INTEGER perf_begin = {0}, perf_freq = {0};
-    LONGLONG sleep_ticks = 0, max_sleep_ticks = 0;
-    unsigned sleep_count = 0, idle_polls = 0;
-    if (s_perf < 0) s_perf = getenv("DOA3_PERF_CAPTURE") != NULL;
-    if ((MEM8(v + 0x12) & 1) && (MEM16(v + 0x12) & 0x8000)) {
-        if (s_perf) { QueryPerformanceFrequency(&perf_freq); QueryPerformanceCounter(&perf_begin); }
-        while (MEM16(v + 0x12) & 0x8000) {
-            idle_polls += mcpx_apu_poll_idle();
-            doa3_apu_deliver_irq();
-            eax = r_eax; ecx = r_ecx; edx = r_edx; ebx = r_ebx; esi = r_esi;
-            edi = r_edi; esp = r_esp; g_seh_ebp = r_seh;
-            if (!(MEM16(v + 0x12) & 0x8000)) break;
-            {   extern volatile int g_apu_det;
-                extern void mcpx_apu_det_step(void);
-                if (g_apu_det) { mcpx_apu_det_step(); continue; }
-            }
-            if (s_perf) {
-                LARGE_INTEGER before, after;
-                LONGLONG elapsed;
-                QueryPerformanceCounter(&before);
-                mcpx_apu_wait_irq(1);
-                QueryPerformanceCounter(&after);
-                elapsed = after.QuadPart - before.QuadPart;
-                sleep_ticks += elapsed;
-                if (elapsed > max_sleep_ticks) max_sleep_ticks = elapsed;
-                ++sleep_count;
-            } else mcpx_apu_wait_irq(1);
-            if (GetTickCount() - t0 > 1000 + tlog) {
-                tlog += 2000;
-                fprintf(stderr, "[DSRETIRE] voice %08X still not retired after %lu ms (flags %04X)\n",
-                        v, (unsigned long)(GetTickCount() - t0), MEM16(v + 0x12));
-                fflush(stderr);
-            }
-        }
-        if (s_n++ < 8) {
-            fprintf(stderr, "[DSRETIRE] voice %08X retired after %lu ms\n", v, (unsigned long)(GetTickCount() - t0));
-            fflush(stderr);
-        }
-        if (s_perf) {
-            LARGE_INTEGER end;
-            QueryPerformanceCounter(&end);
-            if (idle_polls || end.QuadPart - perf_begin.QuadPart > perf_freq.QuadPart / 500)
-                fprintf(stderr, "[PERF-RETIRE] frame %u voice %08X total %.3f ms waits %u wait %.3f ms max %.3f ms idle-polls %u\n",
-                    g_doa3_frames_presented, v,
-                    1000.0 * (end.QuadPart - perf_begin.QuadPart) / perf_freq.QuadPart, sleep_count,
-                    1000.0 * sleep_ticks / perf_freq.QuadPart, 1000.0 * max_sleep_ticks / perf_freq.QuadPart, idle_polls);
-        }
-    }
-    esp += 4;   /* ret */
-}
-
-/* DirectSound's DPC voice service. The old list observer duplicated the
- * guest traversal and logged changes before dispatching the actual service. */
-void sub_001F3FA0_gen(void);
-void sub_001F3FA0(void)
-{
-    sub_001F3FA0_gen();
 }
 
 /* The movie's ADX decode chain at the end of the movie. ADXT [0xC86480+0x3E00]

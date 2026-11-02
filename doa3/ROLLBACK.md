@@ -4243,3 +4243,14 @@ The next narrower candidate must retain the original lock calls and their
 ordering/flags while bypassing only the vertex arithmetic/copy loops. This
 explains a cursor difference, not every potentially differing byte; exact
 comparison must remain the acceptance criterion.
+
+## Audio after the APU removal
+
+The MCPX APU sections above describe the emulation the doa3-fixed-audio
+merge removed. The audio checkpoint part is now the high-level DirectSound
+snapshot (src/audio/dsound_hle.c: ds_rollback_*, ds_replay_*, ds_det_*);
+PORTING_3.1.md ("Rollback on high-level DirectSound") has the design. The
+APU tests (apu_snapshot, apu_live, apu_replay, apu_ownership's handoff half,
+the shadow APU model, audio_service/audio_sync) are gone with it; the
+ownership audit keeps its renderer coverage as ownership_audit_test, and
+the checkpoint integration test's audio domain is a host-side fixture.

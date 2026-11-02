@@ -1,6 +1,6 @@
 #ifndef DOA3_ROLLBACK_STATE_AUDIT_H
 #define DOA3_ROLLBACK_STATE_AUDIT_H
-/* Read-only double-capture diagnostic, no restore. Caller holds clock/APU
+/* Read-only double-capture diagnostic, no restore. Caller holds clock/audio
  * pins on the primary game thread during sample(). This does not establish
  * complete coverage of other state writers. */
 typedef struct Doa3StateAudit Doa3StateAudit;

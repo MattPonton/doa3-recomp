@@ -13,7 +13,7 @@ typedef struct {
     Doa3CheckpointSession *checkpoints;
     Doa3InputTape *inputs;
     /* Trial-wide exclusion of lifecycle/configuration and other external
-     * writers. This is NOT the per-checkpoint clock/APU pin: advance must be
+     * writers. This is NOT the per-checkpoint clock/audio pin: advance must be
      * able to run. Enter/begin return 0 only if nothing was acquired/enabled. */
     int (*enter)(void *);
     void (*leave)(void *);

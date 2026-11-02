@@ -1,6 +1,6 @@
 """Inspect a bounded dispatcher audit. Reports observed writes, not replay success.
 
-Includes unconverted tasks and the inter-frame gap. Async clock/APU writers
+Includes unconverted tasks and the inter-frame gap. Async clock/audio writers
 are not masked out or attributed exclusively to the currently running task.
 """
 import argparse
