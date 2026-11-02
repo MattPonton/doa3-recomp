@@ -6636,3 +6636,14 @@ the open question is another PC.
 
 The same change as doa3.1 1.0.4.28 ([PBRESYNC] / [PBNOGPU], SET_CULL_FACE
 and SET_FRONT_FACE validation), applied here directly.
+
+### 1.0.4-rollback.45: which memory differs between two PCs
+
+Matt's and mallo's DOA3_DET_HASH runs (rb43): frame 0 identical; by
+frame 60 the 8 MB slices 0, 1, 7 and 10 differ, later 0, 1, 4 and 10, for
+the whole run. Not yet a clean test: the two setups differ in guest
+target size (3416x1920 vs 2562x1440 internal resolution), connected
+controllers (Matt: a DualSense and a DS4), save data (HDD\E) and possibly
+dip switches, any of which the game can see. DOA3_DET_BLOCKS=n logs the
+hash of every 64 KB block at frame n and every 600 frames after, to name
+the differing blocks.

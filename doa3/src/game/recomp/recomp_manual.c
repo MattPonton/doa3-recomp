@@ -2999,6 +2999,29 @@ static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
                     fprintf(stderr, "%s\n", line);
                 }
             }
+            {   /* rollback.45, DOA3_DET_BLOCKS=n: at frame n (and every 600
+                 * frames after it), the hash of every 64 KB block of guest
+                 * RAM, 16 per line with the first block's address, so two
+                 * PCs' logs show which blocks differ. */
+                static int s_blocks_at = -1;
+                if (s_blocks_at < 0) { const char *e = getenv("DOA3_DET_BLOCKS"); s_blocks_at = e ? atoi(e) : 0; }
+                if (s_blocks_at > 0 && g_doa3_frames_presented >= (unsigned)s_blocks_at &&
+                    (g_doa3_frames_presented - (unsigned)s_blocks_at) % 600u == 0) {
+                    extern void *xbox_GetMemoryBase(void);
+                    extern size_t xbox_GetMemorySize(void);
+                    extern unsigned long long doa3_hash_bytes(const void *data, size_t bytes);
+                    const unsigned char *ram = (const unsigned char *)xbox_GetMemoryBase();
+                    size_t size = xbox_GetMemorySize(), at, k;
+                    for (at = 0; at + (64u << 10) <= size; at += 16u * (64u << 10)) {
+                        char line[256]; int n = snprintf(line, sizeof line, "[DET-BLOCKS] frame %u %08X:",
+                                                         g_doa3_frames_presented, (unsigned)at);
+                        for (k = 0; k < 16 && at + (k + 1) * (64u << 10) <= size; ++k)
+                            n += snprintf(line + n, sizeof line - n, " %08X",
+                                          (unsigned)doa3_hash_bytes(ram + at + k * (64u << 10), 64u << 10));
+                        fprintf(stderr, "%s\n", line);
+                    }
+                }
+            }
         }
     }
     if (!async_frame) {
