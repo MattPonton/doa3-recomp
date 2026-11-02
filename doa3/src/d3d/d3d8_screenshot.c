@@ -11,6 +11,7 @@
 /* One capture/encoder at a time bounds memory use and repeated key presses.
  * Only the requested frame is read back; PNG compression runs off-thread. */
 static volatile LONG s_pending, s_state, s_sequence;
+static volatile LONG s_finished;   /* 1.0.2: count of finished screenshots (saved or failed) */
 static HANDLE s_worker;
 enum { SHOT_IDLE, SHOT_SAVING, SHOT_SAVED, SHOT_FAILED };
 typedef struct { unsigned w, h; unsigned char *pixels; } Screenshot;
@@ -20,6 +21,11 @@ void d3d8_screenshot_request(void)
 {
     if (InterlockedCompareExchange(&s_state, 0, 0) != SHOT_SAVING)
         InterlockedExchange(&s_pending, 1);
+}
+int d3d8_screenshot_finished(int *ok)
+{
+    if (ok) *ok = InterlockedCompareExchange(&s_state, 0, 0) == SHOT_SAVED;
+    return (int)InterlockedCompareExchange(&s_finished, 0, 0);
 }
 const char *d3d8_screenshot_status(void)
 {
@@ -79,6 +85,7 @@ static DWORD WINAPI encode_screenshot(void *data)
     }
     free(shot->pixels); free(shot);
     InterlockedExchange(&s_state, ok ? SHOT_SAVED : SHOT_FAILED);
+    InterlockedIncrement(&s_finished);
     return 0;
 }
 
@@ -117,4 +124,5 @@ fail:
     if (staging) ID3D11Texture2D_Release(staging);
     if (shot) { free(shot->pixels); free(shot); }
     InterlockedExchange(&s_state, SHOT_FAILED);
+    InterlockedIncrement(&s_finished);
 }

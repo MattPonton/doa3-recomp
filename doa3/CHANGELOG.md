@@ -1,5 +1,126 @@
 # DOA3 3.1 changelog
 
+## 1.0.4 — not yet released
+
+- New Escape menu: a list over the game (Display, Sound, Game, Controls,
+  Photo Mode, Sparring, Quit) that works with the keyboard, a
+  controller or the mouse. Settings apply at once and are saved when you leave
+  a screen. It reopens where you closed it; hold Escape or L3 + R3 for three
+  seconds to go to the main list. Controls has a screen per player: input device (picked from a
+  list that shows which player has each controller), controller type and
+  bindings.
+- **Pause while this menu is open**, on the Game screen (off by default).
+- After closing the menu, the button or key still held when it closed no
+  longer reaches the game.
+- A rare black screen after a long session (the game kept running, with
+  sound, behind a black picture) should no longer stay: the graphics
+  translator now ignores the impossible settings that caused it.
+- Zack's costume 3 (the metallic suit) now reflects the stage when he joins
+  Survival as a later opponent (with the random costume dip switches on); it
+  showed the Beach.
+
+## 1.0.3 — 2026-10-30
+
+- Fixed movies on slower PCs (1.0.2): they started too fast and then
+  flickered to black for the rest of the movie.
+
+## 1.0.2 — 2026-10-29
+
+- **Exit Game** button on the General tab.
+- The mouse pointer over the game hides after a second without moving while
+  the Esc menu is closed, and comes back when you move the mouse.
+- A "Screenshot saved" notice appears in the corner after a screenshot (it is
+  never in the picture).
+- New **Logging** section at the bottom of the General tab: **Write log
+  files**, and **Create a trace file** (moved out of the developer tools) for
+  graphics bug reports.
+- Controller defaults: White is now on LB and Black on RB, and White is listed
+  above Black in the Controls table. A saved layout is kept; press **Reset to
+  defaults** on a player's tab to get the new one.
+- Master volume starts at 80% on a first launch (100% was loud). A saved
+  volume is kept.
+- The empty `HDD\Z` folder is no longer created. It can be deleted.
+- Fixed Omega's KO on slower PCs: it could slow to a crawl, show a blue
+  screen, lose both fighters or restart the KO, and leave the title screen
+  and later fights drawn wrong until the game was restarted. The KO is also
+  much lighter on every PC now, and plays in the original's slow motion
+  (20 frames per second, as on the Xbox).
+- Fixed a CPU tag team getting the same character in the same costume as
+  your tag partner when **Random includes alternate costume colors** (or
+  storage costumes) is on, in Time Attack and Survival.
+- Settings now save in a folder whose path has characters outside your
+  Windows language (for example a Japanese or accented user name), where
+  **Save** used to fail.
+- If Windows won't let the game write to its folder (Program Files, a synced
+  OneDrive folder, Controlled folder access or an antivirus), a warning now
+  says so at launch and on the General tab, instead of **Save** silently
+  doing nothing.
+- Keyboard **Reset to defaults** now also binds the sticks: T / G / F / H for
+  the left stick (up, down, left, right) and the arrow keys for the right.
+- **Unlock all characters, costumes and Theater movies** is now a dip switch
+  on the General tab. Your save is not changed.
+- Controller shortcuts: L3 + R3 opens or closes the Esc menu, LB / RB change
+  tabs while it is open, L3 + RB takes a screenshot, and L3 + Y shows or hides
+  the performance overlay.
+- DirectInput controllers (arcade sticks, fight pads and other non-Xbox
+  controllers) now work and can be assigned and rebound on the Controls tab.
+- Movies (the intro, endings, credits and the Theater) take much less CPU to
+  decode, and their frames are shown at even intervals (many came a little
+  late, then early), so they play more smoothly, especially on slower PCs.
+
+## 1.0.1 — 2026-10-27
+
+- Fixed the game not booting for some players in borderless mode (it hung on
+  a black screen; windowed mode worked). Audio setup could read memory that
+  belonged to another part of the program, depending on the display size.
+
+## 1.0.0 — 2026-10-27
+
+First release of the Dead or Alive 3 (JAPAN, 3.1) recompilation. Since 0.0.128:
+
+**Game**
+- Dip Switches (General tab), all off by default so the game plays as on
+  hardware: left stick in menus; Random as the default stage option (Tag and
+  Team Battle included); Random picking alternate and storage costumes;
+  shared costumes with a different option; corrected menu pixel offset; the
+  KO replay and the winner pose only after a match's final round; Beach's
+  and Aqua Palace's places on the Stage Select world map; and a fix for
+  Lorelei's double-hit ledge falls (a throw's damage lost on the fall's
+  first hit, or the landing damage dealt twice).
+- Storage costumes (TDATA): up to 99 per character, with x / y / l options;
+  the costume list scrolls past nine.
+- Options > Video > Regulator (gamma, brightness, contrast) now changes the
+  picture.
+
+**Sparring**
+- Record and play back the dummy's inputs (three slots, loop); playback
+  follows the dummy's facing, so forward stays forward after a side switch.
+- A second controller can take the dummy, or in Tag Sparring your partner.
+- Hold the Stagger Escape value for either fighter.
+- Show Move Info (frame data).
+
+**Graphics**
+- Menu and HUD line work matched to hardware at 16:9, 21:9 and 32:9: line
+  widths and positions, box corners, panel edges, the supersampled menus'
+  half-pixel offset and averaging, and atlas sprites no longer bleeding into
+  their neighbors (character names, Options buttons).
+
+**Escape menu and app**
+- Tabs reorganized: General first (check for updates at boot, logging, dip
+  switches); Video (menu size, performance overlay); Photo Mode (free camera,
+  hide either fighter or the HUD, screenshots); Sparring; developer tools
+  moved out of view.
+- Check for updates at boot (announces a newer GitHub release; never
+  downloads anything).
+- Keyboard layout on Reset to defaults when the input device is Keyboard.
+- First-run setup starts the game in a fresh process after copying the disc
+  image (it could close instead of starting).
+- The executable carries a plain placeholder icon; the window uses the
+  title image from the user's own disc.
+
+**Known issue**
+- Audio is not yet 1:1 with hardware; work on it continues.
+
 ## 0.0.128 — 2026-10-13
 
 - Extend the centered ultrawide character-select portrait and backing-panel

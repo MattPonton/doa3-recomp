@@ -246,8 +246,13 @@ extern "C" int doa3_setup_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         DragFinish(drop);
         return 1;
     }
-    if (ImGui::GetCurrentContext())
-        ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp);
+    if (ImGui::GetCurrentContext() &&
+        ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp) && msg == WM_SETCURSOR)
+        return 1;   /* cursor set; the Esc overlay would hide it (1.0.2) */
+    if (msg == WM_SETCURSOR && LOWORD(lp) == HTCLIENT) {
+        SetCursor(LoadCursor(NULL, IDC_ARROW));
+        return 1;
+    }
     /* Keys stop here so the Esc menu cannot open underneath. Everything else,
      * including Alt+F4 (WM_SYSKEYDOWN) and the frame, still reaches
      * DefWindowProc. */

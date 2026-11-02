@@ -317,14 +317,43 @@ static unsigned g_vbl_seq;
 static unsigned g_vbl_seen[MAX_FIBERS];
 #define VBL_CATCHUP_MAX 6u
 
+/* 1.0.2: the guest vblank runs at the presentation rate (60 Hz, the pace in
+ * recomp_manual.c) and is phase-locked to its frame deadline by
+ * xbox_fiber_vblank_align. It used to free-run at 59.94 Hz, so it drifted
+ * through the presented frame once every ~17 s; during a movie it wakes the
+ * Sofdec decoder, whose lap (a whole picture) then started with anything
+ * from a full frame to a fraction of a millisecond left, and in the late
+ * part of each cycle most movie frames missed their vblank. */
+static LONGLONG s_vbl_qpf, s_vbl_next;
+void xbox_fiber_vblank_align(long long deadline)
+{
+    LONGLONG period, r;
+    if (!s_vbl_qpf || !s_vbl_next) return;          /* not started yet */
+    period = s_vbl_qpf / 60;
+    /* 1.0.3: move the next vblank by less than half a period, to the
+     * boundary of the deadline's phase nearest to it. 1.0.2 set it to the
+     * deadline itself when a frame had overrun it -- a boundary that had
+     * often already fired during the frame -- so on a PC slow enough to
+     * overrun frames (every decode frame of a movie) that vblank counted
+     * twice, the guest's clock ran fast and movies played fast, then dropped
+     * frames (black flicker) to catch up. Now no boundary can fire twice:
+     * the vblank count keeps the frame rate, and only its phase follows the
+     * deadline. */
+    r = (deadline - s_vbl_next) % period;            /* C: sign of the dividend */
+    if (r > period / 2) r -= period;
+    else if (r <= -period / 2) r += period;
+    s_vbl_next += r;
+}
+
 void xbox_fiber_vblank_tick(void)
 {
-    static LONGLONG s_qpf, s_next;
+    LONGLONG s_qpf, s_next;
     LARGE_INTEGER now;
     LONGLONG period;
     unsigned elapsed = 1;
-    if (!s_qpf) { LARGE_INTEGER f; QueryPerformanceFrequency(&f); s_qpf = f.QuadPart; }
-    period = s_qpf * 1001 / 60000;                  /* 59.94 Hz */
+    if (!s_vbl_qpf) { LARGE_INTEGER f; QueryPerformanceFrequency(&f); s_vbl_qpf = f.QuadPart; }
+    s_qpf = s_vbl_qpf; s_next = s_vbl_next;
+    period = s_qpf / 60;                            /* the presentation rate */
     QueryPerformanceCounter(&now);
     if (now.QuadPart < s_next) return;
     if (!s_next) {
@@ -339,6 +368,7 @@ void xbox_fiber_vblank_tick(void)
             s_next += period * (LONGLONG)elapsed;
         }
     }
+    s_vbl_next = s_next;
     g_vbl_seq += elapsed;
     xbox_fiber_wake(XBOX_FIB_VBLANK_KEY);
 }

@@ -1,11 +1,13 @@
 /**
  * Video settings (see video_settings.h).
  */
+#include "exe_path.h"
 #include <windows.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <math.h>
 
 #include "video_settings.h"
 #include "xbe_layout.h"   /* DOA3_XBE_ID_<version> */
@@ -59,22 +61,17 @@ void video_hud_region(unsigned target_width, float *x, float *width)
     float w = (float)target_width;
     if (g_aspect == VIDEO_ASPECT_21_9) w *= 16.0f / 21.0f;
     else if (g_aspect == VIDEO_ASPECT_32_9) w *= 0.5f;
-    *x = ((float)target_width - w) * 0.5f;
+    /* 0.2.25: whole pixels, so the 16:9 canvas sits on the same pixel grid
+     * at 21:9 and 32:9 as at 16:9 (32:9 at 1x put it 0.75 px right). */
+    *x = floorf(((float)target_width - w) * 0.5f + 0.5f);
     *width = w;
 }
 
 const char *doa3_settings_ini_path(void)
 {
     static char path[MAX_PATH];
-    char *slash;
     if (path[0]) return path;
-    if (!GetModuleFileNameA(NULL, path, MAX_PATH)) {
-        strcpy_s(path, sizeof(path), "doa3_settings.ini");
-        return path;
-    }
-    slash = strrchr(path, '\\');
-    if (slash) slash[1] = 0; else path[0] = 0;
-    strcat_s(path, sizeof(path), "doa3_settings.ini");
+    doa3_exe_file_ansi("doa3_settings.ini", path, sizeof path);   /* 1.0.2: non-ANSI folders */
     return path;
 }
 

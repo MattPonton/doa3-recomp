@@ -1,5 +1,6 @@
-// Window, taskbar and Explorer icon
-1 ICON "DOA.ico"
+// Explorer / setup-screen icon: a plain placeholder. The running window takes
+// the disc's own title image from the XBE at boot (main.c, 0.2.34).
+1 ICON "placeholder.ico"
 
 // Version (Properties > Details, crash reports): see doa3_version.h
 #include <winver.h>
@@ -19,9 +20,9 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "FileDescription", "Dead or Alive 3 PC recompilation"
-            VALUE "FileVersion",     DOA3_VER_STR
+            VALUE "FileVersion",     DOA3_VER_FULL_STR
             VALUE "ProductName",     "doa3-recomp"
-            VALUE "ProductVersion",  DOA3_VER_STR
+            VALUE "ProductVersion",  DOA3_VER_FULL_STR
             VALUE "OriginalFilename", "DOA3.exe"
         END
     END

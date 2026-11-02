@@ -2881,33 +2881,35 @@ loc_000E830C: ;
 
 loc_000E8318: ;
     { uint32_t _jt = MEM32(eax * 4 + 0xE8488); /* switch: 28 entries, 27 targets */
-    if (_jt == 0x000E831Fu) goto loc_000E831F;
-    if (_jt == 0x000E832Cu) goto loc_000E832C;
-    if (_jt == 0x000E8339u) goto loc_000E8339;
-    if (_jt == 0x000E8346u) goto loc_000E8346;
-    if (_jt == 0x000E8353u) goto loc_000E8353;
-    if (_jt == 0x000E8360u) goto loc_000E8360;
-    if (_jt == 0x000E836Du) goto loc_000E836D;
-    if (_jt == 0x000E837Au) goto loc_000E837A;
-    if (_jt == 0x000E838Au) goto loc_000E838A;
-    if (_jt == 0x000E8396u) goto loc_000E8396;
-    if (_jt == 0x000E83A3u) goto loc_000E83A3;
-    if (_jt == 0x000E83B3u) goto loc_000E83B3;
-    if (_jt == 0x000E83C0u) goto loc_000E83C0;
-    if (_jt == 0x000E83CEu) goto loc_000E83CE;
-    if (_jt == 0x000E83DBu) goto loc_000E83DB;
-    if (_jt == 0x000E83E8u) goto loc_000E83E8;
-    if (_jt == 0x000E83F5u) goto loc_000E83F5;
-    if (_jt == 0x000E8405u) goto loc_000E8405;
-    if (_jt == 0x000E8412u) goto loc_000E8412;
-    if (_jt == 0x000E8422u) goto loc_000E8422;
-    if (_jt == 0x000E8432u) goto loc_000E8432;
-    if (_jt == 0x000E843Eu) goto loc_000E843E;
-    if (_jt == 0x000E844Bu) goto loc_000E844B;
-    if (_jt == 0x000E845Bu) goto loc_000E845B;
-    if (_jt == 0x000E846Bu) goto loc_000E846B;
-    if (_jt == 0x000E8478u) goto loc_000E8478;
-    if (_jt == 0x000E847Fu) goto loc_000E847F;
+    switch (_jt) {
+    case 0x000E831Fu: goto loc_000E831F;
+    case 0x000E832Cu: goto loc_000E832C;
+    case 0x000E8339u: goto loc_000E8339;
+    case 0x000E8346u: goto loc_000E8346;
+    case 0x000E8353u: goto loc_000E8353;
+    case 0x000E8360u: goto loc_000E8360;
+    case 0x000E836Du: goto loc_000E836D;
+    case 0x000E837Au: goto loc_000E837A;
+    case 0x000E838Au: goto loc_000E838A;
+    case 0x000E8396u: goto loc_000E8396;
+    case 0x000E83A3u: goto loc_000E83A3;
+    case 0x000E83B3u: goto loc_000E83B3;
+    case 0x000E83C0u: goto loc_000E83C0;
+    case 0x000E83CEu: goto loc_000E83CE;
+    case 0x000E83DBu: goto loc_000E83DB;
+    case 0x000E83E8u: goto loc_000E83E8;
+    case 0x000E83F5u: goto loc_000E83F5;
+    case 0x000E8405u: goto loc_000E8405;
+    case 0x000E8412u: goto loc_000E8412;
+    case 0x000E8422u: goto loc_000E8422;
+    case 0x000E8432u: goto loc_000E8432;
+    case 0x000E843Eu: goto loc_000E843E;
+    case 0x000E844Bu: goto loc_000E844B;
+    case 0x000E845Bu: goto loc_000E845B;
+    case 0x000E846Bu: goto loc_000E846B;
+    case 0x000E8478u: goto loc_000E8478;
+    case 0x000E847Fu: goto loc_000E847F;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000E831F: ;
@@ -3298,33 +3300,35 @@ loc_000E861C: ;
 
 loc_000E8628: ;
     { uint32_t _jt = MEM32(eax * 4 + 0xE87B4); /* switch: 28 entries, 27 targets */
-    if (_jt == 0x000E862Fu) goto loc_000E862F;
-    if (_jt == 0x000E863Fu) goto loc_000E863F;
-    if (_jt == 0x000E864Du) goto loc_000E864D;
-    if (_jt == 0x000E865Bu) goto loc_000E865B;
-    if (_jt == 0x000E866Bu) goto loc_000E866B;
-    if (_jt == 0x000E8679u) goto loc_000E8679;
-    if (_jt == 0x000E8685u) goto loc_000E8685;
-    if (_jt == 0x000E8691u) goto loc_000E8691;
-    if (_jt == 0x000E86A1u) goto loc_000E86A1;
-    if (_jt == 0x000E86B1u) goto loc_000E86B1;
-    if (_jt == 0x000E86BDu) goto loc_000E86BD;
-    if (_jt == 0x000E86CDu) goto loc_000E86CD;
-    if (_jt == 0x000E86DBu) goto loc_000E86DB;
-    if (_jt == 0x000E86EBu) goto loc_000E86EB;
-    if (_jt == 0x000E86F9u) goto loc_000E86F9;
-    if (_jt == 0x000E8707u) goto loc_000E8707;
-    if (_jt == 0x000E8715u) goto loc_000E8715;
-    if (_jt == 0x000E8723u) goto loc_000E8723;
-    if (_jt == 0x000E872Fu) goto loc_000E872F;
-    if (_jt == 0x000E873Du) goto loc_000E873D;
-    if (_jt == 0x000E874Du) goto loc_000E874D;
-    if (_jt == 0x000E875Du) goto loc_000E875D;
-    if (_jt == 0x000E876Du) goto loc_000E876D;
-    if (_jt == 0x000E8779u) goto loc_000E8779;
-    if (_jt == 0x000E8789u) goto loc_000E8789;
-    if (_jt == 0x000E8797u) goto loc_000E8797;
-    if (_jt == 0x000E87A5u) goto loc_000E87A5;
+    switch (_jt) {
+    case 0x000E862Fu: goto loc_000E862F;
+    case 0x000E863Fu: goto loc_000E863F;
+    case 0x000E864Du: goto loc_000E864D;
+    case 0x000E865Bu: goto loc_000E865B;
+    case 0x000E866Bu: goto loc_000E866B;
+    case 0x000E8679u: goto loc_000E8679;
+    case 0x000E8685u: goto loc_000E8685;
+    case 0x000E8691u: goto loc_000E8691;
+    case 0x000E86A1u: goto loc_000E86A1;
+    case 0x000E86B1u: goto loc_000E86B1;
+    case 0x000E86BDu: goto loc_000E86BD;
+    case 0x000E86CDu: goto loc_000E86CD;
+    case 0x000E86DBu: goto loc_000E86DB;
+    case 0x000E86EBu: goto loc_000E86EB;
+    case 0x000E86F9u: goto loc_000E86F9;
+    case 0x000E8707u: goto loc_000E8707;
+    case 0x000E8715u: goto loc_000E8715;
+    case 0x000E8723u: goto loc_000E8723;
+    case 0x000E872Fu: goto loc_000E872F;
+    case 0x000E873Du: goto loc_000E873D;
+    case 0x000E874Du: goto loc_000E874D;
+    case 0x000E875Du: goto loc_000E875D;
+    case 0x000E876Du: goto loc_000E876D;
+    case 0x000E8779u: goto loc_000E8779;
+    case 0x000E8789u: goto loc_000E8789;
+    case 0x000E8797u: goto loc_000E8797;
+    case 0x000E87A5u: goto loc_000E87A5;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000E862F: ;
@@ -4729,15 +4733,17 @@ loc_000E8DC0: ;
 loc_000E8DD8: ;
     edx = ZX8(MEM8(ecx + 0xE8E48));
     { uint32_t _jt = MEM32(edx * 4 + 0xE8E24); /* switch: 9 entries, 9 targets */
-    if (_jt == 0x000E8DE6u) goto loc_000E8DE6;
-    if (_jt == 0x000E8DECu) goto loc_000E8DEC;
-    if (_jt == 0x000E8DF1u) goto loc_000E8DF1;
-    if (_jt == 0x000E8DF7u) goto loc_000E8DF7;
-    if (_jt == 0x000E8DFDu) goto loc_000E8DFD;
-    if (_jt == 0x000E8E03u) goto loc_000E8E03;
-    if (_jt == 0x000E8E08u) goto loc_000E8E08;
-    if (_jt == 0x000E8E1Bu) goto loc_000E8E1B;
-    if (_jt == 0x000E8E20u) goto loc_000E8E20;
+    switch (_jt) {
+    case 0x000E8DE6u: goto loc_000E8DE6;
+    case 0x000E8DECu: goto loc_000E8DEC;
+    case 0x000E8DF1u: goto loc_000E8DF1;
+    case 0x000E8DF7u: goto loc_000E8DF7;
+    case 0x000E8DFDu: goto loc_000E8DFD;
+    case 0x000E8E03u: goto loc_000E8E03;
+    case 0x000E8E08u: goto loc_000E8E08;
+    case 0x000E8E1Bu: goto loc_000E8E1B;
+    case 0x000E8E20u: goto loc_000E8E20;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000E8DE6: ;
@@ -4808,18 +4814,20 @@ loc_000E8E60: ;
 loc_000E8E7F: ;
     edx = ZX8(MEM8(edx + 0xE8F40));
     { uint32_t _jt = MEM32(edx * 4 + 0xE8F10); /* switch: 12 entries, 12 targets */
-    if (_jt == 0x000E8E8Du) goto loc_000E8E8D;
-    if (_jt == 0x000E8E96u) goto loc_000E8E96;
-    if (_jt == 0x000E8EA3u) goto loc_000E8EA3;
-    if (_jt == 0x000E8EACu) goto loc_000E8EAC;
-    if (_jt == 0x000E8EB5u) goto loc_000E8EB5;
-    if (_jt == 0x000E8EBEu) goto loc_000E8EBE;
-    if (_jt == 0x000E8EC7u) goto loc_000E8EC7;
-    if (_jt == 0x000E8ED0u) goto loc_000E8ED0;
-    if (_jt == 0x000E8ED9u) goto loc_000E8ED9;
-    if (_jt == 0x000E8EE2u) goto loc_000E8EE2;
-    if (_jt == 0x000E8EEBu) goto loc_000E8EEB;
-    if (_jt == 0x000E8EF0u) goto loc_000E8EF0;
+    switch (_jt) {
+    case 0x000E8E8Du: goto loc_000E8E8D;
+    case 0x000E8E96u: goto loc_000E8E96;
+    case 0x000E8EA3u: goto loc_000E8EA3;
+    case 0x000E8EACu: goto loc_000E8EAC;
+    case 0x000E8EB5u: goto loc_000E8EB5;
+    case 0x000E8EBEu: goto loc_000E8EBE;
+    case 0x000E8EC7u: goto loc_000E8EC7;
+    case 0x000E8ED0u: goto loc_000E8ED0;
+    case 0x000E8ED9u: goto loc_000E8ED9;
+    case 0x000E8EE2u: goto loc_000E8EE2;
+    case 0x000E8EEBu: goto loc_000E8EEB;
+    case 0x000E8EF0u: goto loc_000E8EF0;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000E8E8D: ;
@@ -5087,15 +5095,17 @@ loc_000E8FD0: ;
 loc_000E8FE9: ;
     edx = ZX8(MEM8(eax + 0xE9088));
     { uint32_t _jt = MEM32(edx * 4 + 0xE9064); /* switch: 9 entries, 9 targets */
-    if (_jt == 0x000E8FF7u) goto loc_000E8FF7;
-    if (_jt == 0x000E9003u) goto loc_000E9003;
-    if (_jt == 0x000E9011u) goto loc_000E9011;
-    if (_jt == 0x000E9015u) goto loc_000E9015;
-    if (_jt == 0x000E9027u) goto loc_000E9027;
-    if (_jt == 0x000E9032u) goto loc_000E9032;
-    if (_jt == 0x000E903Eu) goto loc_000E903E;
-    if (_jt == 0x000E904Bu) goto loc_000E904B;
-    if (_jt == 0x000E9056u) goto loc_000E9056;
+    switch (_jt) {
+    case 0x000E8FF7u: goto loc_000E8FF7;
+    case 0x000E9003u: goto loc_000E9003;
+    case 0x000E9011u: goto loc_000E9011;
+    case 0x000E9015u: goto loc_000E9015;
+    case 0x000E9027u: goto loc_000E9027;
+    case 0x000E9032u: goto loc_000E9032;
+    case 0x000E903Eu: goto loc_000E903E;
+    case 0x000E904Bu: goto loc_000E904B;
+    case 0x000E9056u: goto loc_000E9056;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000E8FF7: ;
@@ -5228,14 +5238,16 @@ loc_000E90B0: ;
 loc_000E90C6: ;
     edx = ZX8(MEM8(edx + 0xE9140));
     { uint32_t _jt = MEM32(edx * 4 + 0xE9120); /* switch: 8 entries, 8 targets */
-    if (_jt == 0x000E90D4u) goto loc_000E90D4;
-    if (_jt == 0x000E90DEu) goto loc_000E90DE;
-    if (_jt == 0x000E90E8u) goto loc_000E90E8;
-    if (_jt == 0x000E90F2u) goto loc_000E90F2;
-    if (_jt == 0x000E90FCu) goto loc_000E90FC;
-    if (_jt == 0x000E9106u) goto loc_000E9106;
-    if (_jt == 0x000E9110u) goto loc_000E9110;
-    if (_jt == 0x000E911Au) goto loc_000E911A;
+    switch (_jt) {
+    case 0x000E90D4u: goto loc_000E90D4;
+    case 0x000E90DEu: goto loc_000E90DE;
+    case 0x000E90E8u: goto loc_000E90E8;
+    case 0x000E90F2u: goto loc_000E90F2;
+    case 0x000E90FCu: goto loc_000E90FC;
+    case 0x000E9106u: goto loc_000E9106;
+    case 0x000E9110u: goto loc_000E9110;
+    case 0x000E911Au: goto loc_000E911A;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000E90D4: ;
@@ -5342,17 +5354,19 @@ loc_000E917C: ;
 loc_000E9196: ;
     edx = ZX8(MEM8(edx + 0xE9298));
     { uint32_t _jt = MEM32(edx * 4 + 0xE926C); /* switch: 11 entries, 11 targets */
-    if (_jt == 0x000E91A4u) goto loc_000E91A4;
-    if (_jt == 0x000E91B6u) goto loc_000E91B6;
-    if (_jt == 0x000E91CBu) goto loc_000E91CB;
-    if (_jt == 0x000E91DDu) goto loc_000E91DD;
-    if (_jt == 0x000E91F2u) goto loc_000E91F2;
-    if (_jt == 0x000E9204u) goto loc_000E9204;
-    if (_jt == 0x000E921Bu) goto loc_000E921B;
-    if (_jt == 0x000E922Eu) goto loc_000E922E;
-    if (_jt == 0x000E9240u) goto loc_000E9240;
-    if (_jt == 0x000E9253u) goto loc_000E9253;
-    if (_jt == 0x000E9266u) goto loc_000E9266;
+    switch (_jt) {
+    case 0x000E91A4u: goto loc_000E91A4;
+    case 0x000E91B6u: goto loc_000E91B6;
+    case 0x000E91CBu: goto loc_000E91CB;
+    case 0x000E91DDu: goto loc_000E91DD;
+    case 0x000E91F2u: goto loc_000E91F2;
+    case 0x000E9204u: goto loc_000E9204;
+    case 0x000E921Bu: goto loc_000E921B;
+    case 0x000E922Eu: goto loc_000E922E;
+    case 0x000E9240u: goto loc_000E9240;
+    case 0x000E9253u: goto loc_000E9253;
+    case 0x000E9266u: goto loc_000E9266;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000E91A4: ;
@@ -5546,18 +5560,20 @@ loc_000E92DE: ;
 loc_000E92F8: ;
     esi = ZX8(MEM8(esi + 0xE93F0));
     { uint32_t _jt = MEM32(esi * 4 + 0xE93C0); /* switch: 12 entries, 12 targets */
-    if (_jt == 0x000E9306u) goto loc_000E9306;
-    if (_jt == 0x000E9314u) goto loc_000E9314;
-    if (_jt == 0x000E9325u) goto loc_000E9325;
-    if (_jt == 0x000E9333u) goto loc_000E9333;
-    if (_jt == 0x000E9344u) goto loc_000E9344;
-    if (_jt == 0x000E9353u) goto loc_000E9353;
-    if (_jt == 0x000E9366u) goto loc_000E9366;
-    if (_jt == 0x000E9375u) goto loc_000E9375;
-    if (_jt == 0x000E9383u) goto loc_000E9383;
-    if (_jt == 0x000E9392u) goto loc_000E9392;
-    if (_jt == 0x000E93ACu) goto loc_000E93AC;
-    if (_jt == 0x000E93BBu) goto loc_000E93BB;
+    switch (_jt) {
+    case 0x000E9306u: goto loc_000E9306;
+    case 0x000E9314u: goto loc_000E9314;
+    case 0x000E9325u: goto loc_000E9325;
+    case 0x000E9333u: goto loc_000E9333;
+    case 0x000E9344u: goto loc_000E9344;
+    case 0x000E9353u: goto loc_000E9353;
+    case 0x000E9366u: goto loc_000E9366;
+    case 0x000E9375u: goto loc_000E9375;
+    case 0x000E9383u: goto loc_000E9383;
+    case 0x000E9392u: goto loc_000E9392;
+    case 0x000E93ACu: goto loc_000E93AC;
+    case 0x000E93BBu: goto loc_000E93BB;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000E9306: ;
@@ -7773,10 +7789,12 @@ loc_000E9FBC: ;
 
 loc_000E9FC5: ;
     { uint32_t _jt = MEM32(eax * 4 + 0xEA058); /* switch: 4 entries, 4 targets */
-    if (_jt == 0x000E9FCCu) goto loc_000E9FCC;
-    if (_jt == 0x000E9FE7u) goto loc_000E9FE7;
-    if (_jt == 0x000EA003u) goto loc_000EA003;
-    if (_jt == 0x000EA020u) goto loc_000EA020;
+    switch (_jt) {
+    case 0x000E9FCCu: goto loc_000E9FCC;
+    case 0x000E9FE7u: goto loc_000E9FE7;
+    case 0x000EA003u: goto loc_000EA003;
+    case 0x000EA020u: goto loc_000EA020;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000E9FCC: ;
@@ -8145,10 +8163,12 @@ loc_000EA2F0: ;
 
 loc_000EA2F9: ;
     { uint32_t _jt = MEM32(eax * 4 + 0xEA364); /* switch: 4 entries, 4 targets */
-    if (_jt == 0x000EA300u) goto loc_000EA300;
-    if (_jt == 0x000EA321u) goto loc_000EA321;
-    if (_jt == 0x000EA325u) goto loc_000EA325;
-    if (_jt == 0x000EA344u) goto loc_000EA344;
+    switch (_jt) {
+    case 0x000EA300u: goto loc_000EA300;
+    case 0x000EA321u: goto loc_000EA321;
+    case 0x000EA325u: goto loc_000EA325;
+    case 0x000EA344u: goto loc_000EA344;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000EA300: ;
@@ -8353,10 +8373,12 @@ loc_000E9FBC: ;
 
 loc_000E9FC5: ;
     { uint32_t _jt = MEM32(eax * 4 + 0xEA058); /* switch: 4 entries, 4 targets */
-    if (_jt == 0x000E9FCCu) goto loc_000E9FCC;
-    if (_jt == 0x000E9FE7u) goto loc_000E9FE7;
-    if (_jt == 0x000EA003u) goto loc_000EA003;
-    if (_jt == 0x000EA020u) goto loc_000EA020;
+    switch (_jt) {
+    case 0x000E9FCCu: goto loc_000E9FCC;
+    case 0x000E9FE7u: goto loc_000E9FE7;
+    case 0x000EA003u: goto loc_000EA003;
+    case 0x000EA020u: goto loc_000EA020;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000E9FCC: ;
@@ -8774,10 +8796,12 @@ loc_000EA2F0: ;
 
 loc_000EA2F9: ;
     { uint32_t _jt = MEM32(eax * 4 + 0xEA364); /* switch: 4 entries, 4 targets */
-    if (_jt == 0x000EA300u) goto loc_000EA300;
-    if (_jt == 0x000EA321u) goto loc_000EA321;
-    if (_jt == 0x000EA325u) goto loc_000EA325;
-    if (_jt == 0x000EA344u) goto loc_000EA344;
+    switch (_jt) {
+    case 0x000EA300u: goto loc_000EA300;
+    case 0x000EA321u: goto loc_000EA321;
+    case 0x000EA325u: goto loc_000EA325;
+    case 0x000EA344u: goto loc_000EA344;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000EA300: ;
@@ -53345,12 +53369,14 @@ loc_000F91E3: ;
 loc_000F91EB: ;
     ecx = ZX8(MEM8(ecx + 0xF9264));
     { uint32_t _jt = MEM32(ecx * 4 + 0xF924C); /* switch: 6 entries, 6 targets */
-    if (_jt == 0x000F91F9u) goto loc_000F91F9;
-    if (_jt == 0x000F9204u) goto loc_000F9204;
-    if (_jt == 0x000F920Bu) goto loc_000F920B;
-    if (_jt == 0x000F9216u) goto loc_000F9216;
-    if (_jt == 0x000F921Fu) goto loc_000F921F;
-    if (_jt == 0x000F922Au) goto loc_000F922A;
+    switch (_jt) {
+    case 0x000F91F9u: goto loc_000F91F9;
+    case 0x000F9204u: goto loc_000F9204;
+    case 0x000F920Bu: goto loc_000F920B;
+    case 0x000F9216u: goto loc_000F9216;
+    case 0x000F921Fu: goto loc_000F921F;
+    case 0x000F922Au: goto loc_000F922A;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000F91F9: ;
@@ -58953,10 +58979,12 @@ loc_000FA90F: ;
 
 loc_000FA92A: ;
     { uint32_t _jt = MEM32(eax * 4 + 0xFAA74); /* switch: 7 entries, 4 targets */
-    if (_jt == 0x000FA931u) goto loc_000FA931;
-    if (_jt == 0x000FA967u) goto loc_000FA967;
-    if (_jt == 0x000FA989u) goto loc_000FA989;
-    if (_jt == 0x000FAA5Cu) goto loc_000FAA5C;
+    switch (_jt) {
+    case 0x000FA931u: goto loc_000FA931;
+    case 0x000FA967u: goto loc_000FA967;
+    case 0x000FA989u: goto loc_000FA989;
+    case 0x000FAA5Cu: goto loc_000FAA5C;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000FA931: ;
@@ -59148,10 +59176,12 @@ loc_000FA90F: ;
 
 loc_000FA92A: ;
     { uint32_t _jt = MEM32(eax * 4 + 0xFAA74); /* switch: 7 entries, 4 targets */
-    if (_jt == 0x000FA931u) goto loc_000FA931;
-    if (_jt == 0x000FA967u) goto loc_000FA967;
-    if (_jt == 0x000FA989u) goto loc_000FA989;
-    if (_jt == 0x000FAA5Cu) goto loc_000FAA5C;
+    switch (_jt) {
+    case 0x000FA931u: goto loc_000FA931;
+    case 0x000FA967u: goto loc_000FA967;
+    case 0x000FA989u: goto loc_000FA989;
+    case 0x000FAA5Cu: goto loc_000FAA5C;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000FA931: ;
@@ -59339,10 +59369,12 @@ loc_000FA90F: ;
 
 loc_000FA92A: ;
     { uint32_t _jt = MEM32(eax * 4 + 0xFAA74); /* switch: 7 entries, 4 targets */
-    if (_jt == 0x000FA931u) goto loc_000FA931;
-    if (_jt == 0x000FA967u) goto loc_000FA967;
-    if (_jt == 0x000FA989u) goto loc_000FA989;
-    if (_jt == 0x000FAA5Cu) goto loc_000FAA5C;
+    switch (_jt) {
+    case 0x000FA931u: goto loc_000FA931;
+    case 0x000FA967u: goto loc_000FA967;
+    case 0x000FA989u: goto loc_000FA989;
+    case 0x000FAA5Cu: goto loc_000FAA5C;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000FA931: ;
@@ -59835,11 +59867,13 @@ loc_000FACF4: ;
 
 loc_000FAD0B: ;
     { uint32_t _jt = MEM32(ecx * 4 + 0xFAE88); /* switch: 7 entries, 5 targets */
-    if (_jt == 0x000FAD12u) goto loc_000FAD12;
-    if (_jt == 0x000FAD4Du) goto loc_000FAD4D;
-    if (_jt == 0x000FAD62u) goto loc_000FAD62;
-    if (_jt == 0x000FADBBu) goto loc_000FADBB;
-    if (_jt == 0x000FAE2Du) goto loc_000FAE2D;
+    switch (_jt) {
+    case 0x000FAD12u: goto loc_000FAD12;
+    case 0x000FAD4Du: goto loc_000FAD4D;
+    case 0x000FAD62u: goto loc_000FAD62;
+    case 0x000FADBBu: goto loc_000FADBB;
+    case 0x000FAE2Du: goto loc_000FAE2D;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000FAD12: ;
@@ -60062,11 +60096,13 @@ loc_000FACF4: ;
 
 loc_000FAD0B: ;
     { uint32_t _jt = MEM32(ecx * 4 + 0xFAE88); /* switch: 7 entries, 5 targets */
-    if (_jt == 0x000FAD12u) goto loc_000FAD12;
-    if (_jt == 0x000FAD4Du) goto loc_000FAD4D;
-    if (_jt == 0x000FAD62u) goto loc_000FAD62;
-    if (_jt == 0x000FADBBu) goto loc_000FADBB;
-    if (_jt == 0x000FAE2Du) goto loc_000FAE2D;
+    switch (_jt) {
+    case 0x000FAD12u: goto loc_000FAD12;
+    case 0x000FAD4Du: goto loc_000FAD4D;
+    case 0x000FAD62u: goto loc_000FAD62;
+    case 0x000FADBBu: goto loc_000FADBB;
+    case 0x000FAE2Du: goto loc_000FAE2D;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000FAD12: ;
@@ -60286,11 +60322,13 @@ loc_000FACF4: ;
 
 loc_000FAD0B: ;
     { uint32_t _jt = MEM32(ecx * 4 + 0xFAE88); /* switch: 7 entries, 5 targets */
-    if (_jt == 0x000FAD12u) goto loc_000FAD12;
-    if (_jt == 0x000FAD4Du) goto loc_000FAD4D;
-    if (_jt == 0x000FAD62u) goto loc_000FAD62;
-    if (_jt == 0x000FADBBu) goto loc_000FADBB;
-    if (_jt == 0x000FAE2Du) goto loc_000FAE2D;
+    switch (_jt) {
+    case 0x000FAD12u: goto loc_000FAD12;
+    case 0x000FAD4Du: goto loc_000FAD4D;
+    case 0x000FAD62u: goto loc_000FAD62;
+    case 0x000FADBBu: goto loc_000FADBB;
+    case 0x000FAE2Du: goto loc_000FAE2D;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000FAD12: ;
@@ -66549,10 +66587,12 @@ loc_000FC958: ;
     eax = ZX8(MEM8(edi + 0xFD054));
     PUSH32(esp, ebx);
     { uint32_t _jt = MEM32(eax * 4 + 0xFD044); /* switch: 4 entries, 4 targets */
-    if (_jt == 0x000FC967u) goto loc_000FC967;
-    if (_jt == 0x000FCDC4u) goto loc_000FCDC4;
-    if (_jt == 0x000FCF0Cu) goto loc_000FCF0C;
-    if (_jt == 0x000FD038u) goto loc_000FD038;
+    switch (_jt) {
+    case 0x000FC967u: goto loc_000FC967;
+    case 0x000FCDC4u: goto loc_000FCDC4;
+    case 0x000FCF0Cu: goto loc_000FCF0C;
+    case 0x000FD038u: goto loc_000FD038;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000FC967: ;
@@ -67341,22 +67381,24 @@ loc_000FD098: ;
 
 loc_000FD0C5: ;
     { uint32_t _jt = MEM32(ecx * 4 + 0xFD61C); /* switch: 18 entries, 16 targets */
-    if (_jt == 0x000FD0CCu) goto loc_000FD0CC;
-    if (_jt == 0x000FD118u) goto loc_000FD118;
-    if (_jt == 0x000FD142u) goto loc_000FD142;
-    if (_jt == 0x000FD17Du) goto loc_000FD17D;
-    if (_jt == 0x000FD26Cu) goto loc_000FD26C;
-    if (_jt == 0x000FD27Fu) goto loc_000FD27F;
-    if (_jt == 0x000FD2A6u) goto loc_000FD2A6;
-    if (_jt == 0x000FD2B2u) goto loc_000FD2B2;
-    if (_jt == 0x000FD2F1u) goto loc_000FD2F1;
-    if (_jt == 0x000FD46Cu) goto loc_000FD46C;
-    if (_jt == 0x000FD4EAu) goto loc_000FD4EA;
-    if (_jt == 0x000FD53Fu) goto loc_000FD53F;
-    if (_jt == 0x000FD551u) goto loc_000FD551;
-    if (_jt == 0x000FD5A5u) goto loc_000FD5A5;
-    if (_jt == 0x000FD5E7u) goto loc_000FD5E7;
-    if (_jt == 0x000FD615u) goto loc_000FD615;
+    switch (_jt) {
+    case 0x000FD0CCu: goto loc_000FD0CC;
+    case 0x000FD118u: goto loc_000FD118;
+    case 0x000FD142u: goto loc_000FD142;
+    case 0x000FD17Du: goto loc_000FD17D;
+    case 0x000FD26Cu: goto loc_000FD26C;
+    case 0x000FD27Fu: goto loc_000FD27F;
+    case 0x000FD2A6u: goto loc_000FD2A6;
+    case 0x000FD2B2u: goto loc_000FD2B2;
+    case 0x000FD2F1u: goto loc_000FD2F1;
+    case 0x000FD46Cu: goto loc_000FD46C;
+    case 0x000FD4EAu: goto loc_000FD4EA;
+    case 0x000FD53Fu: goto loc_000FD53F;
+    case 0x000FD551u: goto loc_000FD551;
+    case 0x000FD5A5u: goto loc_000FD5A5;
+    case 0x000FD5E7u: goto loc_000FD5E7;
+    case 0x000FD615u: goto loc_000FD615;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000FD0CC: ;
@@ -67894,22 +67936,24 @@ loc_000FD098: ;
 
 loc_000FD0C5: ;
     { uint32_t _jt = MEM32(ecx * 4 + 0xFD61C); /* switch: 18 entries, 16 targets */
-    if (_jt == 0x000FD0CCu) goto loc_000FD0CC;
-    if (_jt == 0x000FD118u) goto loc_000FD118;
-    if (_jt == 0x000FD142u) goto loc_000FD142;
-    if (_jt == 0x000FD17Du) goto loc_000FD17D;
-    if (_jt == 0x000FD26Cu) goto loc_000FD26C;
-    if (_jt == 0x000FD27Fu) goto loc_000FD27F;
-    if (_jt == 0x000FD2A6u) goto loc_000FD2A6;
-    if (_jt == 0x000FD2B2u) goto loc_000FD2B2;
-    if (_jt == 0x000FD2F1u) goto loc_000FD2F1;
-    if (_jt == 0x000FD46Cu) goto loc_000FD46C;
-    if (_jt == 0x000FD4EAu) goto loc_000FD4EA;
-    if (_jt == 0x000FD53Fu) goto loc_000FD53F;
-    if (_jt == 0x000FD551u) goto loc_000FD551;
-    if (_jt == 0x000FD5A5u) goto loc_000FD5A5;
-    if (_jt == 0x000FD5E7u) goto loc_000FD5E7;
-    if (_jt == 0x000FD615u) goto loc_000FD615;
+    switch (_jt) {
+    case 0x000FD0CCu: goto loc_000FD0CC;
+    case 0x000FD118u: goto loc_000FD118;
+    case 0x000FD142u: goto loc_000FD142;
+    case 0x000FD17Du: goto loc_000FD17D;
+    case 0x000FD26Cu: goto loc_000FD26C;
+    case 0x000FD27Fu: goto loc_000FD27F;
+    case 0x000FD2A6u: goto loc_000FD2A6;
+    case 0x000FD2B2u: goto loc_000FD2B2;
+    case 0x000FD2F1u: goto loc_000FD2F1;
+    case 0x000FD46Cu: goto loc_000FD46C;
+    case 0x000FD4EAu: goto loc_000FD4EA;
+    case 0x000FD53Fu: goto loc_000FD53F;
+    case 0x000FD551u: goto loc_000FD551;
+    case 0x000FD5A5u: goto loc_000FD5A5;
+    case 0x000FD5E7u: goto loc_000FD5E7;
+    case 0x000FD615u: goto loc_000FD615;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000FD0CC: ;
@@ -68489,21 +68533,23 @@ loc_000FD6EA: ;
 
 loc_000FD6F7: ;
     { uint32_t _jt = MEM32(eax * 4 + 0xFDB88); /* switch: 18 entries, 15 targets */
-    if (_jt == 0x000FD6FEu) goto loc_000FD6FE;
-    if (_jt == 0x000FD76Fu) goto loc_000FD76F;
-    if (_jt == 0x000FD77Eu) goto loc_000FD77E;
-    if (_jt == 0x000FD79Cu) goto loc_000FD79C;
-    if (_jt == 0x000FD7A6u) goto loc_000FD7A6;
-    if (_jt == 0x000FD7E5u) goto loc_000FD7E5;
-    if (_jt == 0x000FD919u) goto loc_000FD919;
-    if (_jt == 0x000FD92Cu) goto loc_000FD92C;
-    if (_jt == 0x000FD98Fu) goto loc_000FD98F;
-    if (_jt == 0x000FD9CFu) goto loc_000FD9CF;
-    if (_jt == 0x000FD9E5u) goto loc_000FD9E5;
-    if (_jt == 0x000FD9F2u) goto loc_000FD9F2;
-    if (_jt == 0x000FD9FFu) goto loc_000FD9FF;
-    if (_jt == 0x000FDAD6u) goto loc_000FDAD6;
-    if (_jt == 0x000FDB62u) goto loc_000FDB62;
+    switch (_jt) {
+    case 0x000FD6FEu: goto loc_000FD6FE;
+    case 0x000FD76Fu: goto loc_000FD76F;
+    case 0x000FD77Eu: goto loc_000FD77E;
+    case 0x000FD79Cu: goto loc_000FD79C;
+    case 0x000FD7A6u: goto loc_000FD7A6;
+    case 0x000FD7E5u: goto loc_000FD7E5;
+    case 0x000FD919u: goto loc_000FD919;
+    case 0x000FD92Cu: goto loc_000FD92C;
+    case 0x000FD98Fu: goto loc_000FD98F;
+    case 0x000FD9CFu: goto loc_000FD9CF;
+    case 0x000FD9E5u: goto loc_000FD9E5;
+    case 0x000FD9F2u: goto loc_000FD9F2;
+    case 0x000FD9FFu: goto loc_000FD9FF;
+    case 0x000FDAD6u: goto loc_000FDAD6;
+    case 0x000FDB62u: goto loc_000FDB62;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000FD6FE: ;
@@ -69006,21 +69052,23 @@ loc_000FD6EA: ;
 
 loc_000FD6F7: ;
     { uint32_t _jt = MEM32(eax * 4 + 0xFDB88); /* switch: 18 entries, 15 targets */
-    if (_jt == 0x000FD6FEu) goto loc_000FD6FE;
-    if (_jt == 0x000FD76Fu) goto loc_000FD76F;
-    if (_jt == 0x000FD77Eu) goto loc_000FD77E;
-    if (_jt == 0x000FD79Cu) goto loc_000FD79C;
-    if (_jt == 0x000FD7A6u) goto loc_000FD7A6;
-    if (_jt == 0x000FD7E5u) goto loc_000FD7E5;
-    if (_jt == 0x000FD919u) goto loc_000FD919;
-    if (_jt == 0x000FD92Cu) goto loc_000FD92C;
-    if (_jt == 0x000FD98Fu) goto loc_000FD98F;
-    if (_jt == 0x000FD9CFu) goto loc_000FD9CF;
-    if (_jt == 0x000FD9E5u) goto loc_000FD9E5;
-    if (_jt == 0x000FD9F2u) goto loc_000FD9F2;
-    if (_jt == 0x000FD9FFu) goto loc_000FD9FF;
-    if (_jt == 0x000FDAD6u) goto loc_000FDAD6;
-    if (_jt == 0x000FDB62u) goto loc_000FDB62;
+    switch (_jt) {
+    case 0x000FD6FEu: goto loc_000FD6FE;
+    case 0x000FD76Fu: goto loc_000FD76F;
+    case 0x000FD77Eu: goto loc_000FD77E;
+    case 0x000FD79Cu: goto loc_000FD79C;
+    case 0x000FD7A6u: goto loc_000FD7A6;
+    case 0x000FD7E5u: goto loc_000FD7E5;
+    case 0x000FD919u: goto loc_000FD919;
+    case 0x000FD92Cu: goto loc_000FD92C;
+    case 0x000FD98Fu: goto loc_000FD98F;
+    case 0x000FD9CFu: goto loc_000FD9CF;
+    case 0x000FD9E5u: goto loc_000FD9E5;
+    case 0x000FD9F2u: goto loc_000FD9F2;
+    case 0x000FD9FFu: goto loc_000FD9FF;
+    case 0x000FDAD6u: goto loc_000FDAD6;
+    case 0x000FDB62u: goto loc_000FDB62;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000FD6FE: ;
@@ -69518,21 +69566,23 @@ loc_000FD6EA: ;
 
 loc_000FD6F7: ;
     { uint32_t _jt = MEM32(eax * 4 + 0xFDB88); /* switch: 18 entries, 15 targets */
-    if (_jt == 0x000FD6FEu) goto loc_000FD6FE;
-    if (_jt == 0x000FD76Fu) goto loc_000FD76F;
-    if (_jt == 0x000FD77Eu) goto loc_000FD77E;
-    if (_jt == 0x000FD79Cu) goto loc_000FD79C;
-    if (_jt == 0x000FD7A6u) goto loc_000FD7A6;
-    if (_jt == 0x000FD7E5u) goto loc_000FD7E5;
-    if (_jt == 0x000FD919u) goto loc_000FD919;
-    if (_jt == 0x000FD92Cu) goto loc_000FD92C;
-    if (_jt == 0x000FD98Fu) goto loc_000FD98F;
-    if (_jt == 0x000FD9CFu) goto loc_000FD9CF;
-    if (_jt == 0x000FD9E5u) goto loc_000FD9E5;
-    if (_jt == 0x000FD9F2u) goto loc_000FD9F2;
-    if (_jt == 0x000FD9FFu) goto loc_000FD9FF;
-    if (_jt == 0x000FDAD6u) goto loc_000FDAD6;
-    if (_jt == 0x000FDB62u) goto loc_000FDB62;
+    switch (_jt) {
+    case 0x000FD6FEu: goto loc_000FD6FE;
+    case 0x000FD76Fu: goto loc_000FD76F;
+    case 0x000FD77Eu: goto loc_000FD77E;
+    case 0x000FD79Cu: goto loc_000FD79C;
+    case 0x000FD7A6u: goto loc_000FD7A6;
+    case 0x000FD7E5u: goto loc_000FD7E5;
+    case 0x000FD919u: goto loc_000FD919;
+    case 0x000FD92Cu: goto loc_000FD92C;
+    case 0x000FD98Fu: goto loc_000FD98F;
+    case 0x000FD9CFu: goto loc_000FD9CF;
+    case 0x000FD9E5u: goto loc_000FD9E5;
+    case 0x000FD9F2u: goto loc_000FD9F2;
+    case 0x000FD9FFu: goto loc_000FD9FF;
+    case 0x000FDAD6u: goto loc_000FDAD6;
+    case 0x000FDB62u: goto loc_000FDB62;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000FD6FE: ;
@@ -70004,21 +70054,23 @@ loc_000FD6EA: ;
 
 loc_000FD6F7: ;
     { uint32_t _jt = MEM32(eax * 4 + 0xFDB88); /* switch: 18 entries, 15 targets */
-    if (_jt == 0x000FD6FEu) goto loc_000FD6FE;
-    if (_jt == 0x000FD76Fu) goto loc_000FD76F;
-    if (_jt == 0x000FD77Eu) goto loc_000FD77E;
-    if (_jt == 0x000FD79Cu) goto loc_000FD79C;
-    if (_jt == 0x000FD7A6u) goto loc_000FD7A6;
-    if (_jt == 0x000FD7E5u) goto loc_000FD7E5;
-    if (_jt == 0x000FD919u) goto loc_000FD919;
-    if (_jt == 0x000FD92Cu) goto loc_000FD92C;
-    if (_jt == 0x000FD98Fu) goto loc_000FD98F;
-    if (_jt == 0x000FD9CFu) goto loc_000FD9CF;
-    if (_jt == 0x000FD9E5u) goto loc_000FD9E5;
-    if (_jt == 0x000FD9F2u) goto loc_000FD9F2;
-    if (_jt == 0x000FD9FFu) goto loc_000FD9FF;
-    if (_jt == 0x000FDAD6u) goto loc_000FDAD6;
-    if (_jt == 0x000FDB62u) goto loc_000FDB62;
+    switch (_jt) {
+    case 0x000FD6FEu: goto loc_000FD6FE;
+    case 0x000FD76Fu: goto loc_000FD76F;
+    case 0x000FD77Eu: goto loc_000FD77E;
+    case 0x000FD79Cu: goto loc_000FD79C;
+    case 0x000FD7A6u: goto loc_000FD7A6;
+    case 0x000FD7E5u: goto loc_000FD7E5;
+    case 0x000FD919u: goto loc_000FD919;
+    case 0x000FD92Cu: goto loc_000FD92C;
+    case 0x000FD98Fu: goto loc_000FD98F;
+    case 0x000FD9CFu: goto loc_000FD9CF;
+    case 0x000FD9E5u: goto loc_000FD9E5;
+    case 0x000FD9F2u: goto loc_000FD9F2;
+    case 0x000FD9FFu: goto loc_000FD9FF;
+    case 0x000FDAD6u: goto loc_000FDAD6;
+    case 0x000FDB62u: goto loc_000FDB62;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000FD6FE: ;
@@ -71002,16 +71054,18 @@ loc_000FDC4A: ;
 loc_000FDC57: ;
     eax = ZX8(MEM8(eax + 0xFE2DC));
     { uint32_t _jt = MEM32(eax * 4 + 0xFE2B4); /* switch: 10 entries, 10 targets */
-    if (_jt == 0x000FDC65u) goto loc_000FDC65;
-    if (_jt == 0x000FDCDDu) goto loc_000FDCDD;
-    if (_jt == 0x000FDD40u) goto loc_000FDD40;
-    if (_jt == 0x000FDDAEu) goto loc_000FDDAE;
-    if (_jt == 0x000FDE0Du) goto loc_000FDE0D;
-    if (_jt == 0x000FDE80u) goto loc_000FDE80;
-    if (_jt == 0x000FDEEAu) goto loc_000FDEEA;
-    if (_jt == 0x000FDF48u) goto loc_000FDF48;
-    if (_jt == 0x000FDF98u) goto loc_000FDF98;
-    if (_jt == 0x000FE00Au) goto loc_000FE00A;
+    switch (_jt) {
+    case 0x000FDC65u: goto loc_000FDC65;
+    case 0x000FDCDDu: goto loc_000FDCDD;
+    case 0x000FDD40u: goto loc_000FDD40;
+    case 0x000FDDAEu: goto loc_000FDDAE;
+    case 0x000FDE0Du: goto loc_000FDE0D;
+    case 0x000FDE80u: goto loc_000FDE80;
+    case 0x000FDEEAu: goto loc_000FDEEA;
+    case 0x000FDF48u: goto loc_000FDF48;
+    case 0x000FDF98u: goto loc_000FDF98;
+    case 0x000FE00Au: goto loc_000FE00A;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000FDC65: ;
@@ -71624,11 +71678,13 @@ loc_000FE19A: ;
 loc_000FE1A9: ;
     ecx = ZX8(MEM8(eax + 0xFE304));
     { uint32_t _jt = MEM32(ecx * 4 + 0xFE2F0); /* switch: 5 entries, 5 targets */
-    if (_jt == 0x000FE1B7u) goto loc_000FE1B7;
-    if (_jt == 0x000FE1D8u) goto loc_000FE1D8;
-    if (_jt == 0x000FE1F9u) goto loc_000FE1F9;
-    if (_jt == 0x000FE21Au) goto loc_000FE21A;
-    if (_jt == 0x000FE245u) goto loc_000FE245;
+    switch (_jt) {
+    case 0x000FE1B7u: goto loc_000FE1B7;
+    case 0x000FE1D8u: goto loc_000FE1D8;
+    case 0x000FE1F9u: goto loc_000FE1F9;
+    case 0x000FE21Au: goto loc_000FE21A;
+    case 0x000FE245u: goto loc_000FE245;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_000FE1B7: ;
@@ -86622,11 +86678,13 @@ loc_00104760: ;
 
 loc_0010476C: ;
     { uint32_t _jt = MEM32(eax * 4 + 0x10483C); /* switch: 5 entries, 5 targets */
-    if (_jt == 0x00104773u) goto loc_00104773;
-    if (_jt == 0x001047AFu) goto loc_001047AF;
-    if (_jt == 0x001047F4u) goto loc_001047F4;
-    if (_jt == 0x001047F7u) goto loc_001047F7;
-    if (_jt == 0x00104833u) goto loc_00104833;
+    switch (_jt) {
+    case 0x00104773u: goto loc_00104773;
+    case 0x001047AFu: goto loc_001047AF;
+    case 0x001047F4u: goto loc_001047F4;
+    case 0x001047F7u: goto loc_001047F7;
+    case 0x00104833u: goto loc_00104833;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_00104773: ;
@@ -88974,17 +89032,19 @@ loc_0010592F: ;
     esp += 4; return; /* ret */
 
     { uint32_t _jt = MEM32(ecx * 4 + 0x105A88); /* switch: 11 entries, 11 targets */
-    if (_jt == 0x00105966u) goto loc_00105966;
-    if (_jt == 0x00105980u) goto loc_00105980;
-    if (_jt == 0x0010599Au) goto loc_0010599A;
-    if (_jt == 0x001059B4u) goto loc_001059B4;
-    if (_jt == 0x001059CEu) goto loc_001059CE;
-    if (_jt == 0x001059E8u) goto loc_001059E8;
-    if (_jt == 0x00105A02u) goto loc_00105A02;
-    if (_jt == 0x00105A1Cu) goto loc_00105A1C;
-    if (_jt == 0x00105A36u) goto loc_00105A36;
-    if (_jt == 0x00105A50u) goto loc_00105A50;
-    if (_jt == 0x00105A6Au) goto loc_00105A6A;
+    switch (_jt) {
+    case 0x00105966u: goto loc_00105966;
+    case 0x00105980u: goto loc_00105980;
+    case 0x0010599Au: goto loc_0010599A;
+    case 0x001059B4u: goto loc_001059B4;
+    case 0x001059CEu: goto loc_001059CE;
+    case 0x001059E8u: goto loc_001059E8;
+    case 0x00105A02u: goto loc_00105A02;
+    case 0x00105A1Cu: goto loc_00105A1C;
+    case 0x00105A36u: goto loc_00105A36;
+    case 0x00105A50u: goto loc_00105A50;
+    case 0x00105A6Au: goto loc_00105A6A;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_00105966: ;
@@ -89549,17 +89609,19 @@ loc_00105950: ;
 
 loc_0010595F: ;
     { uint32_t _jt = MEM32(ecx * 4 + 0x105A88); /* switch: 11 entries, 11 targets */
-    if (_jt == 0x00105966u) goto loc_00105966;
-    if (_jt == 0x00105980u) goto loc_00105980;
-    if (_jt == 0x0010599Au) goto loc_0010599A;
-    if (_jt == 0x001059B4u) goto loc_001059B4;
-    if (_jt == 0x001059CEu) goto loc_001059CE;
-    if (_jt == 0x001059E8u) goto loc_001059E8;
-    if (_jt == 0x00105A02u) goto loc_00105A02;
-    if (_jt == 0x00105A1Cu) goto loc_00105A1C;
-    if (_jt == 0x00105A36u) goto loc_00105A36;
-    if (_jt == 0x00105A50u) goto loc_00105A50;
-    if (_jt == 0x00105A6Au) goto loc_00105A6A;
+    switch (_jt) {
+    case 0x00105966u: goto loc_00105966;
+    case 0x00105980u: goto loc_00105980;
+    case 0x0010599Au: goto loc_0010599A;
+    case 0x001059B4u: goto loc_001059B4;
+    case 0x001059CEu: goto loc_001059CE;
+    case 0x001059E8u: goto loc_001059E8;
+    case 0x00105A02u: goto loc_00105A02;
+    case 0x00105A1Cu: goto loc_00105A1C;
+    case 0x00105A36u: goto loc_00105A36;
+    case 0x00105A50u: goto loc_00105A50;
+    case 0x00105A6Au: goto loc_00105A6A;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_00105966: ;
@@ -117555,10 +117617,12 @@ loc_0010F368: ;
 
 loc_0010F3A0: ;
     { uint32_t _jt = MEM32(eax * 4 + 0x10F5A0); /* switch: 4 entries, 4 targets */
-    if (_jt == 0x0010F3A7u) goto loc_0010F3A7;
-    if (_jt == 0x0010F41Bu) goto loc_0010F41B;
-    if (_jt == 0x0010F492u) goto loc_0010F492;
-    if (_jt == 0x0010F4F7u) goto loc_0010F4F7;
+    switch (_jt) {
+    case 0x0010F3A7u: goto loc_0010F3A7;
+    case 0x0010F41Bu: goto loc_0010F41B;
+    case 0x0010F492u: goto loc_0010F492;
+    case 0x0010F4F7u: goto loc_0010F4F7;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_0010F3A7: ;
@@ -117783,8 +117847,10 @@ loc_0010F5E8: ;
 
 loc_0010F617: ;
     { uint32_t _jt = MEM32(eax * 4 + 0x10F6CC); /* switch: 4 entries, 2 targets */
-    if (_jt == 0x0010F61Eu) goto loc_0010F61E;
-    if (_jt == 0x0010F62Au) goto loc_0010F62A;
+    switch (_jt) {
+    case 0x0010F61Eu: goto loc_0010F61E;
+    case 0x0010F62Au: goto loc_0010F62A;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_0010F61E: ;
@@ -118219,10 +118285,12 @@ loc_0010F9FF: ;
 
 loc_0010FA29: ;
     { uint32_t _jt = MEM32(eax * 4 + 0x10FC24); /* switch: 4 entries, 4 targets */
-    if (_jt == 0x0010FA30u) goto loc_0010FA30;
-    if (_jt == 0x0010FA97u) goto loc_0010FA97;
-    if (_jt == 0x0010FAECu) goto loc_0010FAEC;
-    if (_jt == 0x0010FB50u) goto loc_0010FB50;
+    switch (_jt) {
+    case 0x0010FA30u: goto loc_0010FA30;
+    case 0x0010FA97u: goto loc_0010FA97;
+    case 0x0010FAECu: goto loc_0010FAEC;
+    case 0x0010FB50u: goto loc_0010FB50;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_0010FA30: ;
@@ -118467,8 +118535,10 @@ loc_0010FC71: ;
 
 loc_0010FC9F: ;
     { uint32_t _jt = MEM32(ecx * 4 + 0x10FE10); /* switch: 4 entries, 2 targets */
-    if (_jt == 0x0010FCA6u) goto loc_0010FCA6;
-    if (_jt == 0x0010FCB4u) goto loc_0010FCB4;
+    switch (_jt) {
+    case 0x0010FCA6u: goto loc_0010FCA6;
+    case 0x0010FCB4u: goto loc_0010FCB4;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_0010FCA6: ;
@@ -118685,10 +118755,12 @@ loc_0010FE32: ;
 
 loc_0010FE43: ;
     { uint32_t _jt = MEM32(eax * 4 + 0x1100F4); /* switch: 4 entries, 4 targets */
-    if (_jt == 0x0010FE4Au) goto loc_0010FE4A;
-    if (_jt == 0x0010FEDDu) goto loc_0010FEDD;
-    if (_jt == 0x0010FF58u) goto loc_0010FF58;
-    if (_jt == 0x00110006u) goto loc_00110006;
+    switch (_jt) {
+    case 0x0010FE4Au: goto loc_0010FE4A;
+    case 0x0010FEDDu: goto loc_0010FEDD;
+    case 0x0010FF58u: goto loc_0010FF58;
+    case 0x00110006u: goto loc_00110006;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_0010FE4A: ;
@@ -122789,12 +122861,14 @@ loc_00111BD0: ;
 
 loc_00111BD8: ;
     { uint32_t _jt = MEM32(ecx * 4 + 0x111C00); /* switch: 8 entries, 6 targets */
-    if (_jt == 0x00111BDFu) goto loc_00111BDF;
-    if (_jt == 0x00111BE4u) goto loc_00111BE4;
-    if (_jt == 0x00111BE9u) goto loc_00111BE9;
-    if (_jt == 0x00111BEEu) goto loc_00111BEE;
-    if (_jt == 0x00111BF3u) goto loc_00111BF3;
-    if (_jt == 0x00111BF8u) goto loc_00111BF8;
+    switch (_jt) {
+    case 0x00111BDFu: goto loc_00111BDF;
+    case 0x00111BE4u: goto loc_00111BE4;
+    case 0x00111BE9u: goto loc_00111BE9;
+    case 0x00111BEEu: goto loc_00111BEE;
+    case 0x00111BF3u: goto loc_00111BF3;
+    case 0x00111BF8u: goto loc_00111BF8;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_00111BDF: ;
@@ -126530,12 +126604,14 @@ loc_001131CB: ;
 
 loc_001131D6: ;
     { uint32_t _jt = MEM32(eax * 4 + 0x1132AC); /* switch: 7 entries, 6 targets */
-    if (_jt == 0x001131DDu) goto loc_001131DD;
-    if (_jt == 0x001131E7u) goto loc_001131E7;
-    if (_jt == 0x001131F1u) goto loc_001131F1;
-    if (_jt == 0x00113217u) goto loc_00113217;
-    if (_jt == 0x0011323Du) goto loc_0011323D;
-    if (_jt == 0x00113263u) goto loc_00113263;
+    switch (_jt) {
+    case 0x001131DDu: goto loc_001131DD;
+    case 0x001131E7u: goto loc_001131E7;
+    case 0x001131F1u: goto loc_001131F1;
+    case 0x00113217u: goto loc_00113217;
+    case 0x0011323Du: goto loc_0011323D;
+    case 0x00113263u: goto loc_00113263;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_001131DD: ;
@@ -126680,12 +126756,14 @@ loc_001131CB: ;
 
 loc_001131D6: ;
     { uint32_t _jt = MEM32(eax * 4 + 0x1132AC); /* switch: 7 entries, 6 targets */
-    if (_jt == 0x001131DDu) goto loc_001131DD;
-    if (_jt == 0x001131E7u) goto loc_001131E7;
-    if (_jt == 0x001131F1u) goto loc_001131F1;
-    if (_jt == 0x00113217u) goto loc_00113217;
-    if (_jt == 0x0011323Du) goto loc_0011323D;
-    if (_jt == 0x00113263u) goto loc_00113263;
+    switch (_jt) {
+    case 0x001131DDu: goto loc_001131DD;
+    case 0x001131E7u: goto loc_001131E7;
+    case 0x001131F1u: goto loc_001131F1;
+    case 0x00113217u: goto loc_00113217;
+    case 0x0011323Du: goto loc_0011323D;
+    case 0x00113263u: goto loc_00113263;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_001131DD: ;
@@ -126794,12 +126872,14 @@ loc_001131CB: ;
 
 loc_001131D6: ;
     { uint32_t _jt = MEM32(eax * 4 + 0x1132AC); /* switch: 7 entries, 6 targets */
-    if (_jt == 0x001131DDu) goto loc_001131DD;
-    if (_jt == 0x001131E7u) goto loc_001131E7;
-    if (_jt == 0x001131F1u) goto loc_001131F1;
-    if (_jt == 0x00113217u) goto loc_00113217;
-    if (_jt == 0x0011323Du) goto loc_0011323D;
-    if (_jt == 0x00113263u) goto loc_00113263;
+    switch (_jt) {
+    case 0x001131DDu: goto loc_001131DD;
+    case 0x001131E7u: goto loc_001131E7;
+    case 0x001131F1u: goto loc_001131F1;
+    case 0x00113217u: goto loc_00113217;
+    case 0x0011323Du: goto loc_0011323D;
+    case 0x00113263u: goto loc_00113263;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_001131DD: ;
@@ -159814,14 +159894,16 @@ loc_0011FFE0: ;
 loc_0011FFE9: ;
     eax = ZX8(MEM8(edi + 0x120218));
     { uint32_t _jt = MEM32(eax * 4 + 0x1201F8); /* switch: 8 entries, 8 targets */
-    if (_jt == 0x0011FFF7u) goto loc_0011FFF7;
-    if (_jt == 0x00120036u) goto loc_00120036;
-    if (_jt == 0x00120077u) goto loc_00120077;
-    if (_jt == 0x001200B6u) goto loc_001200B6;
-    if (_jt == 0x001200F7u) goto loc_001200F7;
-    if (_jt == 0x00120136u) goto loc_00120136;
-    if (_jt == 0x00120174u) goto loc_00120174;
-    if (_jt == 0x001201ADu) goto loc_001201AD;
+    switch (_jt) {
+    case 0x0011FFF7u: goto loc_0011FFF7;
+    case 0x00120036u: goto loc_00120036;
+    case 0x00120077u: goto loc_00120077;
+    case 0x001200B6u: goto loc_001200B6;
+    case 0x001200F7u: goto loc_001200F7;
+    case 0x00120136u: goto loc_00120136;
+    case 0x00120174u: goto loc_00120174;
+    case 0x001201ADu: goto loc_001201AD;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_0011FFF7: ;
@@ -160166,13 +160248,15 @@ loc_001202A0: ;
 loc_001202AC: ;
     ecx = ZX8(MEM8(edi + 0x12049C));
     { uint32_t _jt = MEM32(ecx * 4 + 0x120484); /* switch: 7 entries, 7 targets */
-    if (_jt == 0x001202BAu) goto loc_001202BA;
-    if (_jt == 0x001202F4u) goto loc_001202F4;
-    if (_jt == 0x00120330u) goto loc_00120330;
-    if (_jt == 0x00120369u) goto loc_00120369;
-    if (_jt == 0x001203A5u) goto loc_001203A5;
-    if (_jt == 0x00120407u) goto loc_00120407;
-    if (_jt == 0x0012043Du) goto loc_0012043D;
+    switch (_jt) {
+    case 0x001202BAu: goto loc_001202BA;
+    case 0x001202F4u: goto loc_001202F4;
+    case 0x00120330u: goto loc_00120330;
+    case 0x00120369u: goto loc_00120369;
+    case 0x001203A5u: goto loc_001203A5;
+    case 0x00120407u: goto loc_00120407;
+    case 0x0012043Du: goto loc_0012043D;
+    default: break; }
     g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }
 
 loc_001202BA: ;

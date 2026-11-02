@@ -5,13 +5,6 @@ They are not needed to play, some may change or be removed before v1.0, and
 most are unavailable during online play. Sections start collapsed; click a
 heading to expand it.
 
-## Unlockables
-
-Open **Escape > Debug > Unlockables** and tick **Unlock all unlockables** to access characters,
-costumes and Theater movies. Re-enter the selection screen to refresh its list.
-Unticking restores normal unlock checks; earned progress and the game save are
-preserved. Choose **Save** to remember the toggle in `doa3_settings.ini`.
-
 ## Camera controls
 
 Enter a stage, open **Escape > Debug > Camera controls**, enable **Free camera**, then close the
@@ -121,10 +114,33 @@ Each `performance_frames.csv` row also splits the frame into game code
 (`game_ms`), graphics command translation (`pb_ms`, `flush_ms`), the previous
 frame's present and pacing wait, and counts its draws.
 
-**Trace the next frame** records one frame's graphics commands
-(`mtrace_manual_*.txt`) and a screenshot (`aa_*.bmp`) in the `Diagnostics`
-folder, whether or not automatic captures are on. Open the menu while a visual
-bug is on screen and press it; the game keeps running behind the menu.
+**Create a trace file** (now under **Game > Logging** in the menu) records one frame's
+graphics commands (`mtrace_manual_*.txt`) and a screenshot (`aa_*.bmp`) in the
+`Diagnostics` folder, whether or not automatic captures are on. Open the menu
+while a visual bug is on screen and press it; the game keeps running behind
+the menu.
+
+## Frame advance
+
+**Pause** (F7) holds the game at the end of a frame, with the sound off; the
+last frame stays on screen and the menu keeps working. **Step one frame** (F8)
+lets exactly one more frame run; hold F8 to keep stepping. F7 and F8 also work
+with the menu closed while the Debug tab is enabled. With **Trace each stepped
+frame**, every stepped frame writes its trace and screenshot to `Diagnostics`,
+so a short effect can be followed frame by frame. Pausing is not available
+during online play or while a movie is playing.
+
+**Simulate a slow PC** (0 to 120 ms, off at every launch) makes every frame
+take that much longer with the game's clocks running, to reproduce problems
+that only slower computers hit (for example Omega's KO).
+
+**Simulate a slow GPU thread** (0 to 30 ms per batch, off at every launch)
+delays the thread that translates the game's graphics commands, so it falls
+behind the game the way it can on slower computers.
+
+**Trace the next frames** traces each of the next 2 to 30 frames in a row,
+starting with the next one, without pausing. Each frame takes about 20 MB at
+4x internal resolution.
 
 **Save the next frame's textures** writes every texture drawn in the next
 frame as a `.dds` file in a `Textures` folder next to `DOA3.exe` (kept between

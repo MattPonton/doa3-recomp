@@ -121,11 +121,16 @@ static uint32_t kernel_data_va_for_ordinal(ULONG ordinal)
  * interrupt; the value is milliseconds since boot. */
 static DWORD WINAPI xbox_tick_count_thread(LPVOID arg)
 {
-    ULONGLONG t0 = GetTickCount64();
+    /* 1.0.2: from the guest's performance counter, which stands still while
+     * Debug > Frame advance holds the game (kernel_hal.c). */
+    LARGE_INTEGER f, t0;
     (void)arg;
+    QueryPerformanceFrequency(&f);
+    t0 = xbox_KeQueryPerformanceCounter();
     for (;;) {
+        LARGE_INTEGER now = xbox_KeQueryPerformanceCounter();
         /* Skipped while a netplay session drives the clock (xbox_det.c). */
-        xbox_det_publish_host_tick((uint32_t)(GetTickCount64() - t0));
+        xbox_det_publish_host_tick((uint32_t)((now.QuadPart - t0.QuadPart) * 1000 / f.QuadPart));
         Sleep(1);
     }
     return 0;
@@ -1619,8 +1624,8 @@ static NTSTATUS bridge_create_file_impl(
             options |= 0x00000001;
     }
     if (options & 0x00000001) { /* FILE_DIRECTORY_FILE */
-        if (disposition == 2 || disposition == 3)
-            CreateDirectoryW(win_path, NULL);
+        if ((disposition == 2 || disposition == 3) && !xbox_path_is_cache_dir(win_path))
+            CreateDirectoryW(win_path, NULL);   /* 1.0.2: never the X: Y: Z: cache */
         h = CreateFileW(win_path, win_access, win_share, NULL,
                         OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
     } else {
@@ -3560,7 +3565,8 @@ static void kx_KeQueryInterruptTime(void)
 {
     LARGE_INTEGER c, f;
     static LONGLONG s_t0;
-    QueryPerformanceCounter(&c); QueryPerformanceFrequency(&f);
+    c = xbox_KeQueryPerformanceCounter();   /* 1.0.2: holds with Frame advance */
+    QueryPerformanceFrequency(&f);
     if (!s_t0) s_t0 = c.QuadPart;
     uint64_t t = (uint64_t)((double)(c.QuadPart - s_t0) * 1e7 / (double)f.QuadPart);
     g_eax = (uint32_t)t; g_edx = (uint32_t)(t >> 32);

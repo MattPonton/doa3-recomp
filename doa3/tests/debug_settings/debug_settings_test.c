@@ -1,4 +1,5 @@
 #include "debug_settings.h"
+#include "dip_switches.h"
 #include "debug_capture.h"
 #include "perf_capture.h"
 #include "recomp/recomp_types.h"
@@ -20,7 +21,13 @@ int main(void)
     const uint32_t flags[] = {0x59FB3C, 0x59FB3D, 0x5A0B47, 0x5A0C72};
     if (!GetTempPathA(sizeof(temp), temp) ||
         !GetTempFileNameA(temp, "dbg", 0, ini_path)) return 1;
+    /* 1.0.2: Unlock all is the dip switch [DipSwitches] UnlockAll; an ini
+     * from before keeps its old [Debug] UnlockAll until the switches are
+     * saved. */
+    CHECK(WritePrivateProfileStringA("Debug", "UnlockAll", "1", ini_path));
     CHECK(debug_settings_load());
+    CHECK(debug_unlock_all_get());
+    debug_unlock_all_set(0);
     CHECK(!debug_unlock_all_get());
     CHECK(VirtualAlloc((void *)g_xbox_mem_offset, 0x1000000, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE));
     MEM8(0x596A37)=1;
@@ -72,20 +79,19 @@ int main(void)
 
     CHECK(WritePrivateProfileStringA("Audio", "MasterVolume", "37", ini_path));
     CHECK(debug_settings_save());
+    CHECK(dip_save());
+    CHECK(GetPrivateProfileIntA("DipSwitches", "UnlockAll", 0, ini_path) == 1);
     debug_unlock_all_set(0);
     CHECK(doa3_debug_unlock_read8(0x59FB16, 2) == 2);
     CHECK(doa3_debug_unlock_read8(0x5A0B49, 0) == 0);
     CHECK(debug_settings_load());
-    CHECK(debug_unlock_all_get());
+    CHECK(!debug_unlock_all_get());   /* the Debug settings no longer carry it */
     CHECK(debug_screenshot_key_get() == VK_F9);
     CHECK(!debug_hide_ui_get()); /* Never persist invisible game menus. */
     CHECK(!debug_hide_player_get(0) && !debug_hide_player_get(1));
     CHECK(GetPrivateProfileIntA("Audio", "MasterVolume", 0, ini_path) == 37);
-    debug_unlock_all_set(0);
-    CHECK(debug_settings_save());
-    debug_unlock_all_set(1);
-    CHECK(debug_settings_load());
-    CHECK(!debug_unlock_all_get());
+    CHECK(dip_save());
+    CHECK(GetPrivateProfileIntA("DipSwitches", "UnlockAll", 1, ini_path) == 0);
     /* Automatic diagnostic captures: off by default, persisted in [Debug]
      * AutoCapture. Skipped when the environment variable overrides it. */
     if (!getenv("DOA3_AUTO_CAPTURE")) {

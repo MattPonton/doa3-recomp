@@ -11,15 +11,18 @@
 extern "C" {
 #endif
 
-typedef enum {
-    DIP_LSTICK_MENUS = 0,   /* left stick also navigates the menus */
-    DIP_RANDOM_STAGE_DEFAULT,/* stage select opens on Random */
-    DIP_RANDOM_ALT_COSTUMES,/* random picks include alternate costume colours */
+typedef enum {             /* in General tab display order (1.0.0) */
+    DIP_RANDOM_STAGE_DEFAULT = 0,/* stage select opens on Random */
+    DIP_RANDOM_ALT_COSTUMES,/* random picks include alternate costume colors */
     DIP_RANDOM_HDD_COSTUMES,/* random picks include costumes from storage (TDATA) */
     DIP_SHARED_COSTUMES,    /* both players may pick a costume, in different options */
+    DIP_LSTICK_MENUS,       /* left stick also navigates the menus */
     DIP_MENU_OFFSET,        /* 2D layer drawn without the extra pixel offset */
+    DIP_WORLD_MAP_LOCATIONS,/* Beach and Aqua Palace in their right world map places */
+    DIP_LEDGE_THROW_DAMAGE, /* Lorelei two-ledge fall damage */
     DIP_REPLAY_FINAL_ONLY,  /* the KO replay only after the match's last round */
     DIP_WINNER_FINAL_ONLY,  /* the winner's pose only after the match's last round */
+    DIP_UNLOCK_ALL,         /* menus show everything unlocked; the save is unchanged (1.0.2) */
     DIP_COUNT
 } dip_switch;
 
@@ -29,6 +32,7 @@ const char *dip_label(dip_switch d);
 const char *dip_help(dip_switch d);
 
 int  dip_get(dip_switch d);           /* loads the ini on first use */
+int  dip_hidden(dip_switch d);        /* always-on fix: not listed, not saved (1.0.0) */
 void dip_set(dip_switch d, int on);   /* takes effect immediately */
 void dip_reset(void);                 /* all off */
 int  dip_save(void);                  /* non-zero on success */

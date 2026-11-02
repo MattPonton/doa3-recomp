@@ -2876,10 +2876,17 @@ static int nv_menu_panel_geometry(const OutputVertex *out, uint32_t n)
         out[1].x < (float)dw && out[2].y < (float)dh;
 }
 
+/* 1.0: host pixels per guest SURFACE pixel along x / y for the draw just
+ * fitted, for wide lines (SET_LINE_WIDTH is in surface pixels; the menus
+ * render 2x2 or 2x1 supersampled, their vertices in display pixels). */
+static float g_fit_surface_px[2] = { 1.0f, 1.0f };
+static float g_fit_origin[2];   /* host position of surface pixel 0's edge */
+
 static int nv_fit_to_backbuffer(OutputVertex *out, uint32_t n, int screen_space)
 {
     unsigned gw = (g_pg.surface_clip_h >> 16) & 0xFFFF;
     unsigned gh = (g_pg.surface_clip_v >> 16) & 0xFFFF;
+    const unsigned surf_w = gw, surf_h = gh;
     unsigned bw = d3d8_GetBackbufferWidth();
     unsigned bh = d3d8_GetBackbufferHeight();
     float sx, sy;
@@ -2895,6 +2902,8 @@ static int nv_fit_to_backbuffer(OutputVertex *out, uint32_t n, int screen_space)
         if (doa3_guest_display_size(&dw, &dh)) { gw = dw; gh = dh; }
     }
 
+    g_fit_surface_px[0] = g_fit_surface_px[1] = 1.0f;
+    g_fit_origin[0] = g_fit_origin[1] = 0.0f;
     if (!gw || !gh || !bw || !bh) return 0;
     if (screen_space && !g_pg.depth_test && !d3d8_OffscreenTargetActive() &&
         !(g_pg.tex[0].enabled && nv_samples_framebuffer(g_pg.tex[0].offset))) {
@@ -2910,9 +2919,20 @@ static int nv_fit_to_backbuffer(OutputVertex *out, uint32_t n, int screen_space)
     /* Projection already compensates for ultrawide; scaling it again would
      * squeeze the model. Only its panel centre moves into the HUD canvas. */
     float preview_shift = screen_space ? 0.0f : nv_menu_preview_shift(bw, gw);
-    if (!hud && preview_shift == 0.0f && gw == bw && gh == bh) return 0;
+    if (!hud && preview_shift == 0.0f && gw == bw && gh == bh) {
+        if (surf_w && surf_h) {
+            g_fit_surface_px[0] = (float)gw / (float)surf_w;
+            g_fit_surface_px[1] = (float)gh / (float)surf_h;
+        }
+        return 0;
+    }
     sx = hud_w / (float)gw;
     sy = (float)bh / (float)gh;
+    if (surf_w && surf_h) {
+        g_fit_surface_px[0] = sx * (float)gw / (float)surf_w;
+        g_fit_surface_px[1] = sy * (float)gh / (float)surf_h;
+    }
+    g_fit_origin[0] = hud_x + preview_shift;
     for (i = 0; i < n; i++) {
         out[i].x = hud_x + preview_shift + out[i].x * sx;
         out[i].y *= sy;
@@ -4470,9 +4490,23 @@ static void submit_draw_inner(void)
             vin[0][0] = 100.0f; vin[0][1] = 100.0f;
             if (nv2a_vp_execute(&g_pg.vp, vin, o1)) {
                 float sx_ = (o1[0][0] - o0[0][0]) / 100.0f, sy_ = (o1[0][1] - o0[0][1]) / 100.0f;
-                if (fabsf(sx_ - 1.0f) < 1e-4f && fabsf(sy_ - 1.0f) < 1e-4f &&
-                    o0[0][0] >= 0.0f && o0[0][0] < 1.0f && o0[0][1] >= 0.0f && o0[0][1] < 1.0f) {
-                    in_ox = o0[0][0]; in_oy = o0[0][1];
+                /* 1.0 (line work): the supersampled menus (2x2 / 2x1) load
+                 * the same program with a scale of 2 per supersampled axis;
+                 * the vertices stay in display pixels here, so take the
+                 * offset in display pixels (offset / scale). Without it
+                 * every menu draw sat half a display pixel up / left of
+                 * hardware: character select's name / style rule landed on
+                 * one row instead of straddling two. */
+                int ux_ = fabsf(sx_ - 1.0f) < 1e-4f || fabsf(sx_ - 2.0f) < 1e-4f;
+                int uy_ = fabsf(sy_ - 1.0f) < 1e-4f || fabsf(sy_ - 2.0f) < 1e-4f;
+                float ox_ = ux_ ? o0[0][0] / (sx_ > 1.5f ? 2.0f : 1.0f) : -1.0f;
+                float oy_ = uy_ ? o0[0][1] / (sy_ > 1.5f ? 2.0f : 1.0f) : -1.0f;
+                if (ux_ && uy_ && ox_ >= 0.0f && ox_ < 1.0f && oy_ >= 0.0f && oy_ < 1.0f) {
+                    in_ox = ox_; in_oy = oy_;
+                    {   extern FILE *g_doa3_mtrace;
+                        if (g_doa3_mtrace && (sx_ > 1.5f || sy_ > 1.5f))
+                            fprintf(g_doa3_mtrace, "@XYZRHW program scale %.0fx%.0f offset %.5f,%.5f -> %.5f,%.5f display\n",
+                                    sx_, sy_, o0[0][0], o0[0][1], ox_, oy_); }
                 }
             }
         }
@@ -4701,19 +4735,41 @@ static void submit_draw_inner(void)
          * HUD canvas by its full-screen window clip. */
         int clipped = nv_apply_window_clip(vignette ? 0 : hud);
         /* Wide lines. D3D11 rasterises every line one pixel wide; the guest
-         * asks for SET_LINE_WIDTH in surface pixels (character select's
-         * panel borders: 0x10 = 2 px of the 1440x960 supersampled surface,
-         * i.e. one display pixel). Scaled to the host target those are 2-3
-         * pixels, so draw each segment as a quad of that width. */
+         * asks for SET_LINE_WIDTH in surface pixels (6.3 fixed point; the
+         * menus' 0x10 / 0x20 = 2 / 4 px of the 1440x960 supersampled
+         * surface, i.e. 1 / 2 display pixels). Each segment is drawn as a
+         * quad of that width.
+         * 1.0 (line work): the width is scaled per axis by the draw's own
+         * surface-to-host scale (nv_fit_to_backbuffer). It used to be scaled
+         * by backbuffer width / surface width, so at 21:9 and 32:9 -- where
+         * the menus keep their 16:9 size in a centred canvas -- lines grew
+         * to 3 and 5 px, and even at 16:9 horizontal edges took the
+         * horizontal stretch (2.4 px instead of 2).
+         * The Xbox resolves the supersampled surface by averaging, so a line
+         * that straddles display rows shows as two partly covered rows
+         * (character select's name / style rule: ~50% white on two rows).
+         * Axis-aligned segments on plain colour draws reproduce that: one
+         * quad per host row or column, its alpha scaled by the coverage. */
         if ((g_pg.d3d_prim_type == D3DPT_LINELIST || g_pg.d3d_prim_type == D3DPT_LINESTRIP) &&
             g_pg.line_width && out_vert_count >= 2) {
-            unsigned gw = (g_pg.surface_clip_h >> 16) & 0xFFFF;
-            unsigned bw = d3d8_GetBackbufferWidth();
-            float t = (float)g_pg.line_width / 8.0f;
-            if (gw && bw && !d3d8_OffscreenTargetActive()) t *= (float)bw / (float)gw;
-            if (t > 1.25f) {
+            float lw = (float)g_pg.line_width / 8.0f;
+            float tx = lw * g_fit_surface_px[0], ty = lw * g_fit_surface_px[1];
+            uint32_t cm = g_pg.color_mask;
+            int all_rgb = (cm & NV097_SET_COLOR_MASK_RED_WRITE_ENABLE) &&
+                          (cm & NV097_SET_COLOR_MASK_GREEN_WRITE_ENABLE) &&
+                          (cm & NV097_SET_COLOR_MASK_BLUE_WRITE_ENABLE);
+            /* blend off, or SRC_ALPHA / ONE_MINUS_SRC_ALPHA */
+            int std_blend = g_pg.blend_enable && g_pg.blend_sfactor == 0x0302 &&
+                            g_pg.blend_dfactor == 0x0303;
+            int coverage = all_rgb && !g_pg.stencil_enable && !g_pg.depth_mask &&
+                           (!g_pg.blend_enable || std_blend) && !d3d8_OffscreenTargetActive();
+            {   static int s_env = -1;
+                if (s_env < 0) { const char *e = getenv("DOA3_LINE_COVERAGE"); s_env = !(e && *e == '0'); }
+                if (!s_env) coverage = 0; }
+            if (tx > 1.25f || ty > 1.25f || coverage) {
                 uint32_t nseg = (g_pg.d3d_prim_type == D3DPT_LINELIST) ? out_vert_count / 2 : out_vert_count - 1;
-                OutputVertex *q = (OutputVertex *)_alloca(nseg * 6 * sizeof(OutputVertex));
+                uint32_t span = 17;
+                OutputVertex *q = (OutputVertex *)_alloca(nseg * 6 * span * sizeof(OutputVertex));
                 uint32_t k, m = 0;
                 for (k = 0; k < nseg; k++) {
                     const OutputVertex *a = (g_pg.d3d_prim_type == D3DPT_LINELIST) ? &out[2 * k] : &out[k];
@@ -4721,27 +4777,392 @@ static void submit_draw_inner(void)
                     float dx = b->x - a->x, dy = b->y - a->y, len = sqrtf(dx * dx + dy * dy);
                     float ux, uy, nx, ny;
                     OutputVertex c[4];
+                    int horiz = fabsf(dy) < 1e-3f && fabsf(dx) >= 1e-3f;
+                    int vert  = fabsf(dx) < 1e-3f && fabsf(dy) >= 1e-3f;
+                    if (coverage && (horiz || vert)) {
+                        /* The thickness span is rasterised on the guest's
+                         * SURFACE grid (pixels whose centre it covers), as
+                         * the NV2A does, then each host pixel takes the
+                         * share of covered surface pixels inside it -- the
+                         * resolve's average at 1x, sharp edges at 2x. */
+                        float t = horiz ? ty : tx, ctr = horiz ? a->y : a->x;
+                        float pp = g_fit_surface_px[horiz ? 1 : 0], org = g_fit_origin[horiz ? 1 : 0];
+                        float s0 = horiz ? (a->x < b->x ? a->x : b->x) : (a->y < b->y ? a->y : b->y);
+                        float s1 = horiz ? (a->x < b->x ? b->x : a->x) : (a->y < b->y ? b->y : a->y);
+                        float covs[16];
+                        int r, r0, nr, k0, k1, kk;
+                        if (pp < 1e-3f) pp = 1e-3f;
+                        {   /* 0.2.26: the ends too. Along the line it covers
+                             * the surface pixels whose centres lie between
+                             * its (1/16-truncated) ends; the raw ends at
+                             * x.53125 started the side edges one row late,
+                             * leaving a notch in every box's top corners
+                             * (life bar frame, Sparring menu buttons). */
+                            float pl = g_fit_surface_px[horiz ? 0 : 1], ol = g_fit_origin[horiz ? 0 : 1];
+                            if (pl > 1e-3f) {
+                                float e0 = floorf((s0 - ol) / pl * 16.0f) / 16.0f;
+                                float e1 = floorf((s1 - ol) / pl * 16.0f) / 16.0f;
+                                float ka = ceilf(e0 - 0.5f), kb = ceilf(e1 - 0.5f);
+                                if (kb <= ka) kb = ka + 1.0f;
+                                s0 = ol + ka * pl;
+                                s1 = ol + kb * pl;
+                            }
+                        }
+                        {   /* 0.2.25: the NV2A keeps 4 fractional bits of a
+                             * screen position. Truncating the centre to
+                             * 1/16 surface pixel puts the HUD's 0.53125-offset
+                             * lines (fight life bar frame, x.53125) on the
+                             * same rows as hardware: 60.53125 -> 60.5, a
+                             * 2 px line covering rows 59 and 60, not 60, 61. */
+                            float cs = floorf((ctr - org) / pp * 16.0f) / 16.0f;
+                            float hs = t * 0.5f / pp;
+                            k0 = (int)ceilf(cs - hs - 0.5f);            /* first centre >= lo */
+                            k1 = (int)ceilf(cs + hs - 0.5f) - 1;        /* last centre < hi */
+                        }
+                        if (k1 < k0) k1 = k0;                           /* never lose a line */
+                        r0 = (int)floorf(org + (float)k0 * pp);
+                        nr = (int)ceilf(org + (float)(k1 + 1) * pp) - r0;
+                        if (nr < 1) nr = 1;
+                        if (nr > 16) nr = 16;
+                        for (r = 0; r < nr; ++r) covs[r] = 0.0f;
+                        for (kk = k0; kk <= k1; ++kk) {
+                            float ea = org + (float)kk * pp, eb = ea + pp;
+                            for (r = 0; r < nr; ++r) {
+                                float pa = (float)(r0 + r), pb = pa + 1.0f;
+                                float ov = (eb < pb ? eb : pb) - (ea > pa ? ea : pa);
+                                if (ov > 0.0f) covs[r] += ov;
+                            }
+                        }
+                        if (pp >= 0.999f) {
+                            /* 0.2.31: a surface stretched to the host (the
+                             * fight surface at 16:9: 1.186) is not averaged on
+                             * hardware -- each surface pixel is wholly one
+                             * primitive's, and the TV / scaler resamples the
+                             * finished picture. Fractional coverage here let a
+                             * line and a neighbouring fill share a host column
+                             * at partial alpha each (a darker stripe at panel
+                             * edges, a washed-out life bar frame). Give each
+                             * host pixel to the surface pixel under its centre. */
+                            float A_ = org + (float)k0 * pp, B_ = org + (float)(k1 + 1) * pp;
+                            int ra = (int)ceilf(A_ - 0.5f), rb = (int)ceilf(B_ - 0.5f);
+                            if (rb <= ra) rb = ra + 1;
+                            r0 = ra; nr = rb - ra;
+                            if (nr > 16) nr = 16;
+                            for (r = 0; r < nr; ++r) covs[r] = 1.0f;
+                        }
+                        for (r = r0; r < r0 + nr && m + 6 <= nseg * 6 * span; ++r) {
+                            float cov = covs[r - r0];
+                            uint32_t alpha, col;
+                            if (cov < 1.0f / 64.0f) continue;
+                            if (cov > 1.0f) cov = 1.0f;
+                            alpha = g_pg.blend_enable ? (a->color >> 24) : 255u;
+                            alpha = (uint32_t)((float)alpha * cov + 0.5f);
+                            col = (a->color & 0x00FFFFFFu) | (alpha << 24);
+                            c[0] = *a; c[1] = *a; c[2] = *b; c[3] = *b;
+                            if (horiz) {
+                                c[0].x = s0; c[0].y = (float)r;      c[1].x = s0; c[1].y = (float)(r + 1);
+                                c[2].x = s1; c[2].y = (float)r;      c[3].x = s1; c[3].y = (float)(r + 1);
+                            } else {
+                                c[0].y = s0; c[0].x = (float)r;      c[1].y = s0; c[1].x = (float)(r + 1);
+                                c[2].y = s1; c[2].x = (float)r;      c[3].y = s1; c[3].x = (float)(r + 1);
+                            }
+                            c[0].color = c[1].color = c[2].color = c[3].color = col;
+                            q[m++] = c[0]; q[m++] = c[2]; q[m++] = c[3];
+                            q[m++] = c[0]; q[m++] = c[3]; q[m++] = c[1];
+                        }
+                        continue;
+                    }
                     if (len < 1e-4f) { ux = 1.0f; uy = 0.0f; } else { ux = dx / len; uy = dy / len; }
                     /* No end caps: the guest already overlaps its segments at
                      * the corners (character select's top edge starts 3.5 px
                      * left of the side edge); capping them made the top and
                      * bottom edges overshoot the sides. */
-                    nx = -uy * t * 0.5f; ny = ux * t * 0.5f;
-                    ux = 0.0f; uy = 0.0f;
-                    c[0] = *a; c[0].x = a->x - ux + nx; c[0].y = a->y - uy + ny;
-                    c[1] = *a; c[1].x = a->x - ux - nx; c[1].y = a->y - uy - ny;
-                    c[2] = *b; c[2].x = b->x + ux + nx; c[2].y = b->y + uy + ny;
-                    c[3] = *b; c[3].x = b->x + ux - nx; c[3].y = b->y + uy - ny;
+                    nx = -uy * (tx > 1.0f ? tx : 1.0f) * 0.5f;
+                    ny = ux * (ty > 1.0f ? ty : 1.0f) * 0.5f;
+                    c[0] = *a; c[0].x = a->x + nx; c[0].y = a->y + ny;
+                    c[1] = *a; c[1].x = a->x - nx; c[1].y = a->y - ny;
+                    c[2] = *b; c[2].x = b->x + nx; c[2].y = b->y + ny;
+                    c[3] = *b; c[3].x = b->x - nx; c[3].y = b->y - ny;
                     q[m++] = c[0]; q[m++] = c[2]; q[m++] = c[3];
                     q[m++] = c[0]; q[m++] = c[3]; q[m++] = c[1];
                 }
+                if (coverage && !g_pg.blend_enable) {
+                    /* the coverage rides in alpha: blend it over what is there */
+                    dev->lpVtbl->SetRenderState(dev, D3DRS_ALPHABLENDENABLE, TRUE);
+                    dev->lpVtbl->SetRenderState(dev, D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+                    dev->lpVtbl->SetRenderState(dev, D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+                }
+                if (coverage) dev->lpVtbl->SetRenderState(dev, D3DRS_ALPHATESTENABLE, FALSE);
                 nv_mtrace_draw("inline-wideline", q, m);
-                dev->lpVtbl->DrawPrimitiveUP(dev, D3DPT_TRIANGLELIST, m / 3, q, sizeof(OutputVertex));
+                if (m) dev->lpVtbl->DrawPrimitiveUP(dev, D3DPT_TRIANGLELIST, m / 3, q, sizeof(OutputVertex));
                 if (clipped) { extern void d3d8_ResetScissorRect(void); d3d8_ResetScissorRect(); }
                 if (got == 0) dev->lpVtbl->SetVertexShader(dev, prev_vs);
                 g_pg_host.stats.draw_calls++;
                 g_pg_host.stats.vertices_submitted += num_verts;
                 return;
+            }
+        }
+        /* 0.2.30: 1:1 sprites on the supersampled menus sample texel
+         * centres. The menus' sprites carry one texel per display pixel
+         * (character select's names: 14 texels over 14 display rows of a
+         * 128x256 atlas). With the display offset (x.77) a host pixel centre
+         * fell 0.23 texel past a texel centre, so the bottom row blended a
+         * quarter of the atlas row below it -- the top of the next fighter's
+         * name, a dotted line under each name. Hardware averages two surface
+         * rows that both land inside the texel. Shift the UVs (by under half a
+         * texel) so the first covered host pixel samples a texel centre, on
+         * each axis whose texel-per-host-pixel ratio is 1. */
+        if (out_vert_count == 4 && g_pg.tex[0].enabled &&
+            (g_pg.d3d_prim_type == D3DPT_TRIANGLESTRIP || g_pg.d3d_prim_type == D3DPT_TRIANGLEFAN) &&
+            (g_fit_surface_px[0] < 0.999f || g_fit_surface_px[1] < 0.999f) &&
+            !d3d8_OffscreenTargetActive()) {
+            static int s_tenv = -1;
+            float x0 = out[0].x, x1 = out[0].x, y0 = out[0].y, y1 = out[0].y;
+            int i_, rect = 1;
+            if (s_tenv < 0) { const char *e = getenv("DOA3_SPRITE_TEXEL_SNAP"); s_tenv = !(e && *e == '0'); }
+            for (i_ = 1; i_ < 4; ++i_) {
+                if (out[i_].x < x0) x0 = out[i_].x; if (out[i_].x > x1) x1 = out[i_].x;
+                if (out[i_].y < y0) y0 = out[i_].y; if (out[i_].y > y1) y1 = out[i_].y;
+            }
+            for (i_ = 0; i_ < 4 && rect; ++i_)
+                if ((fabsf(out[i_].x - x0) > 1e-3f && fabsf(out[i_].x - x1) > 1e-3f) ||
+                    (fabsf(out[i_].y - y0) > 1e-3f && fabsf(out[i_].y - y1) > 1e-3f)) rect = 0;
+            if (rect && s_tenv && x1 - x0 > 1.0f && y1 - y0 > 1.0f) {
+                uint32_t fmt = g_pg.tex[0].format;
+                float tw = (float)(1u << ((fmt >> 20) & 0xF)), th = (float)(1u << ((fmt >> 24) & 0xF));
+                int ax;
+                for (ax = 0; ax < 2; ++ax) {
+                    float lo = ax ? y0 : x0, hi = ax ? y1 : x1, size = ax ? th : tw;
+                    float t_lo = 0.0f, t_hi = 0.0f, umax = 0.0f;
+                    int have_lo = 0, have_hi = 0;
+                    for (i_ = 0; i_ < 4; ++i_) {
+                        float pos = ax ? out[i_].y : out[i_].x, t = ax ? out[i_].v : out[i_].u;
+                        if (fabsf(t) > umax) umax = fabsf(t);
+                        if (fabsf(pos - lo) < 1e-3f) { t_lo = t; have_lo = 1; }
+                        else if (fabsf(pos - hi) < 1e-3f) { t_hi = t; have_hi = 1; }
+                    }
+                    if (!have_lo || !have_hi) continue;
+                    if (umax > 1.5f) size = 1.0f;                /* texel coordinates (linear) */
+                    {
+                        float per = (t_hi - t_lo) * size / (hi - lo);   /* texels per host pixel */
+                        float pc, tc, d;
+                        if (fabsf(fabsf(per) - 1.0f) > 0.02f) continue;
+                        pc = ceilf(lo - 0.5f) + 0.5f;                     /* first covered centre */
+                        tc = t_lo * size + (pc - lo) * per;
+                        d = (floorf(tc) + 0.5f) - tc;                     /* to the texel centre */
+                        if (fabsf(d) < 1e-4f) continue;
+                        for (i_ = 0; i_ < 4; ++i_) {
+                            if (ax) out[i_].v += d / size; else out[i_].u += d / size;
+                        }
+                    }
+                }
+            }
+        }
+        /* 0.2.32: keep a 2D sprite's samples inside its own texels. Menu
+         * sprites are pieces of atlases (Options buttons: 5-texel end caps
+         * of a 64-wide atlas drawn over 5.93 host pixels at 16:9); the last
+         * covered host pixel's centre fell 0.4 texel past the piece and the
+         * bilinear filter took in the neighbouring atlas column -- a one
+         * pixel blue bar down Game Settings' buttons, a bright sliver on the
+         * Button Config frames. Hardware draws the piece at 720 wide, where
+         * it does not reach that far. Per axis, if the first / last covered
+         * host pixel samples outside [first texel centre, last texel centre]
+         * of the piece, the mapping is pulled in to those centres.
+         * DOA3_SPRITE_CLAMP=0 turns it off. */
+        if (out_vert_count == 4 && g_pg.tex[0].enabled &&
+            (g_pg.d3d_prim_type == D3DPT_TRIANGLESTRIP || g_pg.d3d_prim_type == D3DPT_TRIANGLEFAN) &&
+            !d3d8_OffscreenTargetActive()) {
+            static int s_cenv = -1;
+            float x0 = out[0].x, x1 = out[0].x, y0 = out[0].y, y1 = out[0].y;
+            int i_, rect = 1;
+            if (s_cenv < 0) { const char *e = getenv("DOA3_SPRITE_CLAMP"); s_cenv = !(e && *e == '0'); }
+            for (i_ = 1; i_ < 4; ++i_) {
+                if (out[i_].x < x0) x0 = out[i_].x; if (out[i_].x > x1) x1 = out[i_].x;
+                if (out[i_].y < y0) y0 = out[i_].y; if (out[i_].y > y1) y1 = out[i_].y;
+            }
+            for (i_ = 0; i_ < 4 && rect; ++i_) {
+                if ((fabsf(out[i_].x - x0) > 1e-3f && fabsf(out[i_].x - x1) > 1e-3f) ||
+                    (fabsf(out[i_].y - y0) > 1e-3f && fabsf(out[i_].y - y1) > 1e-3f)) rect = 0;
+                if (fabsf(out[i_].u) > 1.001f || fabsf(out[i_].v) > 1.001f) rect = 0;   /* tiled / texel coords */
+            }
+            if (rect && s_cenv && x1 - x0 > 1.0f && y1 - y0 > 1.0f) {
+                uint32_t fmt = g_pg.tex[0].format;
+                float tw = (float)(1u << ((fmt >> 20) & 0xF)), th = (float)(1u << ((fmt >> 24) & 0xF));
+                int ax;
+                for (ax = 0; ax < 2; ++ax) {
+                    float lo = ax ? y0 : x0, hi = ax ? y1 : x1, size = ax ? th : tw;
+                    float t_lo = 0.0f, t_hi = 0.0f, pc0, pc1, per, tc0, tc1, tmin, tmax, n0, n1, k;
+                    int have_lo = 0, have_hi = 0, consistent = 1;
+                    for (i_ = 0; i_ < 4; ++i_) {
+                        float pos = ax ? out[i_].y : out[i_].x, t = ax ? out[i_].v : out[i_].u;
+                        if (fabsf(pos - lo) < 1e-3f) { if (have_lo && fabsf(t - t_lo) > 1e-6f) consistent = 0; t_lo = t; have_lo = 1; }
+                        else { if (have_hi && fabsf(t - t_hi) > 1e-6f) consistent = 0; t_hi = t; have_hi = 1; }
+                    }
+                    if (!have_lo || !have_hi || !consistent) continue;
+                    if (fabsf(t_hi - t_lo) * size < 1.5f) continue;            /* under 2 texels */
+                    pc0 = ceilf(lo - 0.5f) + 0.5f;                              /* first covered centre */
+                    pc1 = ceilf(hi - 0.5f) - 0.5f;                              /* last covered centre */
+                    if (pc1 <= pc0) continue;
+                    per = (t_hi - t_lo) * size / (hi - lo);                     /* texels per host px */
+                    tc0 = t_lo * size + (pc0 - lo) * per;
+                    tc1 = t_lo * size + (pc1 - lo) * per;
+                    tmin = (t_lo < t_hi ? t_lo : t_hi) * size + 0.5f;
+                    tmax = (t_lo < t_hi ? t_hi : t_lo) * size - 0.5f;
+                    n0 = tc0 < tmin ? tmin : (tc0 > tmax ? tmax : tc0);
+                    n1 = tc1 < tmin ? tmin : (tc1 > tmax ? tmax : tc1);
+                    if (fabsf(n0 - tc0) < 1e-4f && fabsf(n1 - tc1) < 1e-4f) continue;
+                    k = (n1 - n0) / (pc1 - pc0);                                /* new texels per px */
+                    for (i_ = 0; i_ < 4; ++i_) {
+                        float pos = ax ? out[i_].y : out[i_].x;
+                        float t = (n0 + (pos - pc0) * k) / size;
+                        if (ax) out[i_].v = t; else out[i_].u = t;
+                    }
+                }
+            }
+        }
+        /* 0.2.29: plain-colour rectangles on the supersampled menus get the
+         * same surface-grid edges as the lines above. The Sparring pause
+         * menu's grey option panels are a translucent quad (325.1..614.5 at
+         * 16:9) framed by width-0x20 lines; the lines' partial edge columns
+         * met the quad's hard edge one column apart, leaving a one-pixel
+         * stripe at the panel's right (16:9) or left (21:9) edge. The quad's
+         * edges now cover the host pixels by the share of surface pixels
+         * inside them (hardware's 2x2 / 2x1 average): up to 3 x 3 pieces,
+         * each with its alpha scaled. Only when the surface is finer than the
+         * host on an axis (1x menus), the quad is untextured, axis-aligned
+         * and one colour, and the state allows the alpha to carry coverage.
+         * DOA3_QUAD_COVERAGE=0 turns it off. */
+        /* 0.2.30: also translucent ones on the 720x480 fight surface when it
+         * is stretched to the host (16:9: 1.186 host px per surface px): the
+         * Sparring pause menu is drawn there, not on the menus' surface. */
+        /* 0.2.31: and translucent textured sprites on the supersampled
+         * menus (character select's COM. tab: its hard left edge left the
+         * frame line's partial column dark between them). */
+        if (out_vert_count == 4 &&
+            (!g_pg.tex[0].enabled ||
+             ((g_fit_surface_px[0] < 0.999f || g_fit_surface_px[1] < 0.999f) &&
+              g_pg.blend_enable && (out[0].color >> 24) < 0xFFu)) &&
+            (g_pg.d3d_prim_type == D3DPT_TRIANGLESTRIP || g_pg.d3d_prim_type == D3DPT_TRIANGLEFAN) &&
+            (g_fit_surface_px[0] < 0.999f || g_fit_surface_px[1] < 0.999f ||
+             ((fabsf(g_fit_surface_px[0] - 1.0f) > 1e-3f || fabsf(g_fit_surface_px[1] - 1.0f) > 1e-3f) &&
+              g_pg.blend_enable && (out[0].color >> 24) < 0xFFu)) &&
+            !d3d8_OffscreenTargetActive()) {
+            static int s_qenv = -1;
+            uint32_t cm = g_pg.color_mask;
+            float x0 = out[0].x, x1 = out[0].x, y0 = out[0].y, y1 = out[0].y;
+            int rect = 1, i_;
+            if (s_qenv < 0) { const char *e = getenv("DOA3_QUAD_COVERAGE"); s_qenv = !(e && *e == '0'); }
+            for (i_ = 1; i_ < 4; ++i_) {
+                if (out[i_].color != out[0].color) rect = 0;
+                /* a textured one must map u along x and v along y only */
+                if (g_pg.tex[0].enabled &&
+                    ((fabsf(out[i_].x - out[0].x) < 1e-3f && fabsf(out[i_].u - out[0].u) > 1e-6f) ||
+                     (fabsf(out[i_].y - out[0].y) < 1e-3f && fabsf(out[i_].v - out[0].v) > 1e-6f))) rect = 0;
+                if (out[i_].x < x0) x0 = out[i_].x; if (out[i_].x > x1) x1 = out[i_].x;
+                if (out[i_].y < y0) y0 = out[i_].y; if (out[i_].y > y1) y1 = out[i_].y;
+            }
+            for (i_ = 0; i_ < 4 && rect; ++i_)
+                if ((fabsf(out[i_].x - x0) > 1e-3f && fabsf(out[i_].x - x1) > 1e-3f) ||
+                    (fabsf(out[i_].y - y0) > 1e-3f && fabsf(out[i_].y - y1) > 1e-3f)) rect = 0;
+            if (rect && s_qenv && x1 - x0 > 1e-3f && y1 - y0 > 1e-3f &&
+                (cm & NV097_SET_COLOR_MASK_RED_WRITE_ENABLE) &&
+                (cm & NV097_SET_COLOR_MASK_GREEN_WRITE_ENABLE) &&
+                (cm & NV097_SET_COLOR_MASK_BLUE_WRITE_ENABLE) &&
+                !g_pg.stencil_enable && !g_pg.depth_mask &&
+                (!g_pg.blend_enable || (g_pg.blend_sfactor == 0x0302 && g_pg.blend_dfactor == 0x0303))) {
+                /* per axis: covered host interval -> up to 3 runs (partial, full, partial);
+                 * rmid: where a partial run samples the texture (centre of the
+                 * covered part), or -1 to interpolate across the run. */
+                float run_a[2][3], run_b[2][3], run_c[2][3], rmid[2][3];
+                int nrun[2], ax;
+                for (ax = 0; ax < 2; ++ax) {
+                    float lo = ax ? y0 : x0, hi = ax ? y1 : x1;
+                    float pp = g_fit_surface_px[ax], org = g_fit_origin[ax];
+                    float e0, e1, ka, kb, A, B, fa, fb;
+                    int ca, cb, n = 0;
+                    if (pp < 1e-3f) pp = 1e-3f;
+                    e0 = floorf((lo - org) / pp * 16.0f) / 16.0f;
+                    e1 = floorf((hi - org) / pp * 16.0f) / 16.0f;
+                    ka = ceilf(e0 - 0.5f); kb = ceilf(e1 - 0.5f);
+                    if (kb <= ka) kb = ka + 1.0f;
+                    A = org + ka * pp; B = org + kb * pp;        /* covered host interval */
+                    if (pp >= 0.999f) {                          /* 0.2.31: stretched axis */
+                        int ra = (int)ceilf(A - 0.5f), rb = (int)ceilf(B - 0.5f);
+                        if (rb > ra) {
+                            run_a[ax][n] = (float)ra; run_b[ax][n] = (float)rb;
+                            run_c[ax][n] = 1.0f; rmid[ax][n++] = -1.0f;
+                        }
+                        nrun[ax] = n;
+                        continue;
+                    }
+                    ca = (int)floorf(A); cb = (int)ceilf(B);     /* host pixels touched: ca..cb-1 */
+                    fa = (float)(ca + 1) - A; if (fa > B - A) fa = B - A;
+                    fb = B - (float)(cb - 1);
+                    if (cb - ca == 1) {
+                        run_a[ax][n] = (float)ca; run_b[ax][n] = (float)cb; run_c[ax][n] = B - A;
+                        rmid[ax][n++] = (A + B) * 0.5f;
+                    } else {
+                        run_a[ax][n] = (float)ca; run_b[ax][n] = (float)(ca + 1); run_c[ax][n] = fa;
+                        rmid[ax][n++] = fa < 0.999f ? (A + (float)(ca + 1)) * 0.5f : -1.0f;
+                        if (cb - ca > 2) {
+                            run_a[ax][n] = (float)(ca + 1); run_b[ax][n] = (float)(cb - 1);
+                            run_c[ax][n] = 1.0f; rmid[ax][n++] = -1.0f;
+                        }
+                        run_a[ax][n] = (float)(cb - 1); run_b[ax][n] = (float)cb; run_c[ax][n] = fb;
+                        rmid[ax][n++] = fb < 0.999f ? ((float)(cb - 1) + B) * 0.5f : -1.0f;
+                    }
+                    nrun[ax] = n;
+                }
+                {
+                    OutputVertex q[9 * 6];
+                    uint32_t m = 0, base_a = g_pg.blend_enable ? (out[0].color >> 24) : 255u;
+                    /* texture mapping along each axis: t(pos) = t0 + (pos - p0) * dt */
+                    float u_l = 0, u_r = 0, v_t = 0, v_b = 0;
+                    int ix, iy;
+                    for (i_ = 0; i_ < 4; ++i_) {
+                        if (fabsf(out[i_].x - x0) < 1e-3f) u_l = out[i_].u; else u_r = out[i_].u;
+                        if (fabsf(out[i_].y - y0) < 1e-3f) v_t = out[i_].v; else v_b = out[i_].v;
+                    }
+#define RC_U(px) (u_l + ((px) - x0) * (u_r - u_l) / (x1 - x0))
+#define RC_V(py) (v_t + ((py) - y0) * (v_b - v_t) / (y1 - y0))
+                    for (iy = 0; iy < nrun[1]; ++iy)
+                        for (ix = 0; ix < nrun[0]; ++ix) {
+                            float cov = run_c[0][ix] * run_c[1][iy];
+                            float xa = run_a[0][ix], xb = run_b[0][ix], ya = run_a[1][iy], yb = run_b[1][iy];
+                            float ua = RC_U(rmid[0][ix] >= 0.0f ? rmid[0][ix] : xa);
+                            float ub = RC_U(rmid[0][ix] >= 0.0f ? rmid[0][ix] : xb);
+                            float va = RC_V(rmid[1][iy] >= 0.0f ? rmid[1][iy] : ya);
+                            float vb = RC_V(rmid[1][iy] >= 0.0f ? rmid[1][iy] : yb);
+                            uint32_t a8, col;
+                            OutputVertex c0 = out[0], c1, c2, c3;
+                            if (cov < 1.0f / 64.0f) continue;
+                            if (cov > 1.0f) cov = 1.0f;
+                            a8 = (uint32_t)((float)base_a * cov + 0.5f);
+                            col = (out[0].color & 0x00FFFFFFu) | (a8 << 24);
+                            c0.color = col; c1 = c0; c2 = c0; c3 = c0;
+                            c0.x = xa; c0.y = ya; c0.u = ua; c0.v = va;
+                            c1.x = xb; c1.y = ya; c1.u = ub; c1.v = va;
+                            c2.x = xb; c2.y = yb; c2.u = ub; c2.v = vb;
+                            c3.x = xa; c3.y = yb; c3.u = ua; c3.v = vb;
+                            q[m++] = c0; q[m++] = c1; q[m++] = c2;
+                            q[m++] = c0; q[m++] = c2; q[m++] = c3;
+                        }
+#undef RC_U
+#undef RC_V
+                    if (!g_pg.blend_enable) {
+                        dev->lpVtbl->SetRenderState(dev, D3DRS_ALPHABLENDENABLE, TRUE);
+                        dev->lpVtbl->SetRenderState(dev, D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+                        dev->lpVtbl->SetRenderState(dev, D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+                    }
+                    dev->lpVtbl->SetRenderState(dev, D3DRS_ALPHATESTENABLE, FALSE);
+                    nv_mtrace_draw("inline-rectcov", q, m);
+                    if (m) dev->lpVtbl->DrawPrimitiveUP(dev, D3DPT_TRIANGLELIST, m / 3, q, sizeof(OutputVertex));
+                    if (clipped) { extern void d3d8_ResetScissorRect(void); d3d8_ResetScissorRect(); }
+                    if (got == 0) dev->lpVtbl->SetVertexShader(dev, prev_vs);
+                    g_pg.stats.draw_calls++;
+                    g_pg.stats.vertices_submitted += num_verts;
+                    return;
+                }
             }
         }
         nv_mtrace_draw("inline", out, out_vert_count);
@@ -5309,7 +5730,9 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
         return 1;
 
     case NV097_SET_DEPTH_FUNC:
-        g_pg.depth_func = param;
+        /* 1.0.4: not a compare function (logged as [BADZFUNC]): keep the
+         * last real one */
+        if (param >= 0x200 && param <= 0x207) g_pg.depth_func = param;
         return 1;
 
     case NV097_SET_DEPTH_MASK:
@@ -5515,12 +5938,42 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
         g_pg.window_clip_v[(method - NV097_SET_WINDOW_CLIP_VERTICAL) >> 2] = param;
         return 1;
 
+    /* 1.0.4: a clip no surface can have (wider or taller than 4096, or
+     * empty) is a word of data read as a method (osricen's black screen:
+     * 0xBF08xxxx / 0x3F08xxxx left every draw scissored to a corner); keep
+     * the last real one. */
     case NV097_SET_SURFACE_CLIP_HORIZONTAL:
-        g_pg.surface_clip_h = param;
-        return 1;
-
     case NV097_SET_SURFACE_CLIP_VERTICAL:
-        g_pg.surface_clip_v = param;
+        /* 1.0.4.24: osricen's second log had a clip of about 2102 x 8378
+         * (scissor 1170x110): the width passed the size test. Surfaces are
+         * whole multiples of 8 pixels (720, 1440, 640, 480, 960, 256), so a
+         * size that is not is refused too. The first 16 different clips
+         * accepted are logged ([SURFCLIP]) to confirm that. */
+        if ((param >> 16) == 0 || (param >> 16) > 4096 || ((param >> 16) & 7u) ||
+            (param & 0xFFFFu) > 4096) {
+            static unsigned s_bad;
+            if (s_bad < 6) {
+                s_bad++;
+                fprintf(stderr, "[BADCLIP] SET_SURFACE_CLIP_%s %08X ignored at frame %u\n",
+                        method == NV097_SET_SURFACE_CLIP_HORIZONTAL ? "HORIZONTAL" : "VERTICAL",
+                        param, g_pg.frame);
+            }
+            return 1;
+        }
+        {   static uint32_t s_seen[16];
+            static unsigned s_n;
+            uint32_t key = param ^ (method == NV097_SET_SURFACE_CLIP_VERTICAL ? 0x80000000u : 0u);
+            unsigned k;
+            for (k = 0; k < s_n && s_seen[k] != key; k++) {}
+            if (k == s_n && s_n < 16) {
+                s_seen[s_n++] = key;
+                fprintf(stderr, "[SURFCLIP] %s %u at %u (frame %u)\n",
+                        method == NV097_SET_SURFACE_CLIP_HORIZONTAL ? "width" : "height",
+                        param >> 16, param & 0xFFFFu, g_pg.frame);
+            }
+        }
+        if (method == NV097_SET_SURFACE_CLIP_HORIZONTAL) g_pg.surface_clip_h = param;
+        else g_pg.surface_clip_v = param;
         return 1;
 
     /* DOA3 DIAG: colour surface offset/format/pitch (0x0210/0x0208/0x020C),

@@ -1,3 +1,4 @@
+#include "../game/exe_path.h"
 #include "pad_mapping.h"
 
 #include <windows.h>
@@ -37,6 +38,14 @@ static const struct { const char *key, *group; int axis; } k_ctl[PADCTL_COUNT] =
 const char *pad_ctl_key(int c)   { return (c >= 0 && c < PADCTL_COUNT) ? k_ctl[c].key   : "?"; }
 const char *pad_ctl_group(int c) { return (c >= 0 && c < PADCTL_COUNT) ? k_ctl[c].group : "?"; }
 int         pad_ctl_is_axis(int c){ return (c >= 0 && c < PADCTL_COUNT) ? k_ctl[c].axis  : 0; }
+/* 1.0.2: the Controls table lists White above Black (left shoulder before
+ * right). Only the display order changes; the ini keys stay as they are. */
+int pad_ctl_display_order(int row)
+{
+    if (row == PADCTL_BLACK) return PADCTL_WHITE;
+    if (row == PADCTL_WHITE) return PADCTL_BLACK;
+    return row;
+}
 
 /* Xbox wButtons bit for the eight digital controls (same values as XInput's). */
 static WORD ctl_xbox_bit(int c)
@@ -72,9 +81,10 @@ static void reset_mapping(PadMapping *m)
         { PADCTL_B,          PADSRC_PAD_BUTTON,  XINPUT_GAMEPAD_B },
         { PADCTL_X,          PADSRC_PAD_BUTTON,  XINPUT_GAMEPAD_X },
         { PADCTL_Y,          PADSRC_PAD_BUTTON,  XINPUT_GAMEPAD_Y },
-        /* Xbox Black/White sit where XInput has the shoulder buttons. */
-        { PADCTL_BLACK,      PADSRC_PAD_BUTTON,  XINPUT_GAMEPAD_LEFT_SHOULDER },
-        { PADCTL_WHITE,      PADSRC_PAD_BUTTON,  XINPUT_GAMEPAD_RIGHT_SHOULDER },
+        /* Xbox Black/White sit where XInput has the shoulder buttons: White
+         * on LB, Black on RB (1.0.2; the other way round before). */
+        { PADCTL_BLACK,      PADSRC_PAD_BUTTON,  XINPUT_GAMEPAD_RIGHT_SHOULDER },
+        { PADCTL_WHITE,      PADSRC_PAD_BUTTON,  XINPUT_GAMEPAD_LEFT_SHOULDER },
         { PADCTL_LTRIGGER,   PADSRC_PAD_TRIGGER, 0 },
         { PADCTL_RTRIGGER,   PADSRC_PAD_TRIGGER, 1 },
 
@@ -117,7 +127,40 @@ int pad_mapping_focus_only(void) { pad_mapping_get(); return g_focus_only; }
 void pad_mapping_set_focus_only(int enabled) { pad_mapping_get(); g_focus_only = enabled != 0; }
 int pad_mapping_capture_menu(void) { pad_mapping_get(); return g_capture_menu; }
 void pad_mapping_set_capture_menu(int enabled) { pad_mapping_get(); g_capture_menu = enabled != 0; }
-void pad_mapping_reset_player(int player) { reset_mapping(pad_mapping_get_player(player)); }
+/* 0.2.18: the keyboard layout "Reset to defaults" gives a player whose input
+ * device is Keyboard (Matt's layout): WASD for the D-pad, Enter / Backspace
+ * for Start / Back, K L over M , for X Y over A B, ; Black, J White, N / .
+ * for the left / right triggers. Thumb clicks unassigned. 1.0.2: T G F H
+ * for the left stick (up, down, left, right), the arrow keys for the right. */
+static void reset_keyboard_mapping(PadMapping *m)
+{
+    static const struct { int ctl, vk; } d[] = {
+        { PADCTL_DPAD_UP, 'W' }, { PADCTL_DPAD_DOWN, 'S' },
+        { PADCTL_DPAD_LEFT, 'A' }, { PADCTL_DPAD_RIGHT, 'D' },
+        { PADCTL_START, VK_RETURN }, { PADCTL_BACK, VK_BACK },
+        { PADCTL_A, 'M' }, { PADCTL_B, VK_OEM_COMMA }, { PADCTL_X, 'K' }, { PADCTL_Y, 'L' },
+        { PADCTL_BLACK, VK_OEM_1 }, { PADCTL_WHITE, 'J' },
+        { PADCTL_LTRIGGER, 'N' }, { PADCTL_RTRIGGER, VK_OEM_PERIOD },
+        /* 1.0.2: T G F H for the left stick, the arrow keys for the right
+         * (up, down, left, right). A key gives the full deflection. */
+        { PADCTL_LY_POS, 'T' }, { PADCTL_LY_NEG, 'G' },
+        { PADCTL_LX_NEG, 'F' }, { PADCTL_LX_POS, 'H' },
+        { PADCTL_RY_POS, VK_UP },   { PADCTL_RY_NEG, VK_DOWN },
+        { PADCTL_RX_NEG, VK_LEFT }, { PADCTL_RX_POS, VK_RIGHT },
+    };
+    memset(m, 0, sizeof(*m));
+    for (size_t i = 0; i < sizeof(d) / sizeof(d[0]); i++) {
+        m->b[d[i].ctl].kind = PADSRC_KEY;
+        m->b[d[i].ctl].code = d[i].vk;
+    }
+}
+
+void pad_mapping_reset_player(int player)
+{
+    PadMapping *m = pad_mapping_get_player(player);
+    if (pad_mapping_device(player) == PAD_DEVICE_KEYBOARD) reset_keyboard_mapping(m);
+    else reset_mapping(m);
+}
 int pad_mapping_device(int p) { pad_mapping_get(); return p >= 0 && p < 4 ? g_devices[p] : PAD_DEVICE_NONE; }
 int pad_mapping_type(int p) { pad_mapping_get(); return p >= 0 && p < 4 ? g_types[p] : PAD_TYPE_DUKE; }
 void pad_mapping_set_device(int p, int device)
@@ -138,7 +181,15 @@ void pad_mapping_set_type(int p, int type)
     xbox_InputConfigurationChanged();
 }
 
-void pad_mapping_set_menu_open(int open) { g_menu_open = open ? 1 : 0; }
+/* 1.0.4: after the Escape menu closes, a player's input stays neutral until
+ * everything they hold is let go, so the B / Enter that closed it (or a
+ * held stick) does not reach the game as a fresh press. */
+static unsigned g_release_wait;
+void pad_mapping_set_menu_open(int open)
+{
+    if (g_menu_open && !open) g_release_wait = 0xFFu;
+    g_menu_open = open ? 1 : 0;
+}
 int  pad_mapping_menu_open(void)         { return g_menu_open; }
 
 int pad_mapping_player_has_key(int player)
@@ -200,7 +251,17 @@ void pad_binding_label(PadBinding b, char *out, size_t n)
         /* GetKeyNameText wants the scan code in bits 16..23. */
         UINT sc = MapVirtualKeyA((UINT)b.code, MAPVK_VK_TO_VSC);
         char name[64] = { 0 };
-        if (sc && GetKeyNameTextA((LONG)(sc << 16), name, (int)sizeof(name)) > 0)
+        LONG lp = (LONG)(sc << 16);
+        /* The arrows and the navigation block share scan codes with the
+         * number pad; the extended bit names them "Up" rather than "Num 8". */
+        switch (b.code) {
+        case VK_UP: case VK_DOWN: case VK_LEFT: case VK_RIGHT:
+        case VK_INSERT: case VK_DELETE: case VK_HOME: case VK_END:
+        case VK_PRIOR: case VK_NEXT: case VK_DIVIDE: case VK_RCONTROL: case VK_RMENU:
+            lp |= 1L << 24; break;
+        default: break;
+        }
+        if (sc && GetKeyNameTextA(lp, name, (int)sizeof(name)) > 0)
             _snprintf_s(out, n, _TRUNCATE, "Key %s", name);
         else
             _snprintf_s(out, n, _TRUNCATE, "Key 0x%02X", b.code);
@@ -215,15 +276,8 @@ void pad_binding_label(PadBinding b, char *out, size_t n)
 const char *pad_mapping_default_path(void)
 {
     static char path[MAX_PATH];
-    char *slash;
     if (path[0]) return path;
-    if (!GetModuleFileNameA(NULL, path, MAX_PATH)) {
-        strcpy_s(path, sizeof(path), "doa3_input.ini");
-        return path;
-    }
-    slash = strrchr(path, '\\');
-    if (slash) slash[1] = 0; else path[0] = 0;
-    strcat_s(path, sizeof(path), "doa3_input.ini");
+    doa3_exe_file_ansi("doa3_input.ini", path, sizeof path);   /* 1.0.2: non-ANSI folders */
     return path;
 }
 
@@ -432,4 +486,14 @@ void pad_mapping_apply_player(int player, const void *xinput_state, XBOX_GAMEPAD
                                axis_magnitude(m->b[PADCTL_RX_NEG], xi));
     out->sThumbRY = clamp_axis(axis_magnitude(m->b[PADCTL_RY_POS], xi) -
                                axis_magnitude(m->b[PADCTL_RY_NEG], xi));
+
+    if (player >= 0 && player < 8 && (g_release_wait & (1u << player))) {
+        int held = out->wButtons != 0;
+        for (i = 0; i < 8; i++) if (out->bAnalogButtons[i] > 30) held = 1;
+        if (out->sThumbLX > 8000 || out->sThumbLX < -8000 || out->sThumbLY > 8000 || out->sThumbLY < -8000 ||
+            out->sThumbRX > 8000 || out->sThumbRX < -8000 || out->sThumbRY > 8000 || out->sThumbRY < -8000)
+            held = 1;
+        if (held) memset(out, 0, sizeof(*out));
+        else g_release_wait &= ~(1u << player);
+    }
 }

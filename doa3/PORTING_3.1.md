@@ -5185,6 +5185,1177 @@ scope, which the rollback branch's task transform requires (the phase lives
 in its restorable task 0x72070). This keeps the two branches' hand edits
 identical.
 
+## 0.2.16 - Escape menu clean-up, menu size, check for updates; damage trace
+
+Matt, toward v1.0.0:
+- Tabs: General first, then Controls, Video, Audio, Sparring, Debug. The
+  Online tab is hidden: online play is not working on this version of the
+  game yet. The section code stays.
+- General: "Check for updates at boot" (above "Write log files";
+  [General] CheckUpdates=, on by default). update_check.c makes one
+  WinHTTP request to the GitHub releases API
+  (repos/MattPonton/doa3-recomp/releases/latest) on a background thread,
+  compares tag_name with this build's 0.<minor>.<update>, and logs
+  `[UPDATE]`. A newer release shows a 12-second notice over the game, and
+  the General tab gets "Open release page" (html_url in the browser) and
+  "Check now". Nothing is downloaded or installed. A 404 (no release
+  published yet) counts as up to date.
+- General: "Menu size", 100-250 % in 25 % steps ([General] MenuScale=).
+  The ImGui font is rebuilt at the new pixel size (sharp text, not a
+  stretched atlas) and every style size scaled from the base style, before
+  the next ImGui frame and never while the slider is held. The window is
+  resized to match.
+- Sparring and Debug tabs: the long explanations moved into "(?)" hover
+  tooltips (HelpMarker). The Sparring recording controls sit on one line,
+  and the Stagger Escape rows are compact.
+
+Lorelei cliff throw (Matt): a throw that sends the opponent over a cliff
+loses its damage when the opponent hits the cliff side during the fall;
+only the small cliff hit is taken. First a trace:
+`DOA3_DAMAGE_TRACE=1` logs `[DAMAGE]` whenever a fighter's health, move
+or move category changes in a fight (side record +0x20 / +0x2E / +0x33),
+for a normal throw and the cliff case to compare.
+
+## 0.2.17: Escape menu tabs
+
+- "Menu size" moved from General to Video, under its own "Menu" divider with
+  a one-line description. Video's Reset/Save now covers it ([General]
+  MenuScale= is unchanged, so 0.2.16 settings carry over).
+- New "Photo Mode" tab, left of Sparring: free camera (speed, reset), Hide
+  Player 1 / Player 2 / UI, and the screenshot key with "Take screenshot".
+  All moved out of Debug; Photo Mode has its own Reset/Save.
+- The fight information display (hitboxes, hurtboxes, frame data, stage
+  hazards; formerly Debug > "Combat diagnostics") is at the top of the
+  Sparring tab, its explanation in a "Color legend (?)" tooltip. The
+  Sparring tab is now always selectable; recording, the second controller
+  and Stagger Escape still show only in offline Sparring.
+- Debug tab hidden unless `DOA3_DEBUG=1` is set at launch, or toggled for
+  the session with Ctrl+Shift+D while the Escape menu is open.
+
+## 0.2.18: Escape menu follow-ups, keyboard defaults, damage trace fields
+
+- Sparring tab disabled outside offline Sparring again. It holds "Show Move
+  Info" (the frame-data display, formerly "Show attack frame data") with
+  its explanation in a (?) tooltip. Hitboxes, hurtboxes and stage hazards
+  went back to Debug, as a "Fight information" header.
+- "Show performance overlay" moved from Debug to Video (Performance
+  divider, explanation in (?)); "Reset performance history" removed (turning
+  the overlay on clears it). Video's Reset turns the overlay off.
+- Menu size's description is a (?) tooltip now (it did not wrap).
+- Controls > Reset to defaults with the input device set to Keyboard gives
+  the keyboard layout: W/S/A/D D-pad, Enter Start, Backspace Back, M A,
+  comma B, K X, L Y, semicolon Black, J White, N left trigger, period
+  right trigger; thumb clicks and sticks unassigned.
+- DOA3_DAMAGE_TRACE now logs, per fighter, health, sustained / revised /
+  combo damage, move, state, and the fall handling bytes: accumulated
+  throw/hold damage 0x9B2858, fall type 0x9B25BC, 0x9B2548, 0x9B2730,
+  0x9B2568, the pending throw damage 0x5CB466 + side*0x30, stage mode
+  0x591F50, 0xC59863 and 0x9B243E.
+
+Lorelei cliff throw, static reading (Ghidra doa3_1.c names): the ledge
+handlers (0xA92C0, 0xA9420, 0xB9A40) copy the throw damage into
+AccumulatedThrowOrHoldDamage only while the victim's state is THROWN (10)
+or HELD (11), otherwise they store 0; GetMoveDamage then adds it to the
+ledge hit for fall types 1, 3 and 5, and type 4 applies it at the landing
+(scaled). 0xAA8C0 also forces type 4 with the accumulated damage zeroed.
+The trace is to show which of these the Tier 1->3 and 3->4 drops take.
+(3++ 1.48 patches the 0xA9301 store with a code cave at 0x2355E0 that keeps
+half the value for victim moves 0x423E / 0x4241; a different case.)
+
+## 0.2.19: ledge throw damage dip, recording mirrored by facing
+
+Lorelei trace (Bass 4T 2T on Hayate, Versus): the throw's 58 is carried into
+the fall by the ledge handler sub_000A92C0 (fall type 3, accumulated
+0x9B2858[side] = 58 while the victim is THROWN). Tier 0 -> 1/2: one ledge
+call, the first impact deals fall + 58 (30 + 58 = 88). Tier 1 -> 3 and
+3 -> 4: the victim, already in ledge-fall move 0x423E with state 9 (hurt),
+crosses a second ledge before the first impact; sub_000A92C0 runs again,
+the victim is no longer THROWN / HELD, and 0xA9301 stores 0 over the 58.
+The impact then deals only the fall damage (5), the landing 25 / 35.
+
+Dip "LedgeThrowDamage" (off by default for now; planned on and hidden for
+1.0.0): hand edit at loc_000A9301 in gen/recomp_0002.c skips the store when
+the victim's move (+0x2E) is 0x423E or 0x4241, the same condition 3++ 1.48
+uses for its code cave at 0x2355E0 (which keeps half the value instead).
+Read through doa3_dip_ledge_throw_damage() in recomp_manual.c. Re-apply the
+edit if recomp_0002.c is regenerated.
+
+Sparring recording: the pad is screen-relative and the game turns left /
+right into back / forward through PlayerDisplayDirection 0x4DA37C[side]
+(1 = mirrored; 0x1C570 and its siblings swap lever bits 0x40/0x80). Each
+recorded frame now keeps the dummy's 0x4DA37C; playback on the other side
+swaps D-pad left/right (bits 4/8) and negates both sticks' X.
+
+Sparring tab: one-line descriptions under "Dummy input recording" and
+"Stagger Escape" so their (?) markers sit on text instead of the dividers.
+
+## 0.2.20: ledge throw damage once; recording direction while getting up
+
+Ledge dip, 0.2.19 result: the first impact was 58 + 5 = 63, but the landing
+was 58 + 25 too -- GetMoveDamage adds the carried damage to every fall-type-3
+hit, and the two-ledge fall has two (impact, landing). The hand edit now
+calls doa3_ledge_throw_keep(side), which keeps the value and marks the side;
+sub_000B9140 (the hit pass at the top of 0xB5090) is overridden to clear
+0x9B2858[side] once the victim has taken damage (SustainedDamage +0x22 set,
+or health below its value at the second ledge). The mark also ends when the
+fall type 0x9B25BC returns to 0 or the fight phase leaves 1. 3++'s halving
+splits the 58 across both hits instead.
+
+Recording: SetPlayerAngle leaves 0x4DA37C stale while a fighter throws or
+holds, and in moves 0x90-0x95 (down / getting up) sets it to the bare screen
+side without the facing correction. A clip replayed while the dummy got up
+after a side switch was mirrored by that value, but the input was parsed
+once the dummy could act, with the corrected one. While the dummy's value is
+not settled (moves 0x90-0x95, or a state other than idle / jump / strike /
+throw attempt) the player's value, flipped, is used. [SPARRING] logs each
+change of the playback decision (first 40) with both fighters' values.
+
+## 0.2.21: ledge throw damage fix always on
+
+Matt verified both 0.2.20 fixes (63 then 25 / 35 on Lorelei; PP4P replays
+as 6P after the hold side switch). LedgeThrowDamage is now hidden: dip_hidden()
+makes dip_get() return 1, the General tab skips it and dip_save() does not
+write its key. The enum, ini key and help text stay, so it can be listed
+again by changing dip_hidden().
+
+## 0.2.22: Options > Video > Regulator (gamma, brightness, contrast)
+
+Matt's snapshots: 0x17B800 stores gamma / contrast / brightness at
+0xA4891C/20/24 (defaults 1.0, 0, 0; gamma 1..2, contrast -10..10,
+brightness -50..50 at the ends) and builds the 3 x 256 ramp at 0xA48928
+(identity at the defaults; e.g. gamma 2.0: 0,90,128,156,181,...; brightness
++50: 50,82,114,...), then calls D3DDevice_SetGammaRamp (0x1DC360) with flags
+1. Not IMMEDIATE, so the XDK copies it into the device (+0x2268 +0x214, by
+parity) and the vblank handler 0x1E4C80 writes it into the DAC palette
+through 0x1E1B64 (PRMDIO 0x6813C8/9, a stub here). Nothing reached the
+picture.
+
+0x1DC360 is overridden to pass the ramp to d3d8_gamma_set(); the present
+blit uploads it to a 256x1 texture when it changes and, unless it is the
+identity, draws with a pixel shader that looks each 8-bit channel up in its
+own ramp (as the DAC does). Applies to everything the blit shows (movies
+too), not to screenshots (taken from the guest frame) or the Escape menu.
+[GAMMA] logs the first 16 ramp changes.
+
+## 0.2.23: menu line work (widths per axis, supersample coverage)
+
+Matt's comparisons (Cmp/Line Comparison: hardware 480p anamorphic 16:9 vs
+the port at 1x 16:9 / 21:9 / 32:9, ultrawide cropped to the 16:9 canvas).
+Sparring menu box edges, column x=100 / row y=112: hardware 2 rows (129,
+138) and ~2.4 columns; port 16:9 3 rows / 3 columns, 21:9 3 / 3, 32:9 5 / 5.
+Character select's name / style rule: hardware two ~50% rows (130, 136 over
+11; 192, 198 over ~135), port one solid 255 row (32:9: four rows).
+
+Cause: wide lines (SET_LINE_WIDTH 0x20 = 4 surface px on the 1440x960
+supersampled menu surface) were scaled by backbuffer width / surface width
+for both axes. At 21:9 / 32:9 the backbuffer is 1120 / 1706 wide at 1x while
+the menu keeps its 16:9 size in the centred canvas, so 4 px became 3.1 /
+4.7; at 16:9 horizontal edges took the horizontal stretch (2.37, not 2).
+
+nv_fit_to_backbuffer now records host pixels per surface pixel on each axis
+for the draw it fits (sx * display / surface, sy * display / surface), and
+the wide-line quads use x for vertical edges and y for horizontal ones.
+Hardware averages the supersampled surface down, so a line straddling
+display rows shows as partly covered rows; axis-aligned segments of plain
+colour line draws (all RGB written, no stencil, no depth write, blend off
+or SRC_ALPHA / ONE_MINUS_SRC_ALPHA, on the screen) are drawn as one quad
+per host row / column with alpha scaled by the covered fraction (blending
+SRC_ALPHA / INV_SRC_ALPHA, alpha test off for that draw; the next draw sets
+both again). DOA3_LINE_COVERAGE=0 turns the coverage part off.
+
+## 0.2.24: menu 2D offset under supersampling, lines on the surface grid
+
+0.2.23 result (Matt, singles character select at 1x): the name / style rule
+was still one solid row at 16:9 and 21:9 (two rows only at 32:9). The aa
+trace (DOA3_LINE_COVERAGE_OFF run) has it as an inline LINE, width 0x10, at
+y 288.53 (raw, no offset added), blend off. The supersampled menus load the
+XYZRHW passthrough program with c0 = (2, 2, 2^24-1, 1): scale 2 per
+supersampled axis, so the "unit scale plus sub-pixel offset" test from
+earlier skipped it and no screen-space offset was applied to any menu draw
+-- everything sat about half a display pixel up / left of hardware. A
+program of scale 1 or 2 per axis is now accepted and its offset taken in
+display pixels (offset / scale); @XYZRHW lines in the method trace show it.
+
+Line coverage (0.2.23) now rasterises the line's thickness on the guest's
+surface grid -- surface pixels whose centre it covers, as the NV2A does --
+and gives each host pixel the covered share (nv_fit_to_backbuffer records
+the surface grid origin as well as its pitch). At 1x that is the hardware's
+2x2 average: the 2-surface-px rule at 577.6 covers surface rows 577 and 578,
+half of display rows 288 and 289 each.
+
+## 0.2.25: fight HUD line rows (NV2A sub-pixel precision), whole-pixel canvas
+
+Matt's Sparring fight capture vs hardware, life bar at x 550 / y 64: green
+bar rows 61-68 everywhere (right), but the dark frame lines were on rows 60,
+61 (top) and 70, 71 (bottom) where hardware has 59, 60 and 69, 70; at 32:9
+the vertical edge was a column right. mtrace_manual_115724: fight surface
+720x480, passthrough program c0 (1,1,..) c1 (0.53125, 0.53125); the frame is
+width-0x10 lines at y 60 / 70 (+0.53125). A 2 px line centred on 60.53125
+covers rows 60 and 61 by the pixel-centre rule; hardware covers 59 and 60
+because the NV2A keeps 4 fractional bits of a screen position and 60.53125
+truncates to 60.5. The coverage path now truncates the line centre to 1/16
+surface pixel first (character select's rule, 577.59 -> 577.5625, is
+unchanged: surface rows 577, 578).
+
+video_hud_region rounds the 16:9 canvas origin to a whole pixel (32:9 at 1x
+put it at 426.75), so ultrawide uses the same pixel grid as 16:9.
+
+The LedgeThrowDamage dip is listed again (on by default) for Matt's 46T
+report: the throw's damage, then the full landing damage (25 / 35) on both
+ledge impacts.
+
+## 0.2.26: box corners
+
+0.2.25 result: the life bar frame rows match hardware, but every box's top
+corners had a notch (life bar frame, Sparring menu buttons). The coverage
+path snapped the line's centre to the surface grid but drew it along its
+length from the raw ends (x.53125), so a side edge from 59.53 began at row 60
+while hardware starts it at row 59 (59.5 after the 1/16 truncation). The ends
+are now truncated to 1/16 surface pixel too and the line covers the surface
+pixels whose centres lie between them.
+
+46T off Lorelei's Tier 1 (Matt, hardware too): 55, then 25 and 25 (35 / 35
+from Tier 3). GetFallDamageForPlayer on Lorelei during the second-ledge phase
+(0x9B243E == 5) returns 5 only for the victim moves 0x425B / 0x425C (the
+ledge-impact animation the instant-throw fall uses); any other falling move
+gets the full 25 / 35 (StageMode 4: 35), so a fall that reaches the ledge in
+another move takes the landing damage twice. Needs a damage trace of the 46T
+fall to see its moves.
+
+## 0.2.27: 46T two-ledge fall
+
+Matt's 0.2.25 trace, Bass 46T on Hayate over Lorelei's Tier 1 and Tier 3
+edges: the throw's 55 lands on the ground first (move 0x0160), then the fall
+reaches the second-ledge phase (0x9B243E 5) and hits in 0x425E (25 / 35),
+then lands in 0x4267 (25 / 35). The instant-throw fall uses 0x425B, then
+0x4265. GetFallDamageForPlayer only gives 0x425B / 0x425C the 5. Hand edit
+at loc_000A6913 (gen/recomp_0002.c): with the LedgeThrowDamage dip,
+doa3_ledge_impact_move() also gives 0x425E / 0x425F the 5 (0x425F by analogy
+with the B / C pair; only 0x425E was seen). Dip renamed "Fix ledge fall
+damage over two ledges".
+
+## 0.2.28: ledge dip wording
+
+Matt verified the 46T and 4T 2T ledge falls and the box corners. The dip
+stays listed for 1.0.0 (on by default) so the original behavior can still be
+played; label "Fix ledge fall damage over double-hit ledges in Lorelei",
+shorter tooltip in Matt's wording.
+
+## 0.2.29: menu panel edges; ledge dip off by default
+
+Ledge dip: off by default like every other switch (Matt), tooltip says
+"certain throws or holds".
+
+Sparring pause menu traces (16:9 / 21:9 / 32:9): each grey option panel is
+an untextured translucent quad (80BABABA, 325.1..614.5 x 130.1..154.1 at
+16:9) inside width-0x20 frame lines. The lines' coverage gave partial edge
+columns (614-616) while the quad ended at a hard edge (last column 613), so
+column 614 had only the line's share -- a one-pixel stripe at the panel's
+right edge at 16:9, left at 21:9 / 32:9 (different canvas phase). One-colour
+axis-aligned untextured 4-vertex strips / fans on a supersampled surface
+(surface finer than the host on an axis) now get the same surface-grid
+edges: up to 3 x 3 pieces with alpha scaled by covered share; same state
+conditions as the line coverage. DOA3_QUAD_COVERAGE=0 turns it off.
+
+## 0.2.30: pause menu panels, name sprites
+
+0.2.29 left the Sparring pause menu unchanged: its traces show no rectcov
+draws -- the pause menu is drawn on the 720x480 fight surface (program scale
+1), which the supersampled-only gate excluded. Translucent untextured
+rectangles now also get surface-grid edges when the surface is stretched to
+the host (16:9 / ultrawide: 1.186 host px per surface px horizontally).
+
+Character select names (trace 13554): EIN's sprite is 14 display rows,
+v 0.4375..0.4921875 of a 128x256 atlas (format 0x0871192A) -- one texel per
+display pixel. With the supersampled menus' display offset its top edge is
+at 270.77, so host row centres sampled 0.23 texel past texel centres and the
+bottom row took ~25% of the atlas row below (the next name's top): a dotted
+line under the name. On supersampled surfaces, axis-aligned textured
+4-vertex sprites whose texel-per-host-pixel ratio is 1 on an axis get their
+UVs shifted (less than half a texel) so host pixel centres sample texel
+centres, as hardware's two surface rows per display row do.
+DOA3_SPRITE_TEXEL_SNAP=0 turns it off.
+
+## 0.2.31: stretched surfaces whole-pixel, translucent sprites' edges
+
+0.2.30 traces (Matt): the pause menu panels now go through rectcov, but a
+faint stripe stayed at their edges (column medians at y 162-182, 16:9:
+hardware 120 117 116 119 126 115 | port 115 115 116 108 118 105): the fill's
+partial last column and the frame line's partial first column were blended
+one over the other at partial alpha each, which never sums to a full
+covering. On the fight surface (720x480 stretched 1.186x to the host, the
+pause menu, command list and HUD) hardware does no averaging -- each
+surface pixel is wholly one primitive's and the TV / capture scaler
+resamples the picture afterwards. On such a stretched axis (pp >= 1) lines
+and rectangles now give each host pixel to the surface pixel under its
+centre (whole coverage), so neighbours meet without overlap or gap; only
+supersampled axes (pp < 1) keep the averaged edges. Also crisper life bar
+frame (hardware 120 / 113 grey, port was 88 / 71 at partial alpha).
+
+Singles character select COM. tab: a dark column between the panel's
+frame line and the tab -- the tab is a translucent textured sprite
+(80FFFFFF) with a hard left edge at 438.58 while the width-0x20 frame line
+ends in a partial column. Translucent textured axis-aligned sprites on the
+supersampled menus now get the same averaged edges, their partial edge
+pieces sampling the texture at the covered part's centre. (Tag character
+select shows the dark column on hardware too: its frame is width 0x10.)
+
+## 0.2.32: sprite samples kept inside their atlas piece; ledge moves
+
+Matt verified the pause menu, life bar and COM. tab. Two left:
+Options > Game Settings buttons had a 1 px blue bar on their right side at
+16:9 and 32:9, and Button Config frames a bright sliver on the right. Trace
+01468: the button end cap is a 5-texel piece (u 0.234..0.3125 of a 64-wide
+atlas, 0x030A4800) drawn over 558.70..564.63; host column 564's centre
+samples texel 19.89, 39% of the neighbouring atlas column. Hardware draws
+it at 720 wide (no supersampling on the Options menus) and does not reach
+that far. Axis-aligned 2D sprites (u, v within 0..1) now have their mapping
+pulled in so the first / last covered host pixel samples no further out
+than the piece's edge texel centres (DOA3_SPRITE_CLAMP=0 turns it off).
+
+Ledge dip: Matt's move table -- 0x425B / 0x425C HC_CASTLE_FR_UP / _DW (roof
+hit fall, 5 damage), 0x425D / 0x425E HC_CASTLE2_FR_UP / _DW (the stage
+transition fall). The 46T fix now covers 0x425D / 0x425E (0.2.27 guessed
+0x425F for the mirror).
+
+## 0.2.33: restart after first-run setup
+
+Matt, fresh install: after the disc image was copied the program closed.
+Log: "[SETUP] game files installed", then "xbox_MemoryLayoutInit: failed to
+map base view (131072 KB)". The setup screen's D3D11 device, the extraction
+buffers and the overlay DLLs hooked into it (OBS graphics-hook in this log)
+left no free 128 MB range at any of the candidate bases. After a successful
+setup the program now starts itself again (same executable and command
+line) and exits, so the game boots in a clean address space, as it does on
+every later launch.
+
+## 0.2.34: icon from the user's disc
+
+The executable's icon (src/game/DOA.ico) was the XBE's title image, which
+should not be in the repository. It is replaced by placeholder.ico, a plain
+white rounded square. At boot, after default.xbe is loaded from HDD\D, the
+$$XTIMAGE section (XPR0: 128x128 DXT1, format 0x07710C2A, data at the
+header size 0x800) is decoded and set as the window's class / WM_SETICON
+icons (taskbar, title bar, Alt+Tab). The file icon in Explorer stays the
+placeholder (an exe's own icon resource cannot be changed while it runs).
+The old icon is still in earlier commits' history.
+
+## 1.0.0
+
+Release. Version 1.0.0 (was 0.2.34); CHANGELOG.md has the 1.0.0 summary of
+everything since 0.0.128. The update check compares the release tag (v1.0.0)
+with major.minor.update.
+
+Dip switches reordered for the General tab (enum order = display order; the
+ini keys are unchanged) with Matt's final labels. New switch
+"WorldMapLocations" (values from Gultigargar): the stage table 0x29C960 has
+Beach (row 2) at world map x 0x48 (VA 0x29C988, file 0x290928) and Aqua
+Palace (row 12) at 0xB0 (VA 0x29CA28, file 0x2909C8); on, they are swapped.
+Applied at every frame end, only while the table holds one of the two
+layouts.
+
+## 1.0.1
+
+Boot hang reported on the 1.0.0 release (3416x1920 borderless; windowed
+booted). Log: KeStallExecutionProcessor(20) x1000 from sub_001F8A6D, the
+AC97 codec access semaphore poll (0xFEC00034 bit 0), then DirectSound init
+failed, CRI never opened D:\ (no loadfile.afs / bgm.afs) and the main fiber
+spun on "E9040828:'ptid' is range outside". No "GPU mem page 0xFEC00000"
+fault was logged: a host allocation already sat on the unreserved window, so
+the read hit foreign memory with bit 0 set. Same class as the NV2A and APU
+aperture fixes. xbox_MemoryLayoutInit now commits the AC97 page (0x130 =
+0x300, as the VEH did) and the USB page at 0xFED00000 (zero) before the
+heap and the kernel bridges allocate.
+
+## 1.0.2.1
+
+Versioning: releases now count up one at a time (v1.0.2, v1.0.3, ...). Test
+builds between releases carry the next release's three numbers plus
+DOA3_VER_BUILD from 1 (1.0.2.1, ...). DOA3_VER_STR stays three numbers (the
+release workflow's tag); DOA3_VER_FULL_STR is shown in the log's first line,
+the exe's version resource, the update log line and the General tab. The
+update check treats a test build as older than the release of the same three
+numbers. release.yml refuses to publish while DOA3_VER_BUILD is not 0. The
+CHANGELOG section for the release in progress is headed "not yet released"
+and gets its date when the build number goes back to 0.
+
+Batch 1 from the post-1.0.1 reports:
+- Exit Game (General tab, red): posts WM_CLOSE, the Alt+F4 path.
+- Cursor: doa3_ui_wndproc answers WM_SETCURSOR over the client area with
+  SetCursor(NULL) while the menu is closed. doa3_ui_toggle posts a
+  WM_SETCURSOR so the change shows without moving the mouse. The first-run
+  setup answers WM_SETCURSOR itself (ImGui's cursor, else the arrow) so it
+  is not hidden there.
+- Screenshot notice: d3d8_screenshot_finished() counts finished captures
+  (saved or failed); the overlay shows a 2.5 s notice bottom-right when the
+  count changes. The capture is taken before the overlay is drawn.
+- Logging section (General): Write log files moved there, plus "Create a
+  trace file" (g_doa3_trace_request), removed from Debug > Diagnostics.
+- Black/White: defaults now White = LB, Black = RB (were Black = LB, White =
+  RB); the Controls table shows White above Black (pad_ctl_display_order).
+  Ini keys unchanged; saved layouts are kept. The keyboard defaults (J White,
+  ; Black) already had White on the left.
+- Master volume default 80 (static default, ini fallback, Reset to defaults).
+- HDD\X, Y, Z are never created (xbox_path_is_cache_dir): not on path
+  translation, and not for a directory create from NtCreateFile (bridge and
+  kernel_file). The only thing that touched z:\ since direct_afs was the CRI
+  cache scan, which now finds no folder. Needs a boot test with HDD\Z
+  deleted.
+
+## 1.0.2.2
+
+Gultigargar's report (Random alternate colours on, tag Time Attack, mode
+3): his team was 02 (alternate) + 04 (Ryu, costume 00). His log has
+`[RANDALT] CPU opponent character 04 (mode 3): costume slot 0 alternate 0
+-> 00 (game chose 01)`: the game had avoided the clash, our pick put it
+back. sub_00076B30's mirror check read only the side records
+0x59CF58 + side*0x68, which in a tag fight hold just the member on point.
+The game's own rule (0x76B82, tag flag 0xC59866 set) reads the human
+side's team, characters 0x59CF44 + side*5 + member and costumes
+0x5A2620 + side*5 + member; the pick is now rejected against both members
+too (up to 4 tries, then the game's choice).
+
+Settings paths: doa3_settings_ini_path, pad_mapping_default_path and
+netplay's ini_path built the path with GetModuleFileNameA, which turns
+characters outside the ANSI code page into '?' (non-Latin or accented
+folder names), so Get/WritePrivateProfileString and fopen used a wrong
+path and Save failed. exe_path.h converts the wide path, falling back to
+the 8.3 short path (ASCII) when the conversion is lossy.
+
+Protected folders: at boot main.c creates and deletes
+doa3_write_test.tmp next to the exe. On failure it logs `[SETTINGS] cannot
+write to the game's folder ...` (the log itself may not be writable then)
+and sets g_doa3_folder_write_error; the overlay shows a warning for 20 s
+(or until the menu opens) and on the General tab, and a failed Save's
+status adds "the game's folder is protected (see General)".
+
+## 1.0.2.3
+
+Keyboard defaults (Matt): left stick T G F H (LY+ LY- LX- LX+), right stick
+the arrow keys. Keys drive an axis at full deflection (axis_magnitude).
+pad_binding_label sets the extended-key bit for the arrows and the
+navigation block, so they read "Up" and not "Num 8".
+
+Frame advance (Debug > Frame advance, F7/F8 while the Debug tab is on), for
+Omega's KO effect. doa3_frame_pause_point runs in d3d4134_frame_done after
+the frame was presented, before the pacing. While g_doa3_frame_pause is set
+and no step is pending, the game thread loops: with the asynchronous GPU
+thread it first drains the queue (pb_is_drained) and shows the newest
+finished copy; d3d8_PresentPaused composes it (or the guest frame when
+synchronous) with async = 1, so the previous-frame copy that effects read
+is not overwritten while held; messages are pumped every 15 ms.
+g_doa3_frame_paused silences audio_apply_volume and the watchdog. Each step
+(g_doa3_frame_steps) lets one frame through; held F8 repeats. "Trace each
+stepped frame" arms the trace for the next frame on the spot
+(g_doa3_trace_request + doa3_mtrace_frame(next), under the D3D lock when
+asynchronous), since a request set while held would be consumed at the
+stepped frame's end and trace the frame after it. Skipped in online play
+and while a movie owns the screen. The guest clock is not frozen; as with an
+online-play wait, the game's logic advances per frame.
+
+"Trace the next frames" (2-30): g_doa3_trace_frames counts down in
+doa3_mtrace_frame, one trace per frame end.
+
+Rewind is left for the rollback branch, whose state save/restore it needs.
+
+## 1.0.2.4
+
+Matt's frame-advance run through Omega's KO showed a corner box and, back
+on the title, a dark blue DOATEC HK; a run without pausing rendered both
+correctly, so the hold itself caused it. The guest clocks kept running
+while held: the first frame after each hold saw seconds pass. The traces
+show the effect catching up -- frames 22405 and 22421 draw Omega's flame
+sheet about 80 times, with a 720x480-viewport composite (box -1282..2002 x
+-1057..1537, drawn unscaled) that never appears in normal play.
+
+xbox_clock_hold (kernel_hal.c) now subtracts the time held from
+KeQueryPerformanceCounter, and KeQueryInterruptTime and the KeTickCount
+thread derive from it. A step credits the clock with what the stepped
+frame's run fell short of 1/60 s (xbox_clock_advance), so each step looks
+like one frame to the game. KeQuerySystemTime (wall clock) is unchanged.
+
+## 1.0.2.5
+
+1.0.2.4's stepped KO (Matt, traces 29097-29212) no longer drew the corner
+box, but the fighters and stage vanished part way, a flame view appeared
+after black, and the title / mode select afterwards had a black
+background; a run without pausing was fine. The hold started the guest
+clock's stop only after draining the render thread, and with "trace each
+stepped frame" that drain writes the trace and a 20 MB screenshot: each
+step still showed the game a few hundred milliseconds instead of 1/60 s,
+so time-driven effects ran far ahead. The clock now stops before the
+drain; the step credit is measured to that point.
+
+Sparring on the waterfall stage afterwards (aa_42168) shows a straight
+vertical seam where the sky meets the cliff, like a user's report from
+low-end hardware that Matt could not reproduce before. Not yet
+investigated; it may be the same family (state left behind) or separate.
+
+## 1.0.2.6
+
+The Omega KO report (GTX 1060 / i7-7700HQ, 1.0.1) is the same failure as
+frame advance: his log has the game's own frame time at 92 ms (54 of 54
+frames over 17.5 ms, worst 110) right before the KO, then his video shows
+the blue silhouette screen and he returns to a broken title screen. Matt's
+hardware capture (cmp/omega-hw, 60 fps) is the reference: the after-image
+blur runs through the fight; after the KO both fighters stay visible
+through the fade (about 350 frames from the KO letters to black), then the
+ending movie. No blue screen.
+
+Debug > Frame advance > "Simulate a slow PC" (0-120 ms, not saved) sleeps
+that long at every frame end with all clocks running, so the slow-machine
+failure can be reproduced and a fix tested on a fast PC. Candidates for
+what races ahead: the guest's tick count (KeTickCount, read once a frame
+at 0xA64AB into 0x9B2390), the CRI/ADX streams (0x1C6F70..0x1C7920 read it
+too), and the APU, which keeps playing in real time (also while frame
+advance holds the game, so a sound-synchronised timeline would still skip).
+
+## 1.0.2.7
+
+Matt at +80 ms per frame (cmp/omega-plus-80): the KO plays like the
+hardware capture (fighters visible through the fade, then the ending and
+credits movies and a normal title screen). Slow frames with every clock
+running do not reproduce the report, so time skipping is not the cause
+for him. His +80 log still shows the KO costing about 38 ms of game time
+per frame beyond the 80 (the ~930k blend-function writes); the reporter's
+92 ms is that on a slower CPU.
+
+New hypothesis: on the reporter's machine the render thread falls behind
+the game within a frame (the KO frame wraps the 1 MB push buffer several
+times). "Simulate a slow GPU thread" (Debug > Frame advance, 0-30 ms per
+translated batch, not saved) delays pb_render_thread before each batch to
+test that on a fast PC.
+
+## 1.0.2.8
+
+"Simulate a slow GPU thread" at 10 ms per batch reproduced the report on
+Matt's PC (cmp/omega-plus-10-gpu): blue frames, the fighters gone, the KO
+letters starting over several times.
+
+The cost behind it: sub_0006BF10 is a delay loop. Omega's after-image
+handler sub_000F72E0, in phase 2 (ebx == 2 at 0xF7466), calls 0x6BF00,
+which sets esi = 0xF4240 (1,000,000) and loops writing SET_BLEND_FUNC_SFACTOR
+0x302 / DFACTOR 0x303 through 0x1DDEB0: the 934,550 + 934,545 0344/0348
+methods in the KO traces, 8 MB of push buffer per frame, written only to
+keep the console's GPU busy. In the port that is guest CPU time (about 38
+ms a frame on Matt's PC, 92 on the reporter's i7-7700HQ), several wraps of
+the 1 MB push buffer and two million methods for the render thread.
+Hand edit in gen/recomp_0001.c: esi = 1 on entry, so the pair is written
+once. The previous-frame image the effect samples is kept by the host
+renderer (d3d8_keep_prev_frame / the async copies), which needs no delay.
+
+Not yet understood: why a render thread that falls behind makes the game's
+KO logic go wrong at all. With the loop gone that needs a much slower
+machine, but it is worth finding (Steam Deck).
+
+## 1.0.2.9
+
+1.0.2.8 passed Matt's +10 ms slow-GPU-thread test (no KO damage). It also
+made the KO run at 60 fps, which Matt notes looks wrong, like the Xbox One
+/ Series backward compatibility. The delay loop is what slows the KO on
+the console: in the hardware capture (cmp/omega-hw, 60 fps) the picture
+changes every frame during the fight and on exactly every third frame from
+the KO letters to the fade (20 fps), then the ending movie. The hand edit
+now also sets g_doa3_gpu_delay_frame, and d3d4134_pace holds that frame
+for three 1/60 s periods instead of one. The vertical-blank handler still
+runs once per presented frame, so the game's logic advances one step per
+frame, as it does on hardware.
+
+## 1.0.2.10
+
+Unlock all moved from Debug > Unlockables to the dip switches
+(DIP_UNLOCK_ALL, [DipSwitches] UnlockAll, listed last). debug_unlock_all_get
+/ _set now read and write the switch, so doa3_debug_unlock_read8 and the
+generated reads are unchanged; [Debug] UnlockAll is read once as the
+default when the new key is absent, and no longer written. The Theater
+grid is the 16 entries of 0x29CD40 (ending flags 0x5A0B49 + index); the
+credits movie is not a Theater entry -- it plays after a Story ending
+(Options can skip it once seen), so the switch does not affect it (Matt:
+fine as is). tests/debug_settings still exercises the old [Debug] key and
+needs updating.
+
+## 1.0.2.11
+
+Cursor (Matt): instead of always hidden with the menu closed, it hides after
+1 s without WM_MOUSEMOVE (checked each doa3_ui_render) and shows again after
+0.5 s of continuous movement (a move more than 200 ms after the last starts
+a new streak; repeated moves at the same position are ignored). Closing the
+menu leaves it visible for that second.
+
+## 1.0.2.12
+
+Controller hotkeys (Matt's list): PollControllerHotkeys runs at the top of
+doa3_ui_render every frame, reads every connected physical slot (XInput 0-3,
+PlayStation 4-7) while the game window has focus and no binding or
+screenshot key is being captured, and fires a combination once when it
+becomes held: L3+R3 doa3_ui_toggle, L3+R1 d3d8_screenshot_request, L3+Y
+TogglePerformanceOverlay, and with the menu open L1/R1 (L3 not held) the
+previous/next enabled tab (ImGuiTabItemFlags_SetSelected; Sparring skipped
+outside training_available(), Debug while hidden). Buttons still reach the
+game.
+
+## 1.0.2.13
+
+Generic DirectInput controllers share the four native slots (4-7) with the
+PlayStation pads: found_pad accepts any DI8DEVTYPE_GAMEPAD / JOYSTICK, but
+creates it first and drops it if its device path has "IG_" (Windows'
+DirectInput view of an XInput controller). They are read with the same
+c_dfDIJoystick2 format; generic_translate uses the PlayStation face/shoulder
+order (Square Cross Circle Triangle L1 R1 L2 R2 Select Start L3 R3, what
+most PS3-mode arcade sticks report), L2/R2 buttons as full triggers, the
+right stick from Z/Rz or else Rx/Ry, and centres axes the pad does not
+have (enumerated by guidType). The Controls device list names them by
+product name. No rumble (DirectInput force feedback is not used). Untested
+here: needs a DirectInput pad or stick.
+
+DualSense / DualShock 4 rumble over Bluetooth is not done. It needs the
+Bluetooth output reports (0x31 / 0x11, 78 bytes, CRC-32 over 0xA2 + data),
+and sending them switches the controller to its full Bluetooth input
+reports, which DirectInput cannot read -- so input would also have to move
+to raw HID (as SDL, DS4Windows and the emulators do). Waiting for a tester
+with a Bluetooth controller.
+
+## 1.0.2.14
+
+Movie decode cost (Matt's list: FMVs not smooth on low-end PCs). A
+DOA3_PROFILE run over the intro, an ending and the credits puts the Sofdec
+decoder's hot spots on the game thread at sub_001A3480 (YUV to RGB, MMX
+table lookups), sub_001AFB20 (MMX IDCT), and sub_001B0C40 / sub_001B3FB0
+(the VLC readers), with smaller shares in the half-pel averaging at
+0x20C000-0x20F000.
+
+- The MMX helpers in recomp_types.h were lane-by-lane loops, and MMQ_LOAD
+  resolved the address twice and did two volatile dword reads. On x64 each
+  helper is now one or two SSE2 instructions on the low quadword, and
+  MMQ_LOAD is one 8-byte load from one resolved address (MMQ_STORE resolves
+  once and keeps its two volatile stores). The scalar loops remain for
+  other targets. tests/mmx_helpers checks every helper against the scalar
+  reference, including saturation and out-of-range shift counts. Lifting
+  sub_001AFB20 and sub_001A3480 into a Linux harness gave byte-identical
+  guest memory, with the IDCT 4-9x faster and a 640x480 colour conversion
+  going from 2.1-7.7 ms to 0.5-0.6 ms (clang / gcc; MSVC not measured).
+- Lifted jump tables were a run of `if (_jt == target) goto` lines, a
+  linear compare chain per dispatch (170 targets in sub_001B3FB0, read once
+  per coefficient). tools/recomp/switch_tables.py (last postprocess step)
+  rewrites the 512 live tables as `switch (_jt)` with the same targets and
+  the same RECOMP_ITAIL fallback; 19 tables whose targets all lie outside
+  their function are left alone.
+
+## 1.0.2.15
+
+Movie frame pacing. The 1.0.2.14 profile run (Matt's PC) also showed the
+movies' frame intervals: 30-145 of every 300 frames over 17.5 ms (gameplay:
+1-30), the mean still 16.67 ms, and every frame over 25 ms with one worker
+lap of 12-16 ms inside d3d4134_pace (PERF-PHASE workers-prev = longest-worker).
+During a movie the Sofdec decode runs in those laps (the kernel-call
+timeslice is off until g_doa3_post_movie), and a lap cannot be interrupted;
+pace started one whenever more than 1 ms was left, so a picture decode begun
+late overran the vblank and the next frame came early. Pace now keeps a
+decaying maximum of the lap time (s_lap_est, -1/32 per frame) and starts a
+lap only if it fits in the time left, except the first lap of each frame,
+which always runs, so every worker still gets at least one lap per frame
+(a lap from the primary goes round every READY worker). Gameplay laps are
+well under 1 ms, so outside movies nothing changes; netplay is exempt.
+
+DirectInput: ds4_probe enumerates twice, Sony pads first, so a generic
+DirectInput device (a wheel, a flight stick, a keyboard's joystick
+interface) can no longer take a lower native slot than a PS4 / PS5 pad and
+become player 1 under automatic assignment. The Sony path is otherwise
+unchanged from 1.0.1 (same translation, rumble and the XInput-path check
+skipped).
+
+## 1.0.2.16
+
+1.0.2.15 did not change the movie frame intervals (opening: still 35-136
+of 300 frames over 17.5 ms per 5 s). The pattern explains why: the bad
+windows come and go on a ~17 s cycle. The guest vblank
+(xbox_fiber_vblank_tick) free-ran at 59.94 Hz while the pace presents at
+60.00 Hz, so it slid through the presented frame once every 1/0.06 = 16.7 s.
+The vblank is what wakes the Sofdec decoder, so its lap started at that
+drifting point; the "first lap of a frame always runs" rule of 1.0.2.15
+then let it overrun whenever the vblank fell late in the frame. Now the
+vblank uses the pace's period (QPF / 60) and the pace phase-locks it to
+each frame's deadline (xbox_fiber_vblank_align, first boundary still ahead
+so a 3-period GPU-stall frame still gets three vblanks), and fires it when
+the deadline passes. The decoder wakes at the frame boundary and its lap
+runs at the start of the next pace with the whole frame left. The guest
+vblank rate is 0.1% faster than NTSC, the same rate the game's frames
+already run at.
+
+Not explained yet: some movie stretches also have a ~10 ms burst of guest
+work on the game thread every 8 frames (PERF-PHASE before-flush 9-11 ms,
+no worker lap). If it is the player decoding on the main thread because
+the worker fell behind, this fixes it too.
+
+## 1.0.2.17
+
+1.0.2.16 made the movie pattern exact rather than better: 150 of every 300
+frames over 17.5 ms, "workers 0.00", game 6.5 ms in the slow frames. With
+the vblank at the deadline the decoder no longer ran in a pace lap; it ran
+straight after the deadline (the vblank handler / the start of the next
+game frame), i.e. inside the game phase of every other frame, and
+d3d4134_frame_done presents before it paces -- so each frame that carried
+a decode went out ~6 ms later in its frame than the next one (22.6 / 10.7 ms
+intervals, mean 16.67). Presenting first is right for gameplay (no added
+input delay), but while a movie plays (doa3_movie_host_owns_screen: guest
+movie frames in the last 100 ms) frame_done now runs the frame-advance
+pause point and the pace first and presents at the deadline, so movie
+frames go out on the 60 Hz grid whatever the decode does, as long as decode
+plus game fit in a frame. Not in netplay or async-GPU frames (the async
+path is off during movies anyway). The aligned vblank of 1.0.2.16 stays:
+it gives the decoder the whole frame after each deadline.
+
+## 1.0.2.18
+
+1.0.2.17 result (Matt's PC, performance_frames.csv, movie frames only):
+logo, opening, Theater ending, Hayate ending and credits all at a mean of
+16.67 ms with 1.4-5.1% of frames over 17.5 ms, none over 20 ms but one
+(max 18.0-21.7 ms); gameplay in the same run is 6.4% over 17.5 ms. Before
+(1.0.2.13-16): 10-50% over 17.5 ms with 23-35 ms frames. Skipping each
+movie still works; no audio desync seen.
+
+The [PERF-5S] summary dropped nearly every movie frame in 1.0.2.17: its
+"game" phase subtracted the previous frame's pace from the present-to-entry
+gap, but with the pace before the present that gap holds no pace, so the
+value went negative and perf_5s skipped the frame. frame_done now keeps the
+pace that actually lies in the gap (s_gap_pace: 0 after a pace-first frame)
+for that and for [PERF-PHASE] before-flush. Diagnostics only.
+
+## 1.0.2.19
+
+Cursor (Matt): it comes back after 0.25 s of movement instead of 0.5 s.
+tests/debug_settings follows the 1.0.2.10 move of Unlock all to the dip
+switches: it links dip_switches.c (debug_unlock_all_get/set are now
+dip_get/dip_set), checks that an old [Debug] UnlockAll=1 is picked up when
+there is no [DipSwitches] UnlockAll, that dip_save writes the switch, and
+that debug_settings_load no longer changes it. CHANGELOG: developer-tool
+and test-build entries removed (Matt: release notes are for players).
+
+## 1.0.2 (release)
+
+Released from 1.0.2.19: DOA3_VER_BUILD 0, DOA3_VER_FULL_STR "1.0.2", the
+CHANGELOG section dated. Verified by Matt before release: everything in
+the changelog except DirectInput controllers (no controller to test with).
+
+## 1.0.3.1
+
+Gultigargar (i3-10300) and the 1.0.2 reporter (i7-7700HQ): every movie
+starts far too fast, then flickers to black for the rest (Kasumi's ending
+from the Theater: runs of 1-13 black frames every ~0.4 s in his 30 fps
+capture; the log shows the async render thread taking over mid-movie at
+frame 601 and back, i.e. no movie frame for 100 ms at a time).
+
+Cause: xbox_fiber_vblank_align (1.0.2.16). When a frame had overrun its
+deadline it set the next guest vblank to that deadline, and that boundary
+had usually already fired during the frame (a worker blocking runs the
+tick), so it fired again: one extra guest vblank per overrun frame. On a
+PC where the picture decode overruns its frame, that is most movie frames,
+the guest clock ran up to ~2-4x fast (simulated: 3.9x), so the movie raced
+ahead, then Sofdec skipped pictures to stay with it. Matt's PC never
+overran, which is why it did not show here. The align now moves the next
+vblank by less than half a period, to the nearest boundary of the
+deadline's phase, so no boundary fires twice (same simulation: 0.998x on
+the slow PC, 1.000x on a fast one). Reproducible on a fast PC with Debug >
+Simulate a slow PC set to ~20 ms during a Theater movie.
+
+## 1.0.3 (release)
+
+Released from 1.0.3.1. Gultigargar confirmed his movies are fixed; Matt
+reproduced the bug on 1.0.2 with Simulate a slow PC at +20 ms.
+
+## 1.0.4.1
+
+Escape menu redesign, first part (Matt: a full-screen list like the VF2 / VF3
+recomps, black instead of their colours, DOA3-style blue selection).
+
+- src/ui/pause_menu.cpp / .h: an immediate-mode list engine on ImGui's draw
+  lists in one full-screen NoNav window: black horizontal gradient (opaque
+  left, see-through right), "MENU" title with a blue rule, a section line,
+  rows (Action, Toggle, Choice, Step; Heading and Note between them), the
+  selected row's help under the list, the button hints and the version at
+  the bottom. Sizes follow the window height (row text 2.8 % of it).
+  Up / Down (arrows, d-pad, left stick) move the selection at End, skipping
+  disabled rows and wrapping; Left / Right change the selected value;
+  Enter / Space / A or a click activate (a click on the value's halves steps
+  it); Backspace / B is BackPressed; the wheel scrolls a long list, and the
+  view follows keyboard moves. Long labels are cut with an ellipsis.
+- Fonts: Poppins Medium and Bold Italic (OFL 1.1), Latin subsets (~15 KB
+  each) in third_party/fonts, embedded through src/ui/menu_fonts.h, added
+  after ImGui's default font every time the atlas is rebuilt
+  (ApplyMenuScale), and drawn at any size (ImGui 1.92 dynamic fonts).
+- doa3_ui.cpp: screens Main, Display, Sound, Game and Quit. Controls,
+  Photo Mode, Sparring and Debug open the old tabbed window on their tab
+  (SCR_CLASSIC); its close button, Esc or B (when nothing is being edited)
+  return to the list, and LB / RB still switch its tabs. Esc goes back a
+  screen, closes at Main. A screen saves its settings to doa3_settings.ini
+  when left (Back, B, Esc, or closing the menu from it) if anything changed;
+  the Save buttons are only in the old window now.
+- Pause while this menu is open ([General] PauseInMenu, default off): the
+  frame-advance hold (g_doa3_frame_pause) while the menu is open, not in
+  netplay; the hold already refuses during movies. g_menu_paused keeps the
+  Debug "Paused after frame" banner away.
+- pad_mapping: after the menu closes, each player's input stays neutral until
+  everything they hold is released, so the A / Enter that chose Resume does
+  not reach the game.
+- The menu was checked on Linux by rendering its ImGui draw data in software
+  over a game screenshot (1920x1080): Main, Display and Game screens.
+
+## 1.0.4.2
+
+Menu look (Matt): the title is "DEAD OR ALIVE 3"; the bottom line is only
+the version ("v1.0.4.2"); row labels and values are capitals in Poppins
+Bold Italic (the title's font) at the row size. The column is half the
+window wide so the longest dip switch fits at 16:9.
+
+## 1.0.4.3
+
+Menu (Matt): the screen's name under the title is in capitals, Bold Italic,
+1.2x the row size; rows use Poppins Bold (upright; third_party/fonts gains
+the Bold subset); Resume is gone from Main (the game keeps running, so it
+read as a pause; Esc / B close the menu). A label too long for its row is
+cut at the edge instead of ending in an ellipsis, and while it is selected
+it scrolls left like a ticker: 1.2 s still, then 3 row-heights per second
+to its end, 1.2 s still, and again (State keeps when that row was
+selected).
+
+## 1.0.4.4
+
+Menu (Matt): row labels and values are back in normal case (still Poppins
+Bold, upright); group headings ("UPDATES", "DIP SWITCHES") are capitals in
+Poppins Medium Italic (new subset) at 1.1x the row size, between the rows
+and the screen name (1.2x). The list area is a whole number of rows tall, so
+no row is drawn cut in half above the help line.
+
+"Pause while this menu is open" did nothing at the game's menus: they play
+movies behind them (the Mode Select beach is one), and the frame-advance
+hold refuses to stop a movie and clears the request. The menu's hold now
+sets g_doa3_frame_pause to 2, which doa3_frame_pause_point also honours over
+a movie (the guest's clocks and the APU output stand still while held); the
+Debug frame advance (1) keeps the old rule.
+
+## 1.0.4.5
+
+Menu (Matt): the main list keeps its own style, capitals in Poppins Bold
+Italic, while the settings screens' rows stay normal case in Bold
+(pm::Begin's new `main` flag, set only by DrawMainScreen).
+
+## 1.0.4.6
+
+Bug report: a Survival opponent (Danger Zone) in Zack's costume 3 reflected
+the default Beach picture instead of the stage. Matt: only possible with the
+random costume dip switches, which let 0x76B30's CPU pick (modes 3 Time
+Attack and 5 Survival) choose any unlocked costume; the game itself gives an
+opponent costume 1 (2 for a mirror match), and a player-chosen costume 3
+reflects the stage correctly. So the stage capture into 0x028D4600 is set up
+for the fighters chosen before the run, and an opponent who joins later in
+that costume is not covered. From the 3.1 XBE's tables (0x29C728 /
+0x29C790): Zack is character 0 and his slots map to costumes 0, 1, 2, 3
+(no alternates), so costume 3 is costume 0x02. The CPU pick now skips
+(0x00, 0x02) like a mirror-match clash (another try, else the game's own
+choice). Making a late joiner's suit work would mean finding where the game
+decides to set up that capture; not done.
+
+## 1.0.4.7
+
+The 1.0.4.6 exclusion is Survival only (mode 5). Matt: Time Attack sets the
+stage up for each fight, as if the opponent had been chosen at Character
+Select, so its capture covers the opponent; Survival brings opponents in
+without a stage change.
+
+## 1.0.4.8
+
+TEMPORARY test aid for the Survival Zack costume 3 reflection: with
+DOA3_TEST_SURVIVAL_ZACK=1, sub_00076B30 (asked for each Survival opponent's
+costume) sets the next entry of the opponent queue 0x59D04C (index
+0x596ADC, read at 0x77273 by 0x76E50) to Zack when it holds a character,
+and gives a Survival Zack costume 0x02 regardless of the dip switches
+("[TEST] Survival" lines). Matt's log of 1.0.4.5: the game renders the
+stage picture into 0x0369C600 when a costume-3 Zack joins in Team Battle
+(frame 46909) and in mode 3 (frame 13821); Survival (mode 5) is untested.
+To be removed once that is known.
+
+## 1.0.4.9
+
+Survival test (1.0.4.8, DOA3_TEST_SURVIVAL_ZACK): the second opponent was
+Zack in costume 0x02 ("fighting ... P2 character 00 costume 02" at frame
+4016) and no [RTT] pass followed: Survival does not render the stage picture
+for a late opponent, while Team Battle (frame 46909) and Time Attack (13821)
+do, on the frame after the fighter's entry. Matt's screenshot shows the
+default (Beach) map on him.
+
+To find what starts that capture: the D3DDevice_SetRenderTarget hook
+(sub_001DC8E0) logs, for 256x256 targets (at most 48 lines), the frame and
+the guest return addresses on the stack that follow a call instruction
+("[RTTCALL]"). Temporary.
+
+## 1.0.4.10
+
+1.0.4.9 logged no [RTTCALL]: those surfaces report size 1x1 in the surface
+header (the [RTT] target lines say so too), so the 256x256 filter never
+matched. Now every SetRenderTarget to a non-device surface is logged once
+per (surface, call chain), up to 96 lines. Matt's 1.0.4.9 run: Team Battle
+captures for both costume-3 Zacks (frame 4353 into 02D6C600, 5112 into
+0369C600 -- each Zack has his own surface); Survival's Zack at frame 7711,
+none.
+
+## 1.0.4.11
+
+The guest stack has no return addresses (the lifter pushes 0 for them), so
+[RTTCALL] now records the host call stack (RtlCaptureStackBackTrace, 40
+frames, as RVAs for DOA3.map). 1.0.4.10's run, same pattern: Team Battle
+SetRenderTarget into 02D6C600 at frame 2443 and 0369C600 at 3269, each on
+the frame the costume-3 Zack entered; Survival's Zack at frame 6050, no
+SetRenderTarget at all.
+
+## 1.0.4.12
+
+1.0.4.11's host stacks symbolized: both Team Battle captures come from
+sub_001C1D0F (+0x11d9) <- sub_001C5F54 <- sub_001C60AB, the task loop on
+fiber 0x1C6690. That loop calls 0x1C5F54 every frame, which calls
+sub_001C1D0F(character, costume, slot) for each side's record (0x59CF58 +
+side*0x68: +1, +2, +3). sub_001C1D0F returns at once unless character 0,
+costume 0x02, then renders only on an edge: 0x596A37 falling (0x9B36A8),
+0x5C93AA rising (0x9B3710), 0xC59865 changing (0x9B36A0), or -- only when
+0x5A2858 == 10, Team Battle -- a side's slot changing (0x9B3717/0x9B371B,
+set by 0x1C5F54 from 0x9B3716 vs 0x59CF5B). Survival's next opponent comes
+in with none of these, so the suit keeps the old picture.
+
+Fix: sub_001C1D0F is an override (removed from recomp_probes.c). In mode 5
+it remembers each slot's (queue position 0x596ADC, character, costume)
+while 0x596A37 is 0; when that changes and the new fighter is Zack in
+costume 0x02, it sets 0x9B36A0 to differ from 0xC59865 for that one call
+(the loop rewrites 0x9B36A0 right after), every frame until a capture
+happens (counted by the SetRenderTarget hook's new g_doa3_offrt_sets). Logs
+"[REFL]" when it does. The Survival exclusion in 0x76B30 is gone and the
+[RTTCALL] logging removed; DOA3_TEST_SURVIVAL_ZACK stays until this is
+confirmed.
+
+Pause in menu: [General] PauseInMenu was read in doa3_ui_init, which runs
+on the first frame with something to draw, after the first toggle had
+already decided not to pause. Both now call LoadMenuSettings (once).
+
+## 1.0.4.13
+
+Matt's 1.0.4.12 Survival run (DOA3_TEST_SURVIVAL_ZACK): Zack in costume
+0x02 came in as opponent 1 at frame 2510 and still showed the Beach; no
+[REFL] line, so the forced capture never rendered. The pause fix is
+confirmed. Temporary "[REFLGATE]" lines (mode 5, up to 300) log each
+sub_001C1D0F call whose inputs or gate state changed: the setup flags, the
+slot's loaded-model entry 0x5B20B2 + slot*6 that the capture checks through
+0x861E0 (byte 0 must be 0, +3/+4 the character and costume), 0x598E80, and
+the override's own state. No lines at all would mean the call doesn't
+happen in Survival.
+
+## 1.0.4.14
+
+Matt's 1.0.4.13 run ([REFLGATE]): 0x596A37 is a fight phase, not a setup
+flag. It was 5 at frame 1104, 0 for one frame at 1106 (the original capture
+for his own Zack in slot 0), then 1 and 2 for the rest of the run. The next
+opponent (Zack, costume 0x02) came in at frame 2437 in slot 1 (the first
+opponent was in slot 3) with 0x596A37 at 2, and the slot's model entry
+already matched (00 00 02). 1.0.4.12 only forced the capture while
+0x596A37 was 0, so it never did.
+
+Now the override forces the capture for a Survival Zack in costume 0x02
+whenever his slot has not been captured for (queue position, character,
+costume), whatever the phase, until a SetRenderTarget shows it happened.
+The [REFLGATE] logging is removed; [REFL] stays (32 lines at most).
+
+## 1.0.4.15
+
+Matt confirmed 1.0.4.14: playing Kasumi, the joining costume-3 Zack
+reflected Danger Zone (before and after its explosion). With his own Zack
+in costume 3 too (the test switch skips the mirror-outfit reroll), both
+suits went white: at frame 2195 the override captured slot 0 (the
+player's, because the queue position had changed) and slot 1 in the same
+frame. Now a human's slot (0x59CF58 + side*0x68 == 1, slot at +3) keys
+without the queue position, so only the joining fighter's slot is
+captured. Normal play doesn't produce this case (0x76B30 rerolls a
+mirror match in the same outfit, and the game never picks costume 0x02
+itself).
+
+## 1.0.4.16
+
+Matt, 1.0.4.15: his own costume-3 Zack kept his picture and a joining one
+was right after a plain KO, but after he finished the previous opponent
+with a Danger Zone wall explosion the joining Zack came out white (capture
+at frame 5724: 418 draws, 63 wrote pixels, 164133 pixels; the good one at
+2811: 160 / 89 / 98624; the white ones in 1.0.4.14 were 442 / 69 / 167260
+and 465 / 82 / 169801). From the 1.0.4.13 [REFLGATE] run, 0x596A37 is 0
+for the intro, 1 during the fight and 2 in the KO phase, when the next
+Survival opponent joins. So a CPU slot's Zack is now captured on joining
+and once more on the first frame of phase 1 (s_fight). The [REFL] line
+gives the phase.
+
+## 1.0.4.17
+
+Matt, 1.0.4.16: fixed, except once a joining Zack stayed white until he
+was about to land and then got the right picture. The log has it: capture
+at frame 9453 in phase 2 (445 draws, 168450 pixels: the white kind), then
+9505 in phase 1. So while a joining CPU Zack hasn't had his phase-1
+capture, phase 2 now recaptures him every 8 frames (s_when).
+
+The DOA3_TEST_SURVIVAL_ZACK test aid is removed (0x76B30 back to the
+random costume pick alone, which now may give a Survival opponent Zack's
+costume 3 again).
+
+## 1.0.4.18
+
+Esc menu on wide windows (Matt, 21:9 and 32:9 screenshots): the list's
+layout now uses a centered 16:9 area at most (pause_menu.cpp Begin: lw =
+min(W, H*16/9)); the background is opaque left of that area and at the
+gradient's clear end right of it.
+
+With "Pause while this menu is open", changing the aspect ratio stretched
+the held frame. Display's window type, aspect ratio, internal resolution
+and Reset to defaults now call MenuPauseRefresh, which grants the hold two
+frame steps (g_doa3_frame_steps = 2; the render thread is a frame behind)
+so the picture is redrawn with the new setting, then holds again.
+
+## 1.0.4.19
+
+Controls moved to the list menu (Matt's layout, with two changes):
+SCR_CONTROLS (Input only when focused, "Capture gameplay input in menu",
+then "Player N controller" rows whose value is the device in use), each
+opening SCR_PLAYER ("PLAYER N CONTROLLER CONFIGURATION": Input device,
+Xbox controller type, a heading per control group, one pm::Binding row per
+control with readable names (CtlName), Reset to defaults, Back).
+
+- Input device is not a Left/Right choice: scrolling through it would call
+  pad_mapping_set_device on each controller passed, which takes it from
+  another player. It opens SCR_DEVICE, a list (Automatic, None, Keyboard,
+  connected controllers) showing "Current" or which player has each; only
+  choosing applies.
+- No Save button: like the other screens, changes apply at once and
+  doa3_input.ini is written on leaving the player's screen (SaveScreen).
+
+Capturing: pm::SetBlocked keeps the list from reacting to any input while a
+row listens; the row arms only once the pad buttons/sticks on the player's
+controller and Enter / Space / the left mouse button are released (the A or
+Enter that chose the row would otherwise bind itself), and after a capture
+the list stays blocked until the captured key or control is let go
+(g_bind_release). Delete / X / right-click clears a binding; Esc cancels
+(wndproc, as before). CaptureBinding's pad half is now CapturePad.
+
+Sound: the game's Music / Sound effects / Voice values show a % sign.
+
+## 1.0.4.20
+
+Menu polish (Matt): a Choice / Toggle / Step value's arrows are drawn in
+the label's color, only the value in the value color. pm::Separator (a thin
+rule) sets Reset to defaults and the last row apart from the bindings on
+the player screen, whose Back is now Save (always writes doa3_input.ini,
+then back to Controls; Esc / B still save only when something changed).
+
+## 1.0.4.21
+
+Menu (Matt): Controls' rows are "Player N"; the player screen's heading is
+"CONTROLS > PLAYER N" and the device list's "CONTROLS > PLAYER N > INPUT
+DEVICE". The selected row's label slides right by 0.45 of the text size
+over 90 ms (State::nudgeRow/nudgeStart). The pointer hides
+(ImGuiMouseCursor_None) as soon as the keyboard or a controller moves,
+changes, selects, goes back or clears in the list; while hidden it neither
+selects the row under it nor clicks, and it comes back after 0.2 s of
+movement (a pause over 0.1 s starts the count again).
+
+## 1.0.4.22
+
+Controls: "Screenshot key" is the third row (a pm::Binding; Enter starts
+g_screenshot_listening, which the window procedure resolves as before;
+Delete / X sets F12; the list is blocked while it listens), then a
+"Players" heading over the Player rows (MenuBack from a player screen
+selects row 3 + player). Photo Mode's classic tab keeps "Take screenshot"
+and shows the key, without its own assignment buttons.
+
+## 1.0.4.23
+
+osricen's black screen (issue #9; his 1.0.3 log "261031 2207", trace
+mtrace_manual_102417 and aa_102417.bmp, in release/black-screen). The
+capture is all zero. Every one of the frame's 575 draws has rt 0, viewport
+3416x1920 and scissor (0,0)-(50,57): nv_apply_window_clip scales the window
+clip (0..719 x 0..479, fine) by the back buffer over SET_SURFACE_CLIP, and
+the surface clip held 0xBF08xxxx / 0x3F08xxxx (the high halves of -0.53125
+and 0.53125), so 720 * 3416 / 0xBF08 = 50 and 480 * 1920 / 0x3F08 = 57.
+The draws also carry zf=4E004D.
+
+The log has where it came from: after ~101,600 frames (Story ending movie,
+then Options), "[PB] control words so far: jump 83376 call 8 return 0
+unknown 21" -- the first calls and unknown words of the session -- and one
+[BADZFUNC] at frame 101801 whose method history is a single incrementing
+run 0x024C..0x0354 of index pairs (00050004, 00070006, ...) and an embedded
+0x40081800 header: the walk read a data region as a method header. The
+same kind of garbage depth func was in Matt's 0.1.8 sound-test traces, and
+osricen's first report was in the sound test. The game sets the surface
+clip only with a render target, so the bad value stayed.
+
+Not found yet: why the walk lost its place. Meanwhile:
+- SET_SURFACE_CLIP_H/V with an empty or >4096 size or a >4096 offset is
+  ignored ([BADCLIP], 6 lines); SET_DEPTH_FUNC outside 0x200..0x207 is
+  ignored (still logged by [BADZFUNC]).
+- After an unknown control word, the rest of that span is walked for the
+  frame end only, not translated; the first 8 are logged with 16 words
+  either side ([PBDESYNC], with the thread and span).
+- The first 16 calls followed by a translating walk are logged with their
+  target's first words ([PBCALL]).
+
+## 1.0.4.24
+
+osricen's second report (1.0.3; doa3_log.txt, mtrace_manual_94297,
+aa_94297.bmp): Theater, a few movies started and skipped, the forest stage
+behind the main menu flickered, then black on the main menu. Capture all
+zero again; 520 draws, scissor (0,0)-(1170,110), window clip 0..719 x
+0..479, so the surface clip was about 2102 x 8378. zf normal this time.
+
+Both reports start right after a movie: "[ASYNC] render thread takes over"
+at 100684 (Story ending) and at 92242 (the last of nine Theater movies
+this session, each a back-to-synchronous / takeover pair), then the first
+unknown control words of the session (here 9, 57, 889, 894, 949 in the
+following 10-second lines) and calls (8, 16, 18, 22). The earlier
+takeovers of the same session were clean.
+
+The 2102 width passed 1.0.4.23's size test. SET_SURFACE_CLIP now also
+needs a multiple of 8 (every surface DOA3 uses is), and the first 16
+different clips accepted are logged ([SURFCLIP]) to confirm the set. The
+[ASYNC] switch lines give the walk position and the cursor.
+
+Suggested test for osricen on 1.0.3: DOA3_ASYNC_GPU=0 (translate at
+kick-off, no render thread) with the same Theater steps. If it never
+happens that way, the render thread / takeover is the place to look.
+
+## 1.0.4.25
+
+Photo Mode moved to the list menu (SCR_PHOTO): Free camera heading (Free
+camera, Camera speed 1..20 in whole steps, Reset to game camera), Hide
+(Player 1, Player 2, UI), Screenshots (Take screenshot, value = the key;
+the last screenshot status as a note), Reset to defaults, Back. Its
+settings are session-only, as on the classic tab (whose Save only wrote
+AutoCapture and the screenshot key), so the screen saves nothing. The
+camera and fighter rows are disabled online. Only Sparring (and Debug)
+still open the classic window.
+
+## 1.0.4.26
+
+Sparring moved to the list menu (SCR_SPARRING), the classic tab's rows one
+per line: Show Move Info; Dummy recording (Slot 1-3 as a Choice whose names
+carry each slot's length, Loop playback, Record dummy, Play, Clear slot,
+and a note when recording isn't possible); Second controller (the toggle,
+the port as a Choice that skips your own, the status line); Stagger Escape
+(Hold Fighter N, its value 0-100 % in steps of 5, and a "Now:" line), Back.
+Record and Play close the menu with doa3_ui_toggle (which also lifts the
+menu pause) instead of clearing g_visible by hand. Session-only, as before.
+Only the Debug tab still opens the classic window, so Display's "Classic
+menu size" row shows only with the Debug tab on.
+
+## 1.0.4.27
+
+The menu reopens on the screen it was closed on, with that screen's
+selection (doa3_ui_toggle no longer resets to SCR_MAIN), except Sparring
+when training_available() is false, the Quit question, and the classic
+window once the Debug tab is hidden. Escape or L3 + R3 held for 3 s
+(PollControllerHotkeys: GetAsyncKeyState(VK_ESCAPE) or the combo on any
+controller) goes to the main list via MenuToMain, which saves the screen
+left; only while the menu is open, so a press that closed it stays closed.
+
 ### 0.2.15-rollback.31: save state test (first step toward the netplay state)
 
 The netplay model (Matt, Flycast's netplay state) needs a full snapshot of
@@ -5385,3 +6556,25 @@ every KO frame, no extra game vblank waits, and the XA2 queue at 2-4. Not
 the tick hypothesis, then. With DOA3_AUDIO_RING=1 the last 30 s of the
 mix are kept in memory, and F10 writes them to
 Diagnostics\apu_mix_f10_<n>.wav, to look at the stutter itself.
+
+### 1.0.4-rollback.40: doa3.1 1.0.4.27 merged
+
+Merged doa3.1 0.2.16 .. 1.0.4.27 (1.0.0-1.0.3 releases, the list menu,
+movie pacing and the phase-locked vblank, the black-screen guards, Zack's
+Survival reflection) into the rollback branch. Version 1.0.4-rollback.40
+(DOA3_VER_BUILD = the rollback revision). Resolved by hand:
+- d3d4134_pace: doa3.1's lap budget, GPU-delay frame and vblank alignment,
+  with the controlled clock's rules kept: no host vblank ticks, no
+  xbox_fiber_vblank_align, no worker laps while det (the clock makes its own
+  vblank in xbox_det_frame), and the rb35 audio-queue period adjustment.
+- sub_001DC8E0: the branch's nv2a_targets_update, plus doa3.1's count of
+  offscreen render-target sets (g_doa3_offrt_sets) that sub_001C1D0F (Zack's
+  Survival reflection) needs. That override keeps host state; it only acts
+  in Survival (mode 5), never in Versus or Sparring.
+- 1.0.2.14 writes local jump tables as switches. rollback_nested.py's three
+  audited tables (0x20DE0, 0x87420, 0x18A430) now accept either form; the
+  generated task copies differ from rb39's only in that form (and the source
+  digest). The loop / input / time / audio-service generators produce
+  identical output.
+- The Sparring screen (list menu) carries the save state test's Save state /
+  Load state rows when DOA3_STATE_TEST is running; F5 / F9 / F10 unchanged.

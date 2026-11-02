@@ -57,6 +57,10 @@ static IDirect3D8   *g_d3d8;
 static IDirect3DDevice8 *g_d3d_device;
 static IDirectSound8 *g_dsound;   /* host DirectSound (mirrors burnout3) */
 
+/* 1.0.2: non-zero (the Windows error) when DOA3.exe's folder refused a test
+ * write at boot; the Esc menu warns about it. */
+unsigned long g_doa3_folder_write_error;
+
 static LRESULT CALLBACK doa3_wndproc(HWND h, UINT m, WPARAM w, LPARAM l)
 {
     if (m == WM_DEVICECHANGE && w == DBT_DEVNODES_CHANGED) {
@@ -72,6 +76,123 @@ static LRESULT CALLBACK doa3_wndproc(HWND h, UINT m, WPARAM w, LPARAM l)
     if (doa3_setup_wndproc(h, m, w, l)) return 0;   /* first-run setup screen */
     if (doa3_ui_wndproc(h, m, w, l)) return 0;
     return DefWindowProcA(h, m, w, l);
+}
+
+/* 0.2.34: the window's icon comes from the user's own disc: the XBE's
+ * $$XTIMAGE section (the title image: an XPR0 holding a 128x128 DXT1
+ * texture). The executable itself only carries a plain placeholder icon. */
+static HICON g_title_icon_big, g_title_icon_small;
+
+static void dxt1_decode(const uint8_t *src, int w, int h, uint32_t *bgra)
+{
+    for (int by = 0; by < h / 4; ++by)
+        for (int bx = 0; bx < w / 4; ++bx, src += 8) {
+            uint16_t c0 = (uint16_t)(src[0] | src[1] << 8), c1 = (uint16_t)(src[2] | src[3] << 8);
+            uint32_t bits = (uint32_t)src[4] | (uint32_t)src[5] << 8 | (uint32_t)src[6] << 16 | (uint32_t)src[7] << 24;
+            int r[4], g[4], b[4], a[4] = { 255, 255, 255, 255 };
+            r[0] = (c0 >> 11) * 255 / 31; g[0] = ((c0 >> 5) & 63) * 255 / 63; b[0] = (c0 & 31) * 255 / 31;
+            r[1] = (c1 >> 11) * 255 / 31; g[1] = ((c1 >> 5) & 63) * 255 / 63; b[1] = (c1 & 31) * 255 / 31;
+            if (c0 > c1) {
+                r[2] = (2 * r[0] + r[1]) / 3; g[2] = (2 * g[0] + g[1]) / 3; b[2] = (2 * b[0] + b[1]) / 3;
+                r[3] = (r[0] + 2 * r[1]) / 3; g[3] = (g[0] + 2 * g[1]) / 3; b[3] = (b[0] + 2 * b[1]) / 3;
+            } else {
+                r[2] = (r[0] + r[1]) / 2; g[2] = (g[0] + g[1]) / 2; b[2] = (b[0] + b[1]) / 2;
+                r[3] = g[3] = b[3] = 0; a[3] = 0;
+            }
+            for (int py = 0; py < 4; ++py)
+                for (int px = 0; px < 4; ++px) {
+                    int i = (int)(bits >> (2 * (py * 4 + px))) & 3;
+                    bgra[(by * 4 + py) * w + bx * 4 + px] =
+                        (uint32_t)b[i] | (uint32_t)g[i] << 8 | (uint32_t)r[i] << 16 | (uint32_t)a[i] << 24;
+                }
+        }
+}
+
+static HICON icon_from_bgra(const uint32_t *px, int w, int h, int size)
+{
+    BITMAPV5HEADER bi; void *bits = NULL; HBITMAP color, mask; ICONINFO ii; HICON icon;
+    HDC dc = GetDC(NULL);
+    memset(&bi, 0, sizeof bi);
+    bi.bV5Size = sizeof bi; bi.bV5Width = size; bi.bV5Height = -size;
+    bi.bV5Planes = 1; bi.bV5BitCount = 32; bi.bV5Compression = BI_BITFIELDS;
+    bi.bV5RedMask = 0x00FF0000; bi.bV5GreenMask = 0x0000FF00; bi.bV5BlueMask = 0x000000FF;
+    bi.bV5AlphaMask = 0xFF000000;
+    color = CreateDIBSection(dc, (BITMAPINFO *)&bi, DIB_RGB_COLORS, &bits, NULL, 0);
+    ReleaseDC(NULL, dc);
+    if (!color || !bits) return NULL;
+    for (int y = 0; y < size; ++y)            /* box filter down to the icon size */
+        for (int x = 0; x < size; ++x) {
+            int x0 = x * w / size, x1 = (x + 1) * w / size, y0 = y * h / size, y1 = (y + 1) * h / size;
+            unsigned sb = 0, sg = 0, sr = 0, sa = 0, n = 0;
+            if (x1 <= x0) x1 = x0 + 1;
+            if (y1 <= y0) y1 = y0 + 1;
+            for (int yy = y0; yy < y1; ++yy)
+                for (int xx = x0; xx < x1; ++xx, ++n) {
+                    uint32_t c = px[yy * w + xx];
+                    sb += c & 0xFF; sg += (c >> 8) & 0xFF; sr += (c >> 16) & 0xFF; sa += c >> 24;
+                }
+            {   unsigned a = sa / n;   /* premultiplied for the icon */
+                ((uint32_t *)bits)[y * size + x] = (sb / n * a / 255) | (sg / n * a / 255) << 8 |
+                                                   (sr / n * a / 255) << 16 | a << 24; }
+        }
+    mask = CreateBitmap(size, size, 1, 1, NULL);
+    memset(&ii, 0, sizeof ii);
+    ii.fIcon = TRUE; ii.hbmColor = color; ii.hbmMask = mask;
+    icon = CreateIconIndirect(&ii);
+    DeleteObject(color); DeleteObject(mask);
+    return icon;
+}
+
+static void title_icon_from_xbe(const uint8_t *xbe, size_t size)
+{
+    uint32_t base, nsec, secs, i;
+    if (!xbe || size < 0x180 || memcmp(xbe, "XBEH", 4)) return;
+    base = *(const uint32_t *)(xbe + 0x104);
+    nsec = *(const uint32_t *)(xbe + 0x11C);
+    secs = *(const uint32_t *)(xbe + 0x120) - base;
+    for (i = 0; i < nsec && secs + (i + 1) * 0x38 <= size; ++i) {
+        const uint8_t *sh = xbe + secs + i * 0x38;
+        uint32_t raw = *(const uint32_t *)(sh + 12), rs = *(const uint32_t *)(sh + 16);
+        uint32_t name = *(const uint32_t *)(sh + 20) - base;
+        const uint8_t *x;
+        uint32_t hdr, fmt, w, h, data_size;
+        if (name + 10 > size || memcmp(xbe + name, "$$XTIMAGE", 10)) continue;
+        if ((size_t)raw + rs > size || rs < 0x20) return;
+        x = xbe + raw;
+        if (memcmp(x, "XPR0", 4)) return;
+        hdr = *(const uint32_t *)(x + 8);
+        fmt = *(const uint32_t *)(x + 0x18);
+        w = 1u << ((fmt >> 20) & 0xF); h = 1u << ((fmt >> 24) & 0xF);
+        data_size = w * h / 2;
+        if (((fmt >> 8) & 0xFF) != 0x0C || w < 4 || h < 4 || w > 512 || h > 512 ||
+            (size_t)hdr + data_size > rs) {
+            fprintf(stderr, "[ICON] title image format %08X not handled\n", fmt);
+            return;
+        }
+        {
+            uint32_t *px = (uint32_t *)malloc((size_t)w * h * 4);
+            if (!px) return;
+            dxt1_decode(x + hdr, (int)w, (int)h, px);
+            g_title_icon_big = icon_from_bgra(px, (int)w, (int)h, GetSystemMetrics(SM_CXICON) > 48 ? 64 : 32);
+            g_title_icon_small = icon_from_bgra(px, (int)w, (int)h, GetSystemMetrics(SM_CXSMICON) > 16 ? 32 : 16);
+            free(px);
+            fprintf(stderr, "[ICON] window icon from the disc's title image (%ux%u DXT1)\n", w, h);
+        }
+        return;
+    }
+}
+
+static void apply_title_icon(HWND hwnd)
+{
+    if (!hwnd) return;
+    if (g_title_icon_big) {
+        SetClassLongPtrA(hwnd, GCLP_HICON, (LONG_PTR)g_title_icon_big);
+        SendMessageA(hwnd, WM_SETICON, ICON_BIG, (LPARAM)g_title_icon_big);
+    }
+    if (g_title_icon_small) {
+        SetClassLongPtrA(hwnd, GCLP_HICONSM, (LONG_PTR)g_title_icon_small);
+        SendMessageA(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)g_title_icon_small);
+    }
 }
 
 static HWND doa3_create_window(void)
@@ -129,6 +250,7 @@ static int doa3_init_graphics(void)
     video_guest_target_size(video_get_aspect(), &gw, &gh);
     if (!g_hwnd)   /* the first-run setup screen may already have made it */
         g_hwnd = doa3_create_window();
+    apply_title_icon(g_hwnd);
     if (!g_hwnd) { fprintf(stderr, "WARNING: window creation failed\n"); }
 
     g_d3d8 = xbox_Direct3DCreate8(0);
@@ -208,6 +330,8 @@ static DWORD WINAPI doa3_watchdog(LPVOID unused)
         now = g_doa3_heartbeat;
 
         if (now != last) { last = now; stalled = 0; continue; }
+        {   extern volatile LONG g_doa3_frame_paused;   /* 1.0.2: Debug > Frame advance */
+            if (g_doa3_frame_paused) { stalled = 0; continue; } }
         /* Before the first present the heartbeat is legitimately 0, so boot
          * progress is measured by kernel calls instead: 6 s without one means
          * the guest is spinning in its own code (a hang that Windows reports
@@ -1680,7 +1804,9 @@ int main(int argc, char **argv)
     /* stderr -> doa3_log.txt when logging is on in the Esc menu, NUL when
      * off (the default). See log_settings.h. */
     doa3_log_init();
-    fprintf(stderr, "[DOA3] DOA3.exe version %s (%s)\n", DOA3_VER_STR, DOA3_XBE_REGION);
+    {   extern void update_check_init(void);
+        update_check_init();   /* background; never blocks boot */ }
+    fprintf(stderr, "[DOA3] DOA3.exe version %s (%s)\n", DOA3_VER_FULL_STR, DOA3_XBE_REGION);
 #ifdef DOA3_LOCAL_REGS
     fprintf(stderr, "[DOA3] recompiled code: guest registers in locals (tools/recomp/localize_regs.py)\n");
 #else
@@ -1688,6 +1814,30 @@ int main(int argc, char **argv)
 #endif
     if (diag_cleared)
         fprintf(stderr, "[DOA3] removed %d file(s) left in Diagnostics by the previous run\n", diag_cleared);
+    {   /* 1.0.2: settings, saves and the extracted disc all live next to
+         * the exe. Some players' Save did nothing: a folder Windows protects
+         * (Program Files, or Controlled folder access / antivirus on Desktop
+         * and Documents) refuses the write. Find out once, log it, and let
+         * the menu say so instead of failing quietly. */
+        WCHAR test[MAX_PATH];
+        DWORD n = GetModuleFileNameW(NULL, test, MAX_PATH);
+        WCHAR *slash = n ? wcsrchr(test, L'\\') : NULL;
+        if (slash && (size_t)(slash - test) + 24 < MAX_PATH) {
+            HANDLE h;
+            wcscpy(slash + 1, L"doa3_write_test.tmp");
+            h = CreateFileW(test, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
+                            FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, NULL);
+            if (h == INVALID_HANDLE_VALUE) {
+                g_doa3_folder_write_error = GetLastError();
+                if (!g_doa3_folder_write_error) g_doa3_folder_write_error = ERROR_ACCESS_DENIED;
+                *slash = 0;
+                fprintf(stderr, "[SETTINGS] cannot write to the game's folder %S (error %lu): "
+                                "settings and saves will not be kept\n", test, g_doa3_folder_write_error);
+            } else {
+                CloseHandle(h);
+            }
+        }
+    }
 
     atexit(doa3_atexit);
     SetUnhandledExceptionFilter(doa3_unhandled);
@@ -1728,6 +1878,27 @@ int main(int argc, char **argv)
             return 0;
         }
         fprintf(stderr, "[SETUP] game files installed\n");
+        /* 0.2.33: start the game in a fresh process. The setup screen (its
+         * D3D11 device, the extraction buffers, and whatever overlay DLLs
+         * hook it -- OBS's graphics-hook here) leaves the address space too
+         * fragmented for the 128 MB Xbox memory view, so the first launch
+         * closed right after copying ("failed to map base view"). */
+        {
+            wchar_t exe[MAX_PATH];
+            STARTUPINFOW si; PROCESS_INFORMATION pi;
+            memset(&si, 0, sizeof si); si.cb = sizeof si;
+            memset(&pi, 0, sizeof pi);
+            if (GetModuleFileNameW(NULL, exe, MAX_PATH) &&
+                CreateProcessW(exe, GetCommandLineW(), NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+                fprintf(stderr, "[SETUP] restarting to start the game (pid %lu)\n", (unsigned long)pi.dwProcessId);
+                fflush(stderr);
+                CloseHandle(pi.hThread);
+                CloseHandle(pi.hProcess);
+                return 0;
+            }
+            fprintf(stderr, "[SETUP] could not restart (error %lu); continuing in this process\n",
+                    (unsigned long)GetLastError());
+        }
     }
 
     if (!load_xbe(DOA3_XBE_PATH, &xbe_data, &xbe_size)) {
@@ -1745,6 +1916,7 @@ int main(int argc, char **argv)
         }
     }
     printf("XBE loaded: %zu bytes\n", xbe_size);
+    title_icon_from_xbe((const uint8_t *)xbe_data, xbe_size);
 
     if (!xbox_MemoryLayoutInit(xbe_data, xbe_size)) {
         fprintf(stderr, "FATAL: xbox_MemoryLayoutInit failed\n"); return 1;

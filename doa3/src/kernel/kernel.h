@@ -463,6 +463,7 @@ void xbox_path_init(const char* game_dir, const char* save_dir);
  * win_path_buf must be at least MAX_PATH characters.
  */
 BOOL xbox_translate_path(const char* xbox_path, WCHAR* win_path_buf, DWORD buf_size);
+int xbox_path_is_cache_dir(const WCHAR *win_path);   /* HDD\X, \Y, \Z or inside one */
 
 /* Netplay sessions: while on, T:\ resolves to HDD\E\TDATA\<id>_netplay, a
  * copy of TitleData taken when it is switched on, so nothing the game saves

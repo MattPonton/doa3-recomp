@@ -8,11 +8,11 @@
 
 void DrawCombatDebugMenu()
 {
-    if (!ImGui::CollapsingHeader("Combat diagnostics")) return;
+    if (!ImGui::CollapsingHeader("Fight information")) return;
     unsigned flags = combat_debug_flags();
     bool hit = (flags & COMBAT_HITBOXES) != 0;
     bool hurt = (flags & COMBAT_HURTBOXES) != 0;
-    bool frames = (flags & COMBAT_FRAMES) != 0;
+    bool frames = (flags & COMBAT_FRAMES) != 0;   /* kept as is; toggled from Sparring */
     bool slippery = (flags & COMBAT_SLIPPERY_GROUND) != 0;
     bool special = (flags & COMBAT_SPECIAL_BOUNDARIES) != 0;
     bool walls = (flags & COMBAT_WALLS) != 0;
@@ -20,7 +20,6 @@ void DrawCombatDebugMenu()
     ImGui::BeginDisabled(netplay_active() != 0);
     bool changed = ImGui::Checkbox("Show hitboxes", &hit);
     changed |= ImGui::Checkbox("Show hurtboxes", &hurt);
-    changed |= ImGui::Checkbox("Show attack frame data", &frames);
     if (ImGui::TreeNode("Stage hazards")) {
         changed |= ImGui::Checkbox("Slippery ground (blue)", &slippery);
         changed |= ImGui::Checkbox("Special boundaries (purple)", &special);
@@ -35,12 +34,47 @@ void DrawCombatDebugMenu()
         (special ? COMBAT_SPECIAL_BOUNDARIES : 0) |
         (walls ? COMBAT_WALLS : 0) | (objects ? COMBAT_STAGE_OBJECTS : 0));
     ImGui::EndDisabled();
-    ImGui::TextWrapped("Red/pink solid spheres: hitboxes. Green/cyan wireframes: hurtboxes. Amber: an attack already registered contact. Volumes draw through characters and scenery.");
-    ImGui::TextWrapped("Frame data shows base startup (first active frame), active duration, and recovery alongside observed strike frames. The timeline uses blue for startup, red for active, yellow for recovery, and gray for missing samples. Cancels shorten the observation, not the base timing. Hit/block advantage is not yet measured.");
-    ImGui::TextWrapped("Hazards: blue ground shows slippery surfaces. Purple marks special boundaries used by ledges, breakable barriers, and other stage reactions; their behavior depends on the stage and floor level. Orange shows other boundaries and collidable objects, including ordinary walls. Boundary panels have a 3m display height. Object volumes use the game's collision dimensions.");
-    ImGui::TextWrapped("Hazards respect scene depth, so characters and foreground scenery hide them.");
+    ImGui::TextDisabled("Color legend (?)");
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+        ImGui::BeginTooltip();
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30.0f);
+        ImGui::TextUnformatted(
+            "Red/pink solid spheres: hitboxes. Green/cyan wireframes: hurtboxes. Amber: an attack already "
+            "registered contact. Volumes draw through characters and scenery.\n\n"
+            "Hazards: blue ground shows slippery surfaces. Purple marks special boundaries used by ledges, "
+            "breakable barriers, and other stage reactions; their behavior depends on the stage and floor "
+            "level. Orange shows other boundaries and collidable objects, including ordinary walls. Boundary "
+            "panels have a 3m display height; object volumes use the game's collision dimensions. Hazards "
+            "respect scene depth, so characters and foreground scenery hide them.\n\n"
+            "Session only. Unavailable during online play.");
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
+    }
     if (*combat_world_error()) ImGui::TextWrapped("%s", combat_world_error());
-    ImGui::TextDisabled("Session only. Unavailable during online play.");
+}
+
+/* 0.2.18: the frame-data display on its own, for the Sparring tab. */
+void DrawMoveInfoToggle()
+{
+    unsigned flags = combat_debug_flags();
+    bool frames = (flags & COMBAT_FRAMES) != 0;
+    ImGui::BeginDisabled(netplay_active() != 0);
+    if (ImGui::Checkbox("Show Move Info", &frames))
+        combat_debug_set_flags(frames ? (flags | COMBAT_FRAMES) : (flags & ~COMBAT_FRAMES));
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+        ImGui::BeginTooltip();
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30.0f);
+        ImGui::TextUnformatted(
+            "Shows each attack's base startup (first active frame), active duration and recovery alongside "
+            "the observed strike frames. The timeline uses blue for startup, red for active, yellow for "
+            "recovery, and gray for missing samples. Cancels shorten the observation, not the base timing. "
+            "Hit/block advantage is not yet measured. Session only.");
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
+    }
 }
 
 namespace {

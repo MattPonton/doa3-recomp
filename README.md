@@ -8,13 +8,15 @@ No emulator is involved.
 This fork targets the **JAPAN release** (Redump's name for the disc; title ID
 TC-001, XBE certificate region Japan), whose balance the competitive community
 calls **v3.1**. The setup screen names the release of any other Dead or Alive 3
-disc it is given (USA, EUROPE, KOREA). The goal for v1.0 is a
-faithful 1:1 port of that version. Changes to how the game plays are optional
-**Dip Switches**, all off by default; a few small changes are always on (see
+disc it is given (USA, EUROPE, KOREA). Version 1.0 is a faithful 1:1 port of
+that version. Changes to how the game plays are optional **Dip Switches**, all
+off by default; a few small changes are always on (see
 [Changes to the game](#changes-to-the-game)).
 
-**Status:** every game mode is playable. Work continues on accuracy and on
-performance for low-end PCs.
+**Status:** v1.0.0 — every game mode is playable, with menus and HUD matched
+to hardware at 16:9, 21:9 and 32:9. Audio is not yet 1:1 with hardware and is
+still being worked on. Rollback netcode is the next goal; work also continues
+on performance for low-end PCs.
 
 **Branch `doa3.1-rollback`: experimental rollback development.** This branch
 merges `doa3.1` with the rollback work (the Online carousel prototype has been removed). It
@@ -23,23 +25,30 @@ does **not** provide playable online rollback. See
 
 ## Features
 
-- Native x86-64 Windows executable; also runs on Steam Deck through Proton
-  (Proton Experimental recommended)
+- Native x86-64 Windows executable
 - Windowed or borderless fullscreen
 - Aspect ratios: 4:3 (full screen or anamorphic), 16:9, 21:9 and 32:9
 - Internal resolution 1x (480p), 2x (960p), 3x (1440p) or 4x (1920p)
 - Keyboard, Xbox, PS4 (DualShock 4) and PS5 (DualSense, DualSense Edge)
-  controllers, up to four players, with per-player bindings and rumble
+  controllers, plus other DirectInput controllers such as arcade sticks and
+  fight pads, up to four players, with per-player bindings and rumble (Xbox,
+  and PlayStation over USB)
 - Master volume plus the game's own Music / Sound effects / Voice levels
 - Streamer mode: mutes the licensed Aerosmith songs wherever they play
-- Dip Switches: optional fixes and quality-of-life changes (left stick in
-  menus, Random on the stage select, Random picking alternate and storage
-  costumes, shared costumes, menu pixel offset, replay and winner pose only
-  on a match's final round)
+- Dip Switches: optional fixes and quality-of-life changes (Random on the
+  stage select, Random picking alternate and storage costumes, shared
+  costumes, left stick in menus, menu pixel offset, Stage Select world map
+  locations, ledge fall damage on Lorelei, replay and winner pose only on a
+  match's final round)
+- The game's own gamma, brightness and contrast settings (Options > Video >
+  Regulator) work as on hardware
 - Sparring: record and replay the dummy's inputs, give the dummy (or, in Tag
-  Sparring, your tag partner) to a second controller, and hold the Stagger
-  Escape value
-- Screenshots (PNG) at render resolution, without the overlay
+  Sparring, your tag partner) to a second controller, hold the Stagger
+  Escape value, and a move info (frame data) display
+- Photo Mode: free camera, hide either fighter or the HUD, and screenshots
+  (PNG) at render resolution, without the overlay
+- Check for updates at boot (Game screen; announces a newer release, never
+  downloads anything)
 
 ## Getting started
 
@@ -48,7 +57,7 @@ does **not** provide playable online rollback. See
 3. On first launch, choose your own disc image of Dead or Alive 3 (Japanese
    release) in `.xiso` or `.iso` format. The game files are copied into
    `HDD\D` next to `DOA3.exe` and save data is created; after that the game
-   starts normally.
+   starts normally (the window closes and reopens once while it restarts).
 
 Game files are **not** included and are never downloaded. You need your own
 legally obtained copy.
@@ -62,57 +71,35 @@ Files the port keeps next to `DOA3.exe`:
 | `HDD\D\` | The game files copied from your disc image |
 | `HDD\E\UDATA\54430001\` | The game's save data |
 | `Screenshots\` | Screenshots |
-| `Snapshots\` | Game memory snapshots saved from **Debug > Diagnostics**; kept between launches |
+| `Snapshots\` | Game memory snapshots (developer tool); kept between launches |
 | `doa3_log.txt` | Log, only when **Write log files** is on |
 | `Diagnostics\` | Developer captures, only when diagnostics are on; cleared at each launch |
 | `ShaderCache\` | Compiled shaders, kept so later launches start faster; safe to delete |
 
 ## Settings (Escape menu)
 
-Press **Escape** at any time to open the settings overlay. Most tabs have
-**Reset to defaults** and **Save** buttons; changes apply immediately, and
-**Save** keeps them for the next launch.
+Press **Escape** (or **L3 + R3** on a controller) at any time to open the
+menu: a list over the game with **Display**, **Sound**, **Game**,
+**Controls**, **Photo Mode**, **Sparring** and **Quit**; Escape closes it. Use the arrow keys
+or the d-pad to choose, **Left / Right** to change a setting, **Enter / A** to
+select and **Escape / B** to go back; the mouse works too. The line under
+the list explains the selected setting. Changes apply immediately and are
+saved when you leave the screen; each screen has **Reset to defaults**.
+The menu opens on the screen it was closed on (the main list instead, if
+that screen no longer applies, such as Sparring after leaving Sparring);
+hold **Escape** or **L3 + R3** for three seconds to jump to the main list.
+While the menu is
+closed, the mouse pointer hides after a second without moving and comes back
+when you move the mouse.
 
-### Online
+### Game
 
-**Experimental and untested on this version.** The Online tab comes from the
-original USA-based port and has not been tested with the Japanese release;
-expect it not to work yet. It lets you host a match and share **Your code**,
-or join with a friend's code, with an automatic or manual input delay.
-
-### Controls
-
-- **Input only when focused**: ignore input while another window is active.
-- **Capture gameplay input in Escape menu** (on by default): while the menu is
-  open, controllers drive the menu and the game sees no input. Turn it off to
-  keep playing behind the menu.
-- **Player 1–4** tabs: choose a device (Automatic, keyboard or a specific
-  controller) and the Xbox controller type, then click a row to rebind it.
-  The device list shows only connected controllers, numbered per model
-  when more than one of a kind is connected.
-  Right-click a binding to clear it. Player 1 defaults to Automatic; Players
-  2–4 default to None until assigned.
-
-### Video
-
-**Window type** (windowed / borderless fullscreen), **Aspect ratio** and
-**Internal resolution**.
-
-### Audio
-
-- **Master volume**: the PC port's overall output level, applied after the
-  game's own mix (including movies).
-- **Game volume**: the game's own **Music**, **Sound effects** and **Voice**
-  settings, the same as Options > Audio Setting, in steps of 5. They are
-  stored in the game's save the next time the game saves.
-- **Streamer mode**: silences "Nine Lives", "Amazing" and "Home Tonight"
-  wherever they play (opening, credits, sound test) and restores your music
-  level afterwards. Your saved music volume is never changed.
-
-### General
-
-**Write log files** writes `doa3_log.txt`, which is useful when reporting a
-bug.
+- **Pause while this menu is open** (off by default): holds the game and its
+  sound while the menu is open, movies included. Never during online play.
+- **Check for updates at boot** (on by default): asks GitHub whether a newer
+  release exists and shows a short notice over the game if so; **Open the
+  release page** appears when there is one. Nothing is downloaded or
+  installed. **Check for updates now** checks again.
 
 **Dip Switches** change how the game itself behaves. Every switch is off by
 default, so with none set the game plays exactly as on an Xbox. They take
@@ -121,23 +108,110 @@ effect immediately and are saved in the `[DipSwitches]` section of
 
 | Switch | When on |
 | --- | --- |
-| Menu navigation with Left Stick | The left stick moves menu cursors as well as the directional pad. Fights are unchanged. |
-| Random is default stage option | Stage Select opens on Random instead of Beach (Day). A stage the game remembers (returning to Stage Select after a match) is kept. |
-| Random includes alternate costume colors from disc | Random on Character Select can pick a costume's alternate colors (X, Y, L), and Survival and Time Attack opponents get a random unlocked costume and color. Story mode is unchanged. |
-| Random includes costumes from storage | Random, and Survival and Time Attack opponents, can pick storage costumes and their options. Works on its own or together with the color switch. |
-| Allow players to select alternate options of the same costume | With both sides on the same character, a player can take a costume the other side has, in a different option (A, X, Y, L or a storage option). Only the exact costume and option the other side confirmed is refused, with the game's refusal sound. |
-| Correct offset of menu layout | The game draws its menus, frames and HUD one pixel right of and below the screen edge (hidden by a CRT's overscan). This lines the 2D layer up with the screen edges. |
-| Only show round's replay on final round | Rounds that do not decide the match go on without the KO replay; the deciding round still shows it. |
-| Only show round's winner on final round | Rounds that do not decide the match skip the winner's pose and result banner; the screen holds the KO frame until the next round's Get Ready. |
+| Random is default stage option | Stage Select opens with the cursor on Random (every mode, Tag and Team Battle included). A stage the game remembers (returning to Stage Select after a match) is kept. |
+| Random includes alternate costume colors from disc | Random on Character Select can pick alternate colors and hairstyles, and Time Attack and Survival opponents can get them too. |
+| Random includes costumes from storage | Random can pick custom costumes from the TDATA folder, and Time Attack and Survival opponents can get them too. |
+| Players can select the alternate colors of the same costume | Both players can highlight the same costume as long as an alternate version of it is available. |
+| Left Stick enabled for menu navigation | The left stick moves menu cursors as well as the directional pad. Fights are unchanged. |
+| Fix offset of menu layout | The game draws its UI one pixel right of and below where it belongs (hidden by a CRT's overscan). This removes the one-pixel gap. |
+| Fix World Map locations on Stage Select | Beach's marker on the Stage Select world map sits at Aqua Palace's location. This swaps the two locations. |
+| Fix ledge fall damage on Lorelei | On Lorelei, a fighter knocked off a ledge by a throw or hold could take the wrong amount of damage from the fall. With the switch on, throws and holds do the intended damage. |
+| Only show replay on final round | Only the round that decides a match shows the replay after the round ends. |
+| Only show winner on final round | Only the round that decides a match shows the win pose after the round ends. |
+| Unlock all characters, costumes and Theater movies | Every character, costume and Theater movie is available in the menus. Your save is not changed; turn it off to go back to what you have unlocked. The credits movie is not unlocked by this; it still depends on your own save. |
+
+**Logging** is what a bug report needs:
+
+- **Write log files** writes `doa3_log.txt` next to the game.
+- **Create a trace file** records the next frame's graphics commands and a
+  screenshot in the `Diagnostics` folder. Use it while a visual bug is on
+  screen. The folder is emptied at the next launch, so copy the files first.
+
+### Controls
+
+- **Input only when focused**: ignore input while another window is active.
+- **Capture gameplay input in menu** (on by default): while the menu is
+  open, controllers operate the menu and the game sees no input. Turn it off
+  to keep playing behind the menu.
+- **Screenshot key** (F12 by default): select it, then press the key to use
+  (Escape cancels); **Delete** / **X** puts it back to F12. L3 + RB on a
+  controller also takes a screenshot.
+- **Players** — **Player 1–4**: each row shows the device that player uses and
+  opens that player's screen:
+  - **Input device** opens the list of devices (Automatic, None, Keyboard and
+    each connected controller, numbered per model when more than one of a
+    kind is connected). It shows which player has each controller; choosing
+    one another player chose moves it to this player and leaves that player
+    with None. Player 1 defaults to Automatic; Players 2–4 default to None.
+  - **Xbox controller type**: Duke, Controller S or Fight Stick.
+  - One row per control: select it, then press the key or control to use
+    (Escape cancels). **Delete** / **X** or a right-click clears a binding.
+  - **Reset to defaults** resets this player's bindings. A controller's
+    defaults put White on LB and Black on RB. With **Keyboard** chosen, it
+    loads a keyboard layout: W / A / S / D for the directional pad, Enter and
+    Backspace for Start and Back, K / L over M / comma for X / Y over A / B,
+    semicolon for Black, J for White, N and period for the left and right
+    triggers, T / G / F / H for the left stick and the arrow keys for the
+    right stick.
+
+  Changes apply at once and are saved to `doa3_input.ini` with **Save** (or
+  when you leave the player's screen with Escape / B).
+
+**Controller shortcuts** (any connected controller, Xbox names; PlayStation:
+L3 / R3 / L1 / R1 / Triangle):
+
+| Buttons | Does |
+| --- | --- |
+| L3 + R3 | Open or close the Escape menu |
+| L3 + RB | Take a screenshot |
+| L3 + Y | Show or hide the performance overlay |
+
+They don't fire while a binding is being captured. The buttons also reach the
+game as usual.
+
+### Display
+
+**Window type** (windowed / borderless fullscreen), **Aspect ratio** and
+**Internal resolution**; **Performance overlay** shows frame rate and frame
+times.
+
+### Sound
+
+- **Master volume**: the PC port's overall output level, applied after the
+  game's own mix (including movies). 80% by default.
+- **Game volume**: the game's own **Music**, **Sound effects** and **Voice**
+  settings, the same as Options > Audio Setting, in steps of 5. They are
+  stored in the game's save the next time the game saves.
+- **Streamer mode**: silences "Nine Lives", "Amazing" and "Home Tonight"
+  wherever they play (opening, credits, sound test) and restores your music
+  level afterwards. Your saved music volume is never changed.
+
+### Photo Mode
+
+- **Free camera**: move the camera freely while the fight keeps running (game
+  controls are paused while flying), with an adjustable speed; **Reset to game
+  camera** returns to the game's view.
+- **Hide Player 1 / Player 2 / UI**: hide either fighter or the game's HUD and
+  menus (Escape always opens this menu so you can bring them back).
+- **Take screenshot** (or the screenshot key, F12 by default, set in
+  **Controls**) saves a PNG at the render resolution, without this menu, to `Screenshots\`. A short notice in
+  the corner confirms it was saved (it is never in the picture).
+
+These last until the game is closed; **Reset to defaults** turns them all off.
 
 ### Sparring
 
-Available in offline Sparring only. Three slots record up to ten seconds of
-dummy input each; play a slot once or on a loop. **Record dummy** temporarily
-gives you control of the dummy with your normal bindings; **Escape** finishes
-the recording or stops playback. Recordings last for the current Sparring
-session. Guard, counter-action and counter-hit settings stay in the game's own
-Sparring pause menu.
+Available in offline Sparring only (grayed out elsewhere).
+
+**Show Move Info** displays each attack's startup, active and recovery frames.
+
+**Dummy recording**: three slots record up to ten seconds of dummy input
+each; play a slot once or on a loop. **Record dummy** temporarily gives you
+control of the dummy with your normal bindings; **Escape** finishes the
+recording or stops playback. Directions play back relative to the dummy's
+facing, so forward stays forward after the fighters switch sides. Recordings
+last for the current Sparring session. Guard, counter-action and counter-hit
+settings stay in the game's own Sparring pause menu.
 
 **Second controller** lets another controller (any Player port other than
 yours) drive the dummy; it returns to the CPU when that controller is
@@ -147,15 +221,10 @@ players share a team in Tag Battle, so two people can practice tag combos
 together.
 
 **Stagger Escape** shows each fighter's critical-stun mash value as 0–100 %
-(how fast a critical stun or guard break plays out). **Hold** fixes the value
-at the start of every frame, for the human player or the dummy, CPU or not.
+(how fast a critical stun or guard break plays out). **Hold Fighter 1 / 2**
+fixes the value (set on the row under it) at the start of every frame, for the human player or the dummy, CPU or not.
 
-### Debug
-
-Developer and inspection tools: unlock-all, free camera, hitbox and
-frame-data overlays, render views, a performance overlay, hiding the HUD or
-fighters, and diagnostic captures. Some of these may change or be
-removed before v1.0. See [docs/DEBUG.md](docs/DEBUG.md).
+Online play from the original port is not available in this version.
 
 ## Changes to the game
 
@@ -168,6 +237,11 @@ These are always on:
   creating the save file. This option can be changed in the game's Options'
   Video settings. Note: This does not affect 4:3 (Fullscreen) aspect ratio
   where the FMVs will play in their native 4:3 resolution.
+- **Storage costumes (TDATA).** (1) Each character's costume limit was
+  increased from 9 to 99. (2) Any costume can be given additional color
+  options by adding `.X`, `.Y` or `.L` before the extension of the costume's
+  files (for example `aya01.Y.xpr` and `aya01.Y.cat`), selected with X, Y or
+  L+A on Character Select. Both the `.xpr` and the `.cat` file are needed.
 
 ## Building
 
@@ -182,11 +256,16 @@ The executable is written to `doa3/build/release/DOA3.exe`.
 
 ## Reporting bugs and contributing
 
-Please open an issue with steps to reproduce. Turn on **General > Write log
-files** first and attach `doa3_log.txt`; for graphics or timing problems, also
-enable **Debug > Diagnostics > Automatic diagnostic captures** and attach the
-`Diagnostics` folder. Copy both before relaunching, since a new launch
-replaces them. Pull requests are welcome.
+If **Save** doesn't stick, or the game warns that it cannot write to its
+folder, move the game's folder somewhere you own (not Program Files or a
+synced OneDrive folder), or allow `DOA3.exe` in Windows Security >
+Ransomware protection > Controlled folder access or in your antivirus.
+
+Please open an issue with steps to reproduce. Turn on **Game > Logging >
+Write log files** first and attach `doa3_log.txt`. Copy it before relaunching,
+since a new launch replaces it. For a graphics bug, also press **Create a
+trace file** while it is on screen and attach the files from the
+`Diagnostics` folder. Pull requests are welcome.
 
 ## Credits
 
@@ -200,7 +279,7 @@ replaces them. Pull requests are welcome.
   translator comes.
 - [SkillerCMP/xemu-Cheats](https://github.com/SkillerCMP/xemu-Cheats) — the
   xemu build used as the debugging reference for this fork, running the game
-  side by side with the port to compare behaviour.
+  side by side with the port to compare behavior.
 - [Cxbx-Reloaded](https://github.com/Cxbx-Reloaded/Cxbx-Reloaded) — used as a
   debugging reference for the original port.
 - [xemu](https://github.com/xemu-project/xemu) — NV2A documentation and code
@@ -211,7 +290,9 @@ replaces them. Pull requests are welcome.
   [GekkoNet](https://github.com/HeatXD/GekkoNet),
   [miniupnpc](https://github.com/miniupnp/miniupnp),
   [pl_mpeg](https://github.com/phoboslab/pl_mpeg) and
-  [stb_image_write](https://github.com/nothings/stb).
+  [stb_image_write](https://github.com/nothings/stb); the menu's
+  [Poppins](https://github.com/itfoundry/Poppins) font (SIL Open Font License,
+  `doa3/third_party/fonts`).
 
 ## Legal
 

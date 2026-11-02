@@ -59,6 +59,7 @@ typedef struct { PadBinding b[PADCTL_COUNT]; } PadMapping;
 const char *pad_ctl_key(int ctl);
 /* Group heading a row belongs under ("D-Pad", "Buttons", "Sticks"). */
 const char *pad_ctl_group(int ctl);
+int pad_ctl_display_order(int row);   /* control shown on table row `row` */
 /* Non-zero when the control drives a stick axis rather than a button. */
 int         pad_ctl_is_axis(int ctl);
 

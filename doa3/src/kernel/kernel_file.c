@@ -105,7 +105,8 @@ NTSTATUS __stdcall xbox_NtCreateFile(
 
     /* Handle directory creation */
     if (CreateOptions & XBOX_FILE_DIRECTORY_FILE) {
-        if (CreateDisposition == XBOX_FILE_CREATE || CreateDisposition == XBOX_FILE_OPEN_IF) {
+        if ((CreateDisposition == XBOX_FILE_CREATE || CreateDisposition == XBOX_FILE_OPEN_IF) &&
+            !xbox_path_is_cache_dir(win_path)) {   /* 1.0.2: never the X: Y: Z: cache */
             CreateDirectoryW(win_path, NULL);
         }
         /* Open directory handle */

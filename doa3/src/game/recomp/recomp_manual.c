@@ -71,6 +71,20 @@ void doa3_menu_offset_apply(void)
     float want = dip_get(DIP_MENU_OFFSET) ? -0.53125f : 0.53125f;
     if (MEMF(0x251244) != want) MEMF(0x251244) = want;
 }
+/* Dip "Fix World Map locations on Stage Select" (1.0.0, values from
+ * Gultigargar). The stage table 0x29C960 (16 bytes per stage, the world map
+ * marker's x at +8) puts Beach (row 2, 0x29C988) at x 0x48 -- Aqua Palace's
+ * place -- and Aqua Palace (row 12, 0x29CA28) at 0xB0. On: the two are
+ * swapped; off: the original values. Only written while they hold one of the
+ * two layouts, so another release's table is left alone. */
+void doa3_world_map_apply(void)
+{
+    uint16_t beach = MEM16(0x29C988), aqua = MEM16(0x29CA28);
+    int on = dip_get(DIP_WORLD_MAP_LOCATIONS);
+    if (!((beach == 0x48 && aqua == 0xB0) || (beach == 0xB0 && aqua == 0x48))) return;
+    if (on && beach != 0xB0) { MEM16(0x29C988) = 0xB0; MEM16(0x29CA28) = 0x48; }
+    else if (!on && beach != 0x48) { MEM16(0x29C988) = 0x48; MEM16(0x29CA28) = 0xB0; }
+}
 void sub_00011980(void) { sub_00011980_gen(); doa3_costume_watch(); training_input_begin(); doa3_menu_offset_apply(); }
 /* CPU stun handler: Stagger Escape hold for a CPU fighter (0.1.14). */
 void sub_00016840_gen(void);
@@ -559,6 +573,9 @@ uint32_t doa3_aa_resolve_source(void)
  * device's own back/display buffers (the stage reflection targets), so the
  * translator sends those to an offscreen host target and later draws that
  * sample them read it. 3.0's equivalent hook is sub_001B1350. */
+/* Offscreen SetRenderTarget calls so far (sub_001C1D0F below tells from it
+ * whether a reflection capture happened). */
+static unsigned g_doa3_offrt_sets;
 void sub_001DC8E0_gen(void);
 static uint32_t targets_read(void *opaque,uint32_t address)
 { (void)opaque; return MEM32(address); }
@@ -566,6 +583,12 @@ void sub_001DC8E0(void)
 {
     uint32_t arg=MEM32(esp+4), dev=D3D31_DEV();
     sub_001DC8E0_gen();
+    {   /* 1.0.4: count offscreen render-target sets for sub_001C1D0F */
+        uint32_t t = (!arg && dev) ? MEM32(dev + 0x2070) : arg;
+        if (dev && t >= 0x1000 && t < 0x08000000u && t != MEM32(dev + 0x207C) &&
+            t != MEM32(dev + 0x2080) && t != MEM32(dev + 0x2084))
+            g_doa3_offrt_sets++;
+    }
     uint32_t added=nv2a_targets_update(&g_doa3_targets,dev,arg,targets_read,NULL);
     if (added) {
         uint32_t sz=MEM32(added+0x10), data=MEM32(added+4)&0x03FFFFFFu;
@@ -574,6 +597,81 @@ void sub_001DC8E0(void)
     }
 }
 
+/* Zack's costume 3 reflection capture (1.0.4). sub_001C1D0F(character,
+ * costume, slot) renders the stage into the 256x256 picture 0x5A2B30[slot]
+ * that his metallic suit (character 0, costume 0x02) reflects. The task
+ * loop 0x1C60AB calls it for both fighters every frame (through 0x1C5F54),
+ * and it only renders when something changed:
+ *   - 0x596A37 dropped to 0 (0x9B36A8 is last frame's "it was 0"); it is a
+ *     fight phase, 0 for a moment at the start of a fight only,
+ *   - 0x5C93AA rose (0x9B3710 is last frame's copy),
+ *   - 0xC59865 changed (0x9B36A0 is last frame's copy),
+ *   - or, in Team Battle only (mode 0x5A2858 == 10), a side's fighter
+ *     changed (0x9B3717 / 0x9B371B).
+ * Then it checks the slot's loaded model (0x861E0: 0x5B20B2 + slot*6).
+ * A Survival opponent joins in the middle of the fight with 0x596A37 at 1
+ * or 2 and none of the others, in the other slot (1 after 3, Matt's
+ * 1.0.4.13 log), so his suit kept whatever picture that slot had (the Beach
+ * by default). In Survival, a Zack in costume 3 in a slot that has not been
+ * captured for him (a CPU's: for his place in the queue) is captured:
+ * make last frame's copy of 0xC59865 differ for this call only (the loop
+ * rewrites the copy right after), every frame until the capture happens
+ * (the model check may hold it back for a while). */
+void sub_001C1D0F_gen(void);
+void sub_001C1D0F(void)
+{
+    static uint32_t s_done[4];      /* 1 + key of the last capture in each slot */
+    static uint32_t s_fight[4];     /* 1 + key of the last capture in the fight phase */
+    static uint32_t s_when[4];      /* frame of the last capture */
+    extern unsigned g_doa3_frames_presented;
+    uint32_t ch = MEM8(esp + 4), costume = MEM8(esp + 8), slot = MEM8(esp + 12);
+    uint32_t mode = MEM8(0x5A2858u), phase = MEM8(0x596A37u), before = g_doa3_offrt_sets, saved = 0;
+    uint32_t key, side, human = 0;
+    int force = 0;
+    /* A human's slot keeps its fighter from one opponent to the next, so
+     * only a CPU slot's key has the queue position in it. Recapturing the
+     * player's Zack as well as a joining Zack in the same frame left both
+     * suits white (Matt, 1.0.4.14, with the test switch giving the
+     * opponent the player's costume). */
+    for (side = 0; side < 2; side++)
+        if (MEM8(0x59CF58u + side * 0x68u) == 1 && MEM8(0x59CF5Bu + side * 0x68u) == slot) human = 1;
+    key = 1u + (((human ? 0xFFu : MEM8(0x596ADCu)) << 16) | (ch << 8) | costume);
+    if (mode != 5 || slot >= 4) {
+        s_done[0] = s_done[1] = s_done[2] = s_done[3] = 0;
+        s_fight[0] = s_fight[1] = s_fight[2] = s_fight[3] = 0;
+    } else if (ch == 0x00 && costume == 0x02 &&
+               (s_done[slot] != key || (!human && phase == 1 && s_fight[slot] != key) ||
+                (!human && phase == 2 && s_fight[slot] != key &&
+                 g_doa3_frames_presented - s_when[slot] >= 8u))) {
+        /* A joining opponent is captured as he comes in (0x596A37 is 2,
+         * the KO phase) and once more when the fight resumes (1): a
+         * capture taken while the stage is still in its KO effects (Matt,
+         * 1.0.4.15: a wall explosion finishing the previous opponent) came
+         * out white. Until the fight resumes (about 50 frames), it is
+         * captured again every 8 frames, so a white picture doesn't stay
+         * on him for the whole jump (Matt saw that once in 1.0.4.16). */
+        force = 1;
+        saved = MEM8(0x9B36A0u);
+        MEM8(0x9B36A0u) = (uint8_t)(MEM8(0xC59865u) ^ 1u);
+    }
+    sub_001C1D0F_gen();
+    if (force) MEM8(0x9B36A0u) = (uint8_t)saved;
+    if (g_doa3_offrt_sets != before && slot < 4 && mode == 5) {
+        if (force) {
+            static int s_log;
+            if (s_log < 32) {
+                s_log++;
+                fprintf(stderr, "[REFL] frame %u: Survival opponent %u, Zack costume 3 in slot %u (phase %u): stage reflection captured\n",
+                        g_doa3_frames_presented, MEM8(0x596ADCu), slot, phase);
+                fflush(stderr);
+            }
+        }
+        s_done[slot] = key;
+        s_when[slot] = g_doa3_frames_presented;
+        if (phase == 1) s_fight[slot] = key;
+    }
+    if (g_fib_slice_due) xbox_fiber_timeslice();
+}
 #else
 int doa3_guest_display_size(unsigned *w, unsigned *h) { (void)w; (void)h; return 0; }
 uint32_t doa3_aa_resolve_source(void) { return 0; }
@@ -964,6 +1062,23 @@ void sub_00076B30(void)
                     if (MEM8(0x59CF58 + p * 0x68) == 1 && MEM8(0x59CF59 + p * 0x68) == ch &&
                         MEM8(0x59CF5A + p * 0x68) == costume) break;
                 if (p < 2) continue;   /* mirror match in the same outfit */
+                /* 1.0.2: in a tag fight the side record holds only the
+                 * member on point, so a pick could match the human's
+                 * partner (Gultigargar: his Ryu in costume 1 met a CPU Ryu
+                 * in costume 1). The game's own rule (0x76B82, when the
+                 * tag flag 0xC59866 is set) reads the human side's team:
+                 * characters 0x59CF44 + side*5 + member, costumes
+                 * 0x5A2620 + side*5 + member. Check both members. */
+                if (MEM8(0xC59866)) {
+                    uint32_t m, clash = 0;
+                    for (p = 0; p < 2 && !clash; p++) {
+                        if (MEM8(0x59CF58 + p * 0x68) != 1) continue;
+                        for (m = 0; m < 2; m++)
+                            if (MEM8(0x59CF44 + p * 5 + m) == ch &&
+                                MEM8(0x5A2620 + p * 5 + m) == costume) { clash = 1; break; }
+                    }
+                    if (clash) continue;
+                }
                 {   static int s_log;
                     if (s_log < 32) {
                         s_log++;
@@ -1906,6 +2021,36 @@ static int s_pb4134_flip;     /* a FLIP_STALL went by: the frame is complete */
  * the ring itself (the wrap back to its start) ends this span, KickOff picks
  * the ring up from its start next time. */
 static unsigned s_pb_ctl[4], s_pb_ctl_logged;
+/* 1.0.4: osricen's black screen (issue #9, 1.0.3 log and trace). After an
+ * hour and a half, in Options, the walk met its first calls and unknown
+ * control words ("call 8 ... unknown 21") and translated a run of index
+ * data as methods 0x024C-0x0354: SET_DEPTH_FUNC 0x004E004D ([BADZFUNC]) and
+ * SET_SURFACE_CLIP 0xBF08xxxx / 0x3F08xxxx (floats), which the game sets
+ * only with a render target. Every later draw was scissored to 50x57 host
+ * pixels and the screen stayed black with the game running. Matt's 0.1.8
+ * sound test traces showed the same kind of garbage depth func.
+ * Until the cause of the lost place is found: once a span shows an unknown
+ * control word, the rest of it is walked for the frame end only, not
+ * translated, and the first few are logged with the words around them
+ * ([PBDESYNC]); the translator also refuses impossible surface clips and
+ * depth functions (nv2a_pgraph_d3d11.c). Calls are logged too ([PBCALL]):
+ * this session had none until then. */
+static void pb_desync_log(const char *what, uint32_t at, uint32_t from, uint32_t to,
+                          uint32_t ring_lo, uint32_t ring_hi, int in_call)
+{
+    extern unsigned g_doa3_frames_presented;
+    static unsigned s_n;
+    uint32_t a;
+    if (s_n >= 8) return;
+    s_n++;
+    fprintf(stderr, "[PBDESYNC] frame %u thread %lu: %s at %08X (span %08X-%08X, ring %08X-%08X, in call %d); words from %08X:",
+            g_doa3_frames_presented, GetCurrentThreadId(), what, at, from, to, ring_lo, ring_hi, in_call,
+            at >= 0x1040 ? at - 0x40 : at);
+    for (a = at >= 0x1040 ? at - 0x40 : at; a < at + 0x40 && a < 0x08000000u; a += 4)
+        fprintf(stderr, "%s%08X", a == at ? " [" : " ", MEM32(a));
+    fprintf(stderr, " ]\n");
+    fflush(stderr);
+}
 static void pb4134_translate_span(uint32_t from, uint32_t to, int translate, uint32_t ring_lo,
                                   uint32_t ring_hi, int *flip)
 {
@@ -1936,9 +2081,16 @@ static void pb4134_translate_span(uint32_t from, uint32_t to, int translate, uin
         }
         if ((word & 3u) == 2u) {                                                /* call */
             s_pb_ctl[1]++;
-            if (s_pb_ctl_logged < 24) {
-                s_pb_ctl_logged++;
-                fprintf(stderr, "[PB] call at %08X -> %08X\n", pos - 4, word & 0x07FFFFFCu);
+            if (translate) {
+                static unsigned s_calls;
+                if (s_calls < 16) {
+                    uint32_t t = word & 0x07FFFFFCu;
+                    s_calls++;
+                    fprintf(stderr, "[PBCALL] at %08X -> %08X (span %08X-%08X, in call %d): %08X %08X %08X %08X\n",
+                            pos - 4, t, from, to, in_call,
+                            t >= 0x1000 ? MEM32(t) : 0, t >= 0x1000 ? MEM32(t + 4) : 0,
+                            t >= 0x1000 ? MEM32(t + 8) : 0, t >= 0x1000 ? MEM32(t + 12) : 0);
+                }
             }
             if (in_call) break;                     /* the NV2A has one return slot */
             ret_to = pos; in_call = 1;
@@ -1966,6 +2118,10 @@ static void pb4134_translate_span(uint32_t from, uint32_t to, int translate, uin
                 (void)i;
             } else {
                 s_pb_ctl[3]++;                       /* unknown control word */
+                if (translate) {
+                    pb_desync_log("unknown control word", pos - 4, from, to, ring_lo, ring_hi, in_call);
+                    translate = 0;                   /* the rest: frame end only */
+                }
             }
         }
     }
@@ -2101,6 +2257,7 @@ static LONG            s_buf_frame[2] = { -1, -1 };     /* frame held by each co
 LONGLONG               g_doa3_rthread_busy;             /* QPC ticks spent translating, for [PERF-5S] */
 
 static int pbq_empty(void) { return s_pbq_head == s_pbq_tail; }
+volatile LONG g_doa3_rthread_slow_ms;   /* Debug: extra ms per command batch on the render thread */
 
 static DWORD WINAPI pb_render_thread(LPVOID unused)
 {
@@ -2113,6 +2270,12 @@ static DWORD WINAPI pb_render_thread(LPVOID unused)
         int flip = 0;
         if (pbq_empty()) { WaitForSingleObject(s_pbq_work, INFINITE); continue; }
         it = s_pbq[s_pbq_head % PBQ_N];
+        if (it.translate && g_doa3_rthread_slow_ms > 0) {
+            /* Debug > "Simulate a slow GPU thread": each batch of graphics
+             * commands waits, so the render thread falls behind the game
+             * within a frame, as on a slower machine. */
+            Sleep((DWORD)g_doa3_rthread_slow_ms);
+        }
         if (it.translate) {
             LONGLONG begin = doa3_perf_now();
             d3d8_Lock();
@@ -2221,6 +2384,9 @@ void sub_001E4AA0(void);
  * TECMO logo for one). Hold each flip to the next 1/60 s deadline. While
  * waiting, give the CPU to ready worker fibers -- on hardware the CRI
  * decoder/streaming threads run while the game thread waits for vblank. */
+/* 1.0.2.8: set by the hand edit in sub_0006BF10 (Omega's after-image GPU
+ * delay loop); this frame takes three vertical blanks, as on hardware. */
+volatile long g_doa3_gpu_delay_frame;
 static void d3d4134_pace(void)
 {
     /* Controlled sessions schedule worker laps from the deterministic clock,
@@ -2235,7 +2401,8 @@ static void d3d4134_pace(void)
     extern int xbox_fiber_is_primary(void);
     extern void xbox_fiber_yield(void);
     extern int doa3_workers_may_run(void);
-    static LONGLONG s_qpf, s_next;
+    extern int netplay_active(void);
+    static LONGLONG s_qpf, s_next, s_lap_est;
     static HANDLE s_timer;
     LARGE_INTEGER now;
     LONGLONG period;
@@ -2265,20 +2432,52 @@ static void d3d4134_pace(void)
     QueryPerformanceCounter(&now);
     if (!s_next) s_next = now.QuadPart;
     s_next += period;
+    if (InterlockedExchange(&g_doa3_gpu_delay_frame, 0))
+        s_next += 2 * period;   /* the console's GPU stall: 20 fps, as on hardware */
     /* overran by more than 8 frames: write the hitch off, re-anchor */
     if (now.QuadPart - s_next > period * 8) s_next = now.QuadPart;
+    /* 1.0.2: a worker lap cannot be interrupted, and while a movie plays one
+     * lap is the decode of a whole picture (up to ~15 ms). Started with only
+     * a few ms left before the vblank, it overran it: in the movies about a
+     * third of the frames came 1-10 ms late and the next one early, so the
+     * pictures were held for uneven times. A lap now starts only if the
+     * longest recent lap fits in the time left, except the first lap of a
+     * frame, which always runs (no worker can be starved; on a PC whose
+     * decode is longer than a frame that lap is as late as before; with the
+     * vblank aligned below, that first lap comes at the start of the frame). The
+     * estimate decays by 1/32 per frame, so ordinary laps (well under 1 ms)
+     * are never held back once a movie is over. Not during netplay. */
+    s_lap_est -= s_lap_est / 32;
+    int laps_this_frame = 0;
+    {   /* the guest vblank fires at this frame's deadline (xbox_fiber.c), so
+         * the workers it wakes -- the movie decoder -- start their lap at the
+         * beginning of the next frame with the whole frame ahead of them */
+        extern void xbox_fiber_vblank_align(long long deadline);
+        if (!det) xbox_fiber_vblank_align(s_next);   /* the controlled clock has its own vblank */
+    }
     for (;;) {
         LONGLONG rem;
         QueryPerformanceCounter(&now);
         rem = s_next - now.QuadPart;
-        if (rem <= 0) break;
+        if (rem <= 0) {
+            extern void xbox_fiber_vblank_tick(void);
+            if (!det) xbox_fiber_vblank_tick();   /* the deadline's vblank, now */
+            break;
+        }
         extern int xbox_fiber_is_coroutine(void);
         extern void xbox_fiber_vblank_tick(void);
         if (!det) xbox_fiber_vblank_tick();
-        if (!det && rem * 1000 > s_qpf && (xbox_fiber_is_primary() || xbox_fiber_is_coroutine()) &&
+        int lap_fits = !laps_this_frame || rem > s_lap_est || netplay_active();
+        if (!det && rem * 1000 > s_qpf && lap_fits && (xbox_fiber_is_primary() || xbox_fiber_is_coroutine()) &&
             doa3_workers_may_run() && xbox_fiber_workers_ready()) {
             LONGLONG worker_begin = doa3_perf_now();
+            LARGE_INTEGER lap_begin, lap_end;
+            QueryPerformanceCounter(&lap_begin);
             xbox_fiber_yield();             /* a worker lap while we wait */
+            QueryPerformanceCounter(&lap_end);
+            ++laps_this_frame;
+            if (lap_end.QuadPart - lap_begin.QuadPart > s_lap_est)
+                s_lap_est = lap_end.QuadPart - lap_begin.QuadPart;
             if (worker_begin) {
                 LONGLONG elapsed = doa3_perf_now() - worker_begin;
                 s_frame_perf.workers += elapsed;
@@ -2376,7 +2575,8 @@ static FILE *doa3_mtrace_open(const char *name)
     return f;
 }
 
-volatile LONG g_doa3_trace_request;   /* set by the Debug tab */
+volatile LONG g_doa3_trace_request;   /* set by the menu (General > Logging) */
+volatile LONG g_doa3_trace_frames;    /* 1.0.2: frames still to trace (Debug tab) */
 static void doa3_mtrace_frame(unsigned next)
 {
     extern FILE *g_doa3_mtrace;
@@ -2400,7 +2600,10 @@ static void doa3_mtrace_frame(unsigned next)
     {   /* Debug > Diagnostics > "Trace the next frame": one method trace plus
          * its screenshot, on demand (works with automatic captures off). */
         extern volatile LONG g_doa3_trace_request;
-        if (InterlockedExchange(&g_doa3_trace_request, 0)) {
+        /* 1.0.2: Debug > "Trace the next N frames" counts down here, one
+         * trace per frame end. */
+        if (InterlockedExchange(&g_doa3_trace_request, 0) ||
+            (g_doa3_trace_frames > 0 && InterlockedDecrement(&g_doa3_trace_frames) >= 0)) {
             char path[64];
             g_doa3_aa_shot = next;
             sprintf(path, "mtrace_manual_%05u.txt", next);
@@ -2498,9 +2701,211 @@ static void perf_5s(double interval, const double ph[7], double present, double 
     s_next = GetTickCount() + 5000;
 }
 
+/* 1.0: D3DDevice_SetGammaRamp (0x1DC360, stdcall flags, ramp). The game's
+ * Options > Video > Regulator builds a 3 x 256-byte ramp at 0xA48928 from
+ * gamma / brightness / contrast (0x17B800) and sets it with flags 1, so the
+ * XDK queues it for the vblank handler 0x1E4C80 to write into the DAC
+ * palette (0x1E1B64, PRMDIO, a stub here). Hand the ramp to the present
+ * blit instead, whichever way it is set. */
+void sub_001DC360_gen(void);
+void sub_001DC360(void)
+{
+    extern void d3d8_gamma_set(const unsigned char ramp[768]);
+    uint32_t ramp = MEM32(esp + 8);
+    if (ramp) d3d8_gamma_set((const unsigned char *)XBOX_PTR(ramp));
+    sub_001DC360_gen();
+    if (g_fib_slice_due) xbox_fiber_timeslice();
+}
+
+/* Dip LedgeThrowDamage (0.2.19, 0.2.20). The ledge handler 0xA92C0 carries a
+ * throw's damage into the fall (AccumulatedThrowOrHoldDamage 0x9B2858[side])
+ * and GetMoveDamage adds it to every fall-type-3 impact. With one ledge there
+ * is one impact. Crossing a second ledge (Lorelei Tier 1 -> 3, 3 -> 4) reruns
+ * the handler, which stores 0 because the victim is no longer THROWN / HELD,
+ * so the throw's damage is lost; just keeping it (0.2.19) put it on both the
+ * impact and the landing. Now the hand edit in sub_000A92C0_gen keeps it at
+ * the second ledge and marks the side, and after the hit pass 0xB9140 the
+ * first damage taken (SustainedDamage +0x22, or health +0x20 dropping) clears it, so it lands once,
+ * with the first impact. */
+/* GetFallDamageForPlayer (0xA68A0-ish, Lorelei second-ledge phase 0x9B243E
+ * == 5) deals 5 for the ledge impact only in moves 0x425B / 0x425C. Matt's
+ * trace of 46T over the edge: impact in 0x425E, landing in 0x4267 (the
+ * instant-throw fall: 0x425B, then 0x4265), so it dealt 25 + 25 (35 + 35). */
+int doa3_ledge_impact_move(uint32_t move)
+{
+    /* Matt's move table: 0x425B / 0x425C HC_CASTLE_FR_UP / _DW (roof hit
+     * fall, 5 damage), 0x425D / 0x425E HC_CASTLE2_FR_UP / _DW (the stage
+     * transition fall, face up / face down). 0.2.27 guessed 0x425F. */
+    return dip_get(DIP_LEDGE_THROW_DAMAGE) && (move == 0x425D || move == 0x425E);
+}
+
+static uint8_t s_ledge_carry[2];
+static uint16_t s_ledge_hp[2];
+int doa3_ledge_throw_keep(uint32_t side)
+{
+    uint16_t mv;
+    if (side > 1 || !dip_get(DIP_LEDGE_THROW_DAMAGE)) return 0;
+    mv = MEM16(0x59CF86 + side * 0x68);       /* the victim's ledge-fall move */
+    if (mv != 0x423E && mv != 0x4241) return 0;
+    if (!MEM16(0x9B2858 + side * 2)) return 0;
+    s_ledge_carry[side] = 1;
+    s_ledge_hp[side] = MEM16(0x59CF78 + side * 0x68);
+    return 1;
+}
+void sub_000B9140_gen(void);
+void sub_000B9140(void)
+{
+    sub_000B9140_gen();
+    for (unsigned side = 0; side < 2; ++side) {
+        if (!s_ledge_carry[side]) continue;
+        if (MEM16(0x59CF7A + side * 0x68) ||               /* the impact landed: */
+            MEM16(0x59CF78 + side * 0x68) < s_ledge_hp[side]) { /* sustained, or health down */
+            MEM16(0x9B2858 + side * 2) = 0;
+            s_ledge_carry[side] = 0;
+        } else if (!MEM8(0x9B25BC + side) || MEM8(0x596A37) != 1) {
+            s_ledge_carry[side] = 0;                       /* fall over / round over */
+        }
+    }
+    if (g_fib_slice_due) xbox_fiber_timeslice();
+}
+
+/* 0.2.16: DOA3_DAMAGE_TRACE=1 -- for the Lorelei cliff-throw damage report.
+ * 0.2.18: one line per fighter whenever any of these change, each presented
+ * fight frame (side record 0x59CF58 + side * 0x68):
+ *   hp +0x20 health, sus +0x22 sustained, rev +0x26 revised, cmb +0x28
+ *   combo damage, mv +0x2E move, st +0x33 state (9 hurt, 10 thrown, 11 held),
+ *   acc 0x9B2858 accumulated throw/hold damage, fall 0x9B25BC fall type,
+ *   f48 0x9B2548, f30 0x9B2730, f68 0x9B2568, pend 0x5CB466 (pending throw
+ *   damage, written for the victim), sm 0x591F50 stage mode, c63 0xC59863,
+ *   243e 0x9B243E. */
+static void damage_trace_frame(void)
+{
+    static int on = -1;
+    static char last[2][192];
+    static unsigned lines;
+    if (on < 0) { const char *e = getenv("DOA3_DAMAGE_TRACE"); on = e && *e == '1'; }
+    if (!on || lines >= 40000 || MEM8(0x596A37) > 2) return;
+    for (unsigned side = 0; side < 2; ++side) {
+        uint32_t p = 0x59CF58 + side * 0x68;
+        char now[192];
+        snprintf(now, sizeof now,
+                  "hp %u sus %u rev %u cmb %u mv %04X st %u acc %u fall %u f48 %u f30 %u f68 %u "
+                  "pend %u sm %u c63 %02X 243e %u",
+                  MEM16(p + 0x20), MEM16(p + 0x22), MEM16(p + 0x26), MEM16(p + 0x28),
+                  MEM16(p + 0x2E), MEM8(p + 0x33), MEM16(0x9B2858 + side * 2),
+                  MEM8(0x9B25BC + side), MEM8(0x9B2548 + side), MEM8(0x9B2730 + side),
+                  MEM8(0x9B2568 + side), MEM16(0x5CB466 + side * 0x30), MEM8(0x591F50),
+                  MEM8(0xC59863), MEM8(0x9B243E));
+        now[sizeof now - 1] = 0;
+        if (!strcmp(now, last[side])) continue;
+        ++lines;
+        fprintf(stderr, "[DAMAGE] frame %u side %u phase %u: %s\n",
+                g_doa3_frames_presented, side + 1, MEM8(0x596A37), now);
+        strcpy(last[side], now);
+    }
+}
+
+/* 1.0.2: Debug > Frame advance. At the end of a frame (after it was shown)
+ * the game thread is held while g_doa3_frame_pause is set; each step lets
+ * one more frame run. While held, the window is redrawn with the last
+ * finished frame and the overlay, messages are pumped, the APU output is
+ * silent (audio_apply_volume) and the watchdog stays quiet. With "trace
+ * each step", the stepped frame is traced: the trace is armed here for the
+ * next frame, as doa3_mtrace_frame does at a frame end. Never during online
+ * play or while a movie owns the screen. The guest's clocks stand still
+ * while held (xbox_clock_hold): with them running, the first frame after a
+ * hold saw all the held time pass at once. */
+volatile LONG g_doa3_frame_pause;      /* UI: hold at frame ends */
+volatile LONG g_doa3_frame_steps;      /* UI: frames to let through */
+volatile LONG g_doa3_frame_paused;     /* the game thread is being held */
+volatile LONG g_doa3_frame_step_trace; /* UI: trace each stepped frame */
+volatile LONG g_doa3_frame_slow_ms;    /* UI: extra milliseconds per frame (debug) */
+static void doa3_frame_pause_point(void)
+{
+    extern int netplay_active(void);
+    extern int doa3_movie_host_owns_screen(void);
+    extern long d3d8_PresentPaused(int buf);
+    extern void d3d8_Lock(void), d3d8_Unlock(void);
+    extern void doa3_pump_messages(void);
+    extern void xbox_clock_hold(int on);
+    extern void xbox_clock_advance(LONGLONG ticks);
+    static LONGLONG s_step_began;   /* QPC when the last step's frame started */
+    LARGE_INTEGER now, freq;
+    int buf = -1;
+    if (g_doa3_frame_slow_ms > 0 && !netplay_active()) {
+        /* Debug > "Simulate a slow PC": every frame takes this much longer,
+         * with every clock running, to reproduce what slow machines see. */
+        Sleep((DWORD)g_doa3_frame_slow_ms);
+    }
+    if (!g_doa3_frame_pause) return;
+    /* 1.0.4: 2 = the Esc menu's "Pause while this menu is open", which may
+     * also hold a movie (the game's menus play movies behind them; the
+     * guest's clocks and sound stand still, so it resumes in step). Frame
+     * advance (1) still never stops a movie. */
+    if (netplay_active() || (doa3_movie_host_owns_screen() && g_doa3_frame_pause != 2)) {
+        InterlockedExchange(&g_doa3_frame_pause, 0);
+        InterlockedExchange(&g_doa3_frame_steps, 0);
+        return;
+    }
+    if (g_doa3_frame_steps > 0) {          /* a step already granted: hold after it */
+        InterlockedDecrement(&g_doa3_frame_steps);
+        if (g_doa3_frame_steps > 0) return;
+    }
+    /* Stop the guest's clocks first: the drain below waits for the render
+     * thread, which is slow while each frame is traced, and none of that
+     * time should reach the game. */
+    xbox_clock_hold(1);
+    InterlockedExchange(&g_doa3_frame_paused, 1);
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&now);
+    if (s_async_active) {
+        /* Let the render thread finish everything queued, then show the
+         * newest finished copy (the frame the game just ended). */
+        LONG f;
+        pb_wait(pb_is_drained, 0);
+        f = s_frames_done;
+        if (s_buf_frame[f & 1] == f) buf = (int)(f & 1);
+    }
+    {   /* A stepped frame should look like 1/60 s to the game: credit the
+         * clock with what its run fell short of that. */
+        LONGLONG period = freq.QuadPart / 60;
+        if (s_step_began && now.QuadPart - s_step_began < period)
+            xbox_clock_advance(period - (now.QuadPart - s_step_began));
+        s_step_began = 0;
+    }
+    fprintf(stderr, "[PAUSE] held after frame %u\n", g_doa3_frames_presented);
+    while (g_doa3_frame_pause && g_doa3_frame_steps <= 0) {
+        if (s_async_active) d3d8_Lock();
+        d3d8_PresentPaused(buf);
+        if (s_async_active) d3d8_Unlock();
+        doa3_pump_messages();
+        Sleep(15);
+    }
+    if (g_doa3_frame_pause && g_doa3_frame_steps > 0) {
+        /* The step's frames run now (one per press); the hold comes back
+         * at the end of the last. */
+        if (g_doa3_frame_step_trace) {
+            if (s_async_active) d3d8_Lock();
+            InterlockedExchange(&g_doa3_trace_request, 1);
+            doa3_mtrace_frame(g_doa3_frames_presented + 1);
+            if (s_async_active) d3d8_Unlock();
+        }
+    }
+    if (g_doa3_frame_pause && g_doa3_frame_steps > 0) {
+        QueryPerformanceCounter(&now);
+        s_step_began = now.QuadPart;
+    }
+    xbox_clock_hold(0);
+    InterlockedExchange(&g_doa3_frame_paused, 0);
+}
+
+static LONGLONG s_gap_pace;   /* perf: pace time inside the last present-to-entry gap */
 static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
 {
+    damage_trace_frame();
     {   extern void doa3_menu_offset_apply(void);
+        extern void doa3_world_map_apply(void);
+        doa3_world_map_apply();
         doa3_menu_offset_apply();   /* 0.1.34: every frame, menus included */ }
     {   extern void doa3_prof_set_thread(void);
         static int s_prof_reg;
@@ -2586,12 +2991,28 @@ static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
     game_audio_frame();               /* game volumes, streamer mode */
 
     prepared = entry ? doa3_perf_now() : 0;
+    /* 1.0.2: while a movie plays, wait for the frame's deadline first and
+     * present after it, so every movie frame goes out on the 60 Hz grid.
+     * Presenting first (as in gameplay, for the lowest input delay) put each
+     * movie frame out whenever the game finished it, and the frames that
+     * carried a picture decode (every other one) went out several ms later
+     * than the rest. */
+    extern int doa3_movie_host_owns_screen(void);   /* movie frames arriving */
+    extern int netplay_active(void);
+    int pace_first = !async_frame && doa3_movie_host_owns_screen() && !netplay_active();
+    LONGLONG pace_first_ticks = 0;
+    if (pace_first) {
+        LONGLONG pace_begin = doa3_perf_now();
+        doa3_frame_pause_point();
+        d3d4134_pace();
+        if (pace_begin) pace_first_ticks = doa3_perf_now() - pace_begin;
+    }
     if (entry) {   /* hand the phase split to the frame capture (main.c) */
         extern double g_doa3_phase_ms[7]; extern unsigned g_doa3_phase_kicks;
         LARGE_INTEGER fq; double ms;
         QueryPerformanceFrequency(&fq); ms = 1000.0 / fq.QuadPart;
         g_doa3_phase_ms[0] = s_frame_perf.presented ?
-            (entry - s_frame_perf.presented - s_frame_perf.pace - s_frame_perf.pb) * ms : -1.0;
+            (entry - s_frame_perf.presented - s_gap_pace - s_frame_perf.pb) * ms : -1.0;
         g_doa3_phase_ms[1] = s_frame_perf.pb * ms;
         g_doa3_phase_ms[2] = (flushed - entry) * ms;
         g_doa3_phase_ms[3] = (prepared - flushed) * ms;
@@ -2620,7 +3041,7 @@ static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
         QueryPerformanceFrequency(&frequency);
         double ms = 1000.0 / frequency.QuadPart;
         perf_5s(s_frame_perf.presented ? (presented - s_frame_perf.presented) * ms : -1.0,
-                g_doa3_phase_ms, (presented - prepared) * ms, ms);
+                g_doa3_phase_ms, (presented - prepared - pace_first_ticks) * ms, ms);
         if (perf_on && s_frame_perf.presented &&
             (presented - s_frame_perf.presented) * ms >= 25.0) {
             fprintf(stderr, "[PERF-PHASE] frame %u interval %.3f pace-prev %.3f workers-prev %.3f longest-worker %.3f before-flush %.3f pb-subset %.3f kicks %u flush %.3f auxiliary %.3f present %.3f end-qpc %lld\n",
@@ -2628,20 +3049,29 @@ static void d3d4134_frame_done(uint32_t dev, unsigned async_frame)
                 (presented - s_frame_perf.presented) * ms,
                 s_frame_perf.pace * ms, s_frame_perf.workers * ms,
                 s_frame_perf.longest_worker * ms,
-                (entry - s_frame_perf.presented - s_frame_perf.pace) * ms,
+                (entry - s_frame_perf.presented - s_gap_pace) * ms,
                 s_frame_perf.pb * ms, s_frame_perf.kicks,
                 (flushed - entry) * ms, (prepared - flushed) * ms,
                 (presented - prepared) * ms, (long long)presented);
         }
         s_frame_perf.presented = presented;
-        s_phase_prev_present = presented - prepared;
+        s_phase_prev_present = presented - prepared - pace_first_ticks;
         s_frame_perf.pb = s_frame_perf.workers = s_frame_perf.longest_worker = 0;
         s_frame_perf.kicks = 0;
     }
-    LONGLONG pace_begin = entry ? doa3_perf_now() : 0;
-    d3d4134_pace();
-    if (entry) s_frame_perf.pace = doa3_perf_now() - pace_begin;
-    else memset(&s_frame_perf, 0, sizeof s_frame_perf);
+    if (!pace_first) {
+        doa3_frame_pause_point();   /* 1.0.2: Debug > Frame advance */
+        LONGLONG pace_begin = entry ? doa3_perf_now() : 0;
+        d3d4134_pace();
+        if (entry) s_frame_perf.pace = doa3_perf_now() - pace_begin;
+        else memset(&s_frame_perf, 0, sizeof s_frame_perf);
+    } else {
+        if (entry) s_frame_perf.pace = pace_first_ticks;
+        else memset(&s_frame_perf, 0, sizeof s_frame_perf);
+    }
+    /* the pace that lies between this present and the next frame's entry
+     * (none when it ran before the present) */
+    s_gap_pace = pace_first ? 0 : s_frame_perf.pace;
     { extern void doa3_fn_profile_tick(void); doa3_fn_profile_tick(); }
     eax = sv_eax; ecx = sv_ecx; edx = sv_edx; ebx = sv_ebx;    /* the worker laps */
     esi = sv_esi; edi = sv_edi; esp = sv_esp; g_seh_ebp = sv_seh;
@@ -2678,9 +3108,11 @@ void sub_001E27C0(void)
             if (want) {
                 s_frames_done = s_frames_presented = (LONG)s_frames_submitted;
                 s_buf_frame[0] = s_buf_frame[1] = -1;
-                fprintf(stderr, "[ASYNC] render thread takes over at frame %u\n", g_doa3_frames_presented);
+                fprintf(stderr, "[ASYNC] render thread takes over at frame %u (walked to %08X, cursor %08X)\n",
+                        g_doa3_frames_presented, s_pb4134_parsed, cursor);
             } else
-                fprintf(stderr, "[ASYNC] back to translating at kick-off (frame %u)\n", g_doa3_frames_presented);
+                fprintf(stderr, "[ASYNC] back to translating at kick-off (frame %u, walked to %08X, cursor %08X)\n",
+                        g_doa3_frames_presented, s_pb4134_parsed, cursor);
         }
     }
     if (s_async_active) {

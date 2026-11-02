@@ -48,10 +48,16 @@ def transform(va, body, selected, synchronous):
     }
     if va in local_tables:
         expression, targets = local_tables[va]
-        old = (f"    {{ uint32_t _jt = MEM32({expression}); /* switch: {len(targets)} entries, {len(targets)} targets */\n" +
-               "".join(f"    if (_jt == 0x{target:08X}u) goto loc_{target:08X};\n" for target in targets) +
-               "    g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }")
-        if code.count(old) != 1:
+        head = f"    {{ uint32_t _jt = MEM32({expression}); /* switch: {len(targets)} entries, {len(targets)} targets */\n"
+        tail = "    g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }"
+        # The lifter writes the table as an if chain, or (since doa3.1
+        # 1.0.2.14) as a switch; accept either.
+        forms = [head + "".join(f"    if (_jt == 0x{target:08X}u) goto loc_{target:08X};\n" for target in targets) + tail,
+                 head + "    switch (_jt) {\n" +
+                 "".join(f"    case 0x{target:08X}u: goto loc_{target:08X};\n" for target in targets) +
+                 "    default: break; }\n" + tail]
+        old = next((f for f in forms if code.count(f) == 1), None)
+        if old is None:
             raise ValueError(f"{va:08X} local jump table changed")
         code = code.replace(old, old.replace("g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return;",
                             "return (Doa3NestedAction){DOA3_NESTED_BLOCK,0};"))

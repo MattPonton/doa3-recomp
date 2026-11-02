@@ -15,6 +15,7 @@
  * public address; the join code carries it plus the LAN address, and the
  * joiner sends hellos to both (and on the local network).
  */
+#include "../game/exe_path.h"
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <mstcpip.h>
@@ -1608,15 +1609,8 @@ int netplay_banner(char *buf, int cap)
 static const char *ini_path(void)
 {
     static char path[MAX_PATH];
-    char *slash;
     if (path[0]) return path;
-    if (!GetModuleFileNameA(NULL, path, MAX_PATH)) {
-        strcpy(path, "doa3_settings.ini");
-        return path;
-    }
-    slash = strrchr(path, '\\');
-    if (slash) slash[1] = 0; else path[0] = 0;
-    strcat(path, "doa3_settings.ini");
+    doa3_exe_file_ansi("doa3_settings.ini", path, sizeof path);   /* 1.0.2: non-ANSI folders */
     return path;
 }
 
