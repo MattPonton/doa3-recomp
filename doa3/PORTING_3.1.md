@@ -6631,3 +6631,8 @@ the open question is another PC.
   n frames a [DET-HASH] line: XXH3 of all guest RAM, then of each 8 MB
   slice. Two PCs, no input; the first differing line gives the frame and
   the slices.
+
+### 1.0.4-rollback.44: doa3.1 1.0.4.28's push-buffer resync and cull checks
+
+The same change as doa3.1 1.0.4.28 ([PBRESYNC] / [PBNOGPU], SET_CULL_FACE
+and SET_FRONT_FACE validation), applied here directly.

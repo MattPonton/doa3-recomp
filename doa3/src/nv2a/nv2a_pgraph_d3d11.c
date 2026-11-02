@@ -5491,6 +5491,15 @@ int pgraph_d3d11_data_packet(int subchannel, uint32_t method,
     return 1;
 }
 
+static void nv_bad_state(uint32_t method, uint32_t param)
+{
+    static unsigned n;
+    extern unsigned g_doa3_frames_presented;
+    if (n >= 8) return;
+    n++;
+    fprintf(stderr, "[BADSTATE] method %04X value %08X ignored at frame %u\n", method, param, g_doa3_frames_presented);
+}
+
 int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
 {
     const NvMethodEntry *me;
@@ -5774,12 +5783,18 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
         g_pg.cull_enable = param ? 1 : 0;
         return 1;
 
+    /* 1.0.4.28: only real values (Gultigargar: the fighters drawn inside
+     * out after a Story ending; a word of data read as SET_FRONT_FACE, which
+     * the game sets once, made every CW-front model cull its front faces).
+     * Anything else keeps the last real one. */
     case NV097_SET_CULL_FACE:
-        g_pg.cull_face = param;
+        if (param == 0x404 || param == 0x405 || param == 0x408) g_pg.cull_face = param;
+        else nv_bad_state(method, param);
         return 1;
 
     case NV097_SET_FRONT_FACE:
-        g_pg.front_face = param;
+        if (param == 0x900 || param == 0x901) g_pg.front_face = param;
+        else nv_bad_state(method, param);
         return 1;
 
     case NV097_SET_STENCIL_TEST_ENABLE:

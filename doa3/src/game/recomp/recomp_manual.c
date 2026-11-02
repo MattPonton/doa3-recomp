@@ -3120,12 +3120,37 @@ void sub_001E27C0(void)
     if (s_on < 0) { const char *e = getenv("DOA3_PB"); s_on = !(e && *e == '0'); }
     {   extern volatile uint32_t g_doa3_pb_dev; g_doa3_pb_dev = dev; }   /* rollback diff map labels */
     if (flags & 0x2000) {            /* no live GPU channel: the original only does bookkeeping */
+        static unsigned s_nogpu;
+        if (s_pb4134_parsed && s_nogpu < 8) {
+            s_nogpu++;
+            fprintf(stderr, "[PBNOGPU] frame %u: kick-off with no live GPU channel (flags %08X), not translated\n",
+                    g_doa3_frames_presented, flags);
+        }
         sub_001E27C0_gen();
         return;
     }
     cursor = (flags & 4) ? MEM32(dev + 0x35C) : MEM32(dev);
     start = MEM32(dev + 0x24); end = MEM32(dev + 0x28);
     g_pb4134_ring_lo = start; g_pb4134_ring_hi = end + 4;
+    {   /* 1.0.4.28: [dev+0x2C], the last kicked cursor, is written only by
+         * KickOff (this override, or the original above while there is no
+         * live GPU channel). If it is not where this walk stopped, kick-offs
+         * went by without being translated, and walking on from the old
+         * place reads a ring that has since been rewritten: data read as
+         * methods. That is the garbage behind osricen's black screen and
+         * Gultigargar's inside-out fighters, both right after a movie. Go on
+         * from the driver's own last kick instead. */
+        static unsigned s_resync;
+        uint32_t last = MEM32(dev + 0x2C);
+        if (s_pb4134_parsed && last != s_pb4134_parsed && last >= start && last <= end) {
+            if (s_resync < 16) {
+                s_resync++;
+                fprintf(stderr, "[PBRESYNC] frame %u: walk at %08X, driver's last kick %08X (cursor %08X, ring %08X-%08X)\n",
+                        g_doa3_frames_presented, s_pb4134_parsed, last, cursor, start, end);
+            }
+            s_pb4134_parsed = last;
+        }
+    }
     {   /* Asynchronous GPU: switching either way drains the queue first. */
         int want = pb_async_wanted();
         if (want != s_async_active) {
