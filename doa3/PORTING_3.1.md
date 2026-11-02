@@ -6578,3 +6578,9 @@ Survival reflection) into the rollback branch. Version 1.0.4-rollback.40
   identical output.
 - The Sparring screen (list menu) carries the save state test's Save state /
   Load state rows when DOA3_STATE_TEST is running; F5 / F9 / F10 unchanged.
+
+### 1.0.4-rollback.41: build fix
+
+rb40 did not compile: doa3.1's new code in nv2a_pgraph_d3d11.c (the inline
+rectangle-coverage draw's stats, the [BADCLIP]/[SURFCLIP] logs) used
+g_pg.stats / g_pg.frame, which this branch keeps in g_pg_host.

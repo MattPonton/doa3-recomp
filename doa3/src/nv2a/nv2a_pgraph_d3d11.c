@@ -5159,8 +5159,8 @@ static void submit_draw_inner(void)
                     if (m) dev->lpVtbl->DrawPrimitiveUP(dev, D3DPT_TRIANGLELIST, m / 3, q, sizeof(OutputVertex));
                     if (clipped) { extern void d3d8_ResetScissorRect(void); d3d8_ResetScissorRect(); }
                     if (got == 0) dev->lpVtbl->SetVertexShader(dev, prev_vs);
-                    g_pg.stats.draw_calls++;
-                    g_pg.stats.vertices_submitted += num_verts;
+                    g_pg_host.stats.draw_calls++;
+                    g_pg_host.stats.vertices_submitted += num_verts;
                     return;
                 }
             }
@@ -5956,7 +5956,7 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
                 s_bad++;
                 fprintf(stderr, "[BADCLIP] SET_SURFACE_CLIP_%s %08X ignored at frame %u\n",
                         method == NV097_SET_SURFACE_CLIP_HORIZONTAL ? "HORIZONTAL" : "VERTICAL",
-                        param, g_pg.frame);
+                        param, g_pg_host.frame);
             }
             return 1;
         }
@@ -5969,7 +5969,7 @@ int pgraph_d3d11_method(int subchannel, uint32_t method, uint32_t param)
                 s_seen[s_n++] = key;
                 fprintf(stderr, "[SURFCLIP] %s %u at %u (frame %u)\n",
                         method == NV097_SET_SURFACE_CLIP_HORIZONTAL ? "width" : "height",
-                        param >> 16, param & 0xFFFFu, g_pg.frame);
+                        param >> 16, param & 0xFFFFu, g_pg_host.frame);
             }
         }
         if (method == NV097_SET_SURFACE_CLIP_HORIZONTAL) g_pg.surface_clip_h = param;
