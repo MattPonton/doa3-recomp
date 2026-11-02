@@ -5522,3 +5522,14 @@ different clips accepted are logged ([SURFCLIP]) to confirm the set. The
 Suggested test for osricen on 1.0.3: DOA3_ASYNC_GPU=0 (translate at
 kick-off, no render thread) with the same Theater steps. If it never
 happens that way, the render thread / takeover is the place to look.
+
+## 1.0.4.25
+
+Photo Mode moved to the list menu (SCR_PHOTO): Free camera heading (Free
+camera, Camera speed 1..20 in whole steps, Reset to game camera), Hide
+(Player 1, Player 2, UI), Screenshots (Take screenshot, value = the key;
+the last screenshot status as a note), Reset to defaults, Back. Its
+settings are session-only, as on the classic tab (whose Save only wrote
+AutoCapture and the screenshot key), so the screen saves nothing. The
+camera and fighter rows are disabled online. Only Sparring (and Debug)
+still open the classic window.

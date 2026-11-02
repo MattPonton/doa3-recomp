@@ -7,7 +7,7 @@
   controller or the mouse. Settings apply at once and are saved when you leave
   a screen. Controls has a screen per player: input device (picked from a
   list that shows which player has each controller), controller type and
-  bindings. Photo Mode and Sparring still open in the old window for now.
+  bindings. Sparring still opens in the old window for now.
 - **Pause while this menu is open**, on the Game screen (off by default).
 - After closing the menu, the button or key still held when it closed no
   longer reaches the game.

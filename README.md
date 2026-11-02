@@ -80,7 +80,7 @@ or the d-pad to choose, **Left / Right** to change a setting, **Enter / A** to
 select and **Escape / B** to go back; the mouse works too. The line under
 the list explains the selected setting. Changes apply immediately and are
 saved when you leave the screen; each screen has **Reset to defaults**.
-**Photo Mode** and **Sparring** still open in a window with
+**Sparring** still opens in a window with
 tabs; close it (or press Escape / B) to return to the list. While the menu is
 closed, the mouse pointer hides after a second without moving and comes back
 when you move the mouse.
@@ -156,7 +156,7 @@ L3 / R3 / L1 / R1 / Triangle):
 | Buttons | Does |
 | --- | --- |
 | L3 + R3 | Open or close the Escape menu |
-| LB / RB | Previous / next tab, in the Photo Mode and Sparring window |
+| LB / RB | Previous / next tab, in the Sparring window |
 | L3 + RB | Take a screenshot |
 | L3 + Y | Show or hide the performance overlay |
 
@@ -167,7 +167,7 @@ game as usual.
 
 **Window type** (windowed / borderless fullscreen), **Aspect ratio** and
 **Internal resolution**; **Performance overlay** shows frame rate and frame
-times; **Classic menu size** scales the Photo Mode and Sparring window
+times; **Classic menu size** scales the Sparring window
 (100–250 %).
 
 ### Sound
@@ -188,9 +188,11 @@ times; **Classic menu size** scales the Photo Mode and Sparring window
   camera** returns to the game's view.
 - **Hide Player 1 / Player 2 / UI**: hide either fighter or the game's HUD and
   menus (Escape always opens this menu so you can bring them back).
-- **Screenshots**: a hotkey (F12 by default, set in **Controls**) saves a PNG
-  at the render resolution, without this menu, to `Screenshots\`. A short notice in
+- **Take screenshot** (or the screenshot key, F12 by default, set in
+  **Controls**) saves a PNG at the render resolution, without this menu, to `Screenshots\`. A short notice in
   the corner confirms it was saved (it is never in the picture).
+
+These last until the game is closed; **Reset to defaults** turns them all off.
 
 ### Sparring
 

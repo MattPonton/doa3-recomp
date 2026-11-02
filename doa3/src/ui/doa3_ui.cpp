@@ -63,10 +63,10 @@ int g_tab_current = 0, g_tab_request = -1;
  * open the tabbed window on their tab (SCR_CLASSIC); leaving it comes back
  * to the list. */
 enum MenuScreen { SCR_MAIN, SCR_DISPLAY, SCR_SOUND, SCR_GAME, SCR_QUIT, SCR_CLASSIC,
-                  SCR_CONTROLS, SCR_PLAYER, SCR_DEVICE };
+                  SCR_CONTROLS, SCR_PLAYER, SCR_DEVICE, SCR_PHOTO };
 MenuScreen g_screen = SCR_MAIN;
 pm::State g_pm_main, g_pm_display, g_pm_sound, g_pm_game, g_pm_quit,
-          g_pm_controls, g_pm_player, g_pm_device;
+          g_pm_controls, g_pm_player, g_pm_device, g_pm_photo;
 /* 1.0.4: after a binding is captured, the list ignores input until the
  * captured key or control is let go (so a held d-pad or A does not also
  * move the selection or start listening again). */
@@ -1538,7 +1538,7 @@ void DrawMainScreen()
     if (pm::Action("Controls", "Each player's controller, keys and buttons."))
         OpenScreen(SCR_CONTROLS, g_pm_controls);
     if (pm::Action("Photo Mode", "Free camera, hiding the fighters and the game's screens, and screenshots."))
-        OpenClassic(4);
+        OpenScreen(SCR_PHOTO, g_pm_photo);
     if (pm::Action("Sparring", training_available()
                    ? "Dummy recording and playback, and move information, for Sparring."
                    : "Dummy recording and playback, and move information. Available in an offline Sparring fight.",
@@ -1590,7 +1590,7 @@ void DrawDisplayScreen()
         TogglePerformanceOverlay();
     int ms = g_menu_scale;
     if (pm::Step("Classic menu size", ms, 100, 250, 25, "%d%%",
-                 "The size of the Photo Mode and Sparring windows and their text.")) {
+                 "The size of the Sparring window and its text.")) {
         g_menu_scale = ms;
         g_screen_dirty = true;
     }
@@ -1983,6 +1983,68 @@ void DrawDeviceScreen()
     pm::End(g_status, kMenuVersion);
 }
 
+/* ── Photo Mode (1.0.4) ─────────────────────────────────────────────────
+ * Everything here lasts for the session only (as on the classic tab), so
+ * the screen saves nothing. */
+void DrawPhotoScreen()
+{
+    pm::Begin(g_pm_photo, kMenuTitle, "Photo Mode");
+    const bool online = netplay_active() != 0;
+    pm::Heading("Free camera");
+    bool camera = free_camera_enabled() != 0;
+    if (pm::Toggle("Free camera", camera,
+                   "Close this menu to fly. Keyboard: WASD move, the mouse looks, E / Q up and down, Shift "
+                   "fast, Ctrl slow. Controller: left stick moves, right stick looks, RT / LT up and down, "
+                   "LB fast, RB slow. Fighter controls are blocked while flying; the fight keeps running. "
+                   "Not available online.", !online)) {
+        if (!free_camera_set_enabled(camera ? 1 : 0))
+            SetStatus("Enter an offline 3D scene before turning on the camera");
+    }
+    int speed = (int)(free_camera_speed() + 0.5f);
+    if (pm::Step("Camera speed", speed, 1, 20, 1, "%d", "How fast the free camera moves. The default is 10.",
+                 !online))
+        free_camera_set_speed((float)speed);
+    if (pm::Action("Reset to game camera", "Puts the free camera back where the game's camera is.", !online))
+        free_camera_reset();
+    pm::Heading("Hide");
+    for (int side = 0; side < 2; ++side) {
+        bool hide = debug_hide_player_get(side) != 0;
+        if (pm::Toggle(side ? "Hide Player 2" : "Hide Player 1", hide,
+                       "Hides the fighter. Gameplay and collision stay as they are. Not available online.",
+                       !online))
+            debug_hide_player_set(side, hide);
+    }
+    bool hidden = debug_hide_ui_get() != 0;
+    if (pm::Toggle("Hide UI", hidden,
+                   "Hides the game's screen overlays, the HUD and menus included (some fades may go too). "
+                   "Escape always opens this menu, so you can bring them back."))
+        debug_hide_ui_set(hidden);
+    pm::Heading("Screenshots");
+    {
+        PadBinding key = { PADSRC_KEY, debug_screenshot_key_get() };
+        char name[80];
+        pad_binding_label(key, name, sizeof name);
+        if (pm::Action("Take screenshot", "Saves the game at its render resolution, without this menu, to the "
+                       "Screenshots folder. The screenshot key (set in Controls) does the same.", true, name))
+            d3d8_screenshot_request();
+        const char *shot = d3d8_screenshot_status();
+        if (shot && shot[0]) pm::Note(shot);
+    }
+    pm::Separator();
+    if (pm::Action("Reset to defaults", "Free camera off at speed 10, nothing hidden.")) {
+        free_camera_set_enabled(0);
+        free_camera_set_speed(10);
+        free_camera_reset_fov();
+        debug_hide_ui_set(0);
+        debug_hide_player_set(0, 0);
+        debug_hide_player_set(1, 0);
+        SetStatus("Photo Mode reset to defaults");
+    }
+    if (pm::Action("Back", "Goes back. These settings last until the game is closed.") || pm::BackPressed())
+        MenuBack();
+    pm::End(g_status, kMenuVersion);
+}
+
 void DrawPauseMenu()
 {
     pm::SetBlocked(false);   /* only Controls and the player screen block, while capturing */
@@ -1995,6 +2057,7 @@ void DrawPauseMenu()
     case SCR_CONTROLS: DrawControlsScreen(); break;
     case SCR_PLAYER:  DrawPlayerScreen(); break;
     case SCR_DEVICE:  DrawDeviceScreen(); break;
+    case SCR_PHOTO:   DrawPhotoScreen(); break;
     case SCR_CLASSIC: DrawMenu(); break;
     }
 }
