@@ -5,7 +5,8 @@
 - New Escape menu: a list over the game (Display, Sound, Game, Controls,
   Photo Mode, Sparring, Quit) that works with the keyboard, a
   controller or the mouse. Settings apply at once and are saved when you leave
-  a screen. Controls has a screen per player: input device (picked from a
+  a screen. It reopens where you closed it; hold Escape or L3 + R3 for three
+  seconds to go to the main list. Controls has a screen per player: input device (picked from a
   list that shows which player has each controller), controller type and
   bindings.
 - **Pause while this menu is open**, on the Game screen (off by default).

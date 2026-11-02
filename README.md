@@ -80,6 +80,9 @@ or the d-pad to choose, **Left / Right** to change a setting, **Enter / A** to
 select and **Escape / B** to go back; the mouse works too. The line under
 the list explains the selected setting. Changes apply immediately and are
 saved when you leave the screen; each screen has **Reset to defaults**.
+The menu opens on the screen it was closed on (the main list instead, if
+that screen no longer applies, such as Sparring after leaving Sparring);
+hold **Escape** or **L3 + R3** for three seconds to jump to the main list.
 While the menu is
 closed, the mouse pointer hides after a second without moving and comes back
 when you move the mouse.

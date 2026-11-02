@@ -787,13 +787,22 @@ int NextTab(int from, int dir)
     }
     return from;
 }
+void MenuToMain();
 void PollControllerHotkeys()
 {
+    /* 1.0.4: Escape or L3 + R3 held for 3 seconds goes to the main list
+     * (the press itself has already opened the menu or gone back a
+     * screen). Nothing happens if the press closed the menu. */
+    static ULONGLONG s_hold_since;
+    static bool s_hold_done;
+    bool holding = false;
     HWND hwnd = d3d8_GetHWND();
     if (!hwnd || GetForegroundWindow() != hwnd || g_listening >= 0 || g_screenshot_listening) {
         memset(g_hotkey_prev, 0, sizeof g_hotkey_prev);
+        s_hold_since = 0;
         return;
     }
+    if (GetAsyncKeyState(VK_ESCAPE) & 0x8000) holding = true;
     DWORD mask = xbox_InputPhysicalMask();
     for (int slot = 0; slot < XBOX_HOST_CONTROLLERS; ++slot) {
         XINPUT_STATE st;
@@ -807,6 +816,7 @@ void PollControllerHotkeys()
         auto fired = [&](WORD combo) { return held(now, combo) && !held(before, combo); };
         const WORD L3 = XINPUT_GAMEPAD_LEFT_THUMB, R3 = XINPUT_GAMEPAD_RIGHT_THUMB;
         const WORD L1 = XINPUT_GAMEPAD_LEFT_SHOULDER, R1 = XINPUT_GAMEPAD_RIGHT_SHOULDER;
+        if (held(now, L3 | R3)) holding = true;
         if (fired(L3 | R3)) { doa3_ui_toggle(); continue; }
         if (fired(L3 | R1)) { d3d8_screenshot_request(); continue; }
         if (fired(L3 | XINPUT_GAMEPAD_Y)) { TogglePerformanceOverlay(); continue; }
@@ -814,6 +824,13 @@ void PollControllerHotkeys()
             if (fired(L1)) g_tab_request = NextTab(g_tab_current, -1);
             else if (fired(R1)) g_tab_request = NextTab(g_tab_current, +1);
         }
+    }
+    if (!holding) { s_hold_since = 0; s_hold_done = false; return; }
+    ULONGLONG t = GetTickCount64();
+    if (!s_hold_since) s_hold_since = t;
+    else if (!s_hold_done && t - s_hold_since >= 3000) {
+        s_hold_done = true;
+        if (g_visible && g_screen != SCR_MAIN) MenuToMain();
     }
 }
 
@@ -1505,6 +1522,18 @@ void MenuBack()
     g_screen_dirty = false;
     g_screen = g_screen == SCR_PLAYER ? SCR_CONTROLS : SCR_MAIN;
     if (g_screen == SCR_CONTROLS) g_pm_controls.selected = 3 + g_input_player;   /* its Player row */
+    g_listening = -1;
+    g_armed = false;
+    g_screenshot_listening = false;
+}
+
+/* Straight to the main list (the 3-second hold), saving the screen left. */
+void MenuToMain()
+{
+    if (g_screen_dirty) SaveScreen(g_screen);
+    g_screen_dirty = false;
+    g_screen = SCR_MAIN;
+    g_pm_main.Reset();
     g_listening = -1;
     g_armed = false;
     g_screenshot_listening = false;
@@ -2258,9 +2287,12 @@ extern "C" void doa3_ui_toggle(void)
     if (g_visible && g_screen_dirty) SaveScreen(g_screen);   /* closed from a list screen */
     g_screen_dirty = false;
     g_visible = !g_visible;
-    /* 1.0.4: always opens on the main list, at its first row. */
-    g_screen = SCR_MAIN;
-    g_pm_main.Reset();
+    /* 1.0.4: opens where it was closed, except on a screen that no longer
+     * applies (Sparring outside Sparring, the Debug window once hidden) or
+     * the Quit question; those open the main list. */
+    if (g_visible && ((g_screen == SCR_SPARRING && !training_available()) || g_screen == SCR_QUIT ||
+                      (g_screen == SCR_CLASSIC && !g_debug_tab)))
+        g_screen = SCR_MAIN;
     SetMenuPause(g_visible && g_pause_in_menu);
     if (g_visible) g_status[0] = 0;   /* no message left over from last time */
     if (g_visible) training_stop();

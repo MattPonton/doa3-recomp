@@ -5546,3 +5546,13 @@ Record and Play close the menu with doa3_ui_toggle (which also lifts the
 menu pause) instead of clearing g_visible by hand. Session-only, as before.
 Only the Debug tab still opens the classic window, so Display's "Classic
 menu size" row shows only with the Debug tab on.
+
+## 1.0.4.27
+
+The menu reopens on the screen it was closed on, with that screen's
+selection (doa3_ui_toggle no longer resets to SCR_MAIN), except Sparring
+when training_available() is false, the Quit question, and the classic
+window once the Debug tab is hidden. Escape or L3 + R3 held for 3 s
+(PollControllerHotkeys: GetAsyncKeyState(VK_ESCAPE) or the combo on any
+controller) goes to the main list via MenuToMain, which saves the screen
+left; only while the menu is open, so a press that closed it stays closed.
