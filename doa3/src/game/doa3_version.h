@@ -22,7 +22,7 @@
 #define DOA3_VER_MAJOR  1
 #define DOA3_VER_MINOR  0
 #define DOA3_VER_UPDATE 4
-#define DOA3_VER_BUILD  49
+#define DOA3_VER_BUILD  50
 #define DOA3_VER_STR    "1.0.4"
-#define DOA3_VER_FULL_STR "1.0.4-rollback.49"
+#define DOA3_VER_FULL_STR "1.0.4-rollback.50"
 #endif

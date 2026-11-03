@@ -113,6 +113,8 @@ typedef struct DsVoice {
     ALuint   buffer;
     ALuint   direct_filter;
     ALuint   send_filter;
+    int      al_is3d;           /* the format the OpenAL buffer callback was made for */
+    uint32_t al_rate;
 } DsVoice;
 
 static CRITICAL_SECTION s_lock;
@@ -439,6 +441,8 @@ static void voice_open(DsVoice *v)
     alBufferCallbackSOFT(v->buffer, v->is3d ? AL_FORMAT_MONO_FLOAT32 : AL_FORMAT_STEREO_FLOAT32,
                          (ALsizei)v->rate, voice_callback, v);
     alSourcei(v->source, AL_BUFFER, (ALint)v->buffer);
+    v->al_is3d = v->is3d;
+    v->al_rate = v->rate;
     if (v->is3d) {
         alSourcei(v->source, AL_SOURCE_RELATIVE, AL_FALSE);
         alSourcef(v->source, AL_ROLLOFF_FACTOR, 1.0f);
@@ -466,6 +470,36 @@ static void voice_close(DsVoice *v)
     v->source = v->buffer = v->direct_filter = v->send_filter = 0;
 }
 
+/* rollback.50: empties a slot. While a replay runs, what is heard (the
+ * OpenAL objects, the live cursor and play state, the ADPCM block) stays in
+ * the slot: the replay often frees and remakes a voice that is playing (a
+ * sound started in the frames it re-runs), and closing it cut the sound and
+ * restarted it at the replay's end, heard as a scratch. voices_resync sorts
+ * out what the replay left: kept if the voice is as it was, else stopped,
+ * remade or re-seeked. */
+static void voice_clear(DsVoice *v)
+{
+    DsVoice keep;
+    if (!s_gate) {
+        voice_close(v);
+        memset(v, 0, sizeof *v);
+        return;
+    }
+    keep = *v;
+    memset(v, 0, sizeof *v);
+    v->source = keep.source;
+    v->buffer = keep.buffer;
+    v->direct_filter = keep.direct_filter;
+    v->send_filter = keep.send_filter;
+    v->al_is3d = keep.al_is3d;
+    v->al_rate = keep.al_rate;
+    v->cursor = keep.cursor;
+    v->playing = keep.playing;
+    v->al_ended = keep.al_ended;
+    v->adpcm_block = keep.adpcm_block;
+    memcpy(v->adpcm_pcm, keep.adpcm_pcm, sizeof v->adpcm_pcm);
+}
+
 /* ---------------------------------------------------------------- buffers */
 
 int ds_buffer_create(uint32_t flags, const DsFormat *fmt, uint32_t data_va, uint32_t data_bytes)
@@ -486,7 +520,7 @@ int ds_buffer_create(uint32_t flags, const DsFormat *fmt, uint32_t data_va, uint
         fprintf(stderr, "[DSOUND] out of voices (%d buffers alive)\n", DS_MAX_VOICES);
         return 0;
     }
-    memset(v, 0, sizeof *v);
+    voice_clear(v);
     v->used = 1;
     v->adpcm = fmt->tag == WAVE_FORMAT_XBOX_ADPCM;
     v->channels = fmt->channels;
@@ -494,7 +528,7 @@ int ds_buffer_create(uint32_t flags, const DsFormat *fmt, uint32_t data_va, uint
     v->rate = fmt->rate;
     v->frame_bytes = v->adpcm ? 0 : (uint32_t)fmt->channels * fmt->bits / 8;
     v->is3d = (flags & DSBCAPS_CTRL3D) && fmt->channels == 1;
-    v->adpcm_block = -1;
+    if (!s_gate) v->adpcm_block = -1;
     v->headroom = (flags & (DSBCAPS_MIXIN | DSBCAPS_FXIN)) || (flags & DSBCAPS_CTRL3D) ? 0 : 600;
     v->min_distance = 1.0f;
     /* default mix bins: the 3D speakers, or front left/right */
@@ -526,10 +560,7 @@ void ds_buffer_destroy(int h)
     DsVoice *v;
     lock();
     v = voice_get(h);
-    if (v) {
-        voice_close(v);
-        memset(v, 0, sizeof *v);
-    }
+    if (v) voice_clear(v);
     unlock();
 }
 
@@ -1193,7 +1224,15 @@ static void voices_resync(const DsSnapshot *anchor)
         DsVoice *v = &s_voices[h];
         DsSnapVoice now;
         int seek = 1;
-        if (!v->used) continue;
+        if (!v->used) {
+            if (v->source) {            /* freed by the replay: stop it now */
+                voice_close(v);
+                memset(v, 0, sizeof *v);
+            }
+            continue;
+        }
+        if (v->source && (v->al_is3d != v->is3d || v->al_rate != v->rate))
+            voice_close(v);             /* remade with another format */
         if (anchor && v->source && s_det) {
             snap_voice(v, &now);
             if (!memcmp(&now, &anchor->voice[h - 1], sizeof now)) continue;
@@ -1247,8 +1286,8 @@ int ds_rollback_can_restore(void)
     return pinned() && s_det && s_gate && !s_gate_fault;
 }
 
-/* A voice keeps its OpenAL objects when its format is unchanged; otherwise
- * they are dropped and remade when the replay closes. */
+/* A voice keeps its OpenAL objects and heard state through the replay
+ * (voice_clear); the replay's end decides what to keep. */
 int ds_rollback_restore(const void *in, size_t bytes)
 {
     const DsSnapshot *s = (const DsSnapshot *)in;
@@ -1264,16 +1303,12 @@ int ds_rollback_restore(const void *in, size_t bytes)
         DsVoice *v = &s_voices[h];
         const DsSnapVoice *o = &s->voice[h - 1];
         if (!o->used) {
-            if (v->used) {
-                voice_close(v);
-                memset(v, 0, sizeof *v);
-            }
+            if (v->used) voice_clear(v);
             continue;
         }
         if (!v->used || v->adpcm != (int)o->adpcm || v->channels != (int)o->channels ||
             v->bits != (int)o->bits || v->rate != o->rate || v->is3d != (int)o->is3d) {
-            voice_close(v);
-            memset(v, 0, sizeof *v);
+            voice_clear(v);
             v->used = 1;
             v->adpcm = (int)o->adpcm;
             v->channels = (int)o->channels;
@@ -1530,6 +1565,15 @@ static DWORD WINAPI mixer_thread(LPVOID param)
             }
         }
         lock();
+        /* rollback.50: no rendering while a replay runs: restore and the
+         * replayed frames rewrite the voices the callbacks read (a voice
+         * remade or reverted for a few ms played the wrong data). The queue
+         * holds ~43 ms; a replay takes a few. */
+        if (s_gate) {
+            unlock();
+            Sleep(1);
+            continue;
+        }
         alcRenderSamplesSOFT(s_device, buf, DS_PERIOD);
         unlock();
         rendered += DS_PERIOD;

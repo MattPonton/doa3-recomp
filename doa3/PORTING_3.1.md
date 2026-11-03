@@ -6945,3 +6945,25 @@ det_played field, snapshot version 2), so every machine reports the same.
 ADPCM and one-shot buffers are unchanged. A [DSOUND] stream line every
 10 s gives the heard cursor's range ahead of the reported one; it should
 stay positive.
+
+### rollback.50: voices made in the replayed frames keep playing
+
+rb49 fixed the music (the new [DSOUND] stream line stayed 3200-4300 frames
+positive over the whole run), but voices and effects now and then gave a
+short "needle scratch". The log shows why: buffers created in the frames a
+rollback re-runs are created twice ("[DSOUND] buffer 7 ..." printed by the
+original frame and again by the replay). The restore freed the slot of a
+voice started in those frames (it did not exist yet), which closed its
+OpenAL source; the replay made it again without one, and the replay's end
+restarted it at the lockstep cursor: the sound cut and jumped. The same
+went for a slot freed and remade by the replay itself. Also, the mixer kept
+rendering during the replay, from voices the restore had reverted to an
+earlier sound for a few ms.
+
+Now, while the replay gate is open, emptying a slot (destroy, restore,
+create) keeps what is heard there: the OpenAL objects, live cursor, play
+state and ADPCM block (voice_clear). At the gate's end voices_resync stops
+slots the replay left free, remakes the objects of a voice whose 3D/rate
+changed, leaves untouched every voice the replay left as it was, and
+re-seeks only voices it really changed. The mixer renders nothing while the
+gate is open (the output queue holds ~43 ms; a replay takes 4-11 ms).
