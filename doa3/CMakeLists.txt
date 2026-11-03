@@ -59,7 +59,13 @@ foreach(option ALSOFT_UTILS ALSOFT_EXAMPLES ALSOFT_TESTS ALSOFT_INSTALL
         ALSOFT_INSTALL_EXAMPLES ALSOFT_INSTALL_UTILS ALSOFT_UPDATE_BUILD_VERSION
         ALSOFT_EAX ALSOFT_BACKEND_PIPEWIRE ALSOFT_BACKEND_PULSEAUDIO
         ALSOFT_BACKEND_JACK ALSOFT_BACKEND_PORTAUDIO ALSOFT_BACKEND_SDL2
-        ALSOFT_BACKEND_SDL3 ALSOFT_BACKEND_WAVE)
+        ALSOFT_BACKEND_SDL3 ALSOFT_BACKEND_WAVE
+        # rollback.46: no C++20 modules. With the Visual Studio generator,
+        # MSBuild's module scan wrote an unreadable dependency file for
+        # device.cpp ("There are multiple root elements", MSB8074) and every
+        # effect failed with "could not find module 'alc.context'" (C2230).
+        # Without modules OpenAL Soft includes the same code as headers.
+        ALSOFT_ENABLE_MODULES)
     set(${option} OFF)
 endforeach()
 add_subdirectory(third_party/openal-soft EXCLUDE_FROM_ALL)

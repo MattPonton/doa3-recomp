@@ -6879,3 +6879,14 @@ controlled clock. With the APU gone, the audio part of a fight checkpoint
   other host overrides.
 - DOA3_ROLLBACK_OWNERSHIP_AUDIT=4 (the APU processing capture) is gone: there
   is one audio snapshot.
+
+### 1.0.4-rollback.46: OpenAL Soft without C++20 modules
+
+mallo's OpenAL Soft audio (merged from doa3-fixed-audio) did not build on
+Matt's Visual Studio 2022 (CMake 3.31.6-msvc6, MSVC 19.44): OpenAL Soft
+turns on C++20 modules for the VS 17 2022 generator, MSBuild's module scan
+left OpenAL.dir\Release\device.cpp.module.json unreadable (MSB8074,
+"multiple root elements"), and every effect source failed with C2230
+"could not find module 'alc.context'". ALSOFT_ENABLE_MODULES is now OFF
+with the other OpenAL Soft options in doa3/CMakeLists.txt; its sources
+then include the same code as headers (#if HAVE_CXXMODULES ... #else).
