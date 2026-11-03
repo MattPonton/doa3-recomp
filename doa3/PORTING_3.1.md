@@ -6880,6 +6880,7 @@ controlled clock. With the APU gone, the audio part of a fight checkpoint
 - DOA3_ROLLBACK_OWNERSHIP_AUDIT=4 (the APU processing capture) is gone: there
   is one audio snapshot.
 
+<<<<<<< HEAD
 ## ADX voice streams reach the room reverb
 
 The intro/outro voices (and every other mono CRI stream) played dry. The
@@ -6894,3 +6895,92 @@ pair, plus the back pair for stereo) fold to the same levels as before.
 
 CRI names for the ADX library (0x190190-0x19E210, ADXT/XB 7.55) are now in
 the Ghidra project; the CRI functions this note names use them.
+=======
+### 1.0.4-rollback.46: OpenAL Soft without C++20 modules
+
+mallo's OpenAL Soft audio (merged from doa3-fixed-audio) did not build on
+Matt's Visual Studio 2022 (CMake 3.31.6-msvc6, MSVC 19.44): OpenAL Soft
+turns on C++20 modules for the VS 17 2022 generator, MSBuild's module scan
+left OpenAL.dir\Release\device.cpp.module.json unreadable (MSB8074,
+"multiple root elements"), and every effect source failed with C2230
+"could not find module 'alc.context'". ALSOFT_ENABLE_MODULES is now OFF
+with the other OpenAL Soft options in doa3/CMakeLists.txt; its sources
+then include the same code as headers (#if HAVE_CXXMODULES ... #else).
+
+### rollback.47: no re-seek of unchanged voices after a replay
+
+With the depth-4 sync test a rollback runs every frame, and each one closed
+the audio replay gate with voices_resync(), which set every voice's live
+cursor to its lockstep cursor and restarted it (adpcm block dropped,
+voice_al_play). The live cursor runs ahead of the lockstep one by the
+output buffering, so every long playing sound (wall hits, stage ambience)
+jumped back a few ms each frame: heard as a "paper crumpling" crackle.
+voices_resync() now compares each voice with the gate's anchor snapshot:
+a voice left exactly as it was is not touched, one whose playback (data,
+loop, lockstep cursor, play state) is unchanged only gets its levels, and
+only a voice the replay really changed is re-seeked. The listener and
+I3DL2 reverb are reapplied only when they changed. A state load or no
+anchor still resyncs everything.
+
+### rollback.48: the music stream's bytes survive a rollback
+
+rb47 cleared the re-seek, but the background music was still garbled in the
+depth-4 sync test (effects and voices were clean). CRI's ADX player decodes
+the music into a looping PCM DirectSound buffer in guest RAM while it plays,
+and the HLE's callback reads that RAM live at the heard cursor, which runs
+ahead of the lockstep one. A rollback restored guest RAM, so the part of the
+buffer decoded during the rolled-back frames went back to the previous lap's
+audio until the replay decoded it again, and the heard cursor played some of
+it. The lean restore now keeps the current bytes of every looping PCM buffer
+playing on the lockstep clock (ds_stream_ranges, up to 8 buffers and 1 MB),
+as it keeps the D3D device range. This is exact: the stream reads depend
+only on file and offset, so the replay writes the same bytes again; the
+post-replay compare still covers those pages and would show it otherwise.
+The decoder's own state (file position, ADX history, buffer offsets) is
+still rolled back with the rest of guest RAM, since the game's frames depend
+on it.
+
+### rollback.49: the music stream reports its cursor 100 ms behind
+
+rb48 did not change the static on the music, and the user heard it in both
+sync tests (depth 2 and 4) but never on the normal clock, so it is the
+lockstep clock rather than the rollbacks. On it, GetCurrentPosition reports
+the lockstep cursor (800 samples per frame), while the callback plays at the
+heard cursor, which follows it only to within a few frames: 512-sample mixer
+periods against 800-sample frames, and the frame pacing's +/-1600-sample
+band. The write cursor is the play cursor, so CRI fills the ADX ring right
+up to the reported position, and whenever the heard cursor was behind it, it
+played audio CRI had already replaced with the next lap's.
+
+On the lockstep clock a looping PCM buffer now reports its cursor 100 ms
+(rate / 10 frames, at most a quarter of the loop) behind the lockstep one,
+so CRI never writes where the heard cursor can be. The delay builds up over
+the first 100 ms after the cursor is set or the clock starts (the position
+holds still meanwhile) and never jumps back. It is lockstep state (new
+det_played field, snapshot version 2), so every machine reports the same.
+ADPCM and one-shot buffers are unchanged. A [DSOUND] stream line every
+10 s gives the heard cursor's range ahead of the reported one; it should
+stay positive.
+
+### rollback.50: voices made in the replayed frames keep playing
+
+rb49 fixed the music (the new [DSOUND] stream line stayed 3200-4300 frames
+positive over the whole run), but voices and effects now and then gave a
+short "needle scratch". The log shows why: buffers created in the frames a
+rollback re-runs are created twice ("[DSOUND] buffer 7 ..." printed by the
+original frame and again by the replay). The restore freed the slot of a
+voice started in those frames (it did not exist yet), which closed its
+OpenAL source; the replay made it again without one, and the replay's end
+restarted it at the lockstep cursor: the sound cut and jumped. The same
+went for a slot freed and remade by the replay itself. Also, the mixer kept
+rendering during the replay, from voices the restore had reverted to an
+earlier sound for a few ms.
+
+Now, while the replay gate is open, emptying a slot (destroy, restore,
+create) keeps what is heard there: the OpenAL objects, live cursor, play
+state and ADPCM block (voice_clear). At the gate's end voices_resync stops
+slots the replay left free, remakes the objects of a voice whose 3D/rate
+changed, leaves untouched every voice the replay left as it was, and
+re-seeks only voices it really changed. The mixer renders nothing while the
+gate is open (the output queue holds ~43 ms; a replay takes 4-11 ms).
+>>>>>>> a201d2242b41c6c12db1e026cb57de87baa3c8dc

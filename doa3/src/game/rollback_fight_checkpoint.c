@@ -754,11 +754,29 @@ int doa3_fight_lean_can_rollback(unsigned back)
     const LeanSlot *slot=&lean[(seq-back)%LEAN_RING];
     return slot->valid && slot->seq==seq-back;
 }
-/* Byte ranges whose current contents survive a restore (GPU-side state). */
+/* Byte ranges whose current contents survive a restore (GPU-side state).
+ * rollback.48: also the looping PCM buffers playing on the lockstep clock
+ * (the ADX music stream). The heard cursor reads them live and runs ahead of
+ * the lockstep one, so reverting the bytes decoded in the last frames played
+ * stale music until the replay decoded them again: garbled music in the sync
+ * test. The replay writes the same bytes (the stream reads depend only on
+ * file and offset), so keeping them is exact. */
+#define KEEP_STREAMS 8
+#define KEEP_STREAM_BYTES 0x100000u
+static uint32_t keep_stream_va[KEEP_STREAMS],keep_stream_bytes[KEEP_STREAMS];
+static int keep_streams;
 static void preserve(int save,unsigned char *keep)
 {
-    struct { uint32_t va,bytes; } r[4];unsigned n=0;
+    struct { uint32_t va,bytes; } r[4+KEEP_STREAMS];unsigned n=0;
     uint32_t dev=lean_dev;
+    if(save){
+        keep_streams=ds_stream_ranges(keep_stream_va,keep_stream_bytes,KEEP_STREAMS,KEEP_STREAM_BYTES);
+        uint32_t mem=(uint32_t)xbox_GetMemorySize();
+        for(int i=0;i<keep_streams;++i)if(keep_stream_va[i]>=mem || keep_stream_bytes[i]>mem-keep_stream_va[i]){keep_streams=0;break;}
+    }
+    for(int i=0;i<keep_streams;++i){r[n].va=keep_stream_va[i];r[n].bytes=keep_stream_bytes[i];++n;}
+    /* after the streams: the ring-pointer entry is read from RAM, which on
+     * the restore side is already the restored image */
     if(dev && dev<0x08000000u-0x2400u){r[n].va=dev;r[n].bytes=0x2400;++n;
         uint32_t lo=MEM32(dev+0x24);if(lo>=0x1000u && lo<0x08000000u){r[n].va=lo-0x1000u;r[n].bytes=4;++n;}}
     r[n].va=0x9B23A0u;r[n].bytes=4;++n;
@@ -772,7 +790,7 @@ static void preserve(int save,unsigned char *keep)
 }
 static int lean_restore(Doa3FightCheckpoint *s,const unsigned char *in,unsigned back)
 {
-    static unsigned char keep[0x2400+16];
+    static unsigned char keep[0x2400+16+KEEP_STREAM_BYTES];
     for(unsigned i=0;i<DOA3_CP_PARTS;++i){
         if(LEAN_SKIP(i))continue;
         if(i==DOA3_CP_RAM){
