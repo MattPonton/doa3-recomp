@@ -6890,3 +6890,18 @@ left OpenAL.dir\Release\device.cpp.module.json unreadable (MSB8074,
 "could not find module 'alc.context'". ALSOFT_ENABLE_MODULES is now OFF
 with the other OpenAL Soft options in doa3/CMakeLists.txt; its sources
 then include the same code as headers (#if HAVE_CXXMODULES ... #else).
+
+### rollback.47: no re-seek of unchanged voices after a replay
+
+With the depth-4 sync test a rollback runs every frame, and each one closed
+the audio replay gate with voices_resync(), which set every voice's live
+cursor to its lockstep cursor and restarted it (adpcm block dropped,
+voice_al_play). The live cursor runs ahead of the lockstep one by the
+output buffering, so every long playing sound (wall hits, stage ambience)
+jumped back a few ms each frame: heard as a "paper crumpling" crackle.
+voices_resync() now compares each voice with the gate's anchor snapshot:
+a voice left exactly as it was is not touched, one whose playback (data,
+loop, lockstep cursor, play state) is unchanged only gets its levels, and
+only a voice the replay really changed is re-seeked. The listener and
+I3DL2 reverb are reapplied only when they changed. A state load or no
+anchor still resyncs everything.
