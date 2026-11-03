@@ -1294,6 +1294,29 @@ int ds_replay_commit(void)
     return 1;
 }
 
+int ds_stream_ranges(uint32_t *va, uint32_t *bytes, int max, uint32_t max_total)
+{
+    int h, n = 0;
+    uint64_t total = 0;
+    lock();
+    if (s_det) {
+        for (h = 1; h <= DS_MAX_VOICES; h++) {
+            const DsVoice *v = &s_voices[h];
+            if (!v->used || !v->looping || !v->det_playing || v->adpcm || !v->data_va || !v->data_bytes)
+                continue;
+            if (n >= max || (total += v->data_bytes) > max_total) {
+                n = 0;
+                break;
+            }
+            va[n] = v->data_va;
+            bytes[n] = v->data_bytes;
+            n++;
+        }
+    }
+    unlock();
+    return n;
+}
+
 /* ---------------------------------------------------------------- movie audio */
 
 #define MOVIE_BUF_FRAMES 2048

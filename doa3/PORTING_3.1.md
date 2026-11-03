@@ -6905,3 +6905,21 @@ loop, lockstep cursor, play state) is unchanged only gets its levels, and
 only a voice the replay really changed is re-seeked. The listener and
 I3DL2 reverb are reapplied only when they changed. A state load or no
 anchor still resyncs everything.
+
+### rollback.48: the music stream's bytes survive a rollback
+
+rb47 cleared the re-seek, but the background music was still garbled in the
+depth-4 sync test (effects and voices were clean). CRI's ADX player decodes
+the music into a looping PCM DirectSound buffer in guest RAM while it plays,
+and the HLE's callback reads that RAM live at the heard cursor, which runs
+ahead of the lockstep one. A rollback restored guest RAM, so the part of the
+buffer decoded during the rolled-back frames went back to the previous lap's
+audio until the replay decoded it again, and the heard cursor played some of
+it. The lean restore now keeps the current bytes of every looping PCM buffer
+playing on the lockstep clock (ds_stream_ranges, up to 8 buffers and 1 MB),
+as it keeps the D3D device range. This is exact: the stream reads depend
+only on file and offset, so the replay writes the same bytes again; the
+post-replay compare still covers those pages and would show it otherwise.
+The decoder's own state (file position, ADX history, buffer offsets) is
+still rolled back with the rest of guest RAM, since the game's frames depend
+on it.

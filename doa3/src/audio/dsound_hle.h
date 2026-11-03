@@ -125,6 +125,12 @@ int      ds_rollback_restore(const void *in, size_t bytes);
 int      ds_replay_begin(void);
 int      ds_replay_end(int cancel);
 int      ds_replay_commit(void);
+/* rollback.48: guest ranges of the looping PCM buffers playing on the
+ * lockstep clock (CRI's ADX music stream decodes into one while it plays).
+ * The heard cursor reads them live, so a rollback keeps their current bytes
+ * instead of reverting them. Returns the count (at most max), 0 if the total
+ * would exceed max_total bytes. */
+int      ds_stream_ranges(uint32_t *va, uint32_t *bytes, int max, uint32_t max_total);
 
 /* Host-decoded movie audio (movie_present.c): one 48 kHz stereo stream. */
 int      audio_movie_start(void);
