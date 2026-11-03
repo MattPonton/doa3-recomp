@@ -496,10 +496,13 @@ int ds_buffer_create(uint32_t flags, const DsFormat *fmt, uint32_t data_va, uint
     v->adpcm_block = -1;
     v->headroom = (flags & (DSBCAPS_MIXIN | DSBCAPS_FXIN)) || (flags & DSBCAPS_CTRL3D) ? 0 : 600;
     v->min_distance = 1.0f;
-    /* default mix bins: the 3D speakers, or front left/right */
+    /* default mix bins, as DSOUND's for a buffer created without any
+     * (0x1F157C): a 3D buffer gets the four 3D bins and the I3DL2 send, all
+     * at 0 mB (0x20BBEC); CRI's mono ADX streams are such buffers once
+     * ADXXB_SetMono3D (0x191F80) is called. 2D: front left/right. */
     if (v->is3d) {
-        v->num_bins = 4;
-        v->bins[0] = 6; v->bins[1] = 7; v->bins[2] = 8; v->bins[3] = 9;
+        v->num_bins = 5;
+        v->bins[0] = 6; v->bins[1] = 8; v->bins[2] = 7; v->bins[3] = 9; v->bins[4] = 10;
     } else {
         v->num_bins = 2;
         v->bins[0] = 0; v->bins[1] = 1;
@@ -511,12 +514,6 @@ int ds_buffer_create(uint32_t flags, const DsFormat *fmt, uint32_t data_va, uint
     voice_mix_levels(v);
     voice_open(v);
     unlock();
-    if (s_logged < 40) {
-        s_logged++;
-        fprintf(stderr, "[DSOUND] buffer %d: %s %u Hz %d ch%s, %u bytes, flags %08X\n",
-                h, v->adpcm ? "ADPCM" : fmt->bits == 8 ? "PCM8" : "PCM16", fmt->rate, fmt->channels,
-                v->is3d ? " 3D" : "", data_bytes, flags);
-    }
     return h;
 }
 

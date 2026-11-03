@@ -6879,3 +6879,18 @@ controlled clock. With the APU gone, the audio part of a fight checkpoint
   other host overrides.
 - DOA3_ROLLBACK_OWNERSHIP_AUDIT=4 (the APU processing capture) is gone: there
   is one audio snapshot.
+
+## ADX voice streams reach the room reverb
+
+The intro/outro voices (and every other mono CRI stream) played dry. The
+game's sound setup (0x1C79F0) calls ADXXB_SetMono3D (0x191F80), which makes
+mwSnd create mono stream buffers with DSBCAPS_CTRL3D (flags 0x400B0,
+mwsnd_create_dsb 0x1999B0) and no lpMixBins. DSOUND's default for such a
+buffer (CDirectSoundVoiceSettings::SetMixBins, 0x1F157C, table 0x20BBEC) is
+bins 6, 8, 7, 9 and 10 at 0 mB: the 3D bins plus the I3DL2 send. The port's
+default for a 3D buffer had only 6-9, so these voices never fed the reverb.
+ds_buffer_create now uses DSOUND's list. The 2D defaults (0x1F95A4: front
+pair, plus the back pair for stereo) fold to the same levels as before.
+
+CRI names for the ADX library (0x190190-0x19E210, ADXT/XB 7.55) are now in
+the Ghidra project; the CRI functions this note names use them.
