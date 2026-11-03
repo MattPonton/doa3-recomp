@@ -6923,3 +6923,25 @@ post-replay compare still covers those pages and would show it otherwise.
 The decoder's own state (file position, ADX history, buffer offsets) is
 still rolled back with the rest of guest RAM, since the game's frames depend
 on it.
+
+### rollback.49: the music stream reports its cursor 100 ms behind
+
+rb48 did not change the static on the music, and the user heard it in both
+sync tests (depth 2 and 4) but never on the normal clock, so it is the
+lockstep clock rather than the rollbacks. On it, GetCurrentPosition reports
+the lockstep cursor (800 samples per frame), while the callback plays at the
+heard cursor, which follows it only to within a few frames: 512-sample mixer
+periods against 800-sample frames, and the frame pacing's +/-1600-sample
+band. The write cursor is the play cursor, so CRI fills the ADX ring right
+up to the reported position, and whenever the heard cursor was behind it, it
+played audio CRI had already replaced with the next lap's.
+
+On the lockstep clock a looping PCM buffer now reports its cursor 100 ms
+(rate / 10 frames, at most a quarter of the loop) behind the lockstep one,
+so CRI never writes where the heard cursor can be. The delay builds up over
+the first 100 ms after the cursor is set or the clock starts (the position
+holds still meanwhile) and never jumps back. It is lockstep state (new
+det_played field, snapshot version 2), so every machine reports the same.
+ADPCM and one-shot buffers are unchanged. A [DSOUND] stream line every
+10 s gives the heard cursor's range ahead of the reported one; it should
+stay positive.
